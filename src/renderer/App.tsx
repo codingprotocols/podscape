@@ -1,6 +1,7 @@
-import React, { useEffect, lazy, Suspense } from 'react'
+import React, { useEffect } from 'react'
 import { useAppStore } from './store'
 import Sidebar from './components/Sidebar'
+import Dashboard from './components/Dashboard'
 import ResourceList from './components/ResourceList'
 import PodDetail from './components/PodDetail'
 import DeploymentDetail from './components/DeploymentDetail'
@@ -104,7 +105,9 @@ export default function App(): JSX.Element {
 
       {/* Main content */}
       <div className="flex flex-1 min-w-0 min-h-0">
-        {section === 'terminal' ? (
+        {section === 'dashboard' ? (
+          <Dashboard />
+        ) : section === 'terminal' ? (
           <Terminal />
         ) : section === 'events' ? (
           <EventsView />

@@ -282,6 +282,7 @@ export default function ResourceList(): JSX.Element {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; resource: AnyKubeResource } | null>(null)
 
   const clusterScoped = ['nodes', 'namespaces', 'crds'].includes(section)
+  const showNsCol = selectedNamespace === '_all' && !clusterScoped
   const cols = COLUMNS[section] ?? ['Name']
 
   const filtered = resources.filter(r =>
@@ -296,7 +297,7 @@ export default function ResourceList(): JSX.Element {
   const handleViewYAML = async (resource: AnyKubeResource) => {
     setContextMenu(null)
     const kind = kindLabel(section)
-    const yaml = await getYAML(kind, resource.metadata.name, clusterScoped)
+    const yaml = await getYAML(kind, resource.metadata.name, clusterScoped, resource.metadata.namespace)
     setYamlContent(yaml)
   }
 
@@ -325,7 +326,7 @@ export default function ResourceList(): JSX.Element {
         <div>
           <h2 className="text-sm font-semibold text-white">{SECTION_LABELS[section] ?? section}</h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            {clusterScoped ? 'cluster-wide' : (selectedNamespace ?? 'no namespace')}
+            {clusterScoped ? 'cluster-wide' : selectedNamespace === '_all' ? 'all namespaces' : (selectedNamespace ?? 'no namespace')}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -376,6 +377,11 @@ export default function ResourceList(): JSX.Element {
                     {col}
                   </th>
                 ))}
+                {showNsCol && (
+                  <th className="text-left px-4 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">
+                    Namespace
+                  </th>
+                )}
                 <th className="w-8" />
               </tr>
             </thead>
@@ -393,6 +399,11 @@ export default function ResourceList(): JSX.Element {
                     }`}
                   >
                     <ResourceRow resource={resource} section={section} />
+                    {showNsCol && (
+                      <td className="px-4 py-2.5 text-xs text-gray-500 font-mono">
+                        {resource.metadata.namespace ?? '—'}
+                      </td>
+                    )}
                     <td className="px-2 py-2 text-right">
                       <button
                         onClick={e => { e.stopPropagation(); handleContextMenu(e, resource) }}
@@ -445,7 +456,7 @@ export default function ResourceList(): JSX.Element {
           name={deleteTarget.metadata.name}
           kind={kindLabel(section)}
           onConfirm={async () => {
-            await deleteResource(kindLabel(section), deleteTarget.metadata.name, clusterScoped)
+            await deleteResource(kindLabel(section), deleteTarget.metadata.name, clusterScoped, deleteTarget.metadata.namespace)
             setDeleteTarget(null)
           }}
           onCancel={() => setDeleteTarget(null)}

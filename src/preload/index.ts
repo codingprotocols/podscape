@@ -13,29 +13,29 @@ const kubectl = {
   getNamespaces: (context: string) => ipcRenderer.invoke('kubectl:getNamespaces', context),
 
   // Workloads
-  getPods: (context: string, namespace: string) =>
+  getPods: (context: string, namespace: string | null) =>
     ipcRenderer.invoke('kubectl:getPods', context, namespace),
-  getDeployments: (context: string, namespace: string) =>
+  getDeployments: (context: string, namespace: string | null) =>
     ipcRenderer.invoke('kubectl:getDeployments', context, namespace),
-  getStatefulSets: (context: string, namespace: string) =>
+  getStatefulSets: (context: string, namespace: string | null) =>
     ipcRenderer.invoke('kubectl:getStatefulSets', context, namespace),
-  getReplicaSets: (context: string, namespace: string) =>
+  getReplicaSets: (context: string, namespace: string | null) =>
     ipcRenderer.invoke('kubectl:getReplicaSets', context, namespace),
-  getJobs: (context: string, namespace: string) =>
+  getJobs: (context: string, namespace: string | null) =>
     ipcRenderer.invoke('kubectl:getJobs', context, namespace),
-  getCronJobs: (context: string, namespace: string) =>
+  getCronJobs: (context: string, namespace: string | null) =>
     ipcRenderer.invoke('kubectl:getCronJobs', context, namespace),
 
   // Network
-  getServices: (context: string, namespace: string) =>
+  getServices: (context: string, namespace: string | null) =>
     ipcRenderer.invoke('kubectl:getServices', context, namespace),
-  getIngresses: (context: string, namespace: string) =>
+  getIngresses: (context: string, namespace: string | null) =>
     ipcRenderer.invoke('kubectl:getIngresses', context, namespace),
 
   // Config
-  getConfigMaps: (context: string, namespace: string) =>
+  getConfigMaps: (context: string, namespace: string | null) =>
     ipcRenderer.invoke('kubectl:getConfigMaps', context, namespace),
-  getSecrets: (context: string, namespace: string) =>
+  getSecrets: (context: string, namespace: string | null) =>
     ipcRenderer.invoke('kubectl:getSecrets', context, namespace),
 
   // Cluster
@@ -43,11 +43,11 @@ const kubectl = {
   getCRDs: (context: string) => ipcRenderer.invoke('kubectl:getCRDs', context),
 
   // Events
-  getEvents: (context: string, namespace: string) =>
+  getEvents: (context: string, namespace: string | null) =>
     ipcRenderer.invoke('kubectl:getEvents', context, namespace),
 
   // Metrics
-  getPodMetrics: (context: string, namespace: string) =>
+  getPodMetrics: (context: string, namespace: string | null) =>
     ipcRenderer.invoke('kubectl:getPodMetrics', context, namespace),
   getNodeMetrics: (context: string) =>
     ipcRenderer.invoke('kubectl:getNodeMetrics', context),

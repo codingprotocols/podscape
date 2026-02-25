@@ -365,6 +365,7 @@ export interface Plugin {
 // ─── Navigation ───────────────────────────────────────────────────────────────
 
 export type ResourceKind =
+  | 'dashboard'
   | 'pods'
   | 'deployments'
   | 'statefulsets'

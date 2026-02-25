@@ -143,8 +143,14 @@ export default function Sidebar(): JSX.Element {
             value={selectedNamespace ?? ''}
             onChange={e => selectNamespace(e.target.value)}
           >
-            {namespaces.length === 0 && (
-              <option value="" disabled>{selectedContext ? 'No namespaces' : 'Select cluster'}</option>
+            {!selectedContext && (
+              <option value="" disabled>Select cluster</option>
+            )}
+            {selectedContext && namespaces.length === 0 && (
+              <option value="" disabled>No namespaces</option>
+            )}
+            {namespaces.length > 0 && (
+              <option value="_all">All Namespaces</option>
             )}
             {namespaces.map(ns => (
               <option key={ns.metadata.name} value={ns.metadata.name}>{ns.metadata.name}</option>
@@ -155,6 +161,16 @@ export default function Sidebar(): JSX.Element {
 
       {/* Navigation tree */}
       <nav className="flex-1 overflow-y-auto py-2 scrollbar-hide">
+        {/* Dashboard — pinned at the top, outside any collapsible group */}
+        <div className="px-1 mb-1">
+          <NavItem
+            label="Dashboard"
+            section="dashboard"
+            icon="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+          />
+        </div>
+        <div className="mx-3 mb-2 border-t border-white/8" />
+
         <NavGroup title="Workloads">
           <NavItem label="Pods" section="pods" icon={ICONS.pod} badge={pods.length || undefined} />
           <NavItem label="Deployments" section="deployments" icon={ICONS.deploy} badge={deployments.length || undefined} />

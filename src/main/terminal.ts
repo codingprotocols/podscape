@@ -1,5 +1,4 @@
 import { ipcMain } from 'electron'
-import { existsSync } from 'fs'
 import { homedir } from 'os'
 import { findKubectl } from './kubectl'
 
@@ -15,6 +14,44 @@ function newId(prefix: string): string {
   return `${prefix}-${nextPtyId++}`
 }
 
+/**
+ * Build a clean env object for node-pty.
+ *
+ * node-pty's native posix_spawnp call fails with ENOENT/EINVAL if the env
+ * array contains any undefined values. process.env has type
+ * `Record<string, string | undefined>`, so we must filter them out explicitly
+ * before passing to pty.spawn().
+ *
+ * On macOS, Electron's PATH often omits Homebrew paths, so we augment it.
+ */
+function buildEnv(extra: Record<string, string> = {}): Record<string, string> {
+  // Strip undefined values — this is the main source of posix_spawnp failures
+  const base: Record<string, string> = Object.fromEntries(
+    Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined)
+  )
+
+  // Augment PATH on macOS so Homebrew/local kubectl is always reachable
+  if (process.platform === 'darwin') {
+    const existing = (base.PATH ?? '').split(':').filter(Boolean)
+    const macPaths = [
+      '/opt/homebrew/bin',
+      '/opt/homebrew/sbin',
+      '/usr/local/bin',
+      '/usr/local/sbin',
+      '/usr/bin',
+      '/usr/sbin',
+      '/bin',
+      '/sbin'
+    ]
+    for (const p of macPaths) {
+      if (!existing.includes(p)) existing.push(p)
+    }
+    base.PATH = existing.join(':')
+  }
+
+  return { ...base, HOME: homedir(), ...extra }
+}
+
 export function registerTerminalHandlers(): void {
   // ── Built-in kubectl terminal ─────────────────────────────────────────────
 
@@ -24,18 +61,16 @@ export function registerTerminalHandlers(): void {
       const id = newId('term')
       const shell = process.env.SHELL ?? '/bin/zsh'
       const kubectl = findKubectl()
-      const env: Record<string, string> = {
-        ...process.env as Record<string, string>,
+      const env = buildEnv({
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',
-        HOME: homedir()
-      }
-      if (context) env['KUBECTL_CONTEXT'] = context
-      if (namespace) env['KUBECTL_NAMESPACE'] = namespace
+        ...(context   ? { KUBECTL_CONTEXT:   context   } : {}),
+        ...(namespace ? { KUBECTL_NAMESPACE: namespace } : {})
+      })
 
-      // Launch shell; if a context is given, set it first
+      // If a context is given, switch to it before handing the shell to the user
       const initCmd = context
-        ? `${kubectl} config use-context ${context} 2>/dev/null; ${namespace ? `export KUBECTL_NAMESPACE='${namespace}'; ` : ''}exec ${shell}`
+        ? `${kubectl} config use-context ${JSON.stringify(context)} 2>/dev/null; exec ${shell}`
         : undefined
 
       const ptyProc = pty.spawn(
@@ -78,11 +113,13 @@ export function registerTerminalHandlers(): void {
     (event, context: string, namespace: string, pod: string, container: string) => {
       const id = newId('exec')
       const kubectl = findKubectl()
-      const env: Record<string, string> = {
-        ...process.env as Record<string, string>,
-        TERM: 'xterm-256color'
-      }
 
+      // Keep the env clean (no undefined values) and TERM set for the PTY
+      const env = buildEnv({ TERM: 'xterm-256color' })
+
+      // Use 'sh' as the entrypoint — it exists in virtually every container image.
+      // We avoid piping through /bin/sh -c because that adds unnecessary complexity
+      // and can fail in distroless / busybox images that don't have a full sh -c.
       const ptyProc = pty.spawn(
         kubectl,
         [
@@ -90,8 +127,7 @@ export function registerTerminalHandlers(): void {
           '--namespace', namespace,
           'exec', '-it', pod,
           '--container', container,
-          '--', '/bin/sh', '-c',
-          'export TERM=xterm-256color; (bash 2>/dev/null || sh)'
+          '--', 'sh'
         ],
         { name: 'xterm-256color', cols: 80, rows: 24, cwd: homedir(), env }
       )

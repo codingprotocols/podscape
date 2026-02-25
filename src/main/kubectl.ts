@@ -40,6 +40,11 @@ async function getResources(
   return (JSON.parse(output).items ?? []) as unknown[]
 }
 
+async function getAllNamespaceResources(context: string, kind: string): Promise<unknown[]> {
+  const output = await spawnKubectl(['--context', context, 'get', kind, '--all-namespaces', '-o', 'json'])
+  return (JSON.parse(output).items ?? []) as unknown[]
+}
+
 // Active log streams
 const activeStreams = new Map<string, ReturnType<typeof spawn>>()
 
@@ -68,42 +73,42 @@ export function registerKubectlHandlers(): void {
 
   // ── Workloads ─────────────────────────────────────────────────────────────
 
-  ipcMain.handle('kubectl:getPods', async (_event, context: string, namespace: string) =>
-    getResources(context, namespace, 'pods'))
+  ipcMain.handle('kubectl:getPods', async (_event, context: string, namespace: string | null) =>
+    namespace ? getResources(context, namespace, 'pods') : getAllNamespaceResources(context, 'pods'))
 
-  ipcMain.handle('kubectl:getDeployments', async (_event, context: string, namespace: string) =>
-    getResources(context, namespace, 'deployments'))
+  ipcMain.handle('kubectl:getDeployments', async (_event, context: string, namespace: string | null) =>
+    namespace ? getResources(context, namespace, 'deployments') : getAllNamespaceResources(context, 'deployments'))
 
-  ipcMain.handle('kubectl:getStatefulSets', async (_event, context: string, namespace: string) =>
-    getResources(context, namespace, 'statefulsets'))
+  ipcMain.handle('kubectl:getStatefulSets', async (_event, context: string, namespace: string | null) =>
+    namespace ? getResources(context, namespace, 'statefulsets') : getAllNamespaceResources(context, 'statefulsets'))
 
-  ipcMain.handle('kubectl:getReplicaSets', async (_event, context: string, namespace: string) =>
-    getResources(context, namespace, 'replicasets'))
+  ipcMain.handle('kubectl:getReplicaSets', async (_event, context: string, namespace: string | null) =>
+    namespace ? getResources(context, namespace, 'replicasets') : getAllNamespaceResources(context, 'replicasets'))
 
-  ipcMain.handle('kubectl:getJobs', async (_event, context: string, namespace: string) =>
-    getResources(context, namespace, 'jobs'))
+  ipcMain.handle('kubectl:getJobs', async (_event, context: string, namespace: string | null) =>
+    namespace ? getResources(context, namespace, 'jobs') : getAllNamespaceResources(context, 'jobs'))
 
-  ipcMain.handle('kubectl:getCronJobs', async (_event, context: string, namespace: string) =>
-    getResources(context, namespace, 'cronjobs'))
+  ipcMain.handle('kubectl:getCronJobs', async (_event, context: string, namespace: string | null) =>
+    namespace ? getResources(context, namespace, 'cronjobs') : getAllNamespaceResources(context, 'cronjobs'))
 
   // ── Network ───────────────────────────────────────────────────────────────
 
-  ipcMain.handle('kubectl:getServices', async (_event, context: string, namespace: string) =>
-    getResources(context, namespace, 'services'))
+  ipcMain.handle('kubectl:getServices', async (_event, context: string, namespace: string | null) =>
+    namespace ? getResources(context, namespace, 'services') : getAllNamespaceResources(context, 'services'))
 
-  ipcMain.handle('kubectl:getIngresses', async (_event, context: string, namespace: string) =>
-    getResources(context, namespace, 'ingresses'))
+  ipcMain.handle('kubectl:getIngresses', async (_event, context: string, namespace: string | null) =>
+    namespace ? getResources(context, namespace, 'ingresses') : getAllNamespaceResources(context, 'ingresses'))
 
   // ── Config ────────────────────────────────────────────────────────────────
 
-  ipcMain.handle('kubectl:getConfigMaps', async (_event, context: string, namespace: string) =>
-    getResources(context, namespace, 'configmaps'))
+  ipcMain.handle('kubectl:getConfigMaps', async (_event, context: string, namespace: string | null) =>
+    namespace ? getResources(context, namespace, 'configmaps') : getAllNamespaceResources(context, 'configmaps'))
 
-  ipcMain.handle('kubectl:getSecrets', async (_event, context: string, namespace: string) => {
-    const items = await getResources(context, namespace, 'secrets') as Array<{
-      metadata: unknown; type?: string; data?: Record<string, string>
-    }>
-    // Mask secret values — only expose keys, not data
+  ipcMain.handle('kubectl:getSecrets', async (_event, context: string, namespace: string | null) => {
+    const items = (namespace
+      ? await getResources(context, namespace, 'secrets')
+      : await getAllNamespaceResources(context, 'secrets')
+    ) as Array<{ metadata: unknown; type?: string; data?: Record<string, string> }>
     return items.map(s => ({
       ...s,
       data: s.data ? Object.fromEntries(Object.keys(s.data).map(k => [k, '***MASKED***'])) : undefined
@@ -120,14 +125,21 @@ export function registerKubectlHandlers(): void {
 
   // ── Events ────────────────────────────────────────────────────────────────
 
-  ipcMain.handle('kubectl:getEvents', async (_event, context: string, namespace: string) =>
-    getResources(context, namespace, 'events'))
+  ipcMain.handle('kubectl:getEvents', async (_event, context: string, namespace: string | null) => {
+    if (!namespace) {
+      const output = await spawnKubectl(['--context', context, 'get', 'events', '--all-namespaces', '-o', 'json'])
+      return (JSON.parse(output).items ?? []) as unknown[]
+    }
+    return getResources(context, namespace, 'events')
+  })
 
   // ── Metrics (metrics-server) ──────────────────────────────────────────────
 
-  ipcMain.handle('kubectl:getPodMetrics', async (_event, context: string, namespace: string) => {
+  ipcMain.handle('kubectl:getPodMetrics', async (_event, context: string, namespace: string | null) => {
     try {
-      return await getResources(context, namespace, 'podmetrics.metrics.k8s.io')
+      return namespace
+        ? await getResources(context, namespace, 'podmetrics.metrics.k8s.io')
+        : await getAllNamespaceResources(context, 'podmetrics.metrics.k8s.io')
     } catch {
       return []
     }
