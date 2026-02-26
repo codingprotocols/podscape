@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import type { KubeConfigMap } from '../types'
 import { formatAge } from '../types'
 import YAMLViewer from './YAMLViewer'
@@ -8,6 +8,12 @@ interface Props { configMap: KubeConfigMap }
 export default function ConfigMapDetail({ configMap: cm }: Props): JSX.Element {
   const entries = Object.entries(cm.data ?? {})
   const [selected, setSelected] = useState<string | null>(entries[0]?.[0] ?? null)
+
+  // Reset selected key when switching to a different ConfigMap
+  useEffect(() => {
+    const firstKey = Object.keys(cm.data ?? {})[0] ?? null
+    setSelected(firstKey)
+  }, [cm.metadata.name, cm.metadata.namespace])
 
   const selectedValue = selected ? (cm.data?.[selected] ?? '') : ''
   const isYAML = selectedValue.trim().startsWith('{') || selectedValue.includes(':\n') || selectedValue.includes(': ')

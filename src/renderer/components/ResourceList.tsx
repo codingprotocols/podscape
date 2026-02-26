@@ -291,6 +291,8 @@ export default function ResourceList(): JSX.Element {
   const [scaleTarget, setScaleTarget] = useState<KubeDeployment | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<AnyKubeResource | null>(null)
   const [yamlContent, setYamlContent] = useState<string | null>(null)
+  const [yamlLoading, setYamlLoading] = useState(false)
+  const [yamlError, setYamlError] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; resource: AnyKubeResource } | null>(null)
 
   const clusterScoped = ['nodes', 'namespaces', 'crds'].includes(section)
@@ -308,9 +310,18 @@ export default function ResourceList(): JSX.Element {
 
   const handleViewYAML = async (resource: AnyKubeResource) => {
     setContextMenu(null)
-    const kind = kindLabel(section)
-    const yaml = await getYAML(kind, resource.metadata.name, clusterScoped, resource.metadata.namespace)
-    setYamlContent(yaml)
+    setYamlContent(null)
+    setYamlError(null)
+    setYamlLoading(true)
+    try {
+      const kind = kindLabel(section)
+      const yaml = await getYAML(kind, resource.metadata.name, clusterScoped, resource.metadata.namespace)
+      setYamlContent(yaml)
+    } catch (err) {
+      setYamlError((err as Error).message ?? 'Failed to fetch YAML')
+    } finally {
+      setYamlLoading(false)
+    }
   }
 
   const handleDelete = (resource: AnyKubeResource) => {
@@ -483,25 +494,44 @@ export default function ResourceList(): JSX.Element {
           onCancel={() => setDeleteTarget(null)}
         />
       )}
-      {yamlContent !== null && (
+      {(yamlLoading || yamlContent !== null || yamlError !== null) && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-8 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-500"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9zM13 2v7h7" /></svg>
+                  {yamlLoading
+                    ? <div className="w-4 h-4 border-2 border-slate-400 border-t-blue-500 rounded-full animate-spin" />
+                    : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-500"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9zM13 2v7h7" /></svg>
+                  }
                 </div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest">Resource YAML</h3>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest">
+                  {yamlLoading ? 'Loading YAML…' : 'Resource YAML'}
+                </h3>
               </div>
               <button
-                onClick={() => setYamlContent(null)}
+                onClick={() => { setYamlContent(null); setYamlError(null); setYamlLoading(false) }}
                 className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
               </button>
             </div>
             <div className="flex-1 min-h-0 bg-slate-950">
-              <YAMLViewer content={yamlContent} />
+              {yamlError ? (
+                <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
+                  <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                  </div>
+                  <p className="text-sm font-bold text-red-400 text-center">Failed to load YAML</p>
+                  <pre className="text-xs text-slate-400 text-center max-w-lg break-words whitespace-pre-wrap">{yamlError}</pre>
+                </div>
+              ) : yamlLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+                </div>
+              ) : yamlContent !== null ? (
+                <YAMLViewer content={yamlContent} />
+              ) : null}
             </div>
           </div>
         </div>

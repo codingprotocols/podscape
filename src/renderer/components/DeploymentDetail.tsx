@@ -11,6 +11,8 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
   const { rolloutRestart, getYAML } = useAppStore()
   const [showScale, setShowScale] = useState(false)
   const [yaml, setYaml] = useState<string | null>(null)
+  const [yamlLoading, setYamlLoading] = useState(false)
+  const [yamlError, setYamlError] = useState<string | null>(null)
   const [restartMsg, setRestartMsg] = useState('')
 
   const desired = d.spec.replicas ?? 0
@@ -25,8 +27,17 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
   }
 
   const handleViewYAML = async () => {
-    const content = await getYAML('deployment', d.metadata.name)
-    setYaml(content)
+    setYaml(null)
+    setYamlError(null)
+    setYamlLoading(true)
+    try {
+      const content = await getYAML('deployment', d.metadata.name, false, d.metadata.namespace)
+      setYaml(content)
+    } catch (err) {
+      setYamlError((err as Error).message ?? 'Failed to fetch YAML')
+    } finally {
+      setYamlLoading(false)
+    }
   }
 
   return (
@@ -54,9 +65,9 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
             className="text-xs px-3 py-1 rounded bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-colors">
             Restart
           </button>
-          <button onClick={handleViewYAML}
-            className="text-xs px-3 py-1 rounded bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-colors">
-            YAML
+          <button onClick={handleViewYAML} disabled={yamlLoading}
+            className="text-xs px-3 py-1 rounded bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-colors disabled:opacity-50">
+            {yamlLoading ? 'Loading…' : 'YAML'}
           </button>
         </div>
         {restartMsg && <p className="text-xs text-green-400 mt-1.5">{restartMsg}</p>}
@@ -131,14 +142,29 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
       )}
 
       {/* YAML viewer */}
-      {yaml !== null && (
+      {(yamlLoading || yaml !== null || yamlError !== null) && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-8">
           <div className="bg-gray-900 rounded-xl border border-white/15 w-full max-w-3xl max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-              <h3 className="text-sm font-semibold text-white">YAML — {d.metadata.name}</h3>
-              <button onClick={() => setYaml(null)} className="text-gray-400 hover:text-white">✕</button>
+              <h3 className="text-sm font-semibold text-white">
+                {yamlLoading ? 'Loading YAML…' : `YAML — ${d.metadata.name}`}
+              </h3>
+              <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }} className="text-gray-400 hover:text-white">✕</button>
             </div>
-            <div className="flex-1 min-h-0"><YAMLViewer content={yaml} /></div>
+            <div className="flex-1 min-h-0">
+              {yamlError ? (
+                <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
+                  <p className="text-sm font-bold text-red-400">Failed to load YAML</p>
+                  <pre className="text-xs text-gray-400 text-center max-w-lg break-words whitespace-pre-wrap">{yamlError}</pre>
+                </div>
+              ) : yamlLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="w-8 h-8 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin" />
+                </div>
+              ) : yaml !== null ? (
+                <YAMLViewer content={yaml} />
+              ) : null}
+            </div>
           </div>
         </div>
       )}

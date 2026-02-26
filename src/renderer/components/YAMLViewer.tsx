@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import Editor from '@monaco-editor/react'
 import { useAppStore } from '../store'
 
@@ -11,6 +11,11 @@ interface Props {
 export default function YAMLViewer({ content, editable = false, onSave }: Props): JSX.Element {
   const { theme } = useAppStore()
   const [value, setValue] = useState(content)
+
+  // Sync editor content when the prop changes (e.g. switching resources or ConfigMap keys)
+  useEffect(() => {
+    setValue(content)
+  }, [content])
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
   const [copyMsg, setCopyMsg] = useState('')
