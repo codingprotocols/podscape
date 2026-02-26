@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -137,6 +137,9 @@ function TermPane({ sessionId, context, namespace, theme, onPtyReady }: TermPane
   const xtermRef = useRef<XTerm | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const ptyIdRef = useRef<string | null>(null)
+  const offDataRef = useRef<(() => void) | null>(null)
+  const offExitRef = useRef<(() => void) | null>(null)
+  const [ptyReady, setPtyReady] = useState(false)
 
   useEffect(() => {
     const container = containerRef.current
@@ -193,15 +196,16 @@ function TermPane({ sessionId, context, namespace, theme, onPtyReady }: TermPane
     window.terminal.create(context, namespace).then(ptyId => {
       ptyIdRef.current = ptyId
       onPtyReady(ptyId)
+      setPtyReady(true)
 
-      const offData = window.terminal.onData(ptyId, data => term.write(data))
-      const offExit = window.terminal.onExit(ptyId, () => {
+      offDataRef.current = window.terminal.onData(ptyId, data => term.write(data))
+      offExitRef.current = window.terminal.onExit(ptyId, () => {
         term.write('\r\n\x1b[38;5;244m[Session ended. Close this tab.]\x1b[0m\r\n')
       })
 
       term.onData(data => window.terminal.write(ptyId, data))
-
-      return () => { offData(); offExit() }
+    }).catch(() => {
+      term.write('\r\n\x1b[31m[Failed to start terminal session]\x1b[0m\r\n')
     })
 
     const ro = new ResizeObserver(() => {
@@ -214,10 +218,23 @@ function TermPane({ sessionId, context, namespace, theme, onPtyReady }: TermPane
 
     return () => {
       ro.disconnect()
+      offDataRef.current?.()
+      offExitRef.current?.()
       if (ptyIdRef.current) window.terminal.kill(ptyIdRef.current).catch(() => { })
       term.dispose()
+      setPtyReady(false)
     }
   }, [sessionId, theme])
 
-  return <div ref={containerRef} className="w-full h-full p-4" />
+  return (
+    <div className="relative w-full h-full">
+      {!ptyReady && (
+        <div className="absolute inset-0 flex items-center justify-center gap-3 bg-slate-950 z-10">
+          <div className="w-4 h-4 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Initializing terminal…</span>
+        </div>
+      )}
+      <div ref={containerRef} className="w-full h-full p-4" />
+    </div>
+  )
 }

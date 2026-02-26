@@ -17,10 +17,12 @@ export default function DeleteConfirm({ name, kind, onConfirm, onCancel }: Props
   const handleDelete = async () => {
     if (!confirmed) return
     setPending(true)
+    setError('')
     try {
       await onConfirm()
     } catch (err) {
       setError((err as Error).message)
+    } finally {
       setPending(false)
     }
   }

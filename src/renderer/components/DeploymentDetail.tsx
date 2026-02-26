@@ -21,9 +21,9 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
   const updated = d.status.updatedReplicas ?? 0
 
   const handleRestart = async () => {
-    await rolloutRestart('deployment', d.metadata.name)
+    await rolloutRestart('deployment', d.metadata.name, d.metadata.namespace)
     setRestartMsg('Restart triggered')
-    setTimeout(() => setRestartMsg(''), 3000)
+    setTimeout(() => setRestartMsg(''), 5000)
   }
 
   const handleViewYAML = async () => {

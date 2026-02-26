@@ -4,6 +4,10 @@ import { formatAge } from '../types'
 
 interface Props { secret: KubeSecret }
 
+function safeAtob(value: string): string {
+  try { return atob(value) } catch { return value }
+}
+
 export default function SecretDetail({ secret: sec }: Props): JSX.Element {
   const entries = Object.entries(sec.data ?? {})
   const [revealed, setRevealed] = useState<Set<string>>(new Set())
@@ -53,7 +57,7 @@ export default function SecretDetail({ secret: sec }: Props): JSX.Element {
                 <div className="px-3 py-2">
                   {revealed.has(key) ? (
                     <pre className="text-xs font-mono text-green-300 whitespace-pre-wrap break-all">
-                      {value === '***MASKED***' ? '(value masked by server — use kubectl to view)' : atob(value.replace('***MASKED***', ''))}
+                      {value === '***MASKED***' ? '(value masked by server — use kubectl to view)' : safeAtob(value)}
                     </pre>
                   ) : (
                     <p className="text-xs font-mono text-gray-600 tracking-widest">

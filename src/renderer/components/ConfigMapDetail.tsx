@@ -16,8 +16,8 @@ export default function ConfigMapDetail({ configMap: cm }: Props): JSX.Element {
   }, [cm.metadata.name, cm.metadata.namespace])
 
   const selectedValue = selected ? (cm.data?.[selected] ?? '') : ''
-  const isYAML = selectedValue.trim().startsWith('{') || selectedValue.includes(':\n') || selectedValue.includes(': ')
-  const isJSON = selectedValue.trim().startsWith('{') || selectedValue.trim().startsWith('[')
+  const isJSON = (() => { try { JSON.parse(selectedValue); return selectedValue.trim().length > 0 } catch { return false } })()
+  const isYAML = !isJSON && /^[a-zA-Z_][\w.-]*\s*:/m.test(selectedValue)
 
   return (
     <div className="flex flex-col w-[480px] min-w-[360px] border-l border-white/10 bg-gray-900/70 h-full">

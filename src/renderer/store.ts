@@ -137,12 +137,15 @@ export interface AppStore {
   refresh: () => Promise<void>
 
   // Operations
-  scaleDeployment: (name: string, replicas: number) => Promise<void>
-  rolloutRestart: (kind: string, name: string) => Promise<void>
+  scaleDeployment: (name: string, replicas: number, namespace?: string) => Promise<void>
+  rolloutRestart: (kind: string, name: string, namespace?: string) => Promise<void>
   deleteResource: (kind: string, name: string, clusterScoped?: boolean, namespace?: string) => Promise<void>
   getYAML: (kind: string, name: string, clusterScoped?: boolean, namespace?: string) => Promise<string>
   applyYAML: (yaml: string) => Promise<string>
 }
+
+// Monotonically-increasing counter to detect stale context-switch responses
+let contextSwitchSeq = 0
 
 export const useAppStore = create<AppStore>((set, get) => ({
   // ── Navigation ─────────────────────────────────────────────────────────────
@@ -249,6 +252,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // ── Context selection ─────────────────────────────────────────────────────
 
   selectContext: async (name) => {
+    const mySeq = ++contextSwitchSeq
     set({
       selectedContext: name, loadingNamespaces: true,
       namespaces: [], selectedNamespace: null, selectedResource: null, error: null,
@@ -258,6 +262,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     })
     try {
       const nsList = await window.kubectl.getNamespaces(name)
+      if (mySeq !== contextSwitchSeq) return // another context switch happened — discard
       const chosen = nsList.length > 0 ? '_all' : null
       set({ namespaces: nsList, selectedNamespace: chosen, loadingNamespaces: false })
       if (chosen) {
@@ -265,6 +270,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         await get().loadSection(get().section)
       }
     } catch (err) {
+      if (mySeq !== contextSwitchSeq) return
       set({ error: (err as Error).message, loadingNamespaces: false })
     }
   },
@@ -414,19 +420,19 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   // ── Operations ────────────────────────────────────────────────────────────
 
-  scaleDeployment: async (name, replicas) => {
+  scaleDeployment: async (name, replicas, namespace) => {
     const { selectedContext: ctx, selectedNamespace: ns, selectedResource } = get()
     if (!ctx) return
-    const actualNs = ns === '_all' ? (selectedResource?.metadata.namespace ?? null) : ns
+    const actualNs = namespace ?? (ns === '_all' ? (selectedResource?.metadata.namespace ?? null) : ns)
     if (!actualNs) return
     await window.kubectl.scale(ctx, actualNs, name, replicas)
     await get().loadSection('deployments')
   },
 
-  rolloutRestart: async (kind, name) => {
+  rolloutRestart: async (kind, name, namespace) => {
     const { selectedContext: ctx, selectedNamespace: ns, selectedResource } = get()
     if (!ctx) return
-    const actualNs = ns === '_all' ? (selectedResource?.metadata.namespace ?? null) : ns
+    const actualNs = namespace ?? (ns === '_all' ? (selectedResource?.metadata.namespace ?? null) : ns)
     if (!actualNs) return
     await window.kubectl.rolloutRestart(ctx, actualNs, kind, name)
   },

@@ -72,7 +72,7 @@ export default function MetricsView(): JSX.Element {
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
                   {podMetrics.flatMap(pm =>
-                    pm.containers.map(c => {
+                    (pm.containers ?? []).map(c => {
                       const cpu = parseCpuMillicores(c.usage.cpu)
                       const mem = parseMemoryMiB(c.usage.memory)
                       return (

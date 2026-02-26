@@ -15,6 +15,8 @@ export default function ExecPanel({ target, onClose }: Props): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<XTerm | null>(null)
   const ptyIdRef = useRef<string | null>(null)
+  const offDataRef = useRef<(() => void) | null>(null)
+  const offExitRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     const container = containerRef.current
@@ -69,14 +71,12 @@ export default function ExecPanel({ target, onClose }: Props): JSX.Element {
       .then(ptyId => {
         ptyIdRef.current = ptyId
 
-        const offData = window.exec.onData(ptyId, data => term.write(data))
-        const offExit = window.exec.onExit(ptyId, () => {
+        offDataRef.current = window.exec.onData(ptyId, data => term.write(data))
+        offExitRef.current = window.exec.onExit(ptyId, () => {
           term.write('\r\n\x1b[38;5;244m[Process exited]\x1b[0m\r\n')
         })
 
         term.onData(data => window.exec.write(ptyId, data))
-
-        return () => { offData(); offExit() }
       })
       .catch(err => {
         term.write(`\x1b[31mError: ${err.message}\x1b[0m\r\n`)
@@ -92,6 +92,8 @@ export default function ExecPanel({ target, onClose }: Props): JSX.Element {
 
     return () => {
       ro.disconnect()
+      offDataRef.current?.()
+      offExitRef.current?.()
       if (ptyIdRef.current) window.exec.kill(ptyIdRef.current).catch(() => { })
       term.dispose()
     }

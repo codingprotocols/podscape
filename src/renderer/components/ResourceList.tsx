@@ -332,7 +332,7 @@ export default function ResourceList(): JSX.Element {
   const handleRestart = async (resource: AnyKubeResource) => {
     setContextMenu(null)
     const kind = section === 'deployments' ? 'deployment' : section === 'statefulsets' ? 'statefulset' : 'daemonset'
-    await rolloutRestart(kind, resource.metadata.name)
+    await rolloutRestart(kind, resource.metadata.name, resource.metadata.namespace)
   }
 
   const handleExec = (resource: AnyKubeResource) => {

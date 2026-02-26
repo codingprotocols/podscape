@@ -76,10 +76,10 @@ export default function GrafanaPanel(): JSX.Element {
                   <button
                     key={ql.path}
                     onClick={() => {
-                      const url = (grafanaUrl || inputUrl).replace(/\/$/, '') + ql.path
-                      setInputUrl(url)
+                      const url = grafanaUrl.replace(/\/$/, '') + ql.path
                       setGrafanaUrl(url)
                       setEditMode(false)
+                      // Don't overwrite inputUrl — keep user's base URL intact
                     }}
                     className="text-[10px] font-bold px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all"
                   >

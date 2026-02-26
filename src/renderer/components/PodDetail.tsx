@@ -16,7 +16,6 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const [logs, setLogs] = useState<string[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [logError, setLogError] = useState<string | null>(null)
-  const [activeStreamId, setActiveStreamId] = useState<string | null>(null)
   const [autoScroll, setAutoScroll] = useState(true)
   const [selectedContainer, setSelectedContainer] = useState(pod.spec.containers[0]?.name ?? '')
   const [search, setSearch] = useState('')
@@ -28,19 +27,36 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const draggingRef = useRef(false)
   const dragStartXRef = useRef(0)
   const dragStartWidthRef = useRef(0)
+  // Use a ref for activeStreamId so cleanup effects always have the latest value
+  const activeStreamIdRef = useRef<string | null>(null)
+  const isMountedRef = useRef(true)
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      // Stop any active stream on unmount
+      if (activeStreamIdRef.current) {
+        window.kubectl.stopLogs(activeStreamIdRef.current).catch(() => { })
+        activeStreamIdRef.current = null
+      }
+    }
+  }, [])
 
   // ── Stream helpers ────────────────────────────────────────────────────────
 
   const stopStream = useCallback(async () => {
-    if (activeStreamId) {
-      await window.kubectl.stopLogs(activeStreamId).catch(() => { })
-      setActiveStreamId(null)
+    const id = activeStreamIdRef.current
+    if (id) {
+      await window.kubectl.stopLogs(id).catch(() => { })
+      activeStreamIdRef.current = null
     }
-    setIsStreaming(false)
-  }, [activeStreamId])
+    if (isMountedRef.current) setIsStreaming(false)
+  }, [])
 
   const startStream = useCallback(async () => {
     await stopStream()
+    if (!isMountedRef.current) return
     setLogs([])
     setLogError(null)
     setIsStreaming(true)
@@ -51,13 +67,20 @@ export default function PodDetail({ pod }: Props): JSX.Element {
         : (selectedNamespace ?? '')
       const streamId = await window.kubectl.streamLogs(
         ctx, ns, pod.metadata.name, selectedContainer,
-        (chunk) => setLogs(prev => [...prev, ...chunk.split('\n')].slice(-2000)),
-        () => { setIsStreaming(false); setActiveStreamId(null) }
+        (chunk) => {
+          if (isMountedRef.current) setLogs(prev => [...prev, ...chunk.split('\n')].slice(-2000))
+        },
+        () => {
+          activeStreamIdRef.current = null
+          if (isMountedRef.current) setIsStreaming(false)
+        }
       )
-      setActiveStreamId(streamId)
+      activeStreamIdRef.current = streamId
     } catch (err) {
-      setLogError(err instanceof Error ? err.message : String(err))
-      setIsStreaming(false)
+      if (isMountedRef.current) {
+        setLogError(err instanceof Error ? err.message : String(err))
+        setIsStreaming(false)
+      }
     }
   }, [selectedContext, selectedNamespace, pod, selectedContainer, stopStream])
 
@@ -66,7 +89,13 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     setLogs([])
     setLogError(null)
     setSearch('')
-    stopStream()
+    // Read directly from ref to avoid stale closure
+    const id = activeStreamIdRef.current
+    if (id) {
+      window.kubectl.stopLogs(id).catch(() => { })
+      activeStreamIdRef.current = null
+      setIsStreaming(false)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pod.metadata.uid, selectedContainer])
 

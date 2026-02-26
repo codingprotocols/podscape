@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { execFile, spawn } from 'child_process'
-import { existsSync, writeFileSync, mkdtempSync } from 'fs'
+import { existsSync, writeFileSync, mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { getSettings } from './settings'
@@ -42,12 +42,12 @@ async function getResources(
   if (namespace) args.push('--namespace', namespace)
   args.push('get', kind, '-o', 'json')
   const output = await spawnKubectl(args)
-  return (JSON.parse(output).items ?? []) as unknown[]
+  try { return (JSON.parse(output).items ?? []) as unknown[] } catch { return [] }
 }
 
 async function getAllNamespaceResources(context: string, kind: string): Promise<unknown[]> {
   const output = await spawnKubectl(['--context', context, 'get', kind, '--all-namespaces', '-o', 'json'])
-  return (JSON.parse(output).items ?? []) as unknown[]
+  try { return (JSON.parse(output).items ?? []) as unknown[] } catch { return [] }
 }
 
 // Active log streams
@@ -58,7 +58,7 @@ export function registerKubectlHandlers(): void {
 
   ipcMain.handle('kubectl:getContexts', async () => {
     const output = await spawnKubectl(['config', 'view', '-o', 'json'])
-    return (JSON.parse(output).contexts ?? []) as unknown[]
+    try { return (JSON.parse(output).contexts ?? []) as unknown[] } catch { return [] }
   })
 
   ipcMain.handle('kubectl:getCurrentContext', async () => {
@@ -133,7 +133,7 @@ export function registerKubectlHandlers(): void {
   ipcMain.handle('kubectl:getEvents', async (_event, context: string, namespace: string | null) => {
     if (!namespace) {
       const output = await spawnKubectl(['--context', context, 'get', 'events', '--all-namespaces', '-o', 'json'])
-      return (JSON.parse(output).items ?? []) as unknown[]
+      try { return (JSON.parse(output).items ?? []) as unknown[] } catch { return [] }
     }
     return getResources(context, namespace, 'events')
   })
@@ -207,7 +207,7 @@ export function registerKubectlHandlers(): void {
       try {
         return await spawnKubectl(['--context', context, 'apply', '-f', tmpFile])
       } finally {
-        try { require('fs').unlinkSync(tmpFile) } catch { /* ignore */ }
+        try { rmSync(tmpDir, { recursive: true, force: true }) } catch { /* ignore */ }
       }
     }
   )

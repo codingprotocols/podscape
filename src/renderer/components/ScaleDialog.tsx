@@ -22,7 +22,7 @@ export default function ScaleDialog({ deployment: d, onClose }: Props): JSX.Elem
     setPending(true)
     setError('')
     try {
-      await scaleDeployment(d.metadata.name, parsed)
+      await scaleDeployment(d.metadata.name, parsed, d.metadata.namespace)
       onClose()
     } catch (err) {
       setError((err as Error).message)
