@@ -127,12 +127,11 @@ export function registerTerminalHandlers(): void {
     (event, context: string, namespace: string, pod: string, container: string) => {
       const id = newId('exec')
       const kubectl = findKubectl()
-      const env = buildEnv({ TERM: 'xterm-256color', COLORTERM: 'truecolor' })
+      const env    = buildEnv({ TERM: 'xterm-256color', COLORTERM: 'truecolor' })
 
-      // Build the kubectl exec argv — no shell wrapper, no quoting needed.
-      // posix_spawnp uses the PATH from `env` (augmented with Homebrew paths)
-      // if `kubectl` is a bare name; if findKubectl() returned an absolute path
-      // it is used directly, bypassing PATH lookup entirely.
+      // Spawn kubectl directly with an argv array — no shell wrapper needed.
+      // buildEnv() provides augmented PATH (incl. Homebrew paths) so kubectl is found
+      // even if Electron's inherited PATH is minimal.
       const argv: string[] = [
         '--context', context,
         '--namespace', namespace,

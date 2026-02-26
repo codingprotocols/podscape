@@ -96,31 +96,18 @@ export default function Sidebar(): JSX.Element {
     contexts, selectedContext, namespaces, selectedNamespace,
     loadingContexts, loadingNamespaces,
     selectContext, selectNamespace, error, clearError,
-    pods, deployments, events, theme, toggleTheme
+    pods, deployments, events
   } = useAppStore()
 
   return (
     <div className="flex flex-col w-64 border-r bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 h-full shrink-0 transition-colors duration-200">
       {/* App header */}
       <div className="px-6 py-8 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-              <Icon path={ICONS.pod} size={16} className="text-white" />
-            </div>
-            <span className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Podscape</span>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <Icon path={ICONS.pod} size={16} className="text-white" />
           </div>
-
-          <button
-            onClick={toggleTheme}
-            className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
-          >
-            {theme === 'dark' ? (
-              <Icon path="M12 3v1M12 20v1M4.22 4.22l.71.71M18.36 18.36l.71.71M1 12h1M22 12h1M4.22 19.78l.71-.71M18.36 5.64l.71-.71M17 12a5 5 0 11-10 0 5 5 0 0110 0z" size={16} />
-            ) : (
-              <Icon path="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" size={16} />
-            )}
-          </button>
+          <span className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Podscape</span>
         </div>
       </div>
 

@@ -153,9 +153,9 @@ const plugins = {
 // ─── settings API ─────────────────────────────────────────────────────────────
 
 const settings = {
-  get: (): Promise<{ kubectlPath: string; shellPath: string }> =>
+  get: (): Promise<{ kubectlPath: string; shellPath: string; theme: string }> =>
     ipcRenderer.invoke('settings:get'),
-  set: (s: { kubectlPath: string; shellPath: string }): Promise<void> =>
+  set: (s: { kubectlPath: string; shellPath: string; theme: string }): Promise<void> =>
     ipcRenderer.invoke('settings:set', s)
 }
 

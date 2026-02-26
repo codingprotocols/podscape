@@ -61,8 +61,8 @@ declare global {
       list: () => Promise<Plugin[]>
     }
     settings: {
-      get: () => Promise<{ kubectlPath: string; shellPath: string }>
-      set: (s: { kubectlPath: string; shellPath: string }) => Promise<void>
+      get: () => Promise<{ kubectlPath: string; shellPath: string; theme: string }>
+      set: (s: { kubectlPath: string; shellPath: string; theme: string }) => Promise<void>
     }
   }
 }
