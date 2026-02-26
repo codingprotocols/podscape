@@ -60,6 +60,10 @@ declare global {
     plugins: {
       list: () => Promise<Plugin[]>
     }
+    settings: {
+      get: () => Promise<{ kubectlPath: string; shellPath: string }>
+      set: (s: { kubectlPath: string; shellPath: string }) => Promise<void>
+    }
   }
 }
 
@@ -111,6 +115,10 @@ export interface AppStore {
   execTarget: ExecTarget | null
   openExec: (target: ExecTarget) => void
   closeExec: () => void
+
+  theme: 'light' | 'dark'
+  setTheme: (theme: 'light' | 'dark') => void
+  toggleTheme: () => void
 
   // Loading / errors
   loadingContexts: boolean
@@ -185,6 +193,23 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   // ── Loading / Errors ───────────────────────────────────────────────────────
 
+  theme: (localStorage.getItem('theme') as 'light' | 'dark') || 'dark',
+
+  setTheme: (theme) => {
+    set({ theme })
+    localStorage.setItem('theme', theme)
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+  },
+
+  toggleTheme: () => {
+    const next = get().theme === 'dark' ? 'light' : 'dark'
+    get().setTheme(next)
+  },
+
   loadingContexts: false,
   loadingNamespaces: false,
   loadingResources: false,
@@ -194,6 +219,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // ── Init ───────────────────────────────────────────────────────────────────
 
   init: async () => {
+    // Sync theme on init
+    const currentTheme = get().theme
+    if (currentTheme === 'dark') {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+
     set({ loadingContexts: true, error: null })
     try {
       const [ctxList, currentCtx] = await Promise.all([
@@ -344,33 +377,33 @@ export const useAppStore = create<AppStore>((set, get) => ({
       // Cluster-scoped — always work
       window.kubectl.getNodes(ctx)
         .then(nodes => set({ nodes }))
-        .catch(() => {}),
+        .catch(() => { }),
       window.kubectl.getNodeMetrics(ctx)
         .then(nodeMetrics => set({ nodeMetrics }))
-        .catch(() => {}),
+        .catch(() => { }),
       window.kubectl.getNamespaces(ctx)
         .then(namespaces => set({ namespaces }))
-        .catch(() => {}),
+        .catch(() => { }),
 
       // Events: try all-namespaces, fall back to selected namespace
       window.kubectl.getEvents(ctx, null)
         .then(events => set({ events }))
         .catch(() => {
-          if (ns) window.kubectl.getEvents(ctx, ns).then(events => set({ events })).catch(() => {})
+          if (ns) window.kubectl.getEvents(ctx, ns).then(events => set({ events })).catch(() => { })
         }),
 
       // Pods: try all-namespaces, fall back to selected namespace
       window.kubectl.getPods(ctx, null)
         .then(pods => set({ pods }))
         .catch(() => {
-          if (ns) window.kubectl.getPods(ctx, ns).then(pods => set({ pods })).catch(() => {})
+          if (ns) window.kubectl.getPods(ctx, ns).then(pods => set({ pods })).catch(() => { })
         }),
 
       // Deployments: try all-namespaces, fall back to selected namespace
       window.kubectl.getDeployments(ctx, null)
         .then(deployments => set({ deployments }))
         .catch(() => {
-          if (ns) window.kubectl.getDeployments(ctx, ns).then(deployments => set({ deployments })).catch(() => {})
+          if (ns) window.kubectl.getDeployments(ctx, ns).then(deployments => set({ deployments })).catch(() => { })
         }),
     ])
 

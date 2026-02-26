@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerKubectlHandlers } from './kubectl'
 import { registerTerminalHandlers } from './terminal'
+import { registerSettingsHandlers } from './settings'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -47,6 +48,7 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  registerSettingsHandlers()
   registerKubectlHandlers()
   registerTerminalHandlers()
   createWindow()

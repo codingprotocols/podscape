@@ -4,12 +4,41 @@
 
 @layer base {
   * { box-sizing: border-box; }
-  body { -webkit-font-smoothing: antialiased; }
+  
+  html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
 
-  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  body {
+    -webkit-font-smoothing: antialiased;
+    @apply bg-white text-slate-900 transition-colors duration-200;
+  }
+
+  .dark body {
+    @apply bg-slate-950 text-slate-100;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 10px; }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
+  
+  ::-webkit-scrollbar-thumb { 
+    @apply bg-slate-300 rounded-full;
+  }
+  
+  .dark ::-webkit-scrollbar-thumb {
+    @apply bg-slate-800;
+  }
+
+  ::-webkit-scrollbar-thumb:hover { 
+    @apply bg-slate-400;
+  }
+
+  .dark ::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-700;
+  }
 
   /* Remove number input arrows */
   input[type="number"]::-webkit-outer-spin-button,
@@ -22,5 +51,5 @@
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
 /* XTerm scrollbar */
-.xterm-viewport::-webkit-scrollbar { width: 4px; }
-.xterm-viewport::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+.dark .xterm-viewport::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
+.xterm-viewport::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }

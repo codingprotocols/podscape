@@ -19,7 +19,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
 
   const stopStream = useCallback(async () => {
     if (activeStreamId) {
-      await window.kubectl.stopLogs(activeStreamId).catch(() => {})
+      await window.kubectl.stopLogs(activeStreamId).catch(() => { })
       setActiveStreamId(null)
     }
     setIsStreaming(false)
@@ -60,42 +60,43 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const phase = pod.status.phase ?? 'Unknown'
 
   return (
-    <div className="flex flex-col w-[440px] min-w-[340px] border-l border-white/10 bg-gray-900/70 h-full">
+    <div className="flex flex-col w-[460px] min-w-[360px] border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-full transition-colors duration-200">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-white/10 shrink-0">
-        <div className="flex items-start gap-2">
+      <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-900 shrink-0">
+        <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-white font-mono truncate">{pod.metadata.name}</h3>
-            <p className="text-xs text-gray-400 mt-0.5">{pod.metadata.namespace}</p>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-white font-mono truncate tracking-tight">{pod.metadata.name}</h3>
+            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{pod.metadata.namespace}</p>
           </div>
-          <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${podPhaseBg(phase)}`}>
-            {phase}
+          <span className={`shrink-0 inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold outline outline-1 transition-all ${podPhaseBg(phase)}`}>
+            {phase.toUpperCase()}
           </span>
         </div>
       </div>
 
       {/* Metadata */}
-      <div className="px-4 py-3 border-b border-white/10 shrink-0">
-        <h4 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Info</h4>
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+      <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-900 shrink-0">
+        <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] mb-3">Resource Info</h4>
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-2.5">
           <MetaRow label="Node" value={pod.spec.nodeName ?? '—'} mono />
           <MetaRow label="Pod IP" value={pod.status.podIP ?? '—'} mono />
           <MetaRow label="Host IP" value={pod.status.hostIP ?? '—'} mono />
-          <MetaRow label="QoS" value={pod.status.qosClass ?? '—'} />
+          <MetaRow label="QoS Class" value={pod.status.qosClass ?? '—'} />
           <MetaRow label="Created" value={formatAge(pod.metadata.creationTimestamp) + ' ago'} />
-          <MetaRow label="Restart" value={String(pod.spec.restartPolicy ?? 'Always')} />
+          <MetaRow label="Restart Policy" value={String(pod.spec.restartPolicy ?? 'Always')} />
         </dl>
       </div>
 
       {/* Containers */}
-      <div className="px-4 py-3 border-b border-white/10 shrink-0">
-        <div className="flex items-center justify-between mb-2">
-          <h4 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Containers</h4>
+      <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-900 shrink-0">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em]">Containers</h4>
           {pod.spec.containers.length > 1 && (
             <select
               value={selectedContainer}
               onChange={e => setSelectedContainer(e.target.value)}
-              className="bg-gray-800 text-white text-xs rounded px-2 py-0.5 border border-white/10 focus:outline-none"
+              className="bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-[10px] font-bold rounded-lg px-2.5 py-1 
+                         border border-slate-200 dark:border-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             >
               {pod.spec.containers.map(c => (
                 <option key={c.name} value={c.name}>{c.name}</option>
@@ -103,21 +104,23 @@ export default function PodDetail({ pod }: Props): JSX.Element {
             </select>
           )}
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-3">
           {pod.spec.containers.map(c => {
             const status = pod.status.containerStatuses?.find(s => s.name === c.name)
             return (
-              <div key={c.name} className="flex items-center justify-between gap-2">
+              <div key={c.name} className="flex items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/50">
                 <div className="min-w-0">
-                  <p className="text-xs text-white font-mono truncate">{c.name}</p>
-                  <p className="text-xs text-gray-500 truncate">{c.image}</p>
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200 font-mono truncate">{c.name}</p>
+                  <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 truncate mt-0.5">{c.image}</p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2.5 shrink-0">
                   {status && (
                     <>
-                      <span className={`w-1.5 h-1.5 rounded-full ${status.ready ? 'bg-green-400' : 'bg-red-400'}`} />
+                      <span className={`w-2 h-2 rounded-full ${status.ready ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.3)]'}`} />
                       {status.restartCount > 0 && (
-                        <span className="text-xs text-orange-400">{status.restartCount}↺</span>
+                        <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded-md">
+                          {status.restartCount}↺
+                        </span>
                       )}
                     </>
                   )}
@@ -127,11 +130,11 @@ export default function PodDetail({ pod }: Props): JSX.Element {
                       container: c.name,
                       namespace: pod.metadata.namespace ?? selectedNamespace ?? ''
                     })}
-                    className="text-xs text-blue-400 hover:text-blue-300 px-1.5 py-0.5 rounded
-                               bg-blue-500/10 hover:bg-blue-500/20 transition-colors border border-blue-500/20"
-                    title="Exec into container"
+                    className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold text-blue-600 dark:text-blue-400
+                               bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 
+                               rounded-lg transition-all active:scale-95 border border-blue-100 dark:border-blue-900/30"
                   >
-                    $ shell
+                    <span>$</span> SHELL
                   </button>
                 </div>
               </div>
@@ -142,55 +145,58 @@ export default function PodDetail({ pod }: Props): JSX.Element {
 
       {/* Log viewer */}
       <div className="flex flex-col flex-1 min-h-0">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 shrink-0">
-          <div className="flex items-center gap-2">
-            <h4 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Logs</h4>
+        <div className="flex items-center justify-between px-6 py-3 border-b border-slate-100 dark:border-slate-900 shrink-0">
+          <div className="flex items-center gap-3">
+            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em]">Logs</h4>
             {isStreaming && (
-              <span className="flex items-center gap-1 text-xs text-green-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                live
+              <span className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                LIVE
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer">
-              <input type="checkbox" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)}
-                className="w-3 h-3 accent-blue-500" />
-              Scroll
-            </label>
+          <div className="flex items-center gap-3">
             <button onClick={() => setLogs([])}
-              className="text-xs text-gray-400 hover:text-white transition-colors px-1.5 py-0.5 rounded hover:bg-white/5">
+              className="text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors uppercase tracking-wider">
               Clear
             </button>
+            <label className="flex items-center gap-2 text-[10px] font-bold text-slate-400 cursor-pointer select-none">
+              <input type="checkbox" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)}
+                className="w-3 h-3 accent-blue-500 rounded border-slate-300 dark:border-slate-700" />
+              SCROLL
+            </label>
             <button
               onClick={startStream}
               disabled={isStreaming}
-              className="text-xs text-gray-300 hover:text-white bg-white/5 hover:bg-white/10
-                         px-2 py-0.5 rounded transition-colors disabled:opacity-50 border border-white/10"
+              className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold text-slate-600 dark:text-slate-300
+                         bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800
+                         rounded-lg transition-colors disabled:opacity-50 border border-slate-200 dark:border-slate-800"
             >
-              {isStreaming ? 'Live…' : 'Restart'}
+              {isStreaming ? 'STREAMING…' : 'RESTART'}
             </button>
           </div>
         </div>
 
         {logError && (
-          <div className="mx-3 mt-2 shrink-0 px-3 py-2 bg-red-900/40 border border-red-500/30 rounded text-red-300 text-xs">
+          <div className="mx-6 mt-3 shrink-0 px-4 py-2.5 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 rounded-xl text-red-600 dark:text-red-400 text-[10px] font-bold">
             {logError}
           </div>
         )}
 
-        <pre
-          ref={logContainerRef}
-          className="flex-1 overflow-auto p-3 font-mono text-xs text-green-300 leading-relaxed bg-black/40 whitespace-pre-wrap break-all"
-          onScroll={e => {
-            const el = e.currentTarget
-            setAutoScroll(el.scrollHeight - el.scrollTop - el.clientHeight < 60)
-          }}
-        >
-          {logs.length === 0
-            ? (isStreaming ? '# Waiting for logs…\n' : '# No logs\n')
-            : logs.join('\n')}
-        </pre>
+        <div className="flex-1 relative m-6 mt-3 mb-6 bg-slate-950 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800/50 shadow-inner">
+          <pre
+            ref={logContainerRef}
+            className="absolute inset-0 overflow-auto p-4 font-mono text-[11px] text-emerald-400/90 leading-relaxed whitespace-pre-wrap break-all scrollbar-hide"
+            onScroll={e => {
+              const el = e.currentTarget
+              setAutoScroll(el.scrollHeight - el.scrollTop - el.clientHeight < 60)
+            }}
+          >
+            {logs.length === 0
+              ? (isStreaming ? <span className="text-slate-600 animate-pulse"># Waiting for logs…\n</span> : <span className="text-slate-600"># No logs available\n</span>)
+              : logs.join('\n')}
+          </pre>
+        </div>
       </div>
     </div>
   )
@@ -198,9 +204,9 @@ export default function PodDetail({ pod }: Props): JSX.Element {
 
 function MetaRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div>
-      <dt className="text-xs text-gray-500">{label}</dt>
-      <dd className={`text-xs text-gray-200 truncate ${mono ? 'font-mono' : ''}`}>{value}</dd>
+    <div className="min-w-0">
+      <dt className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-tighter mb-0.5">{label}</dt>
+      <dd className={`text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate ${mono ? 'font-mono' : ''}`}>{value}</dd>
     </div>
   )
 }

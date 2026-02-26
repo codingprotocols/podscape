@@ -22,53 +22,56 @@ export default function GrafanaPanel(): JSX.Element {
   ]
 
   return (
-    <div className="flex flex-col flex-1 bg-gray-900/50 h-full">
+    <div className="flex flex-col flex-1 bg-slate-50 dark:bg-slate-950 h-full transition-colors duration-200">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10 shrink-0">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-950">
         <div>
-          <h2 className="text-sm font-semibold text-white">Grafana</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Embedded dashboard viewer</p>
+          <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Grafana</h2>
+          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">Embedded observability</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <button
             onClick={() => setEditMode(e => !e)}
-            className="px-3 py-1.5 text-xs text-gray-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded transition-colors"
+            className="flex items-center gap-2 px-4 py-1.5 text-xs font-bold text-slate-600 dark:text-slate-300
+                       bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg shadow-sm
+                       border border-slate-200 dark:border-slate-800 transition-all active:scale-95"
           >
-            {editMode ? 'Cancel' : 'Configure'}
+            {editMode ? 'CANCEL' : 'CONFIGURE'}
           </button>
         </div>
       </div>
 
       {/* URL configuration */}
       {editMode && (
-        <div className="px-5 py-4 border-b border-white/10 bg-gray-900/80 shrink-0">
-          <label className="block text-xs font-medium text-gray-400 mb-2">Grafana Base URL</label>
-          <div className="flex gap-2">
+        <div className="px-8 py-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 shrink-0 animate-in fade-in slide-in-from-top-2">
+          <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] mb-3">Grafana Instance URL</label>
+          <div className="flex gap-3">
             <input
               type="text"
               value={inputUrl}
               onChange={e => setInputUrl(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleSave() }}
-              placeholder="http://localhost:3000"
-              className="flex-1 bg-gray-800 text-white text-sm rounded px-3 py-2 border border-white/10
-                         focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-600 font-mono"
+              placeholder="e.g., http://grafana.local:3000"
+              className="flex-1 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white text-sm font-bold rounded-xl px-4 py-2.5 
+                         border border-slate-200 dark:border-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 placeholder-slate-400 font-mono transition-all"
             />
             <button
               onClick={handleSave}
-              className="px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-500 rounded transition-colors"
+              className="px-6 py-2.5 text-sm font-black text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-lg shadow-blue-500/20
+                         transition-all active:scale-95"
             >
-              Connect
+              CONNECT
             </button>
           </div>
-          <p className="text-xs text-gray-500 mt-2">
-            Point to your Grafana instance. Anonymous access or a shared user session is required for embedding.
+          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-600 mt-3 max-w-2xl leading-relaxed">
+            Anonymous access or an active session is required for embedding. Use <code className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-blue-500">?korgId=1</code> or similar if needed.
           </p>
 
           {/* Quick dashboard links */}
           {grafanaUrl && (
-            <div className="mt-3">
-              <p className="text-xs text-gray-500 mb-2">Quick links (common K8s dashboards):</p>
-              <div className="flex flex-wrap gap-2">
+            <div className="mt-6">
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-600 mb-3 uppercase tracking-widest">Recommended Dashboards</p>
+              <div className="flex flex-wrap gap-2.5">
                 {quickLinks.map(ql => (
                   <button
                     key={ql.path}
@@ -78,9 +81,9 @@ export default function GrafanaPanel(): JSX.Element {
                       setGrafanaUrl(url)
                       setEditMode(false)
                     }}
-                    className="text-xs px-2.5 py-1 bg-orange-500/10 text-orange-300 border border-orange-500/20 rounded hover:bg-orange-500/20 transition-colors"
+                    className="text-[10px] font-bold px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all"
                   >
-                    {ql.label}
+                    {ql.label.toUpperCase()}
                   </button>
                 ))}
               </div>
@@ -96,23 +99,26 @@ export default function GrafanaPanel(): JSX.Element {
             src={grafanaUrl}
             className="w-full h-full border-0"
             style={{ display: 'block' }}
-            // @ts-ignore - webview is an Electron-specific element
+            // @ts-ignore
             allowpopups="false"
           />
         ) : (
-          <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-500">
-            <span className="text-5xl opacity-30">📈</span>
+          <div className="flex flex-col items-center justify-center h-full gap-5">
+            <div className="w-20 h-20 rounded-full bg-slate-50 dark:bg-slate-900/60 flex items-center justify-center text-slate-300 dark:text-slate-700">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 3v18h18" /><path d="M18 17V9" /><path d="M13 17V5" /><path d="M8 17v-3" /></svg>
+            </div>
             <div className="text-center">
-              <p className="text-sm font-medium">No Grafana URL configured</p>
-              <p className="text-xs mt-1 text-gray-600">
-                Click <strong>Configure</strong> to connect your Grafana instance.
+              <p className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">No Grafana Configured</p>
+              <p className="text-[11px] mt-1.5 text-slate-400 dark:text-slate-600 max-w-xs mx-auto">
+                Embed your existing Grafana dashboards directly into Podscape for unified observability.
               </p>
             </div>
             <button
               onClick={() => setEditMode(true)}
-              className="px-4 py-2 text-sm text-white bg-orange-600/80 hover:bg-orange-600 rounded-lg transition-colors mt-2"
+              className="px-6 py-2.5 text-xs font-black text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-lg shadow-blue-500/20
+                         transition-all active:scale-95"
             >
-              Configure Grafana
+              CONFIGURE ENDPOINT
             </button>
           </div>
         )}

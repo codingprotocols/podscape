@@ -3,6 +3,7 @@ import { execFile, spawn } from 'child_process'
 import { existsSync, writeFileSync, mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { getSettings } from './settings'
 
 const KUBECTL_PATHS = [
   '/opt/homebrew/bin/kubectl',
@@ -12,6 +13,10 @@ const KUBECTL_PATHS = [
 ]
 
 export function findKubectl(): string {
+  // User-configured path takes priority
+  const { kubectlPath } = getSettings()
+  if (kubectlPath && existsSync(kubectlPath)) return kubectlPath
+  // Auto-detect
   for (const p of KUBECTL_PATHS) {
     if (p === 'kubectl' || existsSync(p)) return p
   }

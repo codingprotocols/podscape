@@ -4,9 +4,9 @@ import type { ResourceKind } from '../types'
 
 // ─── Icon components (inline SVG to avoid extra deps issues) ──────────────────
 
-const Icon = ({ path, size = 14 }: { path: string; size?: number }) => (
+const Icon = ({ path, size = 16, className = "" }: { path: string; size?: number; className?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-    stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
     <path d={path} />
   </svg>
 )
@@ -15,18 +15,20 @@ const Icon = ({ path, size = 14 }: { path: string; size?: number }) => (
 function NavGroup({ title, children }: { title: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(true)
   return (
-    <div className="mb-1">
+    <div className="mb-2">
       <button
         onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1.5 w-full px-3 py-1.5 text-xs font-semibold
-                   text-gray-500 uppercase tracking-wider hover:text-gray-400 transition-colors"
+        className="flex items-center gap-1.5 w-full px-4 py-2 text-[10px] font-bold
+                   text-slate-400 dark:text-slate-500 uppercase tracking-widest hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
       >
-        <span className={`transition-transform duration-150 ${open ? '' : '-rotate-90'}`}>
-          ▾
+        <span className={`transition-transform duration-200 ${open ? '' : '-rotate-90'}`}>
+          <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
+            <path d="M0 2l4 4 4-4H0z" />
+          </svg>
         </span>
         {title}
       </button>
-      {open && <div>{children}</div>}
+      {open && <div className="space-y-0.5">{children}</div>}
     </div>
   )
 }
@@ -40,18 +42,23 @@ function NavItem({
   return (
     <button
       onClick={() => setSection(section)}
-      className={`flex items-center gap-2.5 w-full px-3 py-1.5 rounded-md text-sm
-                  transition-colors mx-1 my-0.5 text-left
+      className={`flex items-center gap-3 w-full px-4 py-2 text-sm font-medium
+                  transition-all duration-200 group relative
         ${isActive
-          ? 'bg-blue-600/25 text-blue-200'
-          : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+          ? 'text-blue-600 dark:text-blue-400'
+          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/50'
         }`}
-      style={{ width: 'calc(100% - 8px)' }}
     >
-      {icon && <Icon path={icon} size={13} />}
-      <span className="flex-1">{label}</span>
+      {isActive && (
+        <div className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-blue-600 dark:bg-blue-500 rounded-r-full" />
+      )}
+      {icon && <Icon path={icon} size={16} className={isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'} />}
+      <span className="flex-1 text-left">{label}</span>
       {badge !== undefined && badge > 0 && (
-        <span className="text-xs bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded-full leading-none">
+        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold
+          ${isActive
+            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+            : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>
           {badge > 999 ? '999+' : badge}
         </span>
       )}
@@ -61,24 +68,25 @@ function NavItem({
 
 // ─── Icons paths ──────────────────────────────────────────────────────────────
 const ICONS = {
-  pod:        'M12 2L2 7l10 5 10-5-10-5M2 17l10 5 10-5M2 12l10 5 10-5',
-  deploy:     'M4 17l6-5-6-5M12 19h8',
-  sts:        'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z',
-  rs:         'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
-  job:        'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11',
-  cron:       'M12 2a10 10 0 100 20A10 10 0 0012 2zm0 6v6l3 3',
-  service:    'M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18',
-  ingress:    'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9',
-  configmap:  'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8',
-  secret:     'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
-  node:       'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
-  namespace:  'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z',
-  crd:        'M12 2a5 5 0 100 10A5 5 0 0012 2zm-7 14a7 7 0 0114 0',
-  event:      'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
-  metrics:    'M3 3v18h18M18.5 8l-5.5 5.5-3-3L7 14',
-  grafana:    'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',
-  terminal:   'M4 17l6-6-6-6M12 19h8',
-  extension:  'M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z'
+  pod: 'M12 2L2 7l10 5 10-5-10-5M2 17l10 5 10-5M2 12l10 5 10-5',
+  deploy: 'M4 17l6-5-6-5M12 19h8',
+  sts: 'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z',
+  rs: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
+  job: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11',
+  cron: 'M12 2a10 10 0 100 20A10 10 0 0012 2zm0 6v6l3 3',
+  service: 'M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18',
+  ingress: 'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9',
+  configmap: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8',
+  secret: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
+  node: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
+  namespace: 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z',
+  crd: 'M12 2a5 5 0 100 10A5 5 0 0012 2zm-7 14a7 7 0 0114 0',
+  event: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
+  metrics: 'M3 3v18h18M18.5 8l-5.5 5.5-3-3L7 14',
+  grafana: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',
+  terminal: 'M4 17l6-6-6-6M12 19h8',
+  extension: 'M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z',
+  settings: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z'
 }
 
 // ─── Main Sidebar ─────────────────────────────────────────────────────────────
@@ -88,88 +96,103 @@ export default function Sidebar(): JSX.Element {
     contexts, selectedContext, namespaces, selectedNamespace,
     loadingContexts, loadingNamespaces,
     selectContext, selectNamespace, error, clearError,
-    pods, deployments, events
+    pods, deployments, events, theme, toggleTheme
   } = useAppStore()
 
   return (
-    <div className="flex flex-col w-56 min-w-[200px] bg-gray-900/90 border-r border-white/8 h-full shrink-0">
+    <div className="flex flex-col w-64 border-r bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 h-full shrink-0 transition-colors duration-200">
       {/* App header */}
-      <div className="px-4 py-3.5 border-b border-white/8 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
-        <div className="flex items-center gap-2.5 mt-4">
-          <div className="w-5 h-5 rounded bg-blue-500 flex items-center justify-center shrink-0">
-            <Icon path={ICONS.pod} size={10} />
+      <div className="px-6 py-8 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <Icon path={ICONS.pod} size={16} className="text-white" />
+            </div>
+            <span className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Podscape</span>
           </div>
-          <span className="text-sm font-bold text-white tracking-wide">Podscape</span>
+
+          <button
+            onClick={toggleTheme}
+            className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
+          >
+            {theme === 'dark' ? (
+              <Icon path="M12 3v1M12 20v1M4.22 4.22l.71.71M18.36 18.36l.71.71M1 12h1M22 12h1M4.22 19.78l.71-.71M18.36 5.64l.71-.71M17 12a5 5 0 11-10 0 5 5 0 0110 0z" size={16} />
+            ) : (
+              <Icon path="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" size={16} />
+            )}
+          </button>
         </div>
       </div>
 
-      {/* Context selector */}
-      <div className="px-3 py-2.5 border-b border-white/8 shrink-0">
-        <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">
-          Cluster
-        </label>
-        {loadingContexts ? (
-          <Spinner text="Loading contexts…" />
-        ) : (
-          <select
-            className="w-full bg-gray-800 text-white text-xs rounded px-2 py-1.5
-                       border border-white/10 focus:outline-none focus:ring-1
-                       focus:ring-blue-500 cursor-pointer"
-            value={selectedContext ?? ''}
-            onChange={e => selectContext(e.target.value)}
-          >
-            {contexts.length === 0 && (
-              <option value="" disabled>No clusters found</option>
-            )}
-            {contexts.map(ctx => (
-              <option key={ctx.name} value={ctx.name}>{ctx.name}</option>
-            ))}
-          </select>
-        )}
-      </div>
+      <div className="px-4 pb-4 space-y-4">
+        {/* Context selector */}
+        <div>
+          <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-2">
+            Cluster
+          </label>
+          {loadingContexts ? (
+            <Spinner text="Loading..." />
+          ) : (
+            <div className="relative group">
+              <select
+                className="w-full bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs rounded-lg px-3 py-2
+                           border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2
+                           focus:ring-blue-500/40 appearance-none cursor-pointer transition-all"
+                value={selectedContext ?? ''}
+                onChange={e => selectContext(e.target.value)}
+              >
+                {contexts.length === 0 && <option value="" disabled>No clusters</option>}
+                {contexts.map(ctx => (
+                  <option key={ctx.name} value={ctx.name}>{ctx.name}</option>
+                ))}
+              </select>
+              <div className="absolute right-3 top-2.5 pointer-events-none text-slate-400">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M2.5 4l2.5 2.5L7.5 4H2.5z" /></svg>
+              </div>
+            </div>
+          )}
+        </div>
 
-      {/* Namespace selector */}
-      <div className="px-3 py-2.5 border-b border-white/8 shrink-0">
-        <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">
-          Namespace
-        </label>
-        {loadingNamespaces ? (
-          <Spinner text="Loading…" />
-        ) : (
-          <select
-            className="w-full bg-gray-800 text-white text-xs rounded px-2 py-1.5
-                       border border-white/10 focus:outline-none focus:ring-1
-                       focus:ring-blue-500 cursor-pointer"
-            value={selectedNamespace ?? ''}
-            onChange={e => selectNamespace(e.target.value)}
-          >
-            {!selectedContext && (
-              <option value="" disabled>Select cluster</option>
-            )}
-            {selectedContext && namespaces.length === 0 && (
-              <option value="" disabled>No namespaces</option>
-            )}
-            {namespaces.length > 0 && (
-              <option value="_all">All Namespaces</option>
-            )}
-            {namespaces.map(ns => (
-              <option key={ns.metadata.name} value={ns.metadata.name}>{ns.metadata.name}</option>
-            ))}
-          </select>
-        )}
+        {/* Namespace selector */}
+        <div>
+          <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-2">
+            Namespace
+          </label>
+          {loadingNamespaces ? (
+            <Spinner text="Loading..." />
+          ) : (
+            <div className="relative">
+              <select
+                className="w-full bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs rounded-lg px-3 py-2
+                           border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2
+                           focus:ring-blue-500/40 appearance-none cursor-pointer transition-all"
+                value={selectedNamespace ?? ''}
+                onChange={e => selectNamespace(e.target.value)}
+              >
+                {!selectedContext && <option value="" disabled>Select cluster</option>}
+                {selectedContext && namespaces.length === 0 && <option value="" disabled>No namespaces</option>}
+                {namespaces.length > 0 && <option value="_all">All Namespaces</option>}
+                {namespaces.map(ns => (
+                  <option key={ns.metadata.name} value={ns.metadata.name}>{ns.metadata.name}</option>
+                ))}
+              </select>
+              <div className="absolute right-3 top-2.5 pointer-events-none text-slate-400">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M2.5 4l2.5 2.5L7.5 4H2.5z" /></svg>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Navigation tree */}
       <nav className="flex-1 overflow-y-auto py-2 scrollbar-hide">
-        {/* Dashboard — pinned at the top, outside any collapsible group */}
-        <div className="px-1 mb-1">
+        <div className="px-2 mb-4">
           <NavItem
             label="Dashboard"
             section="dashboard"
             icon="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
           />
         </div>
-        <div className="mx-3 mb-2 border-t border-white/8" />
 
         <NavGroup title="Workloads">
           <NavItem label="Pods" section="pods" icon={ICONS.pod} badge={pods.length || undefined} />
@@ -205,15 +228,16 @@ export default function Sidebar(): JSX.Element {
         <NavGroup title="Tools">
           <NavItem label="Terminal" section="terminal" icon={ICONS.terminal} />
           <NavItem label="Extensions" section="extensions" icon={ICONS.extension} />
+          <NavItem label="Settings" section="settings" icon={ICONS.settings} />
         </NavGroup>
       </nav>
 
       {/* Error banner */}
       {error && (
-        <div className="mx-2 mb-2 px-3 py-2 bg-red-900/50 border border-red-500/30 rounded shrink-0">
+        <div className="mx-4 mb-4 px-3 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-500/30 rounded-lg shrink-0">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-red-300 text-xs leading-relaxed">{error}</p>
-            <button onClick={clearError} className="text-red-400 hover:text-red-200 text-xs shrink-0">✕</button>
+            <p className="text-red-700 dark:text-red-300 text-[10px] font-medium leading-relaxed">{error}</p>
+            <button onClick={clearError} className="text-red-500 hover:text-red-700 dark:hover:text-red-200 text-xs shrink-0">✕</button>
           </div>
         </div>
       )}
@@ -223,8 +247,8 @@ export default function Sidebar(): JSX.Element {
 
 function Spinner({ text }: { text: string }) {
   return (
-    <div className="flex items-center gap-2 text-gray-500 text-xs py-1">
-      <div className="w-3 h-3 border-2 border-gray-600 border-t-gray-300 rounded-full animate-spin shrink-0" />
+    <div className="flex items-center gap-2 text-slate-400 text-[10px] font-medium py-1 px-2">
+      <div className="w-3 h-3 border-2 border-slate-200 dark:border-slate-700 border-t-blue-500 rounded-full animate-spin shrink-0" />
       <span>{text}</span>
     </div>
   )

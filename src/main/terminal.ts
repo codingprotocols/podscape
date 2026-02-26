@@ -1,6 +1,8 @@
 import { ipcMain } from 'electron'
 import { homedir } from 'os'
+import { existsSync } from 'fs'
 import { findKubectl } from './kubectl'
+import { getSettings } from './settings'
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pty = require('node-pty') as typeof import('node-pty')
@@ -52,6 +54,18 @@ function buildEnv(extra: Record<string, string> = {}): Record<string, string> {
   return { ...base, HOME: homedir(), ...extra }
 }
 
+/** Resolve the shell to use: settings override → SHELL env → known defaults */
+function findShell(): string {
+  const { shellPath } = getSettings()
+  if (shellPath && existsSync(shellPath)) return shellPath
+  const fromEnv = process.env.SHELL
+  if (fromEnv && existsSync(fromEnv)) return fromEnv
+  for (const sh of ['/bin/zsh', '/bin/bash', '/bin/sh']) {
+    if (existsSync(sh)) return sh
+  }
+  return '/bin/sh'
+}
+
 export function registerTerminalHandlers(): void {
   // ── Built-in kubectl terminal ─────────────────────────────────────────────
 
@@ -59,7 +73,7 @@ export function registerTerminalHandlers(): void {
     'terminal:create',
     (event, context?: string, namespace?: string) => {
       const id = newId('term')
-      const shell = process.env.SHELL ?? '/bin/zsh'
+      const shell = findShell()
       const kubectl = findKubectl()
       const env = buildEnv({
         TERM: 'xterm-256color',
@@ -113,22 +127,23 @@ export function registerTerminalHandlers(): void {
     (event, context: string, namespace: string, pod: string, container: string) => {
       const id = newId('exec')
       const kubectl = findKubectl()
+      const env = buildEnv({ TERM: 'xterm-256color', COLORTERM: 'truecolor' })
 
-      // Keep the env clean (no undefined values) and TERM set for the PTY
-      const env = buildEnv({ TERM: 'xterm-256color' })
+      // Build the kubectl exec argv — no shell wrapper, no quoting needed.
+      // posix_spawnp uses the PATH from `env` (augmented with Homebrew paths)
+      // if `kubectl` is a bare name; if findKubectl() returned an absolute path
+      // it is used directly, bypassing PATH lookup entirely.
+      const argv: string[] = [
+        '--context', context,
+        '--namespace', namespace,
+        'exec', '-it', pod,
+        ...(container ? ['--container', container] : []),
+        '--', 'sh'
+      ]
 
-      // Use 'sh' as the entrypoint — it exists in virtually every container image.
-      // We avoid piping through /bin/sh -c because that adds unnecessary complexity
-      // and can fail in distroless / busybox images that don't have a full sh -c.
       const ptyProc = pty.spawn(
         kubectl,
-        [
-          '--context', context,
-          '--namespace', namespace,
-          'exec', '-it', pod,
-          '--container', container,
-          '--', 'sh'
-        ],
+        argv,
         { name: 'xterm-256color', cols: 80, rows: 24, cwd: homedir(), env }
       )
 

@@ -14,6 +14,7 @@ import MetricsView from './components/MetricsView'
 import Terminal from './components/Terminal'
 import GrafanaPanel from './components/GrafanaPanel'
 import ExtensionsPanel from './components/ExtensionsPanel'
+import SettingsPanel from './components/SettingsPanel'
 import ExecPanel from './components/ExecPanel'
 import YAMLViewer from './components/YAMLViewer'
 import type {
@@ -61,19 +62,20 @@ function DefaultDetail({ resource }: { resource: AnyKubeResource }) {
   }, [resource.metadata.uid, section])
 
   return (
-    <div className="flex flex-col w-[480px] min-w-[360px] border-l border-white/10 bg-gray-900/70 h-full">
-      <div className="px-4 py-3 border-b border-white/10 shrink-0">
-        <h3 className="text-sm font-semibold text-white font-mono truncate">{resource.metadata.name}</h3>
+    <div className="flex flex-col w-[520px] min-w-[400px] border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 h-full shadow-2xl transition-colors duration-200">
+      <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
+        <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 font-mono truncate">{resource.metadata.name}</h3>
         {resource.metadata.namespace && (
-          <p className="text-xs text-gray-400 mt-0.5">{resource.metadata.namespace}</p>
+          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-wider">{resource.metadata.namespace}</p>
         )}
       </div>
       <div className="flex-1 min-h-0">
         {yaml !== null ? (
           <YAMLViewer content={yaml} />
         ) : (
-          <div className="flex items-center justify-center h-full text-gray-500 text-sm">
-            Loading…
+          <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
+            <div className="w-5 h-5 border-2 border-slate-200 dark:border-slate-800 border-t-blue-500 rounded-full animate-spin" />
+            <span className="text-xs font-medium">Fetching YAML...</span>
           </div>
         )}
       </div>
@@ -99,12 +101,12 @@ export default function App(): JSX.Element {
   const showListView = LIST_SECTIONS.includes(section)
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-950 text-white">
+    <div className="flex h-screen overflow-hidden bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       {/* Left nav sidebar */}
       <Sidebar />
 
       {/* Main content */}
-      <div className="flex flex-1 min-w-0 min-h-0">
+      <div className="flex flex-1 min-w-0 min-h-0 bg-slate-50 dark:bg-slate-950/50 transition-colors duration-200">
         {section === 'dashboard' ? (
           <Dashboard />
         ) : section === 'terminal' ? (
@@ -117,6 +119,8 @@ export default function App(): JSX.Element {
           <GrafanaPanel />
         ) : section === 'extensions' ? (
           <ExtensionsPanel />
+        ) : section === 'settings' ? (
+          <SettingsPanel />
         ) : showListView ? (
           <>
             <ResourceList />

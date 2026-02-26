@@ -150,6 +150,15 @@ const plugins = {
   list: () => ipcRenderer.invoke('plugins:list')
 }
 
+// ─── settings API ─────────────────────────────────────────────────────────────
+
+const settings = {
+  get: (): Promise<{ kubectlPath: string; shellPath: string }> =>
+    ipcRenderer.invoke('settings:get'),
+  set: (s: { kubectlPath: string; shellPath: string }): Promise<void> =>
+    ipcRenderer.invoke('settings:set', s)
+}
+
 // ─── Expose ───────────────────────────────────────────────────────────────────
 
 if (process.contextIsolated) {
@@ -159,6 +168,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('terminal', terminal)
     contextBridge.exposeInMainWorld('exec', exec)
     contextBridge.exposeInMainWorld('plugins', plugins)
+    contextBridge.exposeInMainWorld('settings', settings)
   } catch (error) {
     console.error(error)
   }
@@ -173,4 +183,6 @@ if (process.contextIsolated) {
   window.exec = exec
   // @ts-ignore
   window.plugins = plugins
+  // @ts-ignore
+  window.settings = settings
 }

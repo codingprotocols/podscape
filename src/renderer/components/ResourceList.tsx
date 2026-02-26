@@ -15,20 +15,20 @@ import YAMLViewer from './YAMLViewer'
 function useResources() {
   const store = useAppStore()
   switch (store.section) {
-    case 'pods':        return store.pods as AnyKubeResource[]
+    case 'pods': return store.pods as AnyKubeResource[]
     case 'deployments': return store.deployments as AnyKubeResource[]
-    case 'statefulsets':return store.statefulsets as AnyKubeResource[]
+    case 'statefulsets': return store.statefulsets as AnyKubeResource[]
     case 'replicasets': return store.replicasets as AnyKubeResource[]
-    case 'jobs':        return store.jobs as AnyKubeResource[]
-    case 'cronjobs':    return store.cronjobs as AnyKubeResource[]
-    case 'services':    return store.services as AnyKubeResource[]
-    case 'ingresses':   return store.ingresses as AnyKubeResource[]
-    case 'configmaps':  return store.configmaps as AnyKubeResource[]
-    case 'secrets':     return store.secrets as AnyKubeResource[]
-    case 'nodes':       return store.nodes as AnyKubeResource[]
-    case 'namespaces':  return store.namespaces as AnyKubeResource[]
-    case 'crds':        return store.crds as AnyKubeResource[]
-    default:            return []
+    case 'jobs': return store.jobs as AnyKubeResource[]
+    case 'cronjobs': return store.cronjobs as AnyKubeResource[]
+    case 'services': return store.services as AnyKubeResource[]
+    case 'ingresses': return store.ingresses as AnyKubeResource[]
+    case 'configmaps': return store.configmaps as AnyKubeResource[]
+    case 'secrets': return store.secrets as AnyKubeResource[]
+    case 'nodes': return store.nodes as AnyKubeResource[]
+    case 'namespaces': return store.namespaces as AnyKubeResource[]
+    case 'crds': return store.crds as AnyKubeResource[]
+    default: return []
   }
 }
 
@@ -46,15 +46,15 @@ function PodRow({ pod }: { pod: KubePod }) {
   const restarts = totalRestarts(pod)
   return (
     <>
-      <td className="px-4 py-2.5 font-mono text-xs text-white truncate max-w-[200px]">{pod.metadata.name}</td>
-      <td className="px-4 py-2.5">
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{pod.metadata.name}</td>
+      <td className="px-6 py-3">
         <Badge text={phase} cls={podPhaseBg(phase)} />
       </td>
-      <td className="px-4 py-2.5 text-xs">
-        <span className={restarts > 0 ? 'text-orange-400 font-medium' : 'text-gray-500'}>{restarts}</span>
+      <td className="px-6 py-3 text-xs">
+        <span className={`font-bold ${restarts > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-slate-400 dark:text-slate-500'}`}>{restarts}</span>
       </td>
-      <td className="px-4 py-2.5 text-xs text-gray-400 font-mono truncate max-w-[120px]">{pod.spec.nodeName ?? '—'}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-500">{formatAge(pod.metadata.creationTimestamp)}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 font-mono truncate max-w-[140px]">{pod.spec.nodeName ?? '—'}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(pod.metadata.creationTimestamp)}</td>
     </>
   )
 }
@@ -65,12 +65,12 @@ function DeploymentRow({ d }: { d: KubeDeployment }) {
   const ok = ready >= desired
   return (
     <>
-      <td className="px-4 py-2.5 font-mono text-xs text-white truncate max-w-[200px]">{d.metadata.name}</td>
-      <td className="px-4 py-2.5 text-xs">
-        <span className={ok ? 'text-green-400' : 'text-yellow-400'}>{ready}/{desired}</span>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{d.metadata.name}</td>
+      <td className="px-6 py-3 text-xs font-bold">
+        <span className={ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>{ready}/{desired}</span>
       </td>
-      <td className="px-4 py-2.5 text-xs text-gray-400">{d.spec.strategy?.type ?? 'RollingUpdate'}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-500">{formatAge(d.metadata.creationTimestamp)}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{d.spec.strategy?.type ?? 'RollingUpdate'}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(d.metadata.creationTimestamp)}</td>
     </>
   )
 }
@@ -80,12 +80,12 @@ function StatefulSetRow({ s }: { s: KubeStatefulSet }) {
   const ready = s.status.readyReplicas ?? 0
   return (
     <>
-      <td className="px-4 py-2.5 font-mono text-xs text-white truncate max-w-[200px]">{s.metadata.name}</td>
-      <td className="px-4 py-2.5 text-xs">
-        <span className={ready >= desired ? 'text-green-400' : 'text-yellow-400'}>{ready}/{desired}</span>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{s.metadata.name}</td>
+      <td className="px-6 py-3 text-xs font-bold">
+        <span className={ready >= desired ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>{ready}/{desired}</span>
       </td>
-      <td className="px-4 py-2.5 text-xs text-gray-400 font-mono">{s.spec.serviceName}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-500">{formatAge(s.metadata.creationTimestamp)}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono">{s.spec.serviceName}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(s.metadata.creationTimestamp)}</td>
     </>
   )
 }
@@ -95,11 +95,11 @@ function ReplicaSetRow({ rs }: { rs: KubeReplicaSet }) {
   const ready = rs.status.readyReplicas ?? 0
   return (
     <>
-      <td className="px-4 py-2.5 font-mono text-xs text-white truncate max-w-[220px]">{rs.metadata.name}</td>
-      <td className="px-4 py-2.5 text-xs">
-        <span className={ready >= desired ? 'text-green-400' : 'text-yellow-400'}>{ready}/{desired}</span>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{rs.metadata.name}</td>
+      <td className="px-6 py-3 text-xs font-bold">
+        <span className={ready >= desired ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>{ready}/{desired}</span>
       </td>
-      <td className="px-4 py-2.5 text-xs text-gray-500">{formatAge(rs.metadata.creationTimestamp)}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(rs.metadata.creationTimestamp)}</td>
     </>
   )
 }
@@ -108,12 +108,15 @@ function JobRow({ job }: { job: KubeJob }) {
   const done = (job.status.succeeded ?? 0) > 0
   return (
     <>
-      <td className="px-4 py-2.5 font-mono text-xs text-white truncate max-w-[220px]">{job.metadata.name}</td>
-      <td className="px-4 py-2.5">
-        <Badge text={done ? 'Complete' : 'Running'} cls={done ? 'bg-blue-500/20 text-blue-300 ring-blue-500/30' : 'bg-yellow-500/20 text-yellow-300 ring-yellow-500/30'} />
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{job.metadata.name}</td>
+      <td className="px-6 py-3">
+        <Badge
+          text={done ? 'Complete' : 'Running'}
+          cls={done ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 outline-blue-500/20' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 outline-amber-500/20'}
+        />
       </td>
-      <td className="px-4 py-2.5 text-xs text-gray-400">{job.status.succeeded ?? 0}/{job.spec.completions ?? '?'}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-500">{formatAge(job.metadata.creationTimestamp)}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-medium">{job.status.succeeded ?? 0}/{job.spec.completions ?? '?'}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(job.metadata.creationTimestamp)}</td>
     </>
   )
 }
@@ -121,12 +124,15 @@ function JobRow({ job }: { job: KubeJob }) {
 function CronJobRow({ cj }: { cj: KubeCronJob }) {
   return (
     <>
-      <td className="px-4 py-2.5 font-mono text-xs text-white truncate max-w-[200px]">{cj.metadata.name}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-300 font-mono">{cj.spec.schedule}</td>
-      <td className="px-4 py-2.5">
-        <Badge text={cj.spec.suspend ? 'Suspended' : 'Active'} cls={cj.spec.suspend ? 'bg-gray-500/20 text-gray-300 ring-gray-500/30' : 'bg-green-500/20 text-green-300 ring-green-500/30'} />
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{cj.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-600 dark:text-slate-300 font-mono font-bold">{cj.spec.schedule}</td>
+      <td className="px-6 py-3">
+        <Badge
+          text={cj.spec.suspend ? 'Suspended' : 'Active'}
+          cls={cj.spec.suspend ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 outline-slate-500/20' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 outline-emerald-500/20'}
+        />
       </td>
-      <td className="px-4 py-2.5 text-xs text-gray-500">{formatAge(cj.metadata.creationTimestamp)}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(cj.metadata.creationTimestamp)}</td>
     </>
   )
 }
@@ -135,11 +141,11 @@ function ServiceRow({ svc }: { svc: KubeService }) {
   const lbIp = svc.status.loadBalancer?.ingress?.[0]?.ip ?? svc.status.loadBalancer?.ingress?.[0]?.hostname ?? ''
   return (
     <>
-      <td className="px-4 py-2.5 font-mono text-xs text-white truncate max-w-[180px]">{svc.metadata.name}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-300">{svc.spec.type ?? 'ClusterIP'}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-400 font-mono">{svc.spec.clusterIP ?? '—'}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-400 font-mono">{lbIp || '—'}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-500">
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[200px]">{svc.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-600 dark:text-slate-300 font-medium">{svc.spec.type ?? 'ClusterIP'}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono">{svc.spec.clusterIP ?? '—'}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono truncate max-w-[120px] font-bold">{lbIp || '—'}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500 truncate max-w-[150px]">
         {(svc.spec.ports ?? []).map(p => `${p.port}/${p.protocol ?? 'TCP'}`).join(', ') || '—'}
       </td>
     </>
@@ -151,10 +157,10 @@ function IngressRow({ ing }: { ing: KubeIngress }) {
   const lbIp = ing.status.loadBalancer?.ingress?.[0]?.ip ?? ing.status.loadBalancer?.ingress?.[0]?.hostname ?? '—'
   return (
     <>
-      <td className="px-4 py-2.5 font-mono text-xs text-white truncate max-w-[180px]">{ing.metadata.name}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-300 truncate max-w-[200px]">{hosts || '—'}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-400 font-mono">{lbIp}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-400">{ing.spec.ingressClassName ?? '—'}</td>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[200px]">{ing.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-600 dark:text-slate-300 truncate max-w-[220px] font-medium">{hosts || '—'}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono font-bold">{lbIp}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{ing.spec.ingressClassName ?? '—'}</td>
     </>
   )
 }
@@ -163,9 +169,9 @@ function ConfigMapRow({ cm }: { cm: KubeConfigMap }) {
   const keyCount = Object.keys(cm.data ?? {}).length
   return (
     <>
-      <td className="px-4 py-2.5 font-mono text-xs text-white truncate max-w-[220px]">{cm.metadata.name}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-400">{keyCount} key{keyCount !== 1 ? 's' : ''}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-500">{formatAge(cm.metadata.creationTimestamp)}</td>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{cm.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-medium">{keyCount} key{keyCount !== 1 ? 's' : ''}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(cm.metadata.creationTimestamp)}</td>
     </>
   )
 }
@@ -174,10 +180,10 @@ function SecretRow({ sec }: { sec: KubeSecret }) {
   const keyCount = Object.keys(sec.data ?? {}).length
   return (
     <>
-      <td className="px-4 py-2.5 font-mono text-xs text-white truncate max-w-[200px]">{sec.metadata.name}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-400">{sec.type ?? 'Opaque'}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-400">{keyCount} key{keyCount !== 1 ? 's' : ''}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-500">{formatAge(sec.metadata.creationTimestamp)}</td>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{sec.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{sec.type ?? 'Opaque'}</td>
+      <td className="px-6 py-3 text-xs font-bold text-slate-600 dark:text-slate-300">{keyCount} key{keyCount !== 1 ? 's' : ''}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(sec.metadata.creationTimestamp)}</td>
     </>
   )
 }
@@ -187,12 +193,15 @@ function NodeRow({ node }: { node: KubeNode }) {
   const internalIP = (node.status.addresses ?? []).find(a => a.type === 'InternalIP')?.address ?? '—'
   return (
     <>
-      <td className="px-4 py-2.5 font-mono text-xs text-white truncate max-w-[200px]">{node.metadata.name}</td>
-      <td className="px-4 py-2.5">
-        <Badge text={ready ? 'Ready' : 'NotReady'} cls={ready ? 'bg-green-500/20 text-green-300 ring-green-500/30' : 'bg-red-500/20 text-red-300 ring-red-500/30'} />
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{node.metadata.name}</td>
+      <td className="px-6 py-3">
+        <Badge
+          text={ready ? 'Ready' : 'NotReady'}
+          cls={ready ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 outline-emerald-500/20' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 outline-red-500/20'}
+        />
       </td>
-      <td className="px-4 py-2.5 text-xs text-gray-400">{node.status.nodeInfo?.kubeletVersion ?? '—'}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-400 font-mono">{internalIP}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 font-medium">{node.status.nodeInfo?.kubeletVersion ?? '—'}</td>
+      <td className="px-6 py-3 text-xs font-bold text-slate-600 dark:text-slate-300 font-mono">{internalIP}</td>
     </>
   )
 }
@@ -200,11 +209,14 @@ function NodeRow({ node }: { node: KubeNode }) {
 function NamespaceRow({ ns }: { ns: KubeNamespace }) {
   return (
     <>
-      <td className="px-4 py-2.5 font-mono text-xs text-white">{ns.metadata.name}</td>
-      <td className="px-4 py-2.5">
-        <Badge text={ns.status.phase} cls={ns.status.phase === 'Active' ? 'bg-green-500/20 text-green-300 ring-green-500/30' : 'bg-gray-500/20 text-gray-300 ring-gray-500/30'} />
+      <td className="px-6 py-3 font-mono text-xs font-semibold">{ns.metadata.name}</td>
+      <td className="px-6 py-3">
+        <Badge
+          text={ns.status.phase}
+          cls={ns.status.phase === 'Active' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 outline-emerald-500/20' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 outline-slate-500/20'}
+        />
       </td>
-      <td className="px-4 py-2.5 text-xs text-gray-500">{formatAge(ns.metadata.creationTimestamp)}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(ns.metadata.creationTimestamp)}</td>
     </>
   )
 }
@@ -212,10 +224,10 @@ function NamespaceRow({ ns }: { ns: KubeNamespace }) {
 function CRDRow({ crd }: { crd: KubeCRD }) {
   return (
     <>
-      <td className="px-4 py-2.5 font-mono text-xs text-white truncate max-w-[240px]">{crd.metadata.name}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-400">{crd.spec.group}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-400">{crd.spec.scope}</td>
-      <td className="px-4 py-2.5 text-xs text-gray-500">{formatAge(crd.metadata.creationTimestamp)}</td>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[280px]">{crd.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{crd.spec.group}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 uppercase tracking-tighter font-bold">{crd.spec.scope}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(crd.metadata.creationTimestamp)}</td>
     </>
   )
 }
@@ -223,39 +235,39 @@ function CRDRow({ crd }: { crd: KubeCRD }) {
 // ─── Column headers ───────────────────────────────────────────────────────────
 
 const COLUMNS: Record<string, string[]> = {
-  pods:        ['Name', 'Status', 'Restarts', 'Node', 'Age'],
+  pods: ['Name', 'Status', 'Restarts', 'Node', 'Age'],
   deployments: ['Name', 'Ready', 'Strategy', 'Age'],
-  statefulsets:['Name', 'Ready', 'Service', 'Age'],
+  statefulsets: ['Name', 'Ready', 'Service', 'Age'],
   replicasets: ['Name', 'Ready', 'Age'],
-  jobs:        ['Name', 'Status', 'Completions', 'Age'],
-  cronjobs:    ['Name', 'Schedule', 'Status', 'Age'],
-  services:    ['Name', 'Type', 'Cluster IP', 'External IP', 'Ports'],
-  ingresses:   ['Name', 'Hosts', 'Address', 'Class'],
-  configmaps:  ['Name', 'Keys', 'Age'],
-  secrets:     ['Name', 'Type', 'Keys', 'Age'],
-  nodes:       ['Name', 'Status', 'Version', 'IP'],
-  namespaces:  ['Name', 'Status', 'Age'],
-  crds:        ['Name', 'Group', 'Scope', 'Age']
+  jobs: ['Name', 'Status', 'Completions', 'Age'],
+  cronjobs: ['Name', 'Schedule', 'Status', 'Age'],
+  services: ['Name', 'Type', 'Cluster IP', 'External IP', 'Ports'],
+  ingresses: ['Name', 'Hosts', 'Address', 'Class'],
+  configmaps: ['Name', 'Keys', 'Age'],
+  secrets: ['Name', 'Type', 'Keys', 'Age'],
+  nodes: ['Name', 'Status', 'Version', 'IP'],
+  namespaces: ['Name', 'Status', 'Age'],
+  crds: ['Name', 'Group', 'Scope', 'Age']
 }
 
 // ─── Row dispatcher ───────────────────────────────────────────────────────────
 
 function ResourceRow({ resource, section }: { resource: AnyKubeResource; section: string }) {
   switch (section) {
-    case 'pods':        return <PodRow pod={resource as KubePod} />
+    case 'pods': return <PodRow pod={resource as KubePod} />
     case 'deployments': return <DeploymentRow d={resource as KubeDeployment} />
-    case 'statefulsets':return <StatefulSetRow s={resource as KubeStatefulSet} />
+    case 'statefulsets': return <StatefulSetRow s={resource as KubeStatefulSet} />
     case 'replicasets': return <ReplicaSetRow rs={resource as KubeReplicaSet} />
-    case 'jobs':        return <JobRow job={resource as KubeJob} />
-    case 'cronjobs':    return <CronJobRow cj={resource as KubeCronJob} />
-    case 'services':    return <ServiceRow svc={resource as KubeService} />
-    case 'ingresses':   return <IngressRow ing={resource as KubeIngress} />
-    case 'configmaps':  return <ConfigMapRow cm={resource as KubeConfigMap} />
-    case 'secrets':     return <SecretRow sec={resource as KubeSecret} />
-    case 'nodes':       return <NodeRow node={resource as KubeNode} />
-    case 'namespaces':  return <NamespaceRow ns={resource as KubeNamespace} />
-    case 'crds':        return <CRDRow crd={resource as KubeCRD} />
-    default:            return <td className="px-4 py-2.5 text-xs text-white">{resource.metadata.name}</td>
+    case 'jobs': return <JobRow job={resource as KubeJob} />
+    case 'cronjobs': return <CronJobRow cj={resource as KubeCronJob} />
+    case 'services': return <ServiceRow svc={resource as KubeService} />
+    case 'ingresses': return <IngressRow ing={resource as KubeIngress} />
+    case 'configmaps': return <ConfigMapRow cm={resource as KubeConfigMap} />
+    case 'secrets': return <SecretRow sec={resource as KubeSecret} />
+    case 'nodes': return <NodeRow node={resource as KubeNode} />
+    case 'namespaces': return <NamespaceRow ns={resource as KubeNamespace} />
+    case 'crds': return <CRDRow crd={resource as KubeCRD} />
+    default: return <td className="px-6 py-3 text-xs font-semibold">{resource.metadata.name}</td>
   }
 }
 
@@ -263,7 +275,7 @@ function ResourceRow({ resource, section }: { resource: AnyKubeResource; section
 
 function Badge({ text, cls }: { text: string; cls: string }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${cls}`}>
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold outline outline-1 transition-all ${cls}`}>
       {text}
     </span>
   )
@@ -320,35 +332,41 @@ export default function ResourceList(): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col flex-1 min-w-0 bg-gray-900/50 h-full" onClick={() => setContextMenu(null)}>
+    <div className="flex flex-col flex-1 min-w-0 bg-white dark:bg-slate-950 h-full transition-colors duration-200" onClick={() => setContextMenu(null)}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0">
+      <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 dark:border-slate-800 shrink-0">
         <div>
-          <h2 className="text-sm font-semibold text-white">{SECTION_LABELS[section] ?? section}</h2>
-          <p className="text-xs text-gray-400 mt-0.5">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">{SECTION_LABELS[section] ?? section}</h2>
+          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">
             {clusterScoped ? 'cluster-wide' : selectedNamespace === '_all' ? 'all namespaces' : (selectedNamespace ?? 'no namespace')}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            placeholder="Filter…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="bg-gray-800 text-white text-xs rounded px-2.5 py-1.5 border border-white/10
-                       focus:outline-none focus:ring-1 focus:ring-blue-500 w-36 placeholder-gray-600"
-          />
-          {resources.length > 0 && (
-            <span className="text-xs text-gray-500">{filtered.length}/{resources.length}</span>
-          )}
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-xs rounded-lg px-3 py-2 pl-8
+                         border border-transparent focus:border-blue-500/50 focus:outline-none focus:ring-4 focus:ring-blue-500/10 
+                         w-48 transition-all placeholder-slate-400 dark:placeholder-slate-500"
+            />
+            <div className="absolute left-2.5 top-2.5 text-slate-400">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+            </div>
+          </div>
+
           <button
             onClick={refresh}
             disabled={loadingResources}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-300
-                       bg-white/5 hover:bg-white/10 rounded transition-colors
-                       disabled:opacity-50 border border-white/10"
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300
+                       bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg shadow-sm
+                       disabled:opacity-50 border border-slate-200 dark:border-slate-800 transition-all active:scale-95"
           >
-            <span className={loadingResources ? 'animate-spin inline-block' : 'inline-block'}>↻</span>
+            <span className={`transition-transform duration-500 ${loadingResources ? 'animate-spin' : ''}`}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6m12 6a9 9 0 0 1-15-6.7L3 16" /></svg>
+            </span>
             Refresh
           </button>
         </div>
@@ -357,35 +375,37 @@ export default function ResourceList(): JSX.Element {
       {/* Table */}
       <div className="flex-1 overflow-auto">
         {loadingResources ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-500">
-            <div className="w-6 h-6 border-2 border-gray-700 border-t-gray-400 rounded-full animate-spin" />
-            <span className="text-sm">Loading…</span>
+          <div className="flex flex-col items-center justify-center py-24 gap-4 text-slate-400">
+            <div className="w-8 h-8 border-3 border-slate-100 dark:border-slate-800 border-t-blue-500 rounded-full animate-spin" />
+            <span className="text-xs font-bold tracking-widest uppercase">Syncing Cluster...</span>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-2 text-gray-500">
-            <span className="text-3xl opacity-30">◻</span>
-            <p className="text-sm">
+          <div className="flex flex-col items-center justify-center py-24 gap-3 text-slate-400">
+            <div className="w-12 h-12 rounded-full bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
+              <span className="text-2xl">◻</span>
+            </div>
+            <p className="text-xs font-bold uppercase tracking-widest">
               {resources.length === 0 ? `No ${SECTION_LABELS[section]?.toLowerCase() ?? 'resources'} found` : 'No matches'}
             </p>
           </div>
         ) : (
           <table className="w-full text-sm border-collapse">
-            <thead className="sticky top-0 bg-gray-900/95 backdrop-blur-sm z-10">
-              <tr className="border-b border-white/10">
+            <thead className="sticky top-0 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md z-10">
+              <tr className="border-b border-slate-100 dark:border-slate-800">
                 {cols.map(col => (
-                  <th key={col} className="text-left px-4 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">
+                  <th key={col} className="text-left px-6 py-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
                     {col}
                   </th>
                 ))}
                 {showNsCol && (
-                  <th className="text-left px-4 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">
+                  <th className="text-left px-6 py-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
                     Namespace
                   </th>
                 )}
-                <th className="w-8" />
+                <th className="w-12" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
+            <tbody className="divide-y divide-slate-50 dark:divide-slate-900">
               {filtered.map(resource => {
                 const uid = resource.metadata.uid
                 const isSelected = selectedResource?.metadata.uid === uid
@@ -394,22 +414,23 @@ export default function ResourceList(): JSX.Element {
                     key={uid}
                     onClick={() => selectResource(isSelected ? null : resource)}
                     onContextMenu={e => handleContextMenu(e, resource)}
-                    className={`cursor-pointer transition-colors ${
-                      isSelected ? 'bg-blue-600/15' : 'hover:bg-white/3'
-                    }`}
+                    className={`group cursor-pointer transition-all duration-150 ${isSelected
+                        ? 'bg-blue-50 dark:bg-blue-900/10'
+                        : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/30'
+                      }`}
                   >
                     <ResourceRow resource={resource} section={section} />
                     {showNsCol && (
-                      <td className="px-4 py-2.5 text-xs text-gray-500 font-mono">
+                      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500 font-mono font-medium">
                         {resource.metadata.namespace ?? '—'}
                       </td>
                     )}
-                    <td className="px-2 py-2 text-right">
+                    <td className="px-4 py-3 text-right">
                       <button
                         onClick={e => { e.stopPropagation(); handleContextMenu(e, resource) }}
-                        className="text-gray-600 hover:text-gray-300 px-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="p-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 opacity-0 group-hover:opacity-100 transition-all font-bold"
                       >
-                        ⋯
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" /></svg>
                       </button>
                     </td>
                   </tr>
@@ -423,24 +444,24 @@ export default function ResourceList(): JSX.Element {
       {/* Context menu */}
       {contextMenu && (
         <div
-          className="fixed z-50 bg-gray-800 border border-white/15 rounded-lg shadow-2xl py-1 min-w-[160px]"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
+          className="fixed z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl py-1.5 min-w-[180px] animate-in fade-in zoom-in duration-100"
+          style={{ left: Math.min(contextMenu.x, window.innerWidth - 200), top: Math.min(contextMenu.y, window.innerHeight - 200) }}
           onClick={e => e.stopPropagation()}
         >
-          <MenuItem label="View YAML" onClick={() => handleViewYAML(contextMenu.resource)} />
+          <MenuItem label="View YAML" onClick={() => handleViewYAML(contextMenu.resource)} icon="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9zM13 2v7h7" />
           {['deployments', 'statefulsets'].includes(section) && (
             <>
               {section === 'deployments' && (
-                <MenuItem label="Scale…" onClick={() => { setScaleTarget(contextMenu.resource as KubeDeployment); setContextMenu(null) }} />
+                <MenuItem label="Scale…" onClick={() => { setScaleTarget(contextMenu.resource as KubeDeployment); setContextMenu(null) }} icon="M3 6h18M3 12h18M3 18h18" />
               )}
-              <MenuItem label="Restart" onClick={() => handleRestart(contextMenu.resource)} />
+              <MenuItem label="Restart" onClick={() => handleRestart(contextMenu.resource)} icon="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
             </>
           )}
           {section === 'pods' && (
-            <MenuItem label="Exec Shell" onClick={() => handleExec(contextMenu.resource)} />
+            <MenuItem label="Exec Shell" onClick={() => handleExec(contextMenu.resource)} icon="M4 17l6-6-6-6M12 19h8" />
           )}
-          <div className="border-t border-white/10 my-1" />
-          <MenuItem label="Delete…" onClick={() => handleDelete(contextMenu.resource)} danger />
+          <div className="border-t border-slate-100 dark:border-slate-700 my-1.5" />
+          <MenuItem label="Delete…" onClick={() => handleDelete(contextMenu.resource)} danger icon="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
         </div>
       )}
 
@@ -463,13 +484,23 @@ export default function ResourceList(): JSX.Element {
         />
       )}
       {yamlContent !== null && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-8">
-          <div className="bg-gray-900 rounded-xl border border-white/15 w-full max-w-3xl max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-              <h3 className="text-sm font-semibold text-white">YAML</h3>
-              <button onClick={() => setYamlContent(null)} className="text-gray-400 hover:text-white">✕</button>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-8 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-500"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9zM13 2v7h7" /></svg>
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest">Resource YAML</h3>
+              </div>
+              <button
+                onClick={() => setYamlContent(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
             </div>
-            <div className="flex-1 min-h-0">
+            <div className="flex-1 min-h-0 bg-slate-950">
               <YAMLViewer content={yamlContent} />
             </div>
           </div>
@@ -479,13 +510,20 @@ export default function ResourceList(): JSX.Element {
   )
 }
 
-function MenuItem({ label, onClick, danger }: { label: string; onClick: () => void; danger?: boolean }) {
+function MenuItem({ label, onClick, danger, icon }: { label: string; onClick: () => void; danger?: boolean; icon?: string }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-4 py-2 text-xs hover:bg-white/8 transition-colors
-        ${danger ? 'text-red-400 hover:text-red-300' : 'text-gray-200'}`}
+      className={`w-full flex items-center gap-3 px-4 py-2 text-xs font-bold transition-all duration-150
+        ${danger
+          ? 'text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
+          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
     >
+      {icon && (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0 opacity-70">
+          <path d={icon} />
+        </svg>
+      )}
       {label}
     </button>
   )

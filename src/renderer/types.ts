@@ -384,6 +384,7 @@ export type ResourceKind =
   | 'grafana'
   | 'terminal'
   | 'extensions'
+  | 'settings'
 
 export type AnyKubeResource =
   | KubePod

@@ -9,6 +9,7 @@ interface Props {
 }
 
 export default function YAMLViewer({ content, editable = false, onSave }: Props): JSX.Element {
+  const { theme } = useAppStore()
   const [value, setValue] = useState(content)
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
@@ -35,16 +36,19 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-950">
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-gray-900/80 border-b border-white/10 shrink-0">
-        <span className="text-xs text-gray-500">YAML</span>
+      <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
         <div className="flex items-center gap-2">
-          {saveMsg && <span className={`text-xs ${saveMsg.startsWith('Error') ? 'text-red-400' : 'text-green-400'}`}>{saveMsg}</span>}
-          {copyMsg && <span className="text-xs text-blue-400">{copyMsg}</span>}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-400"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9zM13 2v7h7" /></svg>
+          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">YAML SOURCE</span>
+        </div>
+        <div className="flex items-center gap-3">
+          {saveMsg && <span className={`text-[10px] font-bold ${saveMsg.startsWith('Error') ? 'text-red-500' : 'text-emerald-500'}`}>{saveMsg.toUpperCase()}</span>}
+          {copyMsg && <span className="text-[10px] font-bold text-blue-500">COPIED!</span>}
           <button
             onClick={handleCopy}
-            className="text-xs text-gray-400 hover:text-white px-2 py-0.5 rounded hover:bg-white/5 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors uppercase tracking-wider"
           >
             Copy
           </button>
@@ -52,8 +56,8 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
             <button
               onClick={handleSave}
               disabled={saving}
-              className="text-xs text-white bg-blue-600 hover:bg-blue-500 px-2.5 py-0.5 rounded
-                         transition-colors disabled:opacity-50"
+              className="px-4 py-1 text-[10px] font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-sm
+                         transition-colors disabled:opacity-50 uppercase tracking-widest"
             >
               {saving ? 'Applying…' : 'Apply'}
             </button>
@@ -61,13 +65,13 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
         </div>
       </div>
 
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 bg-white dark:bg-slate-950">
         <Editor
           height="100%"
           language="yaml"
           value={value}
           onChange={v => editable && setValue(v ?? '')}
-          theme="vs-dark"
+          theme={theme === 'dark' ? 'vs-dark' : 'light'}
           options={{
             readOnly: !editable,
             minimap: { enabled: false },
@@ -76,14 +80,15 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
             lineNumbers: 'on',
             renderWhitespace: 'none',
             wordWrap: 'on',
-            padding: { top: 8, bottom: 8 },
+            padding: { top: 12, bottom: 12 },
             overviewRulerLanes: 0,
             hideCursorInOverviewRuler: true,
             scrollbar: { vertical: 'auto', horizontal: 'auto' },
             folding: true,
             glyphMargin: false,
             lineDecorationsWidth: 4,
-            lineNumbersMinChars: 3
+            lineNumbersMinChars: 3,
+            fontFamily: "'JetBrains Mono', 'Fira Code', 'Menlo', monospace",
           }}
         />
       </div>
@@ -94,7 +99,7 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
 // ─── Apply YAML panel (full editor for applying new manifests) ────────────────
 
 export function ApplyYAMLPanel(): JSX.Element {
-  const { applyYAML } = useAppStore()
+  const { applyYAML, theme } = useAppStore()
   const [content, setContent] = useState('# Paste your YAML manifest here\n')
   const [result, setResult] = useState('')
   const [applying, setApplying] = useState(false)
@@ -113,16 +118,19 @@ export function ApplyYAMLPanel(): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0">
-        <h2 className="text-sm font-semibold text-white">Apply YAML</h2>
+    <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-950">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-950">
+        <div>
+          <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Apply YAML</h2>
+          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">Create or update resources</p>
+        </div>
         <button
           onClick={handleApply}
           disabled={applying}
-          className="px-4 py-1.5 text-sm text-white bg-blue-600 hover:bg-blue-500 rounded-lg
-                     transition-colors disabled:opacity-50"
+          className="px-6 py-2 text-xs font-black text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-lg shadow-blue-500/20
+                     transition-all active:scale-95 disabled:opacity-50 uppercase tracking-widest"
         >
-          {applying ? 'Applying…' : 'kubectl apply'}
+          {applying ? 'Applying…' : 'KUBECTL APPLY'}
         </button>
       </div>
       <div className="flex-1 min-h-0">
@@ -131,19 +139,29 @@ export function ApplyYAMLPanel(): JSX.Element {
           language="yaml"
           value={content}
           onChange={v => setContent(v ?? '')}
-          theme="vs-dark"
+          theme={theme === 'dark' ? 'vs-dark' : 'light'}
           options={{
             minimap: { enabled: false },
             fontSize: 12,
             scrollBeyondLastLine: false,
             wordWrap: 'on',
-            padding: { top: 8 }
+            padding: { top: 16 },
+            fontFamily: "'JetBrains Mono', 'Fira Code', 'Menlo', monospace",
           }}
         />
       </div>
       {result && (
-        <div className={`px-4 py-3 border-t border-white/10 shrink-0 ${result.startsWith('Error') ? 'bg-red-900/20' : 'bg-green-900/20'}`}>
-          <pre className="text-xs font-mono whitespace-pre-wrap text-gray-200">{result}</pre>
+        <div className={`px-6 py-4 border-t transition-all shrink-0 
+          ${result.startsWith('Error')
+            ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-900/30'
+            : 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900/30'}`}>
+          <div className="flex items-center gap-2 mb-2">
+            <div className={`w-2 h-2 rounded-full ${result.startsWith('Error') ? 'bg-red-500' : 'bg-emerald-500'}`} />
+            <span className={`text-[10px] font-bold uppercase tracking-widest ${result.startsWith('Error') ? 'text-red-600' : 'text-emerald-600'}`}>
+              Result
+            </span>
+          </div>
+          <pre className="text-xs font-bold font-mono whitespace-pre-wrap text-slate-700 dark:text-slate-200 leading-relaxed">{result}</pre>
         </div>
       )}
     </div>
