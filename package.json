@@ -16,7 +16,19 @@
     "build:linux": "npm run build && electron-builder --linux"
   },
   "build": {
-    "asarUnpack": ["**/node_modules/node-pty/**"]
+    "icon": "resources/icon.png",
+    "mac": {
+      "icon": "resources/icon.png"
+    },
+    "win": {
+      "icon": "resources/icon.png"
+    },
+    "linux": {
+      "icon": "resources/icon.png"
+    },
+    "asarUnpack": [
+      "**/node_modules/node-pty/**"
+    ]
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
