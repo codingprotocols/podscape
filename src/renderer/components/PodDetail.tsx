@@ -17,6 +17,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const [isStreaming, setIsStreaming] = useState(false)
   const [logError, setLogError] = useState<string | null>(null)
   const [autoScroll, setAutoScroll] = useState(true)
+  const [copyMsg, setCopyMsg] = useState('')
   const [selectedContainer, setSelectedContainer] = useState(pod.spec.containers[0]?.name ?? '')
   const [search, setSearch] = useState('')
   const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH)
@@ -135,6 +136,12 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     ? logs.filter(l => l.toLowerCase().includes(search.toLowerCase()))
     : logs
 
+  const copyLogs = () => {
+    navigator.clipboard.writeText(filteredLogs.join('\n'))
+    setCopyMsg('Copied!')
+    setTimeout(() => setCopyMsg(''), 2000)
+  }
+
   // ── Shared log toolbar content ────────────────────────────────────────────
 
   const LogToolbar = (
@@ -150,11 +157,18 @@ export default function PodDetail({ pod }: Props): JSX.Element {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {copyMsg && <span className="text-[10px] font-bold text-blue-500">{copyMsg}</span>}
           {logs.length > 0 && (
-            <button onClick={() => setLogs([])}
-              className="text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors uppercase tracking-wider">
-              Clear
-            </button>
+            <>
+              <button onClick={copyLogs}
+                className="text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors uppercase tracking-wider">
+                Copy
+              </button>
+              <button onClick={() => setLogs([])}
+                className="text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors uppercase tracking-wider">
+                Clear
+              </button>
+            </>
           )}
           {/* Fullscreen toggle */}
           <button
@@ -413,6 +427,34 @@ export default function PodDetail({ pod }: Props): JSX.Element {
           </div>
         </div>
 
+        {/* Resource requests / limits */}
+        {pod.spec.containers.some(c => c.resources?.requests || c.resources?.limits) && (
+          <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-900 shrink-0">
+            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] mb-3">Resources</h4>
+            <div className="space-y-2.5">
+              {pod.spec.containers.filter(c => c.resources?.requests || c.resources?.limits).map(c => (
+                <div key={c.name} className="bg-slate-50/50 dark:bg-slate-900/40 rounded-xl p-2.5 border border-slate-100 dark:border-slate-800/50">
+                  <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 font-mono mb-2">{c.name}</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                    {c.resources?.requests?.cpu && (
+                      <ResourceLimit label="CPU req" value={c.resources.requests.cpu} />
+                    )}
+                    {c.resources?.limits?.cpu && (
+                      <ResourceLimit label="CPU lim" value={c.resources.limits.cpu} />
+                    )}
+                    {c.resources?.requests?.memory && (
+                      <ResourceLimit label="Mem req" value={c.resources.requests.memory} />
+                    )}
+                    {c.resources?.limits?.memory && (
+                      <ResourceLimit label="Mem lim" value={c.resources.limits.memory} />
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Log viewer */}
         <div className="flex flex-col flex-1 min-h-0">
           {LogToolbar}
@@ -461,6 +503,15 @@ function MetaRow({ label, value, mono }: { label: string; value: string; mono?: 
     <div className="min-w-0">
       <dt className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-tighter mb-0.5">{label}</dt>
       <dd className={`text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate ${mono ? 'font-mono' : ''}`}>{value}</dd>
+    </div>
+  )
+}
+
+function ResourceLimit({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-[9px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-tighter">{label}</dt>
+      <dd className="text-[10px] font-bold font-mono text-slate-600 dark:text-slate-300">{value}</dd>
     </div>
   )
 }

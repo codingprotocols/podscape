@@ -301,7 +301,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const nsArg = ns === '_all' ? null : ns
 
     // These sections don't need resource loading
-    if (['terminal', 'grafana', 'extensions', 'metrics'].includes(section)) {
+    if (['terminal', 'grafana', 'extensions', 'metrics', 'network'].includes(section)) {
       if (section === 'metrics' && ctx) {
         set({ loadingResources: true })
         try {
@@ -310,6 +310,19 @@ export const useAppStore = create<AppStore>((set, get) => ({
             window.kubectl.getNodeMetrics(ctx)
           ])
           set({ podMetrics: pm, nodeMetrics: nm, loadingResources: false })
+        } catch {
+          set({ loadingResources: false })
+        }
+      }
+      if (section === 'network' && ctx) {
+        set({ loadingResources: true })
+        try {
+          const [svcs, ings, pds] = await Promise.all([
+            window.kubectl.getServices(ctx, nsArg),
+            window.kubectl.getIngresses(ctx, nsArg),
+            window.kubectl.getPods(ctx, nsArg)
+          ])
+          set({ services: svcs as KubeService[], ingresses: ings as KubeIngress[], pods: pds as KubePod[], loadingResources: false })
         } catch {
           set({ loadingResources: false })
         }

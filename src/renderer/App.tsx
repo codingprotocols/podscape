@@ -15,12 +15,51 @@ import Terminal from './components/Terminal'
 import GrafanaPanel from './components/GrafanaPanel'
 import ExtensionsPanel from './components/ExtensionsPanel'
 import SettingsPanel from './components/SettingsPanel'
+import NetworkPanel from './components/NetworkPanel'
 import ExecPanel from './components/ExecPanel'
 import YAMLViewer from './components/YAMLViewer'
 import type {
   KubePod, KubeDeployment, KubeService, KubeNode,
   KubeConfigMap, KubeSecret, AnyKubeResource
 } from './types'
+
+// ─── Error boundary ───────────────────────────────────────────────────────────
+
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode; resetKey?: string },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-4 p-8 bg-white dark:bg-slate-950">
+          <div className="w-10 h-10 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400">
+              <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
+            </svg>
+          </div>
+          <p className="text-sm font-bold text-slate-900 dark:text-white">Panel crashed</p>
+          <pre className="text-[11px] text-slate-500 dark:text-slate-400 max-w-sm text-center break-words whitespace-pre-wrap">
+            {this.state.error.message}
+          </pre>
+          <button
+            onClick={() => this.setState({ error: null })}
+            className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 // Sections that show a list + detail panel
 const LIST_SECTIONS = [
@@ -121,11 +160,15 @@ export default function App(): JSX.Element {
           <ExtensionsPanel />
         ) : section === 'settings' ? (
           <SettingsPanel />
+        ) : section === 'network' ? (
+          <NetworkPanel />
         ) : showListView ? (
           <>
             <ResourceList />
             {selectedResource && (
-              <DetailPanel resource={selectedResource} section={section} />
+              <ErrorBoundary key={selectedResource.metadata.uid}>
+                <DetailPanel resource={selectedResource} section={section} />
+              </ErrorBoundary>
             )}
           </>
         ) : null}

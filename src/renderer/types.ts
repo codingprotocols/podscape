@@ -385,6 +385,7 @@ export type ResourceKind =
   | 'terminal'
   | 'extensions'
   | 'settings'
+  | 'network'
 
 export type AnyKubeResource =
   | KubePod

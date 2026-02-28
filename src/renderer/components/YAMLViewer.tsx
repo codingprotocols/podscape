@@ -26,6 +26,16 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
     setTimeout(() => setCopyMsg(''), 2000)
   }
 
+  const handleDownload = () => {
+    const blob = new Blob([value], { type: 'text/yaml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'resource.yaml'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleSave = async () => {
     if (!onSave) return
     setSaving(true)
@@ -51,6 +61,14 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
         <div className="flex items-center gap-3">
           {saveMsg && <span className={`text-[10px] font-bold ${saveMsg.startsWith('Error') ? 'text-red-500' : 'text-emerald-500'}`}>{saveMsg.toUpperCase()}</span>}
           {copyMsg && <span className="text-[10px] font-bold text-blue-500">COPIED!</span>}
+          <button
+            onClick={handleDownload}
+            title="Download YAML"
+            className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors uppercase tracking-wider"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            Download
+          </button>
           <button
             onClick={handleCopy}
             className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors uppercase tracking-wider"

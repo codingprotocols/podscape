@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '../store'
 import type { KubeEvent } from '../types'
 import { formatAge } from '../types'
@@ -12,8 +12,8 @@ export default function EventsView(): JSX.Element {
 
   useEffect(() => { loadSection('events') }, [selectedNamespace])
 
-  const warnings = events.filter(e => e.type === 'Warning').length
-  const filtered = events
+  const warnings = useMemo(() => events.filter(e => e.type === 'Warning').length, [events])
+  const filtered = useMemo(() => events
     .filter(e => filter === 'all' || e.type === filter)
     .filter(e => {
       if (!search) return true
@@ -28,7 +28,7 @@ export default function EventsView(): JSX.Element {
       const ta = new Date(a.lastTimestamp ?? a.firstTimestamp ?? a.eventTime ?? 0).getTime()
       const tb = new Date(b.lastTimestamp ?? b.firstTimestamp ?? b.eventTime ?? 0).getTime()
       return tb - ta
-    })
+    }), [events, filter, search])
 
   return (
     <div className="flex flex-col flex-1 bg-gray-900/50 h-full">

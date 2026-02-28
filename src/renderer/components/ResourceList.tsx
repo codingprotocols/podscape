@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { useAppStore } from '../store'
 import type {
   KubePod, KubeDeployment, KubeStatefulSet, KubeReplicaSet, KubeJob, KubeCronJob,
@@ -299,8 +299,9 @@ export default function ResourceList(): JSX.Element {
   const showNsCol = selectedNamespace === '_all' && !clusterScoped
   const cols = COLUMNS[section] ?? ['Name']
 
-  const filtered = resources.filter(r =>
-    r.metadata.name.toLowerCase().includes(search.toLowerCase())
+  const filtered = useMemo(() =>
+    resources.filter(r => r.metadata.name.toLowerCase().includes(search.toLowerCase())),
+    [resources, search]
   )
 
   const handleContextMenu = (e: React.MouseEvent, resource: AnyKubeResource) => {
@@ -340,6 +341,27 @@ export default function ResourceList(): JSX.Element {
     const pod = resource as KubePod
     const container = pod.spec.containers[0]?.name ?? ''
     openExec({ pod: pod.metadata.name, container, namespace: pod.metadata.namespace ?? selectedNamespace ?? '' })
+  }
+
+  const handleCopyName = (resource: AnyKubeResource) => {
+    setContextMenu(null)
+    navigator.clipboard.writeText(resource.metadata.name)
+  }
+
+  const handleCopyIP = (resource: AnyKubeResource) => {
+    setContextMenu(null)
+    let ip = ''
+    if (section === 'services') {
+      const svc = resource as KubeService
+      ip = svc.spec.clusterIP ?? ''
+    } else if (section === 'nodes') {
+      const node = resource as KubeNode
+      ip = (node.status.addresses ?? []).find(a => a.type === 'InternalIP')?.address ?? ''
+    } else if (section === 'pods') {
+      const pod = resource as KubePod
+      ip = pod.status.podIP ?? ''
+    }
+    if (ip) navigator.clipboard.writeText(ip)
   }
 
   return (
@@ -459,6 +481,10 @@ export default function ResourceList(): JSX.Element {
           style={{ left: Math.min(contextMenu.x, window.innerWidth - 200), top: Math.min(contextMenu.y, window.innerHeight - 200) }}
           onClick={e => e.stopPropagation()}
         >
+          <MenuItem label="Copy Name" onClick={() => handleCopyName(contextMenu.resource)} icon="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          {['services', 'nodes', 'pods'].includes(section) && (
+            <MenuItem label="Copy IP" onClick={() => handleCopyIP(contextMenu.resource)} icon="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9" />
+          )}
           <MenuItem label="View YAML" onClick={() => handleViewYAML(contextMenu.resource)} icon="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9zM13 2v7h7" />
           {['deployments', 'statefulsets'].includes(section) && (
             <>

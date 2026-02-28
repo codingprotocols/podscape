@@ -41,13 +41,23 @@ async function getResources(
   const args = ['--context', context]
   if (namespace) args.push('--namespace', namespace)
   args.push('get', kind, '-o', 'json')
-  const output = await spawnKubectl(args)
-  try { return (JSON.parse(output).items ?? []) as unknown[] } catch { return [] }
+  try {
+    const output = await spawnKubectl(args)
+    try { return (JSON.parse(output).items ?? []) as unknown[] } catch { return [] }
+  } catch (err) {
+    console.error(`[kubectl] getResources ${kind} failed:`, (err as Error).message)
+    return []
+  }
 }
 
 async function getAllNamespaceResources(context: string, kind: string): Promise<unknown[]> {
-  const output = await spawnKubectl(['--context', context, 'get', kind, '--all-namespaces', '-o', 'json'])
-  try { return (JSON.parse(output).items ?? []) as unknown[] } catch { return [] }
+  try {
+    const output = await spawnKubectl(['--context', context, 'get', kind, '--all-namespaces', '-o', 'json'])
+    try { return (JSON.parse(output).items ?? []) as unknown[] } catch { return [] }
+  } catch (err) {
+    console.error(`[kubectl] getAllNamespaceResources ${kind} failed:`, (err as Error).message)
+    return []
+  }
 }
 
 // Active log streams

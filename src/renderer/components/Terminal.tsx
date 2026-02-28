@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { useAppStore } from '../store'
+import { getTerminalTheme, TERM_FONT } from '../utils/terminalTheme'
 
 interface TermSession {
   id: string
@@ -17,6 +18,9 @@ export default function Terminal(): JSX.Element {
   const { selectedContext, selectedNamespace, theme } = useAppStore()
   const [sessions, setSessions] = useState<TermSession[]>([])
   const [activeIdx, setActiveIdx] = useState(0)
+  const [editingIdx, setEditingIdx] = useState<number | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const editInputRef = useRef<HTMLInputElement>(null)
 
   const addSession = () => {
     const title = `Shell ${sessionCounter++}`
@@ -31,6 +35,20 @@ export default function Terminal(): JSX.Element {
       return prev.filter((_, i) => i !== idx)
     })
     setActiveIdx(prev => Math.max(0, prev - 1))
+  }
+
+  const startRename = (idx: number, currentTitle: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setEditingIdx(idx)
+    setEditTitle(currentTitle)
+    setTimeout(() => editInputRef.current?.select(), 0)
+  }
+
+  const commitRename = () => {
+    if (editingIdx !== null && editTitle.trim()) {
+      setSessions(prev => prev.map((s, i) => i === editingIdx ? { ...s, title: editTitle.trim() } : s))
+    }
+    setEditingIdx(null)
   }
 
   // Auto-create first session
@@ -53,11 +71,25 @@ export default function Terminal(): JSX.Element {
                 ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 border-slate-200 dark:border-slate-800 shadow-[0_-2px_8px_rgba(0,0,0,0.05)]'
                 : 'bg-transparent text-slate-400 dark:text-slate-600 border-transparent hover:text-slate-600 dark:hover:text-slate-400'}`}
             onClick={() => setActiveIdx(i)}
+            onDoubleClick={e => startRename(i, s.title, e)}
+            title="Double-click to rename"
           >
             <span className="w-2.5 h-2.5 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-[8px] font-black">
               {i + 1}
             </span>
-            <span className="uppercase tracking-widest">{s.title}</span>
+            {editingIdx === i ? (
+              <input
+                ref={editInputRef}
+                value={editTitle}
+                onChange={e => setEditTitle(e.target.value)}
+                onBlur={commitRename}
+                onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setEditingIdx(null) }}
+                onClick={e => e.stopPropagation()}
+                className="w-20 bg-transparent border-b border-blue-400 outline-none text-[10px] font-bold text-blue-400"
+              />
+            ) : (
+              <span className="uppercase tracking-widest">{s.title}</span>
+            )}
             {sessions.length > 1 && (
               <button
                 onClick={e => { e.stopPropagation(); removeSession(i) }}
@@ -141,40 +173,14 @@ function TermPane({ sessionId, context, namespace, theme, onPtyReady }: TermPane
   const offExitRef = useRef<(() => void) | null>(null)
   const [ptyReady, setPtyReady] = useState(false)
 
+  // ── Session init — only re-runs when sessionId changes ────────────────────
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
-    const isDark = theme === 'dark'
     const term = new XTerm({
-      theme: isDark ? {
-        background: '#020617', // slate-950
-        foreground: '#f8fafc', // slate-50
-        cursor: '#3b82f6',
-        selectionBackground: 'rgba(59, 130, 246, 0.3)',
-        black: '#0f172a', brightBlack: '#334155',
-        red: '#ef4444', brightRed: '#f87171',
-        green: '#10b981', brightGreen: '#34d399',
-        yellow: '#f59e0b', brightYellow: '#fbbf24',
-        blue: '#3b82f6', brightBlue: '#60a5fa',
-        magenta: '#8b5cf6', brightMagenta: '#a78bfa',
-        cyan: '#06b6d4', brightCyan: '#22d3ee',
-        white: '#f1f5f9', brightWhite: '#ffffff'
-      } : {
-        background: '#ffffff',
-        foreground: '#0f172a',
-        cursor: '#3b82f6',
-        selectionBackground: 'rgba(59, 130, 246, 0.1)',
-        black: '#000000', brightBlack: '#475569',
-        red: '#dc2626', brightRed: '#ef4444',
-        green: '#16a34a', brightGreen: '#22c55e',
-        yellow: '#d97706', brightYellow: '#f59e0b',
-        blue: '#2563eb', brightBlue: '#3b82f6',
-        magenta: '#7c3aed', brightMagenta: '#8b5cf6',
-        cyan: '#0891b2', brightCyan: '#06b6d4',
-        white: '#f1f5f9', brightWhite: '#ffffff'
-      },
-      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+      theme: getTerminalTheme(theme === 'dark'),
+      fontFamily: TERM_FONT,
       fontSize: 12,
       lineHeight: 1.5,
       cursorBlink: true,
@@ -224,7 +230,14 @@ function TermPane({ sessionId, context, namespace, theme, onPtyReady }: TermPane
       term.dispose()
       setPtyReady(false)
     }
-  }, [sessionId, theme])
+  }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Theme update — applies without reinitializing the session ─────────────
+  useEffect(() => {
+    if (xtermRef.current) {
+      xtermRef.current.options.theme = getTerminalTheme(theme === 'dark')
+    }
+  }, [theme])
 
   return (
     <div className="relative w-full h-full">

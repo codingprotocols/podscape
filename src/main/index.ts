@@ -16,7 +16,9 @@ function createWindow(): void {
     vibrancy: 'under-window',
     visualEffectState: 'active',
     backgroundColor: '#00000000',
-    icon: join(__dirname, '../../resources/icon.png'),
+    icon: join(__dirname, process.platform === 'darwin'
+      ? '../../resources/icon.icns'
+      : '../../resources/icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
