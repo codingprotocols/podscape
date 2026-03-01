@@ -328,6 +328,203 @@ export interface KubeCRD {
   }
 }
 
+// ─── DaemonSet ────────────────────────────────────────────────────────────────
+
+export interface KubeDaemonSet {
+  metadata: ObjectMeta
+  spec: {
+    selector: { matchLabels?: Record<string, string> }
+    template: { metadata: Partial<ObjectMeta>; spec: PodSpec }
+    updateStrategy?: { type?: string; rollingUpdate?: { maxUnavailable?: number | string } }
+  }
+  status: {
+    desiredNumberScheduled: number
+    currentNumberScheduled: number
+    numberReady: number
+    updatedNumberScheduled?: number
+    numberAvailable?: number
+    numberUnavailable?: number
+  }
+}
+
+// ─── HorizontalPodAutoscaler ──────────────────────────────────────────────────
+
+export interface KubeHPA {
+  metadata: ObjectMeta
+  spec: {
+    scaleTargetRef: { apiVersion?: string; kind: string; name: string }
+    minReplicas?: number
+    maxReplicas: number
+    metrics?: Array<{ type: string; [key: string]: unknown }>
+  }
+  status: {
+    currentReplicas: number
+    desiredReplicas: number
+    currentMetrics?: Array<{ type: string; [key: string]: unknown }>
+    conditions?: Array<{ type: string; status: string; reason?: string; message?: string }>
+    lastScaleTime?: string
+  }
+}
+
+// ─── PodDisruptionBudget ──────────────────────────────────────────────────────
+
+export interface KubePDB {
+  metadata: ObjectMeta
+  spec: {
+    minAvailable?: number | string
+    maxUnavailable?: number | string
+    selector?: { matchLabels?: Record<string, string> }
+  }
+  status: {
+    currentHealthy: number
+    desiredHealthy: number
+    disruptionsAllowed: number
+    expectedPods: number
+  }
+}
+
+// ─── IngressClass ─────────────────────────────────────────────────────────────
+
+export interface KubeIngressClass {
+  metadata: ObjectMeta
+  spec: { controller?: string; parameters?: unknown }
+}
+
+// ─── NetworkPolicy ────────────────────────────────────────────────────────────
+
+export interface KubeNetworkPolicy {
+  metadata: ObjectMeta
+  spec: {
+    podSelector: { matchLabels?: Record<string, string> }
+    policyTypes?: string[]
+    ingress?: Array<unknown>
+    egress?: Array<unknown>
+  }
+}
+
+// ─── Endpoints ────────────────────────────────────────────────────────────────
+
+export interface KubeEndpoints {
+  metadata: ObjectMeta
+  subsets?: Array<{
+    addresses?: Array<{ ip: string; nodeName?: string; targetRef?: { kind: string; name: string } }>
+    ports?: Array<{ name?: string; port: number; protocol?: string }>
+  }>
+}
+
+// ─── PersistentVolumeClaim ────────────────────────────────────────────────────
+
+export interface KubePVC {
+  metadata: ObjectMeta
+  spec: {
+    accessModes?: string[]
+    storageClassName?: string
+    volumeName?: string
+    resources?: { requests?: Record<string, string> }
+    volumeMode?: string
+  }
+  status: {
+    phase?: string
+    capacity?: Record<string, string>
+    accessModes?: string[]
+  }
+}
+
+// ─── PersistentVolume ─────────────────────────────────────────────────────────
+
+export interface KubePV {
+  metadata: ObjectMeta
+  spec: {
+    capacity?: Record<string, string>
+    accessModes?: string[]
+    persistentVolumeReclaimPolicy?: string
+    storageClassName?: string
+    volumeMode?: string
+    claimRef?: { name?: string; namespace?: string }
+    [key: string]: unknown
+  }
+  status: { phase?: string; reason?: string }
+}
+
+// ─── StorageClass ─────────────────────────────────────────────────────────────
+
+export interface KubeStorageClass {
+  metadata: ObjectMeta
+  provisioner: string
+  reclaimPolicy?: string
+  volumeBindingMode?: string
+  allowVolumeExpansion?: boolean
+  parameters?: Record<string, string>
+}
+
+// ─── ServiceAccount ───────────────────────────────────────────────────────────
+
+export interface KubeServiceAccount {
+  metadata: ObjectMeta
+  secrets?: Array<{ name: string }>
+  imagePullSecrets?: Array<{ name: string }>
+  automountServiceAccountToken?: boolean
+}
+
+// ─── RBAC ─────────────────────────────────────────────────────────────────────
+
+export interface PolicyRule {
+  apiGroups?: string[]
+  resources?: string[]
+  verbs: string[]
+  resourceNames?: string[]
+  nonResourceURLs?: string[]
+}
+
+export interface KubeRole {
+  metadata: ObjectMeta
+  rules?: PolicyRule[]
+}
+
+export interface KubeClusterRole {
+  metadata: ObjectMeta
+  rules?: PolicyRule[]
+  aggregationRule?: { clusterRoleSelectors?: Array<{ matchLabels?: Record<string, string> }> }
+}
+
+export interface RoleRef {
+  apiGroup: string
+  kind: string
+  name: string
+}
+
+export interface Subject {
+  kind: string
+  name: string
+  namespace?: string
+  apiGroup?: string
+}
+
+export interface KubeRoleBinding {
+  metadata: ObjectMeta
+  roleRef: RoleRef
+  subjects?: Subject[]
+}
+
+export interface KubeClusterRoleBinding {
+  metadata: ObjectMeta
+  roleRef: RoleRef
+  subjects?: Subject[]
+}
+
+// ─── Port Forward ─────────────────────────────────────────────────────────────
+
+export interface PortForwardEntry {
+  id: string
+  type: 'pod' | 'service'
+  namespace: string
+  name: string
+  localPort: number
+  remotePort: number
+  status: 'starting' | 'active' | 'error' | 'stopped'
+  error?: string
+}
+
 // ─── Metrics ──────────────────────────────────────────────────────────────────
 
 export interface NodeMetrics {
@@ -368,14 +565,29 @@ export type ResourceKind =
   | 'dashboard'
   | 'pods'
   | 'deployments'
+  | 'daemonsets'
   | 'statefulsets'
   | 'replicasets'
   | 'jobs'
   | 'cronjobs'
+  | 'hpas'
+  | 'pdbs'
   | 'services'
   | 'ingresses'
+  | 'ingressclasses'
+  | 'networkpolicies'
+  | 'endpoints'
+  | 'portforwards'
   | 'configmaps'
   | 'secrets'
+  | 'pvcs'
+  | 'pvs'
+  | 'storageclasses'
+  | 'serviceaccounts'
+  | 'roles'
+  | 'clusterroles'
+  | 'rolebindings'
+  | 'clusterrolebindings'
   | 'nodes'
   | 'namespaces'
   | 'events'
@@ -390,14 +602,28 @@ export type ResourceKind =
 export type AnyKubeResource =
   | KubePod
   | KubeDeployment
+  | KubeDaemonSet
   | KubeStatefulSet
   | KubeReplicaSet
   | KubeJob
   | KubeCronJob
+  | KubeHPA
+  | KubePDB
   | KubeService
   | KubeIngress
+  | KubeIngressClass
+  | KubeNetworkPolicy
+  | KubeEndpoints
   | KubeConfigMap
   | KubeSecret
+  | KubePVC
+  | KubePV
+  | KubeStorageClass
+  | KubeServiceAccount
+  | KubeRole
+  | KubeClusterRole
+  | KubeRoleBinding
+  | KubeClusterRoleBinding
   | KubeNode
   | KubeNamespace
   | KubeCRD

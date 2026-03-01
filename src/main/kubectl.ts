@@ -63,6 +63,9 @@ async function getAllNamespaceResources(context: string, kind: string): Promise<
 // Active log streams
 const activeStreams = new Map<string, ReturnType<typeof spawn>>()
 
+// Active port forwards
+const activeForwards = new Map<string, ReturnType<typeof spawn>>()
+
 export function registerKubectlHandlers(): void {
   // ── Context / Config ──────────────────────────────────────────────────────
 
@@ -265,6 +268,125 @@ export function registerKubectlHandlers(): void {
       activeStreams.get(streamId)!.kill()
       activeStreams.delete(streamId)
     }
+  })
+
+  // ── Additional Workloads ──────────────────────────────────────────────────
+
+  ipcMain.handle('kubectl:getDaemonSets', async (_event, context: string, namespace: string | null) =>
+    namespace ? getResources(context, namespace, 'daemonsets') : getAllNamespaceResources(context, 'daemonsets'))
+
+  // ── Autoscaling ───────────────────────────────────────────────────────────
+
+  ipcMain.handle('kubectl:getHPAs', async (_event, context: string, namespace: string | null) =>
+    namespace ? getResources(context, namespace, 'horizontalpodautoscalers') : getAllNamespaceResources(context, 'horizontalpodautoscalers'))
+
+  ipcMain.handle('kubectl:getPodDisruptionBudgets', async (_event, context: string, namespace: string | null) =>
+    namespace ? getResources(context, namespace, 'poddisruptionbudgets') : getAllNamespaceResources(context, 'poddisruptionbudgets'))
+
+  // ── Extended Network ──────────────────────────────────────────────────────
+
+  ipcMain.handle('kubectl:getIngressClasses', async (_event, context: string) => {
+    try {
+      const output = await spawnKubectl(['--context', context, 'get', 'ingressclasses', '-o', 'json'])
+      try { return (JSON.parse(output).items ?? []) as unknown[] } catch { return [] }
+    } catch (err) {
+      console.error('[kubectl] getIngressClasses failed:', (err as Error).message)
+      return []
+    }
+  })
+
+  ipcMain.handle('kubectl:getNetworkPolicies', async (_event, context: string, namespace: string | null) =>
+    namespace ? getResources(context, namespace, 'networkpolicies') : getAllNamespaceResources(context, 'networkpolicies'))
+
+  ipcMain.handle('kubectl:getEndpoints', async (_event, context: string, namespace: string | null) =>
+    namespace ? getResources(context, namespace, 'endpoints') : getAllNamespaceResources(context, 'endpoints'))
+
+  // ── Storage ───────────────────────────────────────────────────────────────
+
+  ipcMain.handle('kubectl:getPVCs', async (_event, context: string, namespace: string | null) =>
+    namespace ? getResources(context, namespace, 'persistentvolumeclaims') : getAllNamespaceResources(context, 'persistentvolumeclaims'))
+
+  ipcMain.handle('kubectl:getPVs', async (_event, context: string) => {
+    try {
+      const output = await spawnKubectl(['--context', context, 'get', 'persistentvolumes', '-o', 'json'])
+      try { return (JSON.parse(output).items ?? []) as unknown[] } catch { return [] }
+    } catch (err) {
+      console.error('[kubectl] getPVs failed:', (err as Error).message)
+      return []
+    }
+  })
+
+  ipcMain.handle('kubectl:getStorageClasses', async (_event, context: string) => {
+    try {
+      const output = await spawnKubectl(['--context', context, 'get', 'storageclasses', '-o', 'json'])
+      try { return (JSON.parse(output).items ?? []) as unknown[] } catch { return [] }
+    } catch (err) {
+      console.error('[kubectl] getStorageClasses failed:', (err as Error).message)
+      return []
+    }
+  })
+
+  // ── RBAC ──────────────────────────────────────────────────────────────────
+
+  ipcMain.handle('kubectl:getServiceAccounts', async (_event, context: string, namespace: string | null) =>
+    namespace ? getResources(context, namespace, 'serviceaccounts') : getAllNamespaceResources(context, 'serviceaccounts'))
+
+  ipcMain.handle('kubectl:getRoles', async (_event, context: string, namespace: string | null) =>
+    namespace ? getResources(context, namespace, 'roles') : getAllNamespaceResources(context, 'roles'))
+
+  ipcMain.handle('kubectl:getClusterRoles', async (_event, context: string) => {
+    try {
+      const output = await spawnKubectl(['--context', context, 'get', 'clusterroles', '-o', 'json'])
+      try { return (JSON.parse(output).items ?? []) as unknown[] } catch { return [] }
+    } catch (err) {
+      console.error('[kubectl] getClusterRoles failed:', (err as Error).message)
+      return []
+    }
+  })
+
+  ipcMain.handle('kubectl:getRoleBindings', async (_event, context: string, namespace: string | null) =>
+    namespace ? getResources(context, namespace, 'rolebindings') : getAllNamespaceResources(context, 'rolebindings'))
+
+  ipcMain.handle('kubectl:getClusterRoleBindings', async (_event, context: string) => {
+    try {
+      const output = await spawnKubectl(['--context', context, 'get', 'clusterrolebindings', '-o', 'json'])
+      try { return (JSON.parse(output).items ?? []) as unknown[] } catch { return [] }
+    } catch (err) {
+      console.error('[kubectl] getClusterRoleBindings failed:', (err as Error).message)
+      return []
+    }
+  })
+
+  // ── Port Forwarding ───────────────────────────────────────────────────────
+
+  ipcMain.handle(
+    'kubectl:portForward',
+    async (event, context: string, namespace: string, type: string, name: string, localPort: number, remotePort: number, id: string) => {
+      const binary = findKubectl()
+      const child = spawn(binary, [
+        '--context', context, '--namespace', namespace,
+        'port-forward', `${type}/${name}`, `${localPort}:${remotePort}`
+      ])
+      activeForwards.set(id, child)
+
+      child.stdout.on('data', (chunk: Buffer) => {
+        if (!event.sender.isDestroyed()) event.sender.send('portforward:ready', id, chunk.toString())
+      })
+      child.stderr.on('data', (chunk: Buffer) => {
+        if (!event.sender.isDestroyed()) event.sender.send('portforward:error', id, chunk.toString())
+      })
+      child.on('close', () => {
+        activeForwards.delete(id)
+        if (!event.sender.isDestroyed()) event.sender.send('portforward:exit', id)
+      })
+
+      return id
+    }
+  )
+
+  ipcMain.handle('kubectl:stopPortForward', async (_e, id: string) => {
+    activeForwards.get(id)?.kill()
+    activeForwards.delete(id)
   })
 
   // ── Extensions: load plugins from ~/.podscape/plugins ────────────────────
