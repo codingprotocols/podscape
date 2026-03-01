@@ -9,6 +9,11 @@ import ServiceDetail from './components/ServiceDetail'
 import NodeDetail from './components/NodeDetail'
 import ConfigMapDetail from './components/ConfigMapDetail'
 import SecretDetail from './components/SecretDetail'
+import DaemonSetDetail from './components/DaemonSetDetail'
+import HPADetail from './components/HPADetail'
+import PVCDetail from './components/PVCDetail'
+import RoleBindingDetail from './components/RoleBindingDetail'
+import PortForwardPanel from './components/PortForwardPanel'
 import EventsView from './components/EventsView'
 import MetricsView from './components/MetricsView'
 import Terminal from './components/Terminal'
@@ -19,8 +24,9 @@ import NetworkPanel from './components/NetworkPanel'
 import ExecPanel from './components/ExecPanel'
 import YAMLViewer from './components/YAMLViewer'
 import type {
-  KubePod, KubeDeployment, KubeService, KubeNode,
-  KubeConfigMap, KubeSecret, AnyKubeResource
+  KubePod, KubeDeployment, KubeDaemonSet, KubeService, KubeNode,
+  KubeConfigMap, KubeSecret, KubeHPA, KubePVC, KubeRoleBinding, KubeClusterRoleBinding,
+  AnyKubeResource
 } from './types'
 
 // ─── Error boundary ───────────────────────────────────────────────────────────
@@ -63,9 +69,13 @@ class ErrorBoundary extends React.Component<
 
 // Sections that show a list + detail panel
 const LIST_SECTIONS = [
-  'pods', 'deployments', 'statefulsets', 'replicasets',
-  'jobs', 'cronjobs', 'services', 'ingresses',
-  'configmaps', 'secrets', 'nodes', 'namespaces', 'crds'
+  'pods', 'deployments', 'daemonsets', 'statefulsets', 'replicasets',
+  'jobs', 'cronjobs', 'hpas', 'pdbs',
+  'services', 'ingresses', 'ingressclasses', 'networkpolicies', 'endpoints',
+  'configmaps', 'secrets',
+  'pvcs', 'pvs', 'storageclasses',
+  'serviceaccounts', 'roles', 'clusterroles', 'rolebindings', 'clusterrolebindings',
+  'nodes', 'namespaces', 'crds'
 ]
 
 function DetailPanel({ resource, section }: { resource: AnyKubeResource; section: string }) {
@@ -74,6 +84,8 @@ function DetailPanel({ resource, section }: { resource: AnyKubeResource; section
       return <PodDetail pod={resource as KubePod} />
     case 'deployments':
       return <DeploymentDetail deployment={resource as KubeDeployment} />
+    case 'daemonsets':
+      return <DaemonSetDetail daemonSet={resource as KubeDaemonSet} />
     case 'services':
       return <ServiceDetail service={resource as KubeService} />
     case 'nodes':
@@ -82,6 +94,14 @@ function DetailPanel({ resource, section }: { resource: AnyKubeResource; section
       return <ConfigMapDetail configMap={resource as KubeConfigMap} />
     case 'secrets':
       return <SecretDetail secret={resource as KubeSecret} />
+    case 'hpas':
+      return <HPADetail hpa={resource as KubeHPA} />
+    case 'pvcs':
+      return <PVCDetail pvc={resource as KubePVC} />
+    case 'rolebindings':
+      return <RoleBindingDetail binding={resource as KubeRoleBinding} />
+    case 'clusterrolebindings':
+      return <RoleBindingDetail binding={resource as KubeClusterRoleBinding} />
     default:
       return <DefaultDetail resource={resource} />
   }
@@ -90,7 +110,7 @@ function DetailPanel({ resource, section }: { resource: AnyKubeResource; section
 function DefaultDetail({ resource }: { resource: AnyKubeResource }) {
   const [yaml, setYaml] = React.useState<string | null>(null)
   const { getYAML, section } = useAppStore()
-  const clusterScoped = ['nodes', 'namespaces', 'crds'].includes(section)
+  const clusterScoped = ['nodes', 'namespaces', 'crds', 'ingressclasses', 'pvs', 'storageclasses', 'clusterroles', 'clusterrolebindings'].includes(section)
 
   useEffect(() => {
     getYAML(
@@ -124,10 +144,16 @@ function DefaultDetail({ resource }: { resource: AnyKubeResource }) {
 
 function kindForSection(section: string): string {
   const map: Record<string, string> = {
-    pods: 'pod', deployments: 'deployment', statefulsets: 'statefulset',
-    replicasets: 'replicaset', jobs: 'job', cronjobs: 'cronjob',
-    services: 'service', ingresses: 'ingress', configmaps: 'configmap',
-    secrets: 'secret', nodes: 'node', namespaces: 'namespace', crds: 'crd'
+    pods: 'pod', deployments: 'deployment', daemonsets: 'daemonset',
+    statefulsets: 'statefulset', replicasets: 'replicaset', jobs: 'job', cronjobs: 'cronjob',
+    hpas: 'horizontalpodautoscaler', pdbs: 'poddisruptionbudget',
+    services: 'service', ingresses: 'ingress', ingressclasses: 'ingressclass',
+    networkpolicies: 'networkpolicy', endpoints: 'endpoints',
+    configmaps: 'configmap', secrets: 'secret',
+    pvcs: 'persistentvolumeclaim', pvs: 'persistentvolume', storageclasses: 'storageclass',
+    serviceaccounts: 'serviceaccount', roles: 'role', clusterroles: 'clusterrole',
+    rolebindings: 'rolebinding', clusterrolebindings: 'clusterrolebinding',
+    nodes: 'node', namespaces: 'namespace', crds: 'crd'
   }
   return map[section] ?? section
 }
@@ -162,6 +188,8 @@ export default function App(): JSX.Element {
           <SettingsPanel />
         ) : section === 'network' ? (
           <NetworkPanel />
+        ) : section === 'portforwards' ? (
+          <PortForwardPanel />
         ) : showListView ? (
           <>
             <ResourceList />

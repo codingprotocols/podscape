@@ -1,9 +1,12 @@
 import { create } from 'zustand'
 import type {
-  KubeContextEntry, KubeNamespace, KubePod, KubeDeployment, KubeStatefulSet,
-  KubeReplicaSet, KubeJob, KubeCronJob, KubeService, KubeIngress,
-  KubeConfigMap, KubeSecret, KubeNode, KubeEvent, KubeCRD,
-  NodeMetrics, PodMetrics, Plugin, ResourceKind, AnyKubeResource
+  KubeContextEntry, KubeNamespace, KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet,
+  KubeReplicaSet, KubeJob, KubeCronJob, KubeHPA, KubePDB,
+  KubeService, KubeIngress, KubeIngressClass, KubeNetworkPolicy, KubeEndpoints,
+  KubeConfigMap, KubeSecret, KubePVC, KubePV, KubeStorageClass,
+  KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
+  KubeNode, KubeEvent, KubeCRD,
+  NodeMetrics, PodMetrics, Plugin, ResourceKind, AnyKubeResource, PortForwardEntry
 } from './types'
 
 // ─── Window type declarations ─────────────────────────────────────────────────
@@ -17,14 +20,28 @@ declare global {
       getNamespaces: (context: string) => Promise<KubeNamespace[]>
       getPods: (context: string, namespace: string | null) => Promise<KubePod[]>
       getDeployments: (context: string, namespace: string | null) => Promise<KubeDeployment[]>
+      getDaemonSets: (context: string, namespace: string | null) => Promise<KubeDaemonSet[]>
       getStatefulSets: (context: string, namespace: string | null) => Promise<KubeStatefulSet[]>
       getReplicaSets: (context: string, namespace: string | null) => Promise<KubeReplicaSet[]>
       getJobs: (context: string, namespace: string | null) => Promise<KubeJob[]>
       getCronJobs: (context: string, namespace: string | null) => Promise<KubeCronJob[]>
+      getHPAs: (context: string, namespace: string | null) => Promise<KubeHPA[]>
+      getPodDisruptionBudgets: (context: string, namespace: string | null) => Promise<KubePDB[]>
       getServices: (context: string, namespace: string | null) => Promise<KubeService[]>
       getIngresses: (context: string, namespace: string | null) => Promise<KubeIngress[]>
+      getIngressClasses: (context: string) => Promise<KubeIngressClass[]>
+      getNetworkPolicies: (context: string, namespace: string | null) => Promise<KubeNetworkPolicy[]>
+      getEndpoints: (context: string, namespace: string | null) => Promise<KubeEndpoints[]>
       getConfigMaps: (context: string, namespace: string | null) => Promise<KubeConfigMap[]>
       getSecrets: (context: string, namespace: string | null) => Promise<KubeSecret[]>
+      getPVCs: (context: string, namespace: string | null) => Promise<KubePVC[]>
+      getPVs: (context: string) => Promise<KubePV[]>
+      getStorageClasses: (context: string) => Promise<KubeStorageClass[]>
+      getServiceAccounts: (context: string, namespace: string | null) => Promise<KubeServiceAccount[]>
+      getRoles: (context: string, namespace: string | null) => Promise<KubeRole[]>
+      getClusterRoles: (context: string) => Promise<KubeClusterRole[]>
+      getRoleBindings: (context: string, namespace: string | null) => Promise<KubeRoleBinding[]>
+      getClusterRoleBindings: (context: string) => Promise<KubeClusterRoleBinding[]>
       getNodes: (context: string) => Promise<KubeNode[]>
       getCRDs: (context: string) => Promise<KubeCRD[]>
       getEvents: (context: string, namespace: string | null) => Promise<KubeEvent[]>
@@ -40,6 +57,11 @@ declare global {
         onChunk: (chunk: string) => void, onEnd: () => void
       ) => Promise<string>
       stopLogs: (streamId: string) => Promise<void>
+      portForward: (context: string, namespace: string, type: string, name: string, localPort: number, remotePort: number, id: string) => Promise<string>
+      stopPortForward: (id: string) => Promise<void>
+      onPortForwardReady: (id: string, cb: (msg: string) => void) => () => void
+      onPortForwardError: (id: string, cb: (msg: string) => void) => () => void
+      onPortForwardExit: (id: string, cb: () => void) => () => void
     }
     terminal: {
       create: (context?: string, namespace?: string) => Promise<string>
@@ -92,20 +114,35 @@ export interface AppStore {
   // Resources
   pods: KubePod[]
   deployments: KubeDeployment[]
+  daemonsets: KubeDaemonSet[]
   statefulsets: KubeStatefulSet[]
   replicasets: KubeReplicaSet[]
   jobs: KubeJob[]
   cronjobs: KubeCronJob[]
+  hpas: KubeHPA[]
+  pdbs: KubePDB[]
   services: KubeService[]
   ingresses: KubeIngress[]
+  ingressclasses: KubeIngressClass[]
+  networkpolicies: KubeNetworkPolicy[]
+  endpoints: KubeEndpoints[]
   configmaps: KubeConfigMap[]
   secrets: KubeSecret[]
+  pvcs: KubePVC[]
+  pvs: KubePV[]
+  storageclasses: KubeStorageClass[]
+  serviceaccounts: KubeServiceAccount[]
+  roles: KubeRole[]
+  clusterroles: KubeClusterRole[]
+  rolebindings: KubeRoleBinding[]
+  clusterrolebindings: KubeClusterRoleBinding[]
   nodes: KubeNode[]
   events: KubeEvent[]
   crds: KubeCRD[]
   podMetrics: PodMetrics[]
   nodeMetrics: NodeMetrics[]
   plugins: Plugin[]
+  portForwards: PortForwardEntry[]
 
   // Grafana
   grafanaUrl: string
@@ -142,6 +179,10 @@ export interface AppStore {
   deleteResource: (kind: string, name: string, clusterScoped?: boolean, namespace?: string) => Promise<void>
   getYAML: (kind: string, name: string, clusterScoped?: boolean, namespace?: string) => Promise<string>
   applyYAML: (yaml: string) => Promise<string>
+
+  // Port forwarding
+  startPortForward: (entry: PortForwardEntry) => void
+  stopPortForward: (id: string) => void
 }
 
 // Monotonically-increasing counter to detect stale context-switch responses
@@ -168,20 +209,35 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   pods: [],
   deployments: [],
+  daemonsets: [],
   statefulsets: [],
   replicasets: [],
   jobs: [],
   cronjobs: [],
+  hpas: [],
+  pdbs: [],
   services: [],
   ingresses: [],
+  ingressclasses: [],
+  networkpolicies: [],
+  endpoints: [],
   configmaps: [],
   secrets: [],
+  pvcs: [],
+  pvs: [],
+  storageclasses: [],
+  serviceaccounts: [],
+  roles: [],
+  clusterroles: [],
+  rolebindings: [],
+  clusterrolebindings: [],
   nodes: [],
   events: [],
   crds: [],
   podMetrics: [],
   nodeMetrics: [],
   plugins: [],
+  portForwards: [],
 
   // ── Grafana ────────────────────────────────────────────────────────────────
 
@@ -256,9 +312,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({
       selectedContext: name, loadingNamespaces: true,
       namespaces: [], selectedNamespace: null, selectedResource: null, error: null,
-      pods: [], deployments: [], statefulsets: [], replicasets: [],
-      jobs: [], cronjobs: [], services: [], ingresses: [],
-      configmaps: [], secrets: [], nodes: [], events: [], crds: []
+      pods: [], deployments: [], daemonsets: [], statefulsets: [], replicasets: [],
+      jobs: [], cronjobs: [], hpas: [], pdbs: [],
+      services: [], ingresses: [], ingressclasses: [], networkpolicies: [], endpoints: [],
+      configmaps: [], secrets: [], pvcs: [], pvs: [], storageclasses: [],
+      serviceaccounts: [], roles: [], clusterroles: [], rolebindings: [], clusterrolebindings: [],
+      nodes: [], events: [], crds: []
     })
     try {
       const nsList = await window.kubectl.getNamespaces(name)
@@ -301,7 +360,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const nsArg = ns === '_all' ? null : ns
 
     // These sections don't need resource loading
-    if (['terminal', 'grafana', 'extensions', 'metrics', 'network'].includes(section)) {
+    if (['terminal', 'grafana', 'extensions', 'metrics', 'network', 'portforwards'].includes(section)) {
       if (section === 'metrics' && ctx) {
         set({ loadingResources: true })
         try {
@@ -374,6 +433,50 @@ export const useAppStore = create<AppStore>((set, get) => ({
           break
         case 'crds':
           set({ crds: await window.kubectl.getCRDs(ctx) })
+          break
+        // ── New namespace-scoped ──
+        case 'daemonsets':
+          set({ daemonsets: (ns ? await window.kubectl.getDaemonSets(ctx, nsArg) : []) })
+          break
+        case 'hpas':
+          set({ hpas: (ns ? await window.kubectl.getHPAs(ctx, nsArg) : []) })
+          break
+        case 'pdbs':
+          set({ pdbs: (ns ? await window.kubectl.getPodDisruptionBudgets(ctx, nsArg) : []) })
+          break
+        case 'networkpolicies':
+          set({ networkpolicies: (ns ? await window.kubectl.getNetworkPolicies(ctx, nsArg) : []) })
+          break
+        case 'endpoints':
+          set({ endpoints: (ns ? await window.kubectl.getEndpoints(ctx, nsArg) : []) })
+          break
+        case 'pvcs':
+          set({ pvcs: (ns ? await window.kubectl.getPVCs(ctx, nsArg) : []) })
+          break
+        case 'serviceaccounts':
+          set({ serviceaccounts: (ns ? await window.kubectl.getServiceAccounts(ctx, nsArg) : []) })
+          break
+        case 'roles':
+          set({ roles: (ns ? await window.kubectl.getRoles(ctx, nsArg) : []) })
+          break
+        case 'rolebindings':
+          set({ rolebindings: (ns ? await window.kubectl.getRoleBindings(ctx, nsArg) : []) })
+          break
+        // ── New cluster-scoped ──
+        case 'ingressclasses':
+          set({ ingressclasses: await window.kubectl.getIngressClasses(ctx) })
+          break
+        case 'pvs':
+          set({ pvs: await window.kubectl.getPVs(ctx) })
+          break
+        case 'storageclasses':
+          set({ storageclasses: await window.kubectl.getStorageClasses(ctx) })
+          break
+        case 'clusterroles':
+          set({ clusterroles: await window.kubectl.getClusterRoles(ctx) })
+          break
+        case 'clusterrolebindings':
+          set({ clusterrolebindings: await window.kubectl.getClusterRoleBindings(ctx) })
           break
       }
     } catch (err) {
@@ -476,5 +579,27 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const result = await window.kubectl.applyYAML(ctx, yaml)
     await get().loadSection(get().section)
     return result
+  },
+
+  // ── Port Forwarding ────────────────────────────────────────────────────────
+
+  startPortForward: (entry) => {
+    set(s => ({ portForwards: [...s.portForwards, entry] }))
+    const ctx = get().selectedContext!
+    window.kubectl.portForward(ctx, entry.namespace, entry.type, entry.name, entry.localPort, entry.remotePort, entry.id)
+    window.kubectl.onPortForwardReady(entry.id, () =>
+      set(s => ({ portForwards: s.portForwards.map(f => f.id === entry.id ? { ...f, status: 'active' } : f) }))
+    )
+    window.kubectl.onPortForwardError(entry.id, (msg) =>
+      set(s => ({ portForwards: s.portForwards.map(f => f.id === entry.id ? { ...f, status: 'error', error: msg } : f) }))
+    )
+    window.kubectl.onPortForwardExit(entry.id, () =>
+      set(s => ({ portForwards: s.portForwards.filter(f => f.id !== entry.id) }))
+    )
+  },
+
+  stopPortForward: (id) => {
+    window.kubectl.stopPortForward(id)
+    set(s => ({ portForwards: s.portForwards.filter(f => f.id !== id) }))
   }
 }))

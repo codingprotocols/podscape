@@ -64,6 +64,71 @@ const kubectl = {
   applyYAML: (context: string, yaml: string) =>
     ipcRenderer.invoke('kubectl:applyYAML', context, yaml),
 
+  // Additional Workloads
+  getDaemonSets: (context: string, namespace: string | null) =>
+    ipcRenderer.invoke('kubectl:getDaemonSets', context, namespace),
+
+  // Autoscaling
+  getHPAs: (context: string, namespace: string | null) =>
+    ipcRenderer.invoke('kubectl:getHPAs', context, namespace),
+  getPodDisruptionBudgets: (context: string, namespace: string | null) =>
+    ipcRenderer.invoke('kubectl:getPodDisruptionBudgets', context, namespace),
+
+  // Extended Network
+  getIngressClasses: (context: string) =>
+    ipcRenderer.invoke('kubectl:getIngressClasses', context),
+  getNetworkPolicies: (context: string, namespace: string | null) =>
+    ipcRenderer.invoke('kubectl:getNetworkPolicies', context, namespace),
+  getEndpoints: (context: string, namespace: string | null) =>
+    ipcRenderer.invoke('kubectl:getEndpoints', context, namespace),
+
+  // Storage
+  getPVCs: (context: string, namespace: string | null) =>
+    ipcRenderer.invoke('kubectl:getPVCs', context, namespace),
+  getPVs: (context: string) =>
+    ipcRenderer.invoke('kubectl:getPVs', context),
+  getStorageClasses: (context: string) =>
+    ipcRenderer.invoke('kubectl:getStorageClasses', context),
+
+  // RBAC
+  getServiceAccounts: (context: string, namespace: string | null) =>
+    ipcRenderer.invoke('kubectl:getServiceAccounts', context, namespace),
+  getRoles: (context: string, namespace: string | null) =>
+    ipcRenderer.invoke('kubectl:getRoles', context, namespace),
+  getClusterRoles: (context: string) =>
+    ipcRenderer.invoke('kubectl:getClusterRoles', context),
+  getRoleBindings: (context: string, namespace: string | null) =>
+    ipcRenderer.invoke('kubectl:getRoleBindings', context, namespace),
+  getClusterRoleBindings: (context: string) =>
+    ipcRenderer.invoke('kubectl:getClusterRoleBindings', context),
+
+  // Port Forwarding
+  portForward: (context: string, namespace: string, type: string, name: string, localPort: number, remotePort: number, id: string) =>
+    ipcRenderer.invoke('kubectl:portForward', context, namespace, type, name, localPort, remotePort, id),
+  stopPortForward: (id: string) =>
+    ipcRenderer.invoke('kubectl:stopPortForward', id),
+  onPortForwardReady: (id: string, cb: (msg: string) => void): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, pfId: string, msg: string): void => {
+      if (pfId === id) cb(msg)
+    }
+    ipcRenderer.on('portforward:ready', handler)
+    return () => ipcRenderer.off('portforward:ready', handler)
+  },
+  onPortForwardError: (id: string, cb: (msg: string) => void): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, pfId: string, msg: string): void => {
+      if (pfId === id) cb(msg)
+    }
+    ipcRenderer.on('portforward:error', handler)
+    return () => ipcRenderer.off('portforward:error', handler)
+  },
+  onPortForwardExit: (id: string, cb: () => void): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, pfId: string): void => {
+      if (pfId === id) cb()
+    }
+    ipcRenderer.on('portforward:exit', handler)
+    return () => ipcRenderer.off('portforward:exit', handler)
+  },
+
   // Log streaming
   streamLogs: (
     context: string,

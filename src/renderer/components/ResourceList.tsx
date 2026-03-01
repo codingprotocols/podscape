@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react'
 import { useAppStore } from '../store'
 import type {
-  KubePod, KubeDeployment, KubeStatefulSet, KubeReplicaSet, KubeJob, KubeCronJob,
-  KubeService, KubeIngress, KubeConfigMap, KubeSecret, KubeNode, KubeNamespace,
-  KubeCRD, AnyKubeResource
+  KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet, KubeReplicaSet, KubeJob, KubeCronJob,
+  KubeHPA, KubePDB, KubeService, KubeIngress, KubeIngressClass, KubeNetworkPolicy, KubeEndpoints,
+  KubeConfigMap, KubeSecret, KubePVC, KubePV, KubeStorageClass,
+  KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
+  KubeNode, KubeNamespace, KubeCRD, AnyKubeResource
 } from '../types'
 import { podPhaseBg, totalRestarts, formatAge, getNodeReady } from '../types'
 import ScaleDialog from './ScaleDialog'
@@ -17,14 +19,28 @@ function useResources() {
   switch (store.section) {
     case 'pods': return store.pods as AnyKubeResource[]
     case 'deployments': return store.deployments as AnyKubeResource[]
+    case 'daemonsets': return store.daemonsets as AnyKubeResource[]
     case 'statefulsets': return store.statefulsets as AnyKubeResource[]
     case 'replicasets': return store.replicasets as AnyKubeResource[]
     case 'jobs': return store.jobs as AnyKubeResource[]
     case 'cronjobs': return store.cronjobs as AnyKubeResource[]
+    case 'hpas': return store.hpas as AnyKubeResource[]
+    case 'pdbs': return store.pdbs as AnyKubeResource[]
     case 'services': return store.services as AnyKubeResource[]
     case 'ingresses': return store.ingresses as AnyKubeResource[]
+    case 'ingressclasses': return store.ingressclasses as AnyKubeResource[]
+    case 'networkpolicies': return store.networkpolicies as AnyKubeResource[]
+    case 'endpoints': return store.endpoints as AnyKubeResource[]
     case 'configmaps': return store.configmaps as AnyKubeResource[]
     case 'secrets': return store.secrets as AnyKubeResource[]
+    case 'pvcs': return store.pvcs as AnyKubeResource[]
+    case 'pvs': return store.pvs as AnyKubeResource[]
+    case 'storageclasses': return store.storageclasses as AnyKubeResource[]
+    case 'serviceaccounts': return store.serviceaccounts as AnyKubeResource[]
+    case 'roles': return store.roles as AnyKubeResource[]
+    case 'clusterroles': return store.clusterroles as AnyKubeResource[]
+    case 'rolebindings': return store.rolebindings as AnyKubeResource[]
+    case 'clusterrolebindings': return store.clusterrolebindings as AnyKubeResource[]
     case 'nodes': return store.nodes as AnyKubeResource[]
     case 'namespaces': return store.namespaces as AnyKubeResource[]
     case 'crds': return store.crds as AnyKubeResource[]
@@ -33,10 +49,16 @@ function useResources() {
 }
 
 const SECTION_LABELS: Record<string, string> = {
-  pods: 'Pods', deployments: 'Deployments', statefulsets: 'StatefulSets',
-  replicasets: 'ReplicaSets', jobs: 'Jobs', cronjobs: 'CronJobs',
-  services: 'Services', ingresses: 'Ingresses', configmaps: 'ConfigMaps',
-  secrets: 'Secrets', nodes: 'Nodes', namespaces: 'Namespaces', crds: 'CRDs'
+  pods: 'Pods', deployments: 'Deployments', daemonsets: 'DaemonSets',
+  statefulsets: 'StatefulSets', replicasets: 'ReplicaSets', jobs: 'Jobs', cronjobs: 'CronJobs',
+  hpas: 'HorizontalPodAutoscalers', pdbs: 'PodDisruptionBudgets',
+  services: 'Services', ingresses: 'Ingresses', ingressclasses: 'IngressClasses',
+  networkpolicies: 'NetworkPolicies', endpoints: 'Endpoints',
+  configmaps: 'ConfigMaps', secrets: 'Secrets',
+  pvcs: 'PersistentVolumeClaims', pvs: 'PersistentVolumes', storageclasses: 'StorageClasses',
+  serviceaccounts: 'ServiceAccounts', roles: 'Roles', clusterroles: 'ClusterRoles',
+  rolebindings: 'RoleBindings', clusterrolebindings: 'ClusterRoleBindings',
+  nodes: 'Nodes', namespaces: 'Namespaces', crds: 'CRDs'
 }
 
 // ─── Row renderers ────────────────────────────────────────────────────────────
@@ -232,19 +254,233 @@ function CRDRow({ crd }: { crd: KubeCRD }) {
   )
 }
 
+function DaemonSetRow({ ds }: { ds: KubeDaemonSet }) {
+  const desired = ds.status.desiredNumberScheduled
+  const ready = ds.status.numberReady
+  const ok = ready >= desired
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{ds.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono">{desired}</td>
+      <td className="px-6 py-3 text-xs font-bold">
+        <span className={ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>{ready}</span>
+      </td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono">{ds.status.numberAvailable ?? 0}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{ds.spec.updateStrategy?.type ?? 'RollingUpdate'}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(ds.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
+function HPARow({ hpa }: { hpa: KubeHPA }) {
+  const current = hpa.status.currentReplicas
+  const desired = hpa.status.desiredReplicas
+  const ok = current === desired
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[200px]">{hpa.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-600 dark:text-slate-300 font-mono truncate max-w-[140px]">
+        {hpa.spec.scaleTargetRef.kind}/{hpa.spec.scaleTargetRef.name}
+      </td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{hpa.spec.minReplicas ?? 1}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{hpa.spec.maxReplicas}</td>
+      <td className="px-6 py-3 text-xs font-bold">
+        <span className={ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>{current}/{desired}</span>
+      </td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(hpa.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
+function PDBRow({ pdb }: { pdb: KubePDB }) {
+  const ok = pdb.status.disruptionsAllowed > 0
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{pdb.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{pdb.spec.minAvailable ?? '—'}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{pdb.spec.maxUnavailable ?? '—'}</td>
+      <td className="px-6 py-3 text-xs font-bold">
+        <span className={ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>{pdb.status.currentHealthy}/{pdb.status.expectedPods}</span>
+      </td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(pdb.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
+function IngressClassRow({ ic }: { ic: KubeIngressClass }) {
+  const isDefault = ic.metadata.annotations?.['ingressclass.kubernetes.io/is-default-class'] === 'true'
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{ic.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono truncate max-w-[200px]">{ic.spec.controller ?? '—'}</td>
+      <td className="px-6 py-3">
+        {isDefault && <Badge text="default" cls="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 outline-blue-500/20" />}
+      </td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(ic.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
+function NetworkPolicyRow({ np }: { np: KubeNetworkPolicy }) {
+  const selector = Object.entries(np.spec.podSelector.matchLabels ?? {}).map(([k, v]) => `${k}=${v}`).join(', ') || '*'
+  const types = (np.spec.policyTypes ?? []).join(', ') || '—'
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[200px]">{np.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono truncate max-w-[180px]">{selector}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{types}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(np.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
+function EndpointsRow({ ep }: { ep: KubeEndpoints }) {
+  const addrCount = (ep.subsets ?? []).reduce((sum, s) => sum + (s.addresses?.length ?? 0), 0)
+  const portStr = (ep.subsets ?? []).flatMap(s => s.ports ?? []).map(p => p.port).join(', ')
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{ep.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{addrCount} address{addrCount !== 1 ? 'es' : ''}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono">{portStr || '—'}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(ep.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
+function PVCRow({ pvc }: { pvc: KubePVC }) {
+  const phase = pvc.status.phase ?? 'Unknown'
+  const capacity = Object.values(pvc.status.capacity ?? {})[0] ?? pvc.spec.resources?.requests?.storage ?? '—'
+  const modes = (pvc.status.accessModes ?? pvc.spec.accessModes ?? []).join(', ')
+  const phaseCls = phase === 'Bound' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 outline-emerald-500/20'
+    : phase === 'Pending' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 outline-yellow-500/20'
+    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 outline-red-500/20'
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[200px]">{pvc.metadata.name}</td>
+      <td className="px-6 py-3"><Badge text={phase} cls={phaseCls} /></td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-bold">{capacity}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{modes || '—'}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{pvc.spec.storageClassName ?? '—'}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(pvc.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
+function PVRow({ pv }: { pv: KubePV }) {
+  const phase = pv.status.phase ?? 'Unknown'
+  const capacity = Object.values(pv.spec.capacity ?? {})[0] as string ?? '—'
+  const phaseCls = phase === 'Bound' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 outline-emerald-500/20'
+    : phase === 'Available' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 outline-blue-500/20'
+    : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 outline-slate-500/20'
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[200px]">{pv.metadata.name}</td>
+      <td className="px-6 py-3"><Badge text={phase} cls={phaseCls} /></td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-bold">{capacity}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{pv.spec.persistentVolumeReclaimPolicy ?? '—'}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{pv.spec.storageClassName ?? '—'}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(pv.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
+function StorageClassRow({ sc }: { sc: KubeStorageClass }) {
+  const isDefault = sc.metadata.annotations?.['storageclass.kubernetes.io/is-default-class'] === 'true'
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[200px]">{sc.metadata.name}{isDefault && <span className="ml-2 text-[10px] font-bold text-blue-500">(default)</span>}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono truncate max-w-[180px]">{sc.provisioner}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{sc.reclaimPolicy ?? '—'}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{sc.volumeBindingMode ?? '—'}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(sc.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
+function ServiceAccountRow({ sa }: { sa: KubeServiceAccount }) {
+  const secretCount = (sa.secrets ?? []).length
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{sa.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{secretCount} secret{secretCount !== 1 ? 's' : ''}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(sa.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
+function RoleRow({ role }: { role: KubeRole }) {
+  const ruleCount = (role.rules ?? []).length
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[280px]">{role.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{ruleCount} rule{ruleCount !== 1 ? 's' : ''}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(role.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
+function ClusterRoleRow({ role }: { role: KubeClusterRole }) {
+  const ruleCount = (role.rules ?? []).length
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[280px]">{role.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{ruleCount} rule{ruleCount !== 1 ? 's' : ''}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(role.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
+function RoleBindingRow({ rb }: { rb: KubeRoleBinding }) {
+  const subjectCount = (rb.subjects ?? []).length
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[200px]">{rb.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono truncate max-w-[160px]">{rb.roleRef.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{subjectCount} subject{subjectCount !== 1 ? 's' : ''}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(rb.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
+function ClusterRoleBindingRow({ crb }: { crb: KubeClusterRoleBinding }) {
+  const subjectCount = (crb.subjects ?? []).length
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[200px]">{crb.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono truncate max-w-[160px]">{crb.roleRef.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{subjectCount} subject{subjectCount !== 1 ? 's' : ''}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(crb.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
 // ─── Column headers ───────────────────────────────────────────────────────────
 
 const COLUMNS: Record<string, string[]> = {
   pods: ['Name', 'Status', 'Restarts', 'Node', 'Age'],
   deployments: ['Name', 'Ready', 'Strategy', 'Age'],
+  daemonsets: ['Name', 'Desired', 'Ready', 'Available', 'Update Strategy', 'Age'],
   statefulsets: ['Name', 'Ready', 'Service', 'Age'],
   replicasets: ['Name', 'Ready', 'Age'],
   jobs: ['Name', 'Status', 'Completions', 'Age'],
   cronjobs: ['Name', 'Schedule', 'Status', 'Age'],
+  hpas: ['Name', 'Target', 'Min', 'Max', 'Current/Desired', 'Age'],
+  pdbs: ['Name', 'Min Available', 'Max Unavailable', 'Healthy/Expected', 'Age'],
   services: ['Name', 'Type', 'Cluster IP', 'External IP', 'Ports'],
   ingresses: ['Name', 'Hosts', 'Address', 'Class'],
+  ingressclasses: ['Name', 'Controller', 'Default', 'Age'],
+  networkpolicies: ['Name', 'Pod Selector', 'Policy Types', 'Age'],
+  endpoints: ['Name', 'Addresses', 'Ports', 'Age'],
   configmaps: ['Name', 'Keys', 'Age'],
   secrets: ['Name', 'Type', 'Keys', 'Age'],
+  pvcs: ['Name', 'Phase', 'Capacity', 'Access Modes', 'Storage Class', 'Age'],
+  pvs: ['Name', 'Phase', 'Capacity', 'Reclaim Policy', 'Storage Class', 'Age'],
+  storageclasses: ['Name', 'Provisioner', 'Reclaim Policy', 'Binding Mode', 'Age'],
+  serviceaccounts: ['Name', 'Secrets', 'Age'],
+  roles: ['Name', 'Rules', 'Age'],
+  clusterroles: ['Name', 'Rules', 'Age'],
+  rolebindings: ['Name', 'Role', 'Subjects', 'Age'],
+  clusterrolebindings: ['Name', 'Role', 'Subjects', 'Age'],
   nodes: ['Name', 'Status', 'Version', 'IP'],
   namespaces: ['Name', 'Status', 'Age'],
   crds: ['Name', 'Group', 'Scope', 'Age']
@@ -256,14 +492,28 @@ function ResourceRow({ resource, section }: { resource: AnyKubeResource; section
   switch (section) {
     case 'pods': return <PodRow pod={resource as KubePod} />
     case 'deployments': return <DeploymentRow d={resource as KubeDeployment} />
+    case 'daemonsets': return <DaemonSetRow ds={resource as KubeDaemonSet} />
     case 'statefulsets': return <StatefulSetRow s={resource as KubeStatefulSet} />
     case 'replicasets': return <ReplicaSetRow rs={resource as KubeReplicaSet} />
     case 'jobs': return <JobRow job={resource as KubeJob} />
     case 'cronjobs': return <CronJobRow cj={resource as KubeCronJob} />
+    case 'hpas': return <HPARow hpa={resource as KubeHPA} />
+    case 'pdbs': return <PDBRow pdb={resource as KubePDB} />
     case 'services': return <ServiceRow svc={resource as KubeService} />
     case 'ingresses': return <IngressRow ing={resource as KubeIngress} />
+    case 'ingressclasses': return <IngressClassRow ic={resource as KubeIngressClass} />
+    case 'networkpolicies': return <NetworkPolicyRow np={resource as KubeNetworkPolicy} />
+    case 'endpoints': return <EndpointsRow ep={resource as KubeEndpoints} />
     case 'configmaps': return <ConfigMapRow cm={resource as KubeConfigMap} />
     case 'secrets': return <SecretRow sec={resource as KubeSecret} />
+    case 'pvcs': return <PVCRow pvc={resource as KubePVC} />
+    case 'pvs': return <PVRow pv={resource as KubePV} />
+    case 'storageclasses': return <StorageClassRow sc={resource as KubeStorageClass} />
+    case 'serviceaccounts': return <ServiceAccountRow sa={resource as KubeServiceAccount} />
+    case 'roles': return <RoleRow role={resource as KubeRole} />
+    case 'clusterroles': return <ClusterRoleRow role={resource as KubeClusterRole} />
+    case 'rolebindings': return <RoleBindingRow rb={resource as KubeRoleBinding} />
+    case 'clusterrolebindings': return <ClusterRoleBindingRow crb={resource as KubeClusterRoleBinding} />
     case 'nodes': return <NodeRow node={resource as KubeNode} />
     case 'namespaces': return <NamespaceRow ns={resource as KubeNamespace} />
     case 'crds': return <CRDRow crd={resource as KubeCRD} />
@@ -295,7 +545,7 @@ export default function ResourceList(): JSX.Element {
   const [yamlError, setYamlError] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; resource: AnyKubeResource } | null>(null)
 
-  const clusterScoped = ['nodes', 'namespaces', 'crds'].includes(section)
+  const clusterScoped = ['nodes', 'namespaces', 'crds', 'ingressclasses', 'pvs', 'storageclasses', 'clusterroles', 'clusterrolebindings'].includes(section)
   const showNsCol = selectedNamespace === '_all' && !clusterScoped
   const cols = COLUMNS[section] ?? ['Name']
 
@@ -587,10 +837,16 @@ function MenuItem({ label, onClick, danger, icon }: { label: string; onClick: ()
 
 function kindLabel(section: string): string {
   const map: Record<string, string> = {
-    pods: 'pod', deployments: 'deployment', statefulsets: 'statefulset',
-    replicasets: 'replicaset', jobs: 'job', cronjobs: 'cronjob',
-    services: 'service', ingresses: 'ingress', configmaps: 'configmap',
-    secrets: 'secret', nodes: 'node', namespaces: 'namespace', crds: 'crd'
+    pods: 'pod', deployments: 'deployment', daemonsets: 'daemonset',
+    statefulsets: 'statefulset', replicasets: 'replicaset', jobs: 'job', cronjobs: 'cronjob',
+    hpas: 'horizontalpodautoscaler', pdbs: 'poddisruptionbudget',
+    services: 'service', ingresses: 'ingress', ingressclasses: 'ingressclass',
+    networkpolicies: 'networkpolicy', endpoints: 'endpoints',
+    configmaps: 'configmap', secrets: 'secret',
+    pvcs: 'persistentvolumeclaim', pvs: 'persistentvolume', storageclasses: 'storageclass',
+    serviceaccounts: 'serviceaccount', roles: 'role', clusterroles: 'clusterrole',
+    rolebindings: 'rolebinding', clusterrolebindings: 'clusterrolebinding',
+    nodes: 'node', namespaces: 'namespace', crds: 'crd'
   }
   return map[section] ?? section
 }
