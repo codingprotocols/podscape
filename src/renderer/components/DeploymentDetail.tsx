@@ -111,9 +111,8 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
             <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-mono truncate">{d.metadata.name}</h3>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{d.metadata.namespace}</p>
           </div>
-          <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${
-            ready >= desired ? 'bg-green-500/20 text-green-300 ring-green-500/30' : 'bg-yellow-500/20 text-yellow-300 ring-yellow-500/30'
-          }`}>
+          <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${ready >= desired ? 'bg-green-500/20 text-green-300 ring-green-500/30' : 'bg-yellow-500/20 text-yellow-300 ring-yellow-500/30'
+            }`}>
             {ready}/{desired} ready
           </span>
         </div>
@@ -286,6 +285,7 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
 
       {/* YAML viewer */}
       {(yamlLoading || yaml !== null || yamlError !== null) && (
+<<<<<<< HEAD
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-8">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-3xl max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
@@ -293,16 +293,47 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
                 {yamlLoading ? 'Loading YAML…' : `YAML — ${d.metadata.name}`}
               </h3>
               <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }} className="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-white">✕</button>
+=======
+        <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-8 animate-in fade-in duration-200" role="dialog" aria-modal="true">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl h-full max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
+                  {yamlLoading
+                    ? <div className="w-4 h-4 border-2 border-slate-400 border-t-blue-500 rounded-full animate-spin" />
+                    : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-500"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9zM13 2v7h7" /></svg>
+                  }
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest">
+                  {yamlLoading ? 'Loading YAML…' : `YAML — ${d.metadata.name}`}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
+>>>>>>> 135ceb6 (fix)
             </div>
-            <div className="flex-1 min-h-0">
+            <div className="flex-1 min-h-0 bg-slate-950">
               {yamlError ? (
                 <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
+<<<<<<< HEAD
                   <p className="text-sm font-bold text-red-400">Failed to load YAML</p>
                   <pre className="text-xs text-slate-400 dark:text-slate-500 text-center max-w-lg break-words whitespace-pre-wrap">{yamlError}</pre>
+=======
+                  <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
+                  </div>
+                  <p className="text-sm font-bold text-red-400 text-center">Failed to load YAML</p>
+                  <pre className="text-xs text-slate-400 text-center max-w-lg break-words whitespace-pre-wrap">{yamlError}</pre>
+>>>>>>> 135ceb6 (fix)
                 </div>
               ) : yamlLoading ? (
                 <div className="flex items-center justify-center h-full">
-                  <div className="w-8 h-8 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin" />
+                  <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
               ) : yaml !== null ? (
                 <YAMLViewer content={yaml} />

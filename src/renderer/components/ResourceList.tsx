@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '../store'
 import type {
   KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet, KubeReplicaSet, KubeJob, KubeCronJob,
@@ -353,7 +353,7 @@ function PVCRow({ pvc }: { pvc: KubePVC }) {
   const modes = (pvc.status.accessModes ?? pvc.spec.accessModes ?? []).join(', ')
   const phaseCls = phase === 'Bound' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 outline-emerald-500/20'
     : phase === 'Pending' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 outline-yellow-500/20'
-    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 outline-red-500/20'
+      : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 outline-red-500/20'
   return (
     <>
       <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[200px]">{pvc.metadata.name}</td>
@@ -371,7 +371,7 @@ function PVRow({ pv }: { pv: KubePV }) {
   const capacity = Object.values(pv.spec.capacity ?? {})[0] as string ?? '—'
   const phaseCls = phase === 'Bound' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 outline-emerald-500/20'
     : phase === 'Available' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 outline-blue-500/20'
-    : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 outline-slate-500/20'
+      : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 outline-slate-500/20'
   return (
     <>
       <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[200px]">{pv.metadata.name}</td>
@@ -535,8 +535,12 @@ function Badge({ text, cls }: { text: string; cls: string }) {
 
 export default function ResourceList(): JSX.Element {
   const { section, selectedResource, selectResource, loadingResources, refresh,
+<<<<<<< HEAD
     selectedNamespace, selectedContext, deleteResource, getYAML, rolloutRestart, openExec,
     scaleStatefulSet, startPortForward } = useAppStore()
+=======
+    selectedNamespace, deleteResource, getYAML, applyYAML, rolloutRestart, openExec } = useAppStore()
+>>>>>>> 135ceb6 (fix)
   const resources = useResources()
   const [search, setSearch] = useState('')
   const [scaleTarget, setScaleTarget] = useState<KubeDeployment | null>(null)
@@ -548,10 +552,14 @@ export default function ResourceList(): JSX.Element {
   const [yamlLoading, setYamlLoading] = useState(false)
   const [yamlError, setYamlError] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; resource: AnyKubeResource } | null>(null)
+<<<<<<< HEAD
   const [pfTarget, setPfTarget] = useState<AnyKubeResource | null>(null)
   const [pfLocalPort, setPfLocalPort] = useState('')
   const [pfRemotePort, setPfRemotePort] = useState('')
   const [pfLoading, setPfLoading] = useState(false)
+=======
+  const [restartError, setRestartError] = useState<string | null>(null)
+>>>>>>> 135ceb6 (fix)
 
   const clusterScoped = ['nodes', 'namespaces', 'crds', 'ingressclasses', 'pvs', 'storageclasses', 'clusterroles', 'clusterrolebindings'].includes(section)
   const showNsCol = selectedNamespace === '_all' && !clusterScoped
@@ -591,7 +599,13 @@ export default function ResourceList(): JSX.Element {
   const handleRestart = async (resource: AnyKubeResource) => {
     setContextMenu(null)
     const kind = section === 'deployments' ? 'deployment' : section === 'statefulsets' ? 'statefulset' : 'daemonset'
-    await rolloutRestart(kind, resource.metadata.name, resource.metadata.namespace)
+    try {
+      await rolloutRestart(kind, resource.metadata.name, resource.metadata.namespace)
+      refresh()
+    } catch (err) {
+      setRestartError((err as Error).message ?? 'Restart failed')
+      setTimeout(() => setRestartError(null), 5000)
+    }
   }
 
   const handleExec = (resource: AnyKubeResource) => {
@@ -642,8 +656,28 @@ export default function ResourceList(): JSX.Element {
     if (ip) navigator.clipboard.writeText(ip)
   }
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (contextMenu) setContextMenu(null)
+      else if (yamlContent !== null || yamlLoading || yamlError) {
+        setYamlContent(null)
+        setYamlError(null)
+        setYamlLoading(false)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [contextMenu, yamlContent, yamlLoading, yamlError])
+
   return (
     <div className="flex flex-col flex-1 min-w-0 bg-white dark:bg-slate-950 h-full transition-colors duration-200" onClick={() => setContextMenu(null)}>
+      {restartError && (
+        <div className="flex items-center justify-between gap-3 px-4 py-2 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800 shrink-0">
+          <p className="text-xs font-medium text-red-700 dark:text-red-300">{restartError}</p>
+          <button onClick={() => setRestartError(null)} className="text-red-500 hover:text-red-700 dark:hover:text-red-200 text-xs shrink-0">✕</button>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 dark:border-slate-800 shrink-0">
         <div>
@@ -726,8 +760,8 @@ export default function ResourceList(): JSX.Element {
                     onClick={() => selectResource(isSelected ? null : resource)}
                     onContextMenu={e => handleContextMenu(e, resource)}
                     className={`group cursor-pointer transition-all duration-150 ${isSelected
-                        ? 'bg-blue-50 dark:bg-blue-900/10'
-                        : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/30'
+                      ? 'bg-blue-50 dark:bg-blue-900/10'
+                      : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/30'
                       }`}
                   >
                     <ResourceRow resource={resource} section={section} />
@@ -763,7 +797,7 @@ export default function ResourceList(): JSX.Element {
           {['services', 'nodes', 'pods'].includes(section) && (
             <MenuItem label="Copy IP" onClick={() => handleCopyIP(contextMenu.resource)} icon="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9" />
           )}
-          <MenuItem label="View YAML" onClick={() => handleViewYAML(contextMenu.resource)} icon="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9zM13 2v7h7" />
+          <MenuItem label="View / Edit YAML" onClick={() => handleViewYAML(contextMenu.resource)} icon="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9zM13 2v7h7" />
           {['deployments', 'statefulsets'].includes(section) && (
             <>
               {section === 'deployments' && (
@@ -898,9 +932,9 @@ export default function ResourceList(): JSX.Element {
         />
       )}
       {(yamlLoading || yamlContent !== null || yamlError !== null) && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-8 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-8 animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-labelledby="yaml-modal-title">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl h-full max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
                   {yamlLoading
@@ -908,13 +942,15 @@ export default function ResourceList(): JSX.Element {
                     : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-500"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9zM13 2v7h7" /></svg>
                   }
                 </div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest">
-                  {yamlLoading ? 'Loading YAML…' : 'Resource YAML'}
+                <h3 id="yaml-modal-title" className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest">
+                  {yamlLoading ? 'Loading YAML…' : 'View / Edit YAML'}
                 </h3>
               </div>
               <button
+                type="button"
                 onClick={() => { setYamlContent(null); setYamlError(null); setYamlLoading(false) }}
                 className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors"
+                aria-label="Close"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
               </button>
@@ -923,7 +959,7 @@ export default function ResourceList(): JSX.Element {
               {yamlError ? (
                 <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
                   <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
                   </div>
                   <p className="text-sm font-bold text-red-400 text-center">Failed to load YAML</p>
                   <pre className="text-xs text-slate-400 text-center max-w-lg break-words whitespace-pre-wrap">{yamlError}</pre>
@@ -933,7 +969,16 @@ export default function ResourceList(): JSX.Element {
                   <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
               ) : yamlContent !== null ? (
-                <YAMLViewer content={yamlContent} />
+                <YAMLViewer
+                  content={yamlContent}
+                  editable
+                  onSave={async (updatedYaml) => {
+                    await applyYAML(updatedYaml)
+                    setYamlContent(null)
+                    setYamlError(null)
+                    refresh()
+                  }}
+                />
               ) : null}
             </div>
           </div>

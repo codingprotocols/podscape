@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import React, { useEffect, useState, useCallback } from 'react'
 import { useAppStore } from '../store'
 import type { HelmRelease, HelmHistoryEntry } from '../types'
@@ -19,10 +20,47 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${cls}`}>
       {status}
+=======
+import React, { useState, useEffect } from 'react'
+import { useAppStore } from '../store'
+import type { HelmRelease } from '../types'
+
+function StatusBadge({ status }: { status: string }) {
+  const s = status?.toLowerCase() ?? ''
+  if (s === 'deployed') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+        Deployed
+      </span>
+    )
+  }
+  if (s === 'failed' || s === 'uninstalling') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 dark:text-red-400">
+        <span className="w-2 h-2 rounded-full bg-red-500" />
+        {status}
+      </span>
+    )
+  }
+  if (s === 'pending-install' || s === 'pending-upgrade' || s === 'pending-rollback') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-yellow-600 dark:text-yellow-400">
+        <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
+        {status}
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400">
+      <span className="w-2 h-2 rounded-full bg-slate-400" />
+      {status || '—'}
+>>>>>>> 135ceb6 (fix)
     </span>
   )
 }
 
+<<<<<<< HEAD
 // ─── Drawer (detail panel) ────────────────────────────────────────────────────
 
 type DrawerTab = 'overview' | 'values' | 'history'
@@ -261,10 +299,35 @@ export default function HelmPanel(): JSX.Element {
   }, [selectedContext])
 
   useEffect(() => { load() }, [load])
+=======
+export default function HelmPanel(): JSX.Element {
+  const {
+    selectedContext,
+    helmReleases,
+    loadingResources,
+    refresh
+  } = useAppStore()
+  const [uninstallTarget, setUninstallTarget] = useState<HelmRelease | null>(null)
+  const [uninstalling, setUninstalling] = useState(false)
+  const [uninstallError, setUninstallError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!uninstallTarget) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setUninstallTarget(null)
+        setUninstallError(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [uninstallTarget])
+>>>>>>> 135ceb6 (fix)
 
   const handleUninstall = async () => {
     if (!uninstallTarget || !selectedContext) return
     setUninstalling(true)
+<<<<<<< HEAD
     try {
       await window.helm.uninstall(selectedContext, uninstallTarget.namespace, uninstallTarget.name)
       if (selected?.name === uninstallTarget.name) setSelected(null)
@@ -273,11 +336,25 @@ export default function HelmPanel(): JSX.Element {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Uninstall failed')
       setUninstallTarget(null)
+=======
+    setUninstallError(null)
+    try {
+      await window.helm.uninstall(
+        selectedContext,
+        uninstallTarget.name,
+        uninstallTarget.namespace
+      )
+      setUninstallTarget(null)
+      refresh()
+    } catch (err) {
+      setUninstallError(err instanceof Error ? err.message : String(err))
+>>>>>>> 135ceb6 (fix)
     } finally {
       setUninstalling(false)
     }
   }
 
+<<<<<<< HEAD
   const filtered = releases.filter(r =>
     r.name.toLowerCase().includes(filter.toLowerCase()) ||
     r.namespace.toLowerCase().includes(filter.toLowerCase()) ||
@@ -448,6 +525,138 @@ export default function HelmPanel(): JSX.Element {
               <button onClick={handleUninstall} disabled={uninstalling}
                 className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors disabled:opacity-40">
                 {uninstalling ? 'Removing...' : 'Uninstall'}
+=======
+  if (!selectedContext) {
+    return (
+      <div className="flex flex-col flex-1 min-w-0 bg-white dark:bg-slate-950 h-full items-center justify-center gap-4 p-8">
+        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Select a cluster to view Helm releases.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col flex-1 min-w-0 bg-white dark:bg-slate-950 h-full transition-colors duration-200">
+      <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 dark:border-slate-800 shrink-0">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Helm Charts</h2>
+          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">
+            Releases in current cluster
+          </p>
+        </div>
+        <button
+          onClick={() => refresh()}
+          disabled={loadingResources}
+          className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400
+                     border border-slate-200 dark:border-slate-700 rounded-lg hover:border-blue-400 dark:hover:border-blue-500
+                     transition-colors disabled:opacity-50 flex items-center gap-2"
+        >
+          {loadingResources ? (
+            <>
+              <div className="w-3.5 h-3.5 border-2 border-slate-300 dark:border-slate-600 border-t-blue-500 rounded-full animate-spin" />
+              Loading…
+            </>
+          ) : (
+            <>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+              </svg>
+              Refresh
+            </>
+          )}
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-auto">
+        {loadingResources && helmReleases.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 gap-3 text-slate-400">
+            <div className="w-8 h-8 border-2 border-slate-200 dark:border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+            <span className="text-sm font-medium">Loading Helm releases…</span>
+          </div>
+        ) : helmReleases.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 gap-3 text-slate-500 dark:text-slate-400">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="opacity-50">
+              <path d="M20 7l-8 4-8-4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+            </svg>
+            <p className="text-sm font-medium">No Helm releases found</p>
+            <p className="text-[11px]">Install charts from the Terminal, then refresh.</p>
+          </div>
+        ) : (
+          <table className="w-full text-left border-collapse">
+            <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900/95 border-b border-slate-200 dark:border-slate-800">
+              <tr>
+                <th className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Name</th>
+                <th className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Namespace</th>
+                <th className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Chart</th>
+                <th className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">App Version</th>
+                <th className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Status</th>
+                <th className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Updated</th>
+                <th className="px-6 py-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest w-24">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {helmReleases.map((r) => (
+                <tr
+                  key={`${r.namespace}/${r.name}`}
+                  className="border-b border-slate-100 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors"
+                >
+                  <td className="px-6 py-3 text-sm font-mono font-semibold text-slate-900 dark:text-white">{r.name}</td>
+                  <td className="px-6 py-3 text-xs font-mono text-slate-600 dark:text-slate-300">{r.namespace || '—'}</td>
+                  <td className="px-6 py-3 text-xs font-mono text-slate-600 dark:text-slate-300">{r.chart || '—'}</td>
+                  <td className="px-6 py-3 text-xs text-slate-600 dark:text-slate-300">{r.app_version || '—'}</td>
+                  <td className="px-6 py-3">
+                    <StatusBadge status={r.status} />
+                  </td>
+                  <td className="px-6 py-3 text-[11px] text-slate-500 dark:text-slate-400">
+                    {r.updated ? new Date(r.updated).toLocaleString() : '—'}
+                  </td>
+                  <td className="px-6 py-3">
+                    <button
+                      type="button"
+                      onClick={() => setUninstallTarget(r)}
+                      className="text-[11px] font-bold text-red-600 dark:text-red-400 hover:underline"
+                    >
+                      Uninstall
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {uninstallTarget && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-8" role="dialog" aria-modal="true" aria-labelledby="helm-uninstall-title">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-w-md w-full p-6">
+            <h3 id="helm-uninstall-title" className="text-lg font-bold text-slate-900 dark:text-white mb-2">Uninstall release?</h3>
+            <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
+              <span className="font-mono font-semibold">{uninstallTarget.name}</span>
+              {uninstallTarget.namespace && (
+                <span className="text-slate-500 dark:text-slate-400"> in {uninstallTarget.namespace}</span>
+              )}
+            </p>
+            {uninstallError && (
+              <p className="text-xs font-medium text-red-600 dark:text-red-400 mb-4 p-2 bg-red-50 dark:bg-red-900/20 rounded-lg break-words">
+                {uninstallError}
+              </p>
+            )}
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => { setUninstallTarget(null); setUninstallError(null) }}
+                disabled={uninstalling}
+                className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleUninstall}
+                disabled={uninstalling}
+                className="px-4 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {uninstalling ? 'Uninstalling…' : 'Uninstall'}
+>>>>>>> 135ceb6 (fix)
               </button>
             </div>
           </div>

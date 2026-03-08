@@ -219,6 +219,14 @@ const exec = {
   }
 }
 
+// ─── helm API ─────────────────────────────────────────────────────────────────
+
+const helm = {
+  list: (context: string) => ipcRenderer.invoke('helm:list', context),
+  uninstall: (context: string, name: string, namespace: string) =>
+    ipcRenderer.invoke('helm:uninstall', context, name, namespace)
+}
+
 // ─── plugins API ──────────────────────────────────────────────────────────────
 
 const plugins = {
@@ -257,6 +265,7 @@ if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('kubectl', kubectl)
+    contextBridge.exposeInMainWorld('helm', helm)
     contextBridge.exposeInMainWorld('terminal', terminal)
     contextBridge.exposeInMainWorld('exec', exec)
     contextBridge.exposeInMainWorld('plugins', plugins)
@@ -270,6 +279,8 @@ if (process.contextIsolated) {
   window.electron = electronAPI
   // @ts-ignore
   window.kubectl = kubectl
+  // @ts-ignore
+  window.helm = helm
   // @ts-ignore
   window.terminal = terminal
   // @ts-ignore
