@@ -541,6 +541,27 @@ export interface PodMetrics {
   containers: Array<{ name: string; usage: { cpu: string; memory: string } }>
 }
 
+// ─── Helm ─────────────────────────────────────────────────────────────────────
+
+export interface HelmRelease {
+  name: string
+  namespace: string
+  revision: string
+  updated: string
+  status: string
+  chart: string
+  app_version: string
+}
+
+export interface HelmHistoryEntry {
+  revision: number
+  updated: string
+  status: string
+  chart: string
+  app_version: string
+  description: string
+}
+
 // ─── Extensions / Plugins ─────────────────────────────────────────────────────
 
 export interface PluginPanel {
@@ -598,6 +619,7 @@ export type ResourceKind =
   | 'extensions'
   | 'settings'
   | 'network'
+  | 'helm'
 
 export type AnyKubeResource =
   | KubePod

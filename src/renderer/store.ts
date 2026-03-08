@@ -48,9 +48,14 @@ declare global {
       getPodMetrics: (context: string, namespace: string | null) => Promise<PodMetrics[]>
       getNodeMetrics: (context: string) => Promise<NodeMetrics[]>
       scale: (context: string, namespace: string, name: string, replicas: number) => Promise<string>
+      scaleResource: (context: string, namespace: string, kind: string, name: string, replicas: number) => Promise<string>
       rolloutRestart: (context: string, namespace: string, kind: string, name: string) => Promise<string>
+      rolloutHistory: (context: string, namespace: string, kind: string, name: string) => Promise<string>
+      rolloutUndo: (context: string, namespace: string, kind: string, name: string, revision?: number) => Promise<string>
+      getResourceEvents: (context: string, namespace: string, kind: string, name: string) => Promise<KubeEvent[]>
       deleteResource: (context: string, namespace: string | null, kind: string, name: string) => Promise<string>
       getYAML: (context: string, namespace: string | null, kind: string, name: string) => Promise<string>
+      getSecretValue: (context: string, namespace: string, name: string, key: string) => Promise<string>
       applyYAML: (context: string, yaml: string) => Promise<string>
       streamLogs: (
         context: string, namespace: string, pod: string, container: string | undefined,
@@ -82,9 +87,17 @@ declare global {
     plugins: {
       list: () => Promise<Plugin[]>
     }
+    helm: {
+      list: (context: string) => Promise<unknown[]>
+      status: (context: string, namespace: string, release: string) => Promise<string>
+      values: (context: string, namespace: string, release: string) => Promise<string>
+      history: (context: string, namespace: string, release: string) => Promise<unknown[]>
+      rollback: (context: string, namespace: string, release: string, revision: number) => Promise<string>
+      uninstall: (context: string, namespace: string, release: string) => Promise<string>
+    }
     settings: {
-      get: () => Promise<{ kubectlPath: string; shellPath: string; theme: string }>
-      set: (s: { kubectlPath: string; shellPath: string; theme: string }) => Promise<void>
+      get: () => Promise<{ kubectlPath: string; shellPath: string; helmPath: string; theme: string }>
+      set: (s: { kubectlPath: string; shellPath: string; helmPath: string; theme: string }) => Promise<void>
     }
   }
 }
@@ -175,6 +188,7 @@ export interface AppStore {
 
   // Operations
   scaleDeployment: (name: string, replicas: number, namespace?: string) => Promise<void>
+  scaleStatefulSet: (name: string, replicas: number, namespace?: string) => Promise<void>
   rolloutRestart: (kind: string, name: string, namespace?: string) => Promise<void>
   deleteResource: (kind: string, name: string, clusterScoped?: boolean, namespace?: string) => Promise<void>
   getYAML: (kind: string, name: string, clusterScoped?: boolean, namespace?: string) => Promise<string>
@@ -360,7 +374,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const nsArg = ns === '_all' ? null : ns
 
     // These sections don't need resource loading
-    if (['terminal', 'grafana', 'extensions', 'metrics', 'network', 'portforwards'].includes(section)) {
+    if (['terminal', 'grafana', 'extensions', 'metrics', 'network', 'portforwards', 'helm', 'settings'].includes(section)) {
       if (section === 'metrics' && ctx) {
         set({ loadingResources: true })
         try {
@@ -543,6 +557,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
     if (!actualNs) return
     await window.kubectl.scale(ctx, actualNs, name, replicas)
     await get().loadSection('deployments')
+  },
+
+  scaleStatefulSet: async (name, replicas, namespace) => {
+    const { selectedContext: ctx, selectedNamespace: ns, selectedResource } = get()
+    if (!ctx) return
+    const actualNs = namespace ?? (ns === '_all' ? (selectedResource?.metadata.namespace ?? null) : ns)
+    if (!actualNs) return
+    await window.kubectl.scaleResource(ctx, actualNs, 'statefulset', name, replicas)
+    await get().loadSection('statefulsets')
   },
 
   rolloutRestart: async (kind, name, namespace) => {

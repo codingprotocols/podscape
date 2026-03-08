@@ -535,15 +535,23 @@ function Badge({ text, cls }: { text: string; cls: string }) {
 
 export default function ResourceList(): JSX.Element {
   const { section, selectedResource, selectResource, loadingResources, refresh,
-    selectedNamespace, deleteResource, getYAML, rolloutRestart, openExec } = useAppStore()
+    selectedNamespace, selectedContext, deleteResource, getYAML, rolloutRestart, openExec,
+    scaleStatefulSet, startPortForward } = useAppStore()
   const resources = useResources()
   const [search, setSearch] = useState('')
   const [scaleTarget, setScaleTarget] = useState<KubeDeployment | null>(null)
+  const [stsScaleTarget, setStsScaleTarget] = useState<KubeStatefulSet | null>(null)
+  const [stsScaleVal, setStsScaleVal] = useState('')
+  const [stsScaleLoading, setStsScaleLoading] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<AnyKubeResource | null>(null)
   const [yamlContent, setYamlContent] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
   const [yamlError, setYamlError] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; resource: AnyKubeResource } | null>(null)
+  const [pfTarget, setPfTarget] = useState<AnyKubeResource | null>(null)
+  const [pfLocalPort, setPfLocalPort] = useState('')
+  const [pfRemotePort, setPfRemotePort] = useState('')
+  const [pfLoading, setPfLoading] = useState(false)
 
   const clusterScoped = ['nodes', 'namespaces', 'crds', 'ingressclasses', 'pvs', 'storageclasses', 'clusterroles', 'clusterrolebindings'].includes(section)
   const showNsCol = selectedNamespace === '_all' && !clusterScoped
@@ -596,6 +604,26 @@ export default function ResourceList(): JSX.Element {
   const handleCopyName = (resource: AnyKubeResource) => {
     setContextMenu(null)
     navigator.clipboard.writeText(resource.metadata.name)
+  }
+
+  const handleOpenPortForward = (resource: AnyKubeResource) => {
+    setContextMenu(null)
+    // Pre-fill remote port for services
+    if (section === 'services') {
+      const svc = resource as KubeService
+      const firstPort = svc.spec.ports?.[0]
+      if (firstPort) {
+        setPfRemotePort(String(firstPort.port))
+        setPfLocalPort(String(firstPort.port))
+      } else {
+        setPfRemotePort('')
+        setPfLocalPort('')
+      }
+    } else {
+      setPfRemotePort('')
+      setPfLocalPort('')
+    }
+    setPfTarget(resource)
   }
 
   const handleCopyIP = (resource: AnyKubeResource) => {
@@ -741,11 +769,22 @@ export default function ResourceList(): JSX.Element {
               {section === 'deployments' && (
                 <MenuItem label="Scale…" onClick={() => { setScaleTarget(contextMenu.resource as KubeDeployment); setContextMenu(null) }} icon="M3 6h18M3 12h18M3 18h18" />
               )}
+              {section === 'statefulsets' && (
+                <MenuItem label="Scale…" onClick={() => {
+                  const sts = contextMenu.resource as KubeStatefulSet
+                  setStsScaleTarget(sts)
+                  setStsScaleVal(String(sts.spec.replicas ?? 1))
+                  setContextMenu(null)
+                }} icon="M3 6h18M3 12h18M3 18h18" />
+              )}
               <MenuItem label="Restart" onClick={() => handleRestart(contextMenu.resource)} icon="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
             </>
           )}
           {section === 'pods' && (
             <MenuItem label="Exec Shell" onClick={() => handleExec(contextMenu.resource)} icon="M4 17l6-6-6-6M12 19h8" />
+          )}
+          {['pods', 'services'].includes(section) && (
+            <MenuItem label="Port Forward…" onClick={() => handleOpenPortForward(contextMenu.resource)} icon="M5 12h14M12 5l7 7-7 7" />
           )}
           <div className="border-t border-slate-100 dark:border-slate-700 my-1.5" />
           <MenuItem label="Delete…" onClick={() => handleDelete(contextMenu.resource)} danger icon="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
@@ -758,6 +797,94 @@ export default function ResourceList(): JSX.Element {
           deployment={scaleTarget}
           onClose={() => setScaleTarget(null)}
         />
+      )}
+      {stsScaleTarget && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-8" onClick={() => setStsScaleTarget(null)}>
+          <div className="bg-gray-900 border border-white/15 rounded-xl w-full max-w-sm shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-white mb-1">Scale StatefulSet</h3>
+            <p className="text-xs text-gray-400 font-mono mb-4">{stsScaleTarget.metadata.name}</p>
+            <label className="block text-xs font-medium text-gray-400 mb-2">Replicas</label>
+            <input type="number" min={0} value={stsScaleVal} onChange={e => setStsScaleVal(e.target.value)}
+              className="w-full bg-gray-800 text-white text-sm rounded px-3 py-2 border border-white/10 focus:outline-none focus:ring-1 focus:ring-blue-500 mb-4"
+            />
+            <div className="flex gap-2">
+              <button onClick={() => setStsScaleTarget(null)}
+                className="flex-1 py-2 text-sm text-gray-300 bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 transition-colors">
+                Cancel
+              </button>
+              <button onClick={async () => {
+                const reps = parseInt(stsScaleVal)
+                if (isNaN(reps) || reps < 0) return
+                setStsScaleLoading(true)
+                try {
+                  await scaleStatefulSet(stsScaleTarget.metadata.name, reps, stsScaleTarget.metadata.namespace)
+                  setStsScaleTarget(null)
+                } catch { /* error handled by store */ }
+                setStsScaleLoading(false)
+              }} disabled={stsScaleLoading}
+                className="flex-1 py-2 text-sm text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors disabled:opacity-50">
+                {stsScaleLoading ? 'Scaling…' : 'Scale'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {pfTarget && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setPfTarget(null)}>
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-1">Port Forward</h3>
+            <p className="text-xs font-mono text-slate-400 dark:text-slate-500 mb-4">{pfTarget.metadata.name}</p>
+            <div className="flex gap-3 mb-4">
+              <div className="flex-1">
+                <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">Local Port</label>
+                <input type="number" min={1} max={65535} value={pfLocalPort}
+                  onChange={e => setPfLocalPort(e.target.value)}
+                  placeholder="8080"
+                  className="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">Remote Port</label>
+                <input type="number" min={1} max={65535} value={pfRemotePort}
+                  onChange={e => setPfRemotePort(e.target.value)}
+                  placeholder="8080"
+                  className="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setPfTarget(null)}
+                className="flex-1 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors">
+                Cancel
+              </button>
+              <button
+                disabled={pfLoading || !pfLocalPort || !pfRemotePort || !selectedContext}
+                onClick={async () => {
+                  if (!selectedContext || !pfLocalPort || !pfRemotePort) return
+                  setPfLoading(true)
+                  try {
+                    const id = crypto.randomUUID()
+                    const type = section === 'services' ? 'service' : 'pod'
+                    startPortForward({
+                      id,
+                      type,
+                      namespace: pfTarget.metadata.namespace ?? selectedNamespace ?? 'default',
+                      name: pfTarget.metadata.name,
+                      localPort: parseInt(pfLocalPort),
+                      remotePort: parseInt(pfRemotePort),
+                      status: 'starting'
+                    })
+                    setPfTarget(null)
+                  } finally {
+                    setPfLoading(false)
+                  }
+                }}
+                className="flex-1 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors disabled:opacity-40">
+                {pfLoading ? 'Starting…' : 'Start Forward'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {deleteTarget && (
         <DeleteConfirm

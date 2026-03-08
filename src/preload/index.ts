@@ -55,12 +55,22 @@ const kubectl = {
   // Operations
   scale: (context: string, namespace: string, name: string, replicas: number) =>
     ipcRenderer.invoke('kubectl:scale', context, namespace, name, replicas),
+  scaleResource: (context: string, namespace: string, kind: string, name: string, replicas: number) =>
+    ipcRenderer.invoke('kubectl:scaleResource', context, namespace, kind, name, replicas),
   rolloutRestart: (context: string, namespace: string, kind: string, name: string) =>
     ipcRenderer.invoke('kubectl:rolloutRestart', context, namespace, kind, name),
+  rolloutHistory: (context: string, namespace: string, kind: string, name: string) =>
+    ipcRenderer.invoke('kubectl:rolloutHistory', context, namespace, kind, name),
+  rolloutUndo: (context: string, namespace: string, kind: string, name: string, revision?: number) =>
+    ipcRenderer.invoke('kubectl:rolloutUndo', context, namespace, kind, name, revision),
+  getResourceEvents: (context: string, namespace: string, kind: string, name: string) =>
+    ipcRenderer.invoke('kubectl:getResourceEvents', context, namespace, kind, name),
   deleteResource: (context: string, namespace: string | null, kind: string, name: string) =>
     ipcRenderer.invoke('kubectl:deleteResource', context, namespace, kind, name),
   getYAML: (context: string, namespace: string | null, kind: string, name: string) =>
     ipcRenderer.invoke('kubectl:getYAML', context, namespace, kind, name),
+  getSecretValue: (context: string, namespace: string, name: string, key: string) =>
+    ipcRenderer.invoke('kubectl:getSecretValue', context, namespace, name, key),
   applyYAML: (context: string, yaml: string) =>
     ipcRenderer.invoke('kubectl:applyYAML', context, yaml),
 
@@ -215,12 +225,29 @@ const plugins = {
   list: () => ipcRenderer.invoke('plugins:list')
 }
 
+// ─── helm API ─────────────────────────────────────────────────────────────────
+
+const helm = {
+  list: (context: string): Promise<unknown[]> =>
+    ipcRenderer.invoke('helm:list', context),
+  status: (context: string, namespace: string, release: string): Promise<string> =>
+    ipcRenderer.invoke('helm:status', context, namespace, release),
+  values: (context: string, namespace: string, release: string): Promise<string> =>
+    ipcRenderer.invoke('helm:values', context, namespace, release),
+  history: (context: string, namespace: string, release: string): Promise<unknown[]> =>
+    ipcRenderer.invoke('helm:history', context, namespace, release),
+  rollback: (context: string, namespace: string, release: string, revision: number): Promise<string> =>
+    ipcRenderer.invoke('helm:rollback', context, namespace, release, revision),
+  uninstall: (context: string, namespace: string, release: string): Promise<string> =>
+    ipcRenderer.invoke('helm:uninstall', context, namespace, release),
+}
+
 // ─── settings API ─────────────────────────────────────────────────────────────
 
 const settings = {
-  get: (): Promise<{ kubectlPath: string; shellPath: string; theme: string }> =>
+  get: (): Promise<{ kubectlPath: string; shellPath: string; helmPath: string; theme: string }> =>
     ipcRenderer.invoke('settings:get'),
-  set: (s: { kubectlPath: string; shellPath: string; theme: string }): Promise<void> =>
+  set: (s: { kubectlPath: string; shellPath: string; helmPath: string; theme: string }): Promise<void> =>
     ipcRenderer.invoke('settings:set', s)
 }
 
@@ -233,6 +260,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('terminal', terminal)
     contextBridge.exposeInMainWorld('exec', exec)
     contextBridge.exposeInMainWorld('plugins', plugins)
+    contextBridge.exposeInMainWorld('helm', helm)
     contextBridge.exposeInMainWorld('settings', settings)
   } catch (error) {
     console.error(error)
@@ -248,6 +276,8 @@ if (process.contextIsolated) {
   window.exec = exec
   // @ts-ignore
   window.plugins = plugins
+  // @ts-ignore
+  window.helm = helm
   // @ts-ignore
   window.settings = settings
 }
