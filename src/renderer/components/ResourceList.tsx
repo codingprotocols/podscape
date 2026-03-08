@@ -535,12 +535,8 @@ function Badge({ text, cls }: { text: string; cls: string }) {
 
 export default function ResourceList(): JSX.Element {
   const { section, selectedResource, selectResource, loadingResources, refresh,
-<<<<<<< HEAD
-    selectedNamespace, selectedContext, deleteResource, getYAML, rolloutRestart, openExec,
+    selectedNamespace, selectedContext, deleteResource, getYAML, applyYAML, rolloutRestart, openExec,
     scaleStatefulSet, startPortForward } = useAppStore()
-=======
-    selectedNamespace, deleteResource, getYAML, applyYAML, rolloutRestart, openExec } = useAppStore()
->>>>>>> 135ceb6 (fix)
   const resources = useResources()
   const [search, setSearch] = useState('')
   const [scaleTarget, setScaleTarget] = useState<KubeDeployment | null>(null)
@@ -552,14 +548,11 @@ export default function ResourceList(): JSX.Element {
   const [yamlLoading, setYamlLoading] = useState(false)
   const [yamlError, setYamlError] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; resource: AnyKubeResource } | null>(null)
-<<<<<<< HEAD
   const [pfTarget, setPfTarget] = useState<AnyKubeResource | null>(null)
   const [pfLocalPort, setPfLocalPort] = useState('')
   const [pfRemotePort, setPfRemotePort] = useState('')
   const [pfLoading, setPfLoading] = useState(false)
-=======
   const [restartError, setRestartError] = useState<string | null>(null)
->>>>>>> 135ceb6 (fix)
 
   const clusterScoped = ['nodes', 'namespaces', 'crds', 'ingressclasses', 'pvs', 'storageclasses', 'clusterroles', 'clusterrolebindings'].includes(section)
   const showNsCol = selectedNamespace === '_all' && !clusterScoped

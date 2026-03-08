@@ -151,20 +151,13 @@ export default function SettingsPanel(): JSX.Element {
             {/* Helm path */}
             <div className="p-6">
               <label className="block mb-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
-<<<<<<< HEAD
-                helm path
+                Helm path
               </label>
               <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">
                 Absolute path to helm. Leave blank to auto-detect from{' '}
                 <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">/opt/homebrew/bin</code>,{' '}
                 <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">/usr/local/bin</code>.
                 Run <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">which helm</code> in your terminal to get the path.
-=======
-                Helm path
-              </label>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">
-                Absolute path to helm for the Helm Charts panel. Leave blank to auto-detect.
->>>>>>> 135ceb6 (fix)
               </p>
               <div className="flex gap-2">
                 <input

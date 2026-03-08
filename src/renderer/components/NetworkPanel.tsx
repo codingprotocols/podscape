@@ -36,14 +36,14 @@ interface NodePos { x: number; y: number; vx: number; vy: number }
 // ─── Namespace colour palette ─────────────────────────────────────────────────
 
 const NS_PALETTE = [
-  { bg: 'rgba(59,130,246,0.07)',  border: 'rgba(59,130,246,0.28)',  text: '#3b82f6' },
-  { bg: 'rgba(139,92,246,0.07)', border: 'rgba(139,92,246,0.28)',  text: '#8b5cf6' },
-  { bg: 'rgba(16,185,129,0.07)', border: 'rgba(16,185,129,0.28)',  text: '#10b981' },
-  { bg: 'rgba(245,158,11,0.07)', border: 'rgba(245,158,11,0.28)',  text: '#f59e0b' },
-  { bg: 'rgba(6,182,212,0.07)',  border: 'rgba(6,182,212,0.28)',   text: '#06b6d4' },
-  { bg: 'rgba(236,72,153,0.07)', border: 'rgba(236,72,153,0.28)',  text: '#ec4899' },
-  { bg: 'rgba(132,204,22,0.07)', border: 'rgba(132,204,22,0.28)',  text: '#84cc16' },
-  { bg: 'rgba(239,68,68,0.07)',  border: 'rgba(239,68,68,0.28)',   text: '#ef4444' },
+  { bg: 'rgba(59,130,246,0.07)', border: 'rgba(59,130,246,0.28)', text: '#3b82f6' },
+  { bg: 'rgba(139,92,246,0.07)', border: 'rgba(139,92,246,0.28)', text: '#8b5cf6' },
+  { bg: 'rgba(16,185,129,0.07)', border: 'rgba(16,185,129,0.28)', text: '#10b981' },
+  { bg: 'rgba(245,158,11,0.07)', border: 'rgba(245,158,11,0.28)', text: '#f59e0b' },
+  { bg: 'rgba(6,182,212,0.07)', border: 'rgba(6,182,212,0.28)', text: '#06b6d4' },
+  { bg: 'rgba(236,72,153,0.07)', border: 'rgba(236,72,153,0.28)', text: '#ec4899' },
+  { bg: 'rgba(132,204,22,0.07)', border: 'rgba(132,204,22,0.28)', text: '#84cc16' },
+  { bg: 'rgba(239,68,68,0.07)', border: 'rgba(239,68,68,0.28)', text: '#ef4444' },
 ] as const
 
 function nsColor(nsIdx: number) { return NS_PALETTE[nsIdx % NS_PALETTE.length] }
@@ -136,12 +136,12 @@ function buildGraph(services: KubeService[], ingresses: KubeIngress[], pods: Kub
 
 // ─── Force simulation ─────────────────────────────────────────────────────────
 
-const REPULSION         = 12000
-const ATTRACTION        = 0.004
-const GRAVITY           = 0.0008
-const DAMPING           = 0.82
-const NATURAL_LEN       = 300
-const NS_CLUSTER_STR    = 0.015
+const REPULSION = 12000
+const ATTRACTION = 0.004
+const GRAVITY = 0.0008
+const DAMPING = 0.82
+const NATURAL_LEN = 300
+const NS_CLUSTER_STR = 0.015
 
 function runForceSimulation(graph: Graph, groupByNs: boolean, iters = 250): Map<string, NodePos> {
   const { nodes, edges, namespaces } = graph
@@ -232,13 +232,13 @@ function runForceSimulation(graph: Graph, groupByNs: boolean, iters = 250): Map<
 
 const NODE_W = 164
 const NODE_H = 54
-const H_GAP  = 36
+const H_GAP = 36
 
 const ROW_Y: Record<NodeKind, number> = { ingress: 80, service: 280, pod: 480 }
 
 const LANE_MIN_W = 180
 const LANE_PAD_X = 20
-const LANE_GAP   = 28
+const LANE_GAP = 28
 const LANE_ROW_Y: Record<NodeKind, number> = { ingress: 68, service: 212, pod: 356 }
 const LANE_HEADER = 36
 const LANE_HEIGHT = LANE_ROW_Y.pod + NODE_H + 26
@@ -322,14 +322,14 @@ function EdgeLabel({ x, y, label, color }: { x: number; y: number; label: string
 // ─── Legend overlay ───────────────────────────────────────────────────────────
 
 const LEGEND_ENTRIES = [
-  { icon: '⬡', color: '#8b5cf6',  label: 'Ingress' },
-  { icon: '◈', color: '#3b82f6',  label: 'Service · ClusterIP' },
-  { icon: '◈', color: '#06b6d4',  label: 'Service · LoadBalancer' },
-  { icon: '◈', color: '#14b8a6',  label: 'Service · NodePort' },
-  { icon: '●', color: '#10b981',  label: 'Pod · Running' },
-  { icon: '●', color: '#f59e0b',  label: 'Pod · Pending' },
-  { icon: '●', color: '#ef4444',  label: 'Pod · Failed' },
-  { icon: '●', color: '#64748b',  label: 'Pod · Other' },
+  { icon: '⬡', color: '#8b5cf6', label: 'Ingress' },
+  { icon: '◈', color: '#3b82f6', label: 'Service · ClusterIP' },
+  { icon: '◈', color: '#06b6d4', label: 'Service · LoadBalancer' },
+  { icon: '◈', color: '#14b8a6', label: 'Service · NodePort' },
+  { icon: '●', color: '#10b981', label: 'Pod · Running' },
+  { icon: '●', color: '#f59e0b', label: 'Pod · Pending' },
+  { icon: '●', color: '#ef4444', label: 'Pod · Failed' },
+  { icon: '●', color: '#64748b', label: 'Pod · Other' },
 ]
 
 function Legend() {
@@ -421,8 +421,8 @@ function TogglePill({ on, onToggle, label, icon }: { on: boolean; onToggle: () =
 // ─── Kind filter pill ─────────────────────────────────────────────────────────
 
 function KindPill({
-  kind, color, label, count, active, onToggle
-}: { kind: NodeKind; color: string; label: string; count: number; active: boolean; onToggle: () => void }) {
+  color, label, count, active, onToggle
+}: { color: string; label: string; count: number; active: boolean; onToggle: () => void }) {
   return (
     <button
       onClick={onToggle}
@@ -852,7 +852,7 @@ function MapView({ graph, groupByNs, animate, fitTrigger }: {
 const KIND_DEFS: { kind: NodeKind; color: string; label: string }[] = [
   { kind: 'ingress', color: '#8b5cf6', label: 'Ingress' },
   { kind: 'service', color: '#3b82f6', label: 'Services' },
-  { kind: 'pod',     color: '#10b981', label: 'Pods' },
+  { kind: 'pod', color: '#10b981', label: 'Pods' },
 ]
 
 export default function NetworkPanel(): JSX.Element {
@@ -861,16 +861,16 @@ export default function NetworkPanel(): JSX.Element {
   // Panel-local namespace selector
   const [panelNs, setPanelNs] = useState<string>('_all')
   const [loading, setLoading] = useState(false)
-  const [svcs, setSvcs]       = useState<KubeService[]>([])
-  const [ings, setIngs]       = useState<KubeIngress[]>([])
-  const [pds,  setPds]        = useState<KubePod[]>([])
+  const [svcs, setSvcs] = useState<KubeService[]>([])
+  const [ings, setIngs] = useState<KubeIngress[]>([])
+  const [pds, setPds] = useState<KubePod[]>([])
 
   // View controls
-  const [tab,          setTab]          = useState<'topology' | 'map'>('topology')
-  const [groupByNs,    setGroupByNs]    = useState(false)
-  const [animate,      setAnimate]      = useState(false)
-  const [showLegend,   setShowLegend]   = useState(false)
-  const [fitTrigger,   setFitTrigger]   = useState(0)
+  const [tab, setTab] = useState<'topology' | 'map'>('topology')
+  const [groupByNs, setGroupByNs] = useState(false)
+  const [animate, setAnimate] = useState(false)
+  const [showLegend, setShowLegend] = useState(false)
+  const [fitTrigger, setFitTrigger] = useState(0)
   const [visibleKinds, setVisibleKinds] = useState<Set<NodeKind>>(new Set(['ingress', 'service', 'pod']))
 
   const load = useCallback((ns: string) => {
@@ -938,6 +938,8 @@ export default function NetworkPanel(): JSX.Element {
                          text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2
                          focus:ring-blue-500/40 cursor-pointer disabled:opacity-50 transition-colors"
             >
+              {!selectedContext && <option value="" disabled>Select cluster first</option>}
+              {selectedContext && namespaces.length === 0 && !loading && <option value="" disabled>No namespaces</option>}
               <option value="_all">All Namespaces</option>
               {namespaces.map(ns => (
                 <option key={ns.metadata.name} value={ns.metadata.name}>{ns.metadata.name}</option>
@@ -996,7 +998,7 @@ export default function NetworkPanel(): JSX.Element {
         <div className="flex items-center gap-1.5 pl-3 border-l border-slate-200 dark:border-slate-700 py-2">
           {KIND_DEFS.map(({ kind, color, label }) => (
             <KindPill
-              key={kind} kind={kind} color={color} label={label}
+              key={kind} color={color} label={label}
               count={rawGraph.nodes.filter(n => n.kind === kind).length}
               active={visibleKinds.has(kind)}
               onToggle={() => toggleKind(kind)}

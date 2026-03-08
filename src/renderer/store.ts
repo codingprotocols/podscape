@@ -71,7 +71,11 @@ declare global {
     }
     helm: {
       list: (context: string) => Promise<HelmRelease[]>
-      uninstall: (context: string, name: string, namespace: string) => Promise<string>
+      status: (context: string, namespace: string, release: string) => Promise<string>
+      values: (context: string, namespace: string, release: string) => Promise<string>
+      history: (context: string, namespace: string, release: string) => Promise<unknown[]>
+      rollback: (context: string, namespace: string, release: string, revision: number) => Promise<string>
+      uninstall: (context: string, namespace: string, release: string) => Promise<string>
     }
     terminal: {
       create: (context?: string, namespace?: string) => Promise<string>
@@ -91,14 +95,6 @@ declare global {
     }
     plugins: {
       list: () => Promise<Plugin[]>
-    }
-    helm: {
-      list: (context: string) => Promise<unknown[]>
-      status: (context: string, namespace: string, release: string) => Promise<string>
-      values: (context: string, namespace: string, release: string) => Promise<string>
-      history: (context: string, namespace: string, release: string) => Promise<unknown[]>
-      rollback: (context: string, namespace: string, release: string, revision: number) => Promise<string>
-      uninstall: (context: string, namespace: string, release: string) => Promise<string>
     }
     settings: {
       get: () => Promise<{ kubectlPath: string; shellPath: string; helmPath: string; theme: string }>
@@ -355,7 +351,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
       nodes: [], events: [], crds: []
     })
     try {
-      const nsList = await window.kubectl.getNamespaces(name)
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Cannot reach cluster "${name}" — timed out after 8s`)), 8000)
+      )
+      const nsList = await Promise.race([window.kubectl.getNamespaces(name), timeout])
       if (mySeq !== contextSwitchSeq) return // another context switch happened — discard
       const chosen = nsList.length > 0 ? '_all' : null
       set({ namespaces: nsList, selectedNamespace: chosen, loadingNamespaces: false })
@@ -394,22 +393,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     // null (no ns selected yet) → show empty for namespace-scoped resources
     const nsArg = ns === '_all' ? null : ns
 
-<<<<<<< HEAD
     // These sections don't need resource loading
     if (['terminal', 'grafana', 'extensions', 'metrics', 'network', 'portforwards', 'helm', 'settings'].includes(section)) {
-=======
-    // These sections don't need resource loading (or load separately)
-    if (['terminal', 'extensions', 'metrics', 'network', 'portforwards', 'helm'].includes(section)) {
-      if (section === 'helm' && ctx) {
-        set({ loadingResources: true })
-        try {
-          const releases = await window.helm.list(ctx)
-          set({ helmReleases: releases, loadingResources: false })
-        } catch {
-          set({ helmReleases: [], loadingResources: false })
-        }
-      }
->>>>>>> 135ceb6 (fix)
       if (section === 'metrics' && ctx) {
         set({ loadingResources: true })
         try {
@@ -425,12 +410,19 @@ export const useAppStore = create<AppStore>((set, get) => ({
       if (section === 'network' && ctx) {
         set({ loadingResources: true })
         try {
-          const [svcs, ings, pds] = await Promise.all([
+          const [svcs, ings, pds, nss] = await Promise.all([
             window.kubectl.getServices(ctx, nsArg),
             window.kubectl.getIngresses(ctx, nsArg),
-            window.kubectl.getPods(ctx, nsArg)
+            window.kubectl.getPods(ctx, nsArg),
+            window.kubectl.getNamespaces(ctx)
           ])
-          set({ services: svcs as KubeService[], ingresses: ings as KubeIngress[], pods: pds as KubePod[], loadingResources: false })
+          set({
+            services: svcs as KubeService[],
+            ingresses: ings as KubeIngress[],
+            pods: pds as KubePod[],
+            namespaces: nss,
+            loadingResources: false
+          })
         } catch {
           set({ loadingResources: false })
         }
