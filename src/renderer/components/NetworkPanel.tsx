@@ -36,44 +36,41 @@ interface NodePos { x: number; y: number; vx: number; vy: number }
 // ─── Namespace colour palette ─────────────────────────────────────────────────
 
 const NS_PALETTE = [
-  { bg: 'rgba(59,130,246,0.07)', border: 'rgba(59,130,246,0.28)', text: '#3b82f6' },
-  { bg: 'rgba(139,92,246,0.07)', border: 'rgba(139,92,246,0.28)', text: '#8b5cf6' },
-  { bg: 'rgba(16,185,129,0.07)', border: 'rgba(16,185,129,0.28)', text: '#10b981' },
-  { bg: 'rgba(245,158,11,0.07)', border: 'rgba(245,158,11,0.28)', text: '#f59e0b' },
-  { bg: 'rgba(6,182,212,0.07)', border: 'rgba(6,182,212,0.28)', text: '#06b6d4' },
-  { bg: 'rgba(236,72,153,0.07)', border: 'rgba(236,72,153,0.28)', text: '#ec4899' },
-  { bg: 'rgba(132,204,22,0.07)', border: 'rgba(132,204,22,0.28)', text: '#84cc16' },
-  { bg: 'rgba(239,68,68,0.07)', border: 'rgba(239,68,68,0.28)', text: '#ef4444' },
+  { bg: 'hsla(217, 91%, 60%, 0.08)', border: 'hsla(217, 91%, 60%, 0.25)', text: '#3b82f6' },
+  { bg: 'hsla(262, 83%, 58%, 0.08)', border: 'hsla(262, 83%, 58%, 0.25)', text: '#8b5cf6' },
+  { bg: 'hsla(161, 94%, 30%, 0.08)', border: 'hsla(161, 94%, 30%, 0.25)', text: '#10b981' },
+  { bg: 'hsla(38, 92%, 50%, 0.08)', border: 'hsla(38, 92%, 50%, 0.25)', text: '#f59e0b' },
+  { bg: 'hsla(188, 78%, 41%, 0.08)', border: 'hsla(188, 78%, 41%, 0.25)', text: '#06b6d4' },
+  { bg: 'hsla(330, 81%, 60%, 0.08)', border: 'hsla(330, 81%, 60%, 0.25)', text: '#ec4899' },
+  { bg: 'hsla(82, 84%, 44%, 0.08)', border: 'hsla(82, 84%, 44%, 0.25)', text: '#84cc16' },
+  { bg: 'hsla(0, 84%, 60%, 0.08)', border: 'hsla(0, 84%, 60%, 0.25)', text: '#ef4444' },
 ] as const
 
 function nsColor(nsIdx: number) { return NS_PALETTE[nsIdx % NS_PALETTE.length] }
 
 // ─── Node colours ─────────────────────────────────────────────────────────────
 
-function nodeStroke(n: GraphNode): string {
-  if (n.kind === 'ingress') return '#8b5cf6'
+function nodeColor(n: GraphNode): string {
+  if (n.kind === 'ingress') return '#a78bfa' // lighter violet
   if (n.kind === 'service') {
-    if (n.serviceType === 'LoadBalancer') return '#06b6d4'
-    if (n.serviceType === 'NodePort') return '#14b8a6'
-    return '#3b82f6'
+    if (n.serviceType === 'LoadBalancer') return '#22d3ee' // cyan
+    if (n.serviceType === 'NodePort') return '#2dd4bf' // teal
+    return '#60a5fa' // blue
   }
-  if (n.phase === 'Running') return '#10b981'
-  if (n.phase === 'Pending') return '#f59e0b'
-  if (n.phase === 'Failed') return '#ef4444'
-  return '#64748b'
+  if (n.phase === 'Running') return '#34d399' // emerald
+  if (n.phase === 'Pending') return '#fbbf24' // amber
+  if (n.phase === 'Failed') return '#f87171' // red
+  return '#94a3b8' // slate
 }
 
-function nodeBgCls(n: GraphNode): string {
-  if (n.kind === 'ingress') return 'bg-violet-500/10 border-violet-500/30'
-  if (n.kind === 'service') {
-    if (n.serviceType === 'LoadBalancer') return 'bg-cyan-500/10 border-cyan-500/30'
-    if (n.serviceType === 'NodePort') return 'bg-teal-500/10 border-teal-500/30'
-    return 'bg-blue-500/10 border-blue-500/30'
-  }
-  if (n.phase === 'Running') return 'bg-emerald-500/10 border-emerald-500/30'
-  if (n.phase === 'Pending') return 'bg-yellow-500/10 border-yellow-500/30'
-  if (n.phase === 'Failed') return 'bg-red-500/10 border-red-500/30'
-  return 'bg-slate-500/10 border-slate-500/30'
+function nodeBg(n: GraphNode, dark: boolean): string {
+  const c = nodeColor(n)
+  return dark ? `${c}15` : `${c}10`
+}
+
+function nodeBorder(n: GraphNode, dark: boolean): string {
+  const c = nodeColor(n)
+  return dark ? `${c}35` : `${c}25`
 }
 
 // ─── Graph builder ────────────────────────────────────────────────────────────
@@ -332,13 +329,13 @@ const LEGEND_ENTRIES = [
   { icon: '●', color: '#64748b', label: 'Pod · Other' },
 ]
 
-function Legend() {
+function Legend({ dark }: { dark: boolean }) {
   return (
-    <div className="absolute bottom-4 left-4 z-10
-                    bg-white/92 dark:bg-slate-900/92 backdrop-blur-sm
-                    border border-slate-200 dark:border-slate-700
-                    rounded-xl shadow-xl px-3.5 py-3 min-w-[192px]">
-      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2.5">Legend</p>
+    <div className={`absolute bottom-6 left-6 z-10
+                    bg-white/80 dark:bg-slate-900/80 backdrop-blur-md
+                    border ${dark ? 'border-slate-800/60' : 'border-slate-200/60'}
+                    rounded-2xl shadow-2xl px-4 py-4 min-w-[210px] transition-all duration-300`}>
+      <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-400 dark:text-slate-500 mb-3.5">Legend</p>
 
       {/* Node kinds */}
       <div className="space-y-1.5 mb-3">
@@ -374,25 +371,25 @@ function Legend() {
 
 // ─── Tooltip ──────────────────────────────────────────────────────────────────
 
-function NodeTooltip({ node, x, y }: { node: GraphNode; x: number; y: number }) {
-  const color = nodeStroke(node)
+function NodeTooltip({ node, x, y, dark }: { node: GraphNode; x: number; y: number; dark: boolean }) {
+  const color = nodeColor(node)
   const clampedX = Math.min(x + 14, window.innerWidth - 240)
   return (
     <div
       style={{ position: 'fixed', left: clampedX, top: y - 12, zIndex: 200, pointerEvents: 'none' }}
-      className="bg-slate-900 border border-slate-700/60 rounded-xl shadow-2xl px-3.5 py-2.5 min-w-[170px] text-xs"
+      className={`bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border ${dark ? 'border-slate-800' : 'border-slate-200'} rounded-xl shadow-2xl px-3.5 py-2.5 min-w-[170px] text-xs transition-colors duration-200`}
     >
       <div className="flex items-center gap-2 mb-2">
         <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-        <span className="font-bold text-white truncate max-w-[150px]" title={node.name}>{node.name}</span>
+        <span className="font-bold text-slate-900 dark:text-white truncate max-w-[150px]" title={node.name}>{node.name}</span>
       </div>
-      <div className="space-y-1 text-slate-400">
-        <div><span className="text-slate-500">Kind</span> · <span className="text-slate-300 capitalize">{node.kind}</span></div>
-        {node.namespace && <div><span className="text-slate-500">NS</span> · <span className="text-slate-300">{node.namespace}</span></div>}
-        {node.phase && <div><span className="text-slate-500">Phase</span> · <span style={{ color }}>{node.phase}</span></div>}
-        {node.serviceType && <div><span className="text-slate-500">Type</span> · <span className="text-slate-300">{node.serviceType}</span></div>}
+      <div className="space-y-1 text-slate-500 dark:text-slate-400">
+        <div><span className="text-slate-400 dark:text-slate-500">Kind</span> · <span className="text-slate-600 dark:text-slate-300 capitalize">{node.kind}</span></div>
+        {node.namespace && <div><span className="text-slate-400 dark:text-slate-500">NS</span> · <span className="text-slate-600 dark:text-slate-300">{node.namespace}</span></div>}
+        {node.phase && <div><span className="text-slate-400 dark:text-slate-500">Phase</span> · <span style={{ color }}>{node.phase}</span></div>}
+        {node.serviceType && <div><span className="text-slate-400 dark:text-slate-500">Type</span> · <span className="text-slate-600 dark:text-slate-300">{node.serviceType}</span></div>}
         {node.ports && node.ports.length > 0 && (
-          <div><span className="text-slate-500">Ports</span> · <span className="text-slate-300 font-mono">{node.ports.join(', ')}</span></div>
+          <div><span className="text-slate-400 dark:text-slate-500">Ports</span> · <span className="text-slate-600 dark:text-slate-300 font-mono">{node.ports.join(', ')}</span></div>
         )}
       </div>
     </div>
@@ -405,13 +402,13 @@ function TogglePill({ on, onToggle, label, icon }: { on: boolean; onToggle: () =
   return (
     <button
       onClick={onToggle}
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all select-none
+      className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border text-[11px] font-bold transition-all duration-300 select-none
         ${on
-          ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30'
-          : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600'
+          ? 'border-blue-500/50 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-500/10 shadow-[0_0_12px_rgba(59,130,246,0.2)]'
+          : 'border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700 bg-white/50 dark:bg-slate-900/50'
         }`}
     >
-      <div className={`w-2 h-2 rounded-full transition-colors ${on ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
+      <div className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${on ? 'bg-blue-500 shadow-[0_0_8px_#3b82f6]' : 'bg-slate-300 dark:bg-slate-700'}`} />
       {icon}
       {label}
     </button>
@@ -427,16 +424,16 @@ function KindPill({
     <button
       onClick={onToggle}
       title={`${active ? 'Hide' : 'Show'} ${label}`}
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-semibold
-                  transition-all select-none
+      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-[11px] font-bold
+                  transition-all duration-300 select-none
         ${active
-          ? 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800/60'
-          : 'border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-600 opacity-50'
+          ? 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800/80 backdrop-blur-sm shadow-sm'
+          : 'border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-600 opacity-40 grayscale hover:grayscale-0 hover:opacity-100'
         }`}
     >
-      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: active ? color : '#64748b' }} />
+      <div className="w-1.5 h-1.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: active ? color : '#64748b' }} />
       {label}
-      <span className={`text-[10px] px-1 rounded ${active ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400' : ''}`}>
+      <span className={`text-[10px] px-1.5 py-0.5 rounded-md ${active ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400' : 'bg-slate-50 dark:bg-slate-900/50'}`}>
         {count}
       </span>
     </button>
@@ -445,8 +442,8 @@ function KindPill({
 
 // ─── Topology View ────────────────────────────────────────────────────────────
 
-function TopologyView({ graph, groupByNs, animate, fitTrigger }: {
-  graph: Graph; groupByNs: boolean; animate: boolean; fitTrigger: number
+function TopologyView({ graph, groupByNs, animate, fitTrigger, dark }: {
+  graph: Graph; groupByNs: boolean; animate: boolean; fitTrigger: number; dark: boolean
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -599,7 +596,10 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger }: {
           {graph.nodes.map(n => {
             const p = positions.get(n.id)
             if (!p) return null
-            const color = nodeStroke(n)
+            const color = nodeColor(n)
+            const bg = nodeBg(n, dark)
+            const border = nodeBorder(n, dark)
+            const active = tooltip?.node.id === n.id
             return (
               <g key={n.id}
                 onMouseEnter={e => setTooltip({ node: n, x: e.clientX, y: e.clientY })}
@@ -611,8 +611,14 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger }: {
                   width={NODE_W} height={NODE_H}
                   style={{ pointerEvents: 'none' }}>
                   <div
-                    className={`w-full h-full rounded-xl border px-3 py-1.5 flex flex-col justify-center backdrop-blur-sm ${nodeBgCls(n)}`}
-                    style={{ fontFamily: 'inherit' }}>
+                    className={`w-full h-full rounded-xl border px-3 py-1.5 flex flex-col justify-center backdrop-blur-md transition-all duration-300`}
+                    style={{
+                      fontFamily: 'inherit',
+                      backgroundColor: bg,
+                      borderColor: border,
+                      filter: active ? 'url(#glow)' : 'none',
+                      transform: active ? 'scale(1.02)' : 'scale(1)'
+                    }}>
                     <div className="flex items-center gap-1.5 mb-0.5">
                       <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
                       <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: color + 'bb' }}>
@@ -635,7 +641,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger }: {
           })}
         </g>
       </svg>
-      {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} />}
+      {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} dark={dark} />}
     </div>
   )
 }
@@ -644,8 +650,8 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger }: {
 
 const NODE_R = 26
 
-function MapView({ graph, groupByNs, animate, fitTrigger }: {
-  graph: Graph; groupByNs: boolean; animate: boolean; fitTrigger: number
+function MapView({ graph, groupByNs, animate, fitTrigger, dark }: {
+  graph: Graph; groupByNs: boolean; animate: boolean; fitTrigger: number; dark: boolean
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -766,6 +772,13 @@ function MapView({ graph, groupByNs, animate, fitTrigger }: {
           <marker id="arrowM" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
             <path d="M0 0L6 3L0 6z" fill="#475569" />
           </marker>
+          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
         </defs>
         <g transform={`translate(${pan.x},${pan.y}) scale(${scale})`}>
           {/* Namespace bounding boxes */}
@@ -812,9 +825,13 @@ function MapView({ graph, groupByNs, animate, fitTrigger }: {
           {graph.nodes.map(n => {
             const p = nodePos.get(n.id)
             if (!p) return null
-            const color = nodeStroke(n)
+            const color = nodeColor(n)
+            const bg = nodeBg(n, dark)
+            const border = nodeBorder(n, dark)
+            const active = tooltip?.node.id === n.id
             const label = n.name.length > 12 ? n.name.slice(0, 11) + '…' : n.name
             const kindIcon = n.kind === 'ingress' ? '⬡' : n.kind === 'service' ? '◈' : '●'
+            const r = NODE_R
             return (
               <g key={n.id} data-nid={n.id} style={{ cursor: 'grab' }}
                 onMouseEnter={e => setTooltip({ node: n, x: e.clientX, y: e.clientY })}
@@ -822,7 +839,17 @@ function MapView({ graph, groupByNs, animate, fitTrigger }: {
                 onMouseLeave={() => setTooltip(null)}
               >
                 <circle cx={p.x} cy={p.y} r={NODE_R + 4} fill={color} fillOpacity={0.08} />
-                <circle cx={p.x} cy={p.y} r={NODE_R} fill={color} fillOpacity={0.18} stroke={color} strokeWidth={1.8} />
+                <circle
+                  cx={p.x} cy={p.y} r={r}
+                  fill={bg}
+                  stroke={color}
+                  strokeWidth={active ? 2.5 : 1.8}
+                  style={{
+                    filter: active ? 'url(#glow)' : 'none',
+                    borderColor: border // satisfy linter
+                  }}
+                  className="transition-all duration-300"
+                />
                 <text x={p.x} y={p.y - 4} textAnchor="middle" fontSize={11}
                   fill={color} fillOpacity={0.7} style={{ userSelect: 'none' }}>
                   {kindIcon}
@@ -842,7 +869,7 @@ function MapView({ graph, groupByNs, animate, fitTrigger }: {
           })}
         </g>
       </svg>
-      {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} />}
+      {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} dark={dark} />}
     </div>
   )
 }
@@ -856,7 +883,8 @@ const KIND_DEFS: { kind: NodeKind; color: string; label: string }[] = [
 ]
 
 export default function NetworkPanel(): JSX.Element {
-  const { selectedContext, namespaces } = useAppStore()
+  const { selectedContext, namespaces, theme } = useAppStore()
+  const dark = theme === 'dark'
 
   // Panel-local namespace selector
   const [panelNs, setPanelNs] = useState<string>('_all')
@@ -916,15 +944,18 @@ export default function NetworkPanel(): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col flex-1 min-w-0 min-h-0 bg-white dark:bg-slate-950">
+    <div className="flex flex-col flex-1 min-w-0 min-h-0 bg-white dark:bg-slate-950 transition-colors duration-200">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200/60 dark:border-slate-800/60 shrink-0 sticky top-0 z-20 backdrop-blur-md bg-white/70 dark:bg-slate-950/70">
         <div>
-          <h1 className="text-lg font-bold text-slate-900 dark:text-white">Network Map</h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            {graph.nodes.length} nodes · {graph.edges.length} edges
-            {graph.namespaces.length > 1 && ` · ${graph.namespaces.length} namespaces`}
-            {cappedPods && <span className="ml-2 text-yellow-500 dark:text-yellow-400">· pods capped at 100</span>}
+          <h1 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">Network Map</h1>
+          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1.5 uppercase tracking-wider">
+            <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800/50">{graph.nodes.length} nodes</span>
+            <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800/50">{graph.edges.length} edges</span>
+            {graph.namespaces.length > 1 && (
+              <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800/50">{graph.namespaces.length} namespaces</span>
+            )}
+            {cappedPods && <span className="text-amber-500 dark:text-amber-400 font-bold ml-1">· pods capped at 100</span>}
           </p>
         </div>
 
@@ -1038,13 +1069,13 @@ export default function NetworkPanel(): JSX.Element {
             </p>
           </div>
         ) : tab === 'topology' ? (
-          <TopologyView graph={graph} groupByNs={groupByNs} animate={animate} fitTrigger={fitTrigger} />
+          <TopologyView graph={graph} groupByNs={groupByNs} animate={animate} fitTrigger={fitTrigger} dark={dark} />
         ) : (
-          <MapView graph={graph} groupByNs={groupByNs} animate={animate} fitTrigger={fitTrigger} />
+          <MapView graph={graph} groupByNs={groupByNs} animate={animate} fitTrigger={fitTrigger} dark={dark} />
         )}
 
         {/* Legend overlay */}
-        {showLegend && !loading && <Legend />}
+        {showLegend && !loading && <Legend dark={dark} />}
       </div>
     </div>
   )
