@@ -6,13 +6,14 @@ import { ipcMain } from 'electron'
 export interface PodscapeSettings {
   kubectlPath: string             // absolute path or '' for auto-detect
   shellPath: string               // absolute path or '' for auto-detect
+  helmPath: string                // absolute path or '' for auto-detect
   theme: 'light' | 'dark' | ''   // '' means use last-used / OS preference
 }
 
 const SETTINGS_DIR  = join(homedir(), '.podscape')
 const SETTINGS_FILE = join(SETTINGS_DIR, 'settings.json')
 
-const DEFAULTS: PodscapeSettings = { kubectlPath: '', shellPath: '', theme: '' }
+const DEFAULTS: PodscapeSettings = { kubectlPath: '', shellPath: '', helmPath: '', theme: '' }
 
 export function getSettings(): PodscapeSettings {
   try {

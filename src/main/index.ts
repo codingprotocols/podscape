@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerKubectlHandlers } from './kubectl'
 import { registerTerminalHandlers } from './terminal'
 import { registerSettingsHandlers } from './settings'
+import { registerHelmHandlers } from './helm'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -54,6 +55,7 @@ app.whenReady().then(() => {
   registerSettingsHandlers()
   registerKubectlHandlers()
   registerTerminalHandlers()
+  registerHelmHandlers()
   createWindow()
 
   app.on('activate', function () {

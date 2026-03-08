@@ -1,44 +1,55 @@
 import React, { useState, useEffect } from 'react'
-import type { KubeDeployment, KubeEvent } from '../types'
+import type { KubeStatefulSet, KubeEvent } from '../types'
 import { formatAge } from '../types'
 import { useAppStore } from '../store'
-import ScaleDialog from './ScaleDialog'
 import YAMLViewer from './YAMLViewer'
 
-interface Props { deployment: KubeDeployment }
+interface Props { statefulSet: KubeStatefulSet }
 
-type Tab = 'overview' | 'history' | 'events'
+type Tab = 'overview' | 'events'
 
-export default function DeploymentDetail({ deployment: d }: Props): JSX.Element {
+export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Element {
   const { rolloutRestart, getYAML, selectedContext, selectedNamespace } = useAppStore()
+  const [tab, setTab] = useState<Tab>('overview')
   const [showScale, setShowScale] = useState(false)
+  const [scaleVal, setScaleVal] = useState(String(s.spec.replicas ?? 1))
+  const [scaleLoading, setScaleLoading] = useState(false)
+  const [scaleMsg, setScaleMsg] = useState('')
+  const [restartMsg, setRestartMsg] = useState('')
   const [yaml, setYaml] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
   const [yamlError, setYamlError] = useState<string | null>(null)
-  const [restartMsg, setRestartMsg] = useState('')
-  const [tab, setTab] = useState<Tab>('overview')
-
-  // Rollout history
-  const [history, setHistory] = useState<string | null>(null)
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const [undoMsg, setUndoMsg] = useState('')
-  const [undoLoading, setUndoLoading] = useState(false)
-
-  // Events
   const [events, setEvents] = useState<KubeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
 
-  const desired = d.spec.replicas ?? 0
-  const ready = d.status.readyReplicas ?? 0
-  const available = d.status.availableReplicas ?? 0
-  const updated = d.status.updatedReplicas ?? 0
+  const desired = s.spec.replicas ?? 0
+  const ready = s.status.readyReplicas ?? 0
+  const current = s.status.currentReplicas ?? 0
+  const updated = s.status.updatedReplicas ?? 0
 
   const ns = selectedNamespace === '_all'
-    ? (d.metadata.namespace ?? '')
-    : (selectedNamespace ?? d.metadata.namespace ?? '')
+    ? (s.metadata.namespace ?? '')
+    : (selectedNamespace ?? s.metadata.namespace ?? '')
+
+  const handleScale = async () => {
+    if (!selectedContext) return
+    const reps = parseInt(scaleVal)
+    if (isNaN(reps) || reps < 0) return
+    setScaleLoading(true)
+    try {
+      await window.kubectl.scaleResource(selectedContext, ns, 'statefulset', s.metadata.name, reps)
+      setScaleMsg(`Scaled to ${reps} replicas`)
+      setTimeout(() => setScaleMsg(''), 5000)
+      setShowScale(false)
+    } catch (err) {
+      setScaleMsg(`Error: ${(err as Error).message}`)
+    } finally {
+      setScaleLoading(false)
+    }
+  }
 
   const handleRestart = async () => {
-    await rolloutRestart('deployment', d.metadata.name, d.metadata.namespace)
+    await rolloutRestart('statefulset', s.metadata.name, s.metadata.namespace)
     setRestartMsg('Restart triggered')
     setTimeout(() => setRestartMsg(''), 5000)
   }
@@ -46,7 +57,7 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
   const handleViewYAML = async () => {
     setYaml(null); setYamlError(null); setYamlLoading(true)
     try {
-      const content = await getYAML('deployment', d.metadata.name, false, d.metadata.namespace)
+      const content = await getYAML('statefulset', s.metadata.name, false, s.metadata.namespace)
       setYaml(content)
     } catch (err) {
       setYamlError((err as Error).message ?? 'Failed to fetch YAML')
@@ -55,40 +66,11 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
     }
   }
 
-  const loadHistory = async () => {
-    if (!selectedContext) return
-    setHistoryLoading(true)
-    try {
-      const out = await window.kubectl.rolloutHistory(selectedContext, ns, 'deployment', d.metadata.name)
-      setHistory(out)
-    } catch (err) {
-      setHistory(`Error: ${(err as Error).message}`)
-    } finally {
-      setHistoryLoading(false)
-    }
-  }
-
-  const handleUndo = async (revision?: number) => {
-    if (!selectedContext) return
-    setUndoLoading(true)
-    try {
-      await window.kubectl.rolloutUndo(selectedContext, ns, 'deployment', d.metadata.name, revision)
-      setUndoMsg(revision ? `Rolled back to revision ${revision}` : 'Rolled back to previous revision')
-      setTimeout(() => setUndoMsg(''), 5000)
-      await loadHistory()
-    } catch (err) {
-      setUndoMsg(`Error: ${(err as Error).message}`)
-      setTimeout(() => setUndoMsg(''), 5000)
-    } finally {
-      setUndoLoading(false)
-    }
-  }
-
   const loadEvents = async () => {
     if (!selectedContext) return
     setEventsLoading(true)
     try {
-      const evts = await window.kubectl.getResourceEvents(selectedContext, ns, 'Deployment', d.metadata.name)
+      const evts = await window.kubectl.getResourceEvents(selectedContext, ns, 'StatefulSet', s.metadata.name)
       setEvents(evts)
     } catch {
       setEvents([])
@@ -98,9 +80,8 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
   }
 
   useEffect(() => {
-    if (tab === 'history') loadHistory()
     if (tab === 'events') loadEvents()
-  }, [tab, d.metadata.uid])
+  }, [tab, s.metadata.uid])
 
   return (
     <div className="flex flex-col w-[440px] min-w-[340px] border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 h-full overflow-y-auto">
@@ -108,8 +89,8 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
       <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
         <div className="flex items-start gap-2">
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-mono truncate">{d.metadata.name}</h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{d.metadata.namespace}</p>
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-mono truncate">{s.metadata.name}</h3>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{s.metadata.namespace}</p>
           </div>
           <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${
             ready >= desired ? 'bg-green-500/20 text-green-300 ring-green-500/30' : 'bg-yellow-500/20 text-yellow-300 ring-yellow-500/30'
@@ -117,7 +98,6 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
             {ready}/{desired} ready
           </span>
         </div>
-        {/* Actions */}
         <div className="flex gap-2 mt-2.5">
           <button onClick={() => setShowScale(true)}
             className="text-xs px-3 py-1 rounded bg-blue-600/20 text-blue-300 border border-blue-500/30 hover:bg-blue-600/30 transition-colors">
@@ -133,11 +113,12 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
           </button>
         </div>
         {restartMsg && <p className="text-xs text-green-400 mt-1.5">{restartMsg}</p>}
+        {scaleMsg && <p className={`text-xs mt-1.5 ${scaleMsg.startsWith('Error') ? 'text-red-400' : 'text-green-400'}`}>{scaleMsg}</p>}
       </div>
 
       {/* Tabs */}
       <div className="flex border-b border-slate-100 dark:border-slate-800 shrink-0">
-        {(['overview', 'history', 'events'] as Tab[]).map(t => (
+        {(['overview', 'events'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2 text-xs font-medium capitalize transition-colors ${
               tab === t ? 'text-blue-400 border-b-2 border-blue-500' : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:text-slate-300'
@@ -147,7 +128,6 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
         ))}
       </div>
 
-      {/* Tab content */}
       {tab === 'overview' && (
         <>
           {/* Replicas */}
@@ -157,7 +137,7 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
               {[
                 { label: 'Desired', value: desired, color: 'text-slate-700 dark:text-slate-200' },
                 { label: 'Ready', value: ready, color: ready >= desired ? 'text-green-400' : 'text-yellow-400' },
-                { label: 'Available', value: available, color: 'text-slate-600 dark:text-slate-300' },
+                { label: 'Current', value: current, color: 'text-slate-600 dark:text-slate-300' },
                 { label: 'Updated', value: updated, color: 'text-blue-400' }
               ].map(({ label, value, color }) => (
                 <div key={label} className="text-center bg-white/5 rounded p-2">
@@ -168,27 +148,21 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
             </div>
           </div>
 
-          {/* Strategy */}
+          {/* Info */}
           <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-            <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Strategy</h4>
+            <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Info</h4>
             <dl className="space-y-1.5">
-              <Row label="Type" value={d.spec.strategy?.type ?? 'RollingUpdate'} />
-              {d.spec.strategy?.rollingUpdate && (
-                <>
-                  <Row label="Max Surge" value={String(d.spec.strategy.rollingUpdate.maxSurge ?? '25%')} />
-                  <Row label="Max Unavailable" value={String(d.spec.strategy.rollingUpdate.maxUnavailable ?? '25%')} />
-                </>
-              )}
-              <Row label="Created" value={formatAge(d.metadata.creationTimestamp) + ' ago'} />
+              <Row label="Service Name" value={s.spec.serviceName} />
+              <Row label="Created" value={formatAge(s.metadata.creationTimestamp) + ' ago'} />
             </dl>
           </div>
 
-          {/* Selector labels */}
-          {d.spec.selector.matchLabels && (
-            <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+          {/* Selector */}
+          {s.spec.selector.matchLabels && (
+            <div className="px-4 py-3">
               <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Selector</h4>
               <div className="flex flex-wrap gap-1.5">
-                {Object.entries(d.spec.selector.matchLabels).map(([k, v]) => (
+                {Object.entries(s.spec.selector.matchLabels).map(([k, v]) => (
                   <span key={k} className="text-xs bg-blue-500/10 text-blue-300 border border-blue-500/20 px-2 py-0.5 rounded font-mono">
                     {k}={v}
                   </span>
@@ -196,51 +170,7 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
               </div>
             </div>
           )}
-
-          {/* Conditions */}
-          {d.status.conditions && d.status.conditions.length > 0 && (
-            <div className="px-4 py-3">
-              <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Conditions</h4>
-              <div className="space-y-1.5">
-                {d.status.conditions.map(c => (
-                  <div key={c.type} className="flex items-center gap-2">
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${c.status === 'True' ? 'bg-green-400' : 'bg-slate-400 dark:bg-slate-500'}`} />
-                    <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">{c.type}</span>
-                    {c.reason && <span className="text-xs text-slate-500 dark:text-slate-400">— {c.reason}</span>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </>
-      )}
-
-      {tab === 'history' && (
-        <div className="px-4 py-3 flex-1">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Rollout History</h4>
-            <div className="flex gap-2">
-              <button onClick={loadHistory} disabled={historyLoading}
-                className="text-xs px-2 py-1 rounded bg-white/5 text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-800 hover:bg-white/10 transition-colors disabled:opacity-50">
-                {historyLoading ? '…' : 'Refresh'}
-              </button>
-              <button onClick={() => handleUndo()} disabled={undoLoading}
-                className="text-xs px-2 py-1 rounded bg-yellow-600/20 text-yellow-300 border border-yellow-500/30 hover:bg-yellow-600/30 transition-colors disabled:opacity-50">
-                {undoLoading ? 'Rolling back…' : 'Undo Last'}
-              </button>
-            </div>
-          </div>
-          {undoMsg && (
-            <p className={`text-xs mb-3 ${undoMsg.startsWith('Error') ? 'text-red-400' : 'text-green-400'}`}>{undoMsg}</p>
-          )}
-          {historyLoading ? (
-            <div className="flex items-center justify-center h-24">
-              <div className="w-5 h-5 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin" />
-            </div>
-          ) : history ? (
-            <pre className="text-xs text-slate-600 dark:text-slate-300 bg-black/30 rounded p-3 overflow-x-auto whitespace-pre font-mono leading-relaxed">{history}</pre>
-          ) : null}
-        </div>
       )}
 
       {tab === 'events' && (
@@ -269,9 +199,7 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
                     <span className="text-slate-500 dark:text-slate-400 text-[10px]">{e.count ? `×${e.count}` : ''}</span>
                   </div>
                   <p className="text-slate-400 dark:text-slate-500 leading-relaxed">{e.message}</p>
-                  {e.lastTimestamp && (
-                    <p className="text-slate-500 dark:text-slate-400 mt-1">{formatAge(e.lastTimestamp)} ago</p>
-                  )}
+                  {e.lastTimestamp && <p className="text-slate-500 dark:text-slate-400 mt-1">{formatAge(e.lastTimestamp)} ago</p>}
                 </div>
               ))}
             </div>
@@ -279,9 +207,27 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
         </div>
       )}
 
-      {/* Scale dialog */}
+      {/* Inline scale dialog */}
       {showScale && (
-        <ScaleDialog deployment={d} onClose={() => setShowScale(false)} />
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-8">
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-80 p-6">
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-4">Scale StatefulSet</h3>
+            <label className="block text-xs text-slate-400 dark:text-slate-500 mb-1">Replicas</label>
+            <input type="number" min={0} value={scaleVal} onChange={e => setScaleVal(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm rounded border border-slate-200 dark:border-slate-700 px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowScale(false)}
+                className="text-xs px-4 py-2 rounded bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-800 hover:bg-white/10 transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleScale} disabled={scaleLoading}
+                className="text-xs px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50">
+                {scaleLoading ? 'Scaling…' : 'Scale'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* YAML viewer */}
@@ -289,24 +235,20 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-8">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-3xl max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-                {yamlLoading ? 'Loading YAML…' : `YAML — ${d.metadata.name}`}
-              </h3>
-              <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }} className="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-white">✕</button>
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{yamlLoading ? 'Loading YAML…' : `YAML — ${s.metadata.name}`}</h3>
+              <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }} className="text-slate-400 dark:text-slate-500 hover:text-white">✕</button>
             </div>
             <div className="flex-1 min-h-0">
               {yamlError ? (
                 <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
                   <p className="text-sm font-bold text-red-400">Failed to load YAML</p>
-                  <pre className="text-xs text-slate-400 dark:text-slate-500 text-center max-w-lg break-words whitespace-pre-wrap">{yamlError}</pre>
+                  <pre className="text-xs text-slate-400 dark:text-slate-500 whitespace-pre-wrap">{yamlError}</pre>
                 </div>
               ) : yamlLoading ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="w-8 h-8 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
-              ) : yaml !== null ? (
-                <YAMLViewer content={yaml} />
-              ) : null}
+              ) : yaml !== null ? <YAMLViewer content={yaml} /> : null}
             </div>
           </div>
         </div>

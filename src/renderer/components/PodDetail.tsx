@@ -142,6 +142,17 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     setTimeout(() => setCopyMsg(''), 2000)
   }
 
+  const downloadLogs = () => {
+    const content = filteredLogs.join('\n')
+    const blob = new Blob([content], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${pod.metadata.name}-${selectedContainer}-${Date.now()}.log`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   // ── Shared log toolbar content ────────────────────────────────────────────
 
   const LogToolbar = (
@@ -163,6 +174,11 @@ export default function PodDetail({ pod }: Props): JSX.Element {
               <button onClick={copyLogs}
                 className="text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors uppercase tracking-wider">
                 Copy
+              </button>
+              <button onClick={downloadLogs}
+                title="Download logs as .log file"
+                className="text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors uppercase tracking-wider">
+                Download
               </button>
               <button onClick={() => setLogs([])}
                 className="text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors uppercase tracking-wider">
