@@ -219,14 +219,6 @@ const exec = {
   }
 }
 
-// ─── helm API ─────────────────────────────────────────────────────────────────
-
-const helm = {
-  list: (context: string) => ipcRenderer.invoke('helm:list', context),
-  uninstall: (context: string, name: string, namespace: string) =>
-    ipcRenderer.invoke('helm:uninstall', context, name, namespace)
-}
-
 // ─── plugins API ──────────────────────────────────────────────────────────────
 
 const plugins = {
@@ -269,7 +261,6 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('terminal', terminal)
     contextBridge.exposeInMainWorld('exec', exec)
     contextBridge.exposeInMainWorld('plugins', plugins)
-    contextBridge.exposeInMainWorld('helm', helm)
     contextBridge.exposeInMainWorld('settings', settings)
   } catch (error) {
     console.error(error)
@@ -287,8 +278,6 @@ if (process.contextIsolated) {
   window.exec = exec
   // @ts-ignore
   window.plugins = plugins
-  // @ts-ignore
-  window.helm = helm
   // @ts-ignore
   window.settings = settings
 }

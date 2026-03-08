@@ -29,7 +29,6 @@ import ExtensionsPanel from './components/ExtensionsPanel'
 import SettingsPanel from './components/SettingsPanel'
 import NetworkPanel from './components/NetworkPanel'
 import ExecPanel from './components/ExecPanel'
-import HelmPanel from './components/HelmPanel'
 import YAMLViewer from './components/YAMLViewer'
 import type {
   KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet, KubeJob, KubeCronJob,
@@ -229,7 +228,6 @@ export default function App(): JSX.Element {
 
       {/* Main content */}
       <div className="flex flex-1 min-w-0 min-h-0 bg-slate-50 dark:bg-slate-950/50 transition-colors duration-200">
-<<<<<<< HEAD
         {section === 'dashboard' ? (
           <Dashboard />
         ) : section === 'terminal' ? (
@@ -260,38 +258,6 @@ export default function App(): JSX.Element {
             )}
           </>
         ) : null}
-=======
-        <ErrorBoundary>
-          {section === 'dashboard' ? (
-            <Dashboard />
-          ) : section === 'terminal' ? (
-            <Terminal />
-          ) : section === 'events' ? (
-            <EventsView />
-          ) : section === 'metrics' ? (
-            <MetricsView />
-          ) : section === 'extensions' ? (
-            <ExtensionsPanel />
-          ) : section === 'settings' ? (
-            <SettingsPanel />
-          ) : section === 'network' ? (
-            <NetworkPanel />
-          ) : section === 'portforwards' ? (
-            <PortForwardPanel />
-          ) : section === 'helm' ? (
-            <HelmPanel />
-          ) : showListView ? (
-            <>
-              <ResourceList />
-              {selectedResource && (
-                <ErrorBoundary key={selectedResource.metadata.uid}>
-                  <DetailPanel resource={selectedResource} section={section} />
-                </ErrorBoundary>
-              )}
-            </>
-          ) : null}
-        </ErrorBoundary>
->>>>>>> 135ceb6 (fix)
       </div>
 
       {/* Exec overlay */}

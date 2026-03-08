@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { existsSync } from 'fs'
@@ -7,18 +6,10 @@ import { getSettings } from './settings'
 
 const execFileAsync = promisify(execFile)
 
-=======
-import { ipcMain } from 'electron'
-import { execFile } from 'child_process'
-import { existsSync } from 'fs'
-import { getSettings } from './settings'
-
->>>>>>> 135ceb6 (fix)
 const HELM_PATHS = [
   '/opt/homebrew/bin/helm',
   '/usr/local/bin/helm',
   '/usr/bin/helm',
-<<<<<<< HEAD
   '/snap/bin/helm',
 ]
 
@@ -27,21 +18,10 @@ export function findHelm(): string {
   if (settings.helmPath && existsSync(settings.helmPath)) return settings.helmPath
   for (const p of HELM_PATHS) {
     if (existsSync(p)) return p
-=======
-  'helm'
-]
-
-export function findHelm(): string {
-  const { helmPath } = getSettings()
-  if (helmPath && existsSync(helmPath)) return helmPath
-  for (const p of HELM_PATHS) {
-    if (p === 'helm' || existsSync(p)) return p
->>>>>>> 135ceb6 (fix)
   }
   return 'helm'
 }
 
-<<<<<<< HEAD
 async function spawnHelm(args: string[]): Promise<string> {
   const helm = findHelm()
   const { stdout } = await execFileAsync(helm, args, {
@@ -98,53 +78,5 @@ export function registerHelmHandlers(): void {
   // Uninstall release
   ipcMain.handle('helm:uninstall', async (_event, context: string, namespace: string, release: string) => {
     return spawnHelm(['--kube-context', context, '--namespace', namespace, 'uninstall', release])
-=======
-function spawnHelm(args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const binary = findHelm()
-    execFile(binary, args, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) reject(new Error(stderr?.trim() || error.message))
-      else resolve(stdout ?? '')
-    })
-  })
-}
-
-export interface HelmReleaseRow {
-  name: string
-  namespace: string
-  chart: string
-  app_version: string
-  status: string
-  updated: string
-}
-
-function parseListOutput(stdout: string): HelmReleaseRow[] {
-  try {
-    const data = JSON.parse(stdout) as unknown
-    if (!Array.isArray(data)) return []
-    return (data as HelmReleaseRow[]).map((r: HelmReleaseRow) => ({
-      name: r.name ?? '',
-      namespace: r.namespace ?? '',
-      chart: r.chart ?? '',
-      app_version: r.app_version ?? '',
-      status: r.status ?? 'unknown',
-      updated: r.updated ?? ''
-    }))
-  } catch {
-    return []
-  }
-}
-
-export function registerHelmHandlers(): void {
-  ipcMain.handle('helm:list', async (_event, context: string) => {
-    const output = await spawnHelm(['list', '-a', '-o', 'json', '--kube-context', context])
-    return parseListOutput(output)
-  })
-
-  ipcMain.handle('helm:uninstall', async (_event, context: string, name: string, namespace: string) => {
-    const args = ['uninstall', name, '--kube-context', context]
-    if (namespace) args.push('--namespace', namespace)
-    return spawnHelm(args)
->>>>>>> 135ceb6 (fix)
   })
 }
