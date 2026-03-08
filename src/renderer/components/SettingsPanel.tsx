@@ -4,12 +4,13 @@ import { useAppStore } from '../store'
 interface SettingsForm {
   kubectlPath: string
   shellPath: string
+  helmPath: string
   theme: string
 }
 
 export default function SettingsPanel(): JSX.Element {
   const { theme, setTheme } = useAppStore()
-  const [form, setForm] = useState<SettingsForm>({ kubectlPath: '', shellPath: '', theme })
+  const [form, setForm] = useState<SettingsForm>({ kubectlPath: '', shellPath: '', helmPath: '', theme })
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -138,6 +139,38 @@ export default function SettingsPanel(): JSX.Element {
                 />
                 <button
                   onClick={() => setForm(f => ({ ...f, shellPath: '' }))}
+                  className="px-3 py-2 text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200
+                             bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700
+                             rounded-lg transition-colors"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+
+            {/* Helm path */}
+            <div className="p-6">
+              <label className="block mb-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                helm path
+              </label>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">
+                Absolute path to helm. Leave blank to auto-detect from{' '}
+                <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">/opt/homebrew/bin</code>,{' '}
+                <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">/usr/local/bin</code>.
+                Run <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">which helm</code> in your terminal to get the path.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={form.helmPath}
+                  onChange={e => setForm(f => ({ ...f, helmPath: e.target.value }))}
+                  placeholder="/opt/homebrew/bin/helm"
+                  className="flex-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700
+                             text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600
+                             rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono"
+                />
+                <button
+                  onClick={() => setForm(f => ({ ...f, helmPath: '' }))}
                   className="px-3 py-2 text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200
                              bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700
                              rounded-lg transition-colors"

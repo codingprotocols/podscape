@@ -5,6 +5,10 @@ import Dashboard from './components/Dashboard'
 import ResourceList from './components/ResourceList'
 import PodDetail from './components/PodDetail'
 import DeploymentDetail from './components/DeploymentDetail'
+import StatefulSetDetail from './components/StatefulSetDetail'
+import JobDetail from './components/JobDetail'
+import CronJobDetail from './components/CronJobDetail'
+import IngressDetail from './components/IngressDetail'
 import ServiceDetail from './components/ServiceDetail'
 import NodeDetail from './components/NodeDetail'
 import ConfigMapDetail from './components/ConfigMapDetail'
@@ -13,6 +17,10 @@ import DaemonSetDetail from './components/DaemonSetDetail'
 import HPADetail from './components/HPADetail'
 import PVCDetail from './components/PVCDetail'
 import RoleBindingDetail from './components/RoleBindingDetail'
+import RoleDetail from './components/RoleDetail'
+import ReplicaSetDetail from './components/ReplicaSetDetail'
+import NamespaceDetail from './components/NamespaceDetail'
+import HelmPanel from './components/HelmPanel'
 import PortForwardPanel from './components/PortForwardPanel'
 import EventsView from './components/EventsView'
 import MetricsView from './components/MetricsView'
@@ -24,8 +32,10 @@ import NetworkPanel from './components/NetworkPanel'
 import ExecPanel from './components/ExecPanel'
 import YAMLViewer from './components/YAMLViewer'
 import type {
-  KubePod, KubeDeployment, KubeDaemonSet, KubeService, KubeNode,
+  KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet, KubeJob, KubeCronJob,
+  KubeService, KubeIngress, KubeNode,
   KubeConfigMap, KubeSecret, KubeHPA, KubePVC, KubeRoleBinding, KubeClusterRoleBinding,
+  KubeRole, KubeClusterRole, KubeReplicaSet, KubeNamespace,
   AnyKubeResource
 } from './types'
 
@@ -84,6 +94,14 @@ function DetailPanel({ resource, section }: { resource: AnyKubeResource; section
       return <PodDetail pod={resource as KubePod} />
     case 'deployments':
       return <DeploymentDetail deployment={resource as KubeDeployment} />
+    case 'statefulsets':
+      return <StatefulSetDetail statefulSet={resource as KubeStatefulSet} />
+    case 'jobs':
+      return <JobDetail job={resource as KubeJob} />
+    case 'cronjobs':
+      return <CronJobDetail cronJob={resource as KubeCronJob} />
+    case 'ingresses':
+      return <IngressDetail ingress={resource as KubeIngress} />
     case 'daemonsets':
       return <DaemonSetDetail daemonSet={resource as KubeDaemonSet} />
     case 'services':
@@ -98,10 +116,18 @@ function DetailPanel({ resource, section }: { resource: AnyKubeResource; section
       return <HPADetail hpa={resource as KubeHPA} />
     case 'pvcs':
       return <PVCDetail pvc={resource as KubePVC} />
+    case 'replicasets':
+      return <ReplicaSetDetail replicaSet={resource as KubeReplicaSet} />
     case 'rolebindings':
       return <RoleBindingDetail binding={resource as KubeRoleBinding} />
     case 'clusterrolebindings':
       return <RoleBindingDetail binding={resource as KubeClusterRoleBinding} />
+    case 'roles':
+      return <RoleDetail role={resource as KubeRole} clusterScoped={false} />
+    case 'clusterroles':
+      return <RoleDetail role={resource as KubeClusterRole} clusterScoped={true} />
+    case 'namespaces':
+      return <NamespaceDetail namespace={resource as KubeNamespace} />
     default:
       return <DefaultDetail resource={resource} />
   }
@@ -190,6 +216,8 @@ export default function App(): JSX.Element {
           <NetworkPanel />
         ) : section === 'portforwards' ? (
           <PortForwardPanel />
+        ) : section === 'helm' ? (
+          <HelmPanel />
         ) : showListView ? (
           <>
             <ResourceList />

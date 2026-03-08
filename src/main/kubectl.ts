@@ -184,6 +184,55 @@ export function registerKubectlHandlers(): void {
   )
 
   ipcMain.handle(
+    'kubectl:scaleResource',
+    async (_event, context: string, namespace: string, kind: string, name: string, replicas: number) => {
+      return spawnKubectl([
+        '--context', context, '--namespace', namespace,
+        'scale', kind, name, `--replicas=${replicas}`
+      ])
+    }
+  )
+
+  ipcMain.handle(
+    'kubectl:rolloutHistory',
+    async (_event, context: string, namespace: string, kind: string, name: string) => {
+      return spawnKubectl([
+        '--context', context, '--namespace', namespace,
+        'rollout', 'history', `${kind}/${name}`
+      ])
+    }
+  )
+
+  ipcMain.handle(
+    'kubectl:rolloutUndo',
+    async (_event, context: string, namespace: string, kind: string, name: string, revision?: number) => {
+      const args = [
+        '--context', context, '--namespace', namespace,
+        'rollout', 'undo', `${kind}/${name}`
+      ]
+      if (revision) args.push(`--to-revision=${revision}`)
+      return spawnKubectl(args)
+    }
+  )
+
+  ipcMain.handle(
+    'kubectl:getResourceEvents',
+    async (_event, context: string, namespace: string, kind: string, name: string) => {
+      try {
+        const output = await spawnKubectl([
+          '--context', context, '--namespace', namespace,
+          'get', 'events',
+          `--field-selector=involvedObject.kind=${kind},involvedObject.name=${name}`,
+          '-o', 'json'
+        ])
+        return (JSON.parse(output).items ?? []) as unknown[]
+      } catch {
+        return []
+      }
+    }
+  )
+
+  ipcMain.handle(
     'kubectl:rolloutRestart',
     async (_event, context: string, namespace: string, kind: string, name: string) => {
       return spawnKubectl([
@@ -208,6 +257,21 @@ export function registerKubectlHandlers(): void {
       const args = ['--context', context, 'get', kind, name, '-o', 'yaml']
       if (namespace) args.push('--namespace', namespace)
       return spawnKubectl(args)
+    }
+  )
+
+  ipcMain.handle(
+    'kubectl:getSecretValue',
+    async (_event, context: string, namespace: string, name: string, key: string) => {
+      // Fetch the full secret JSON and decode the specific key's base64 value
+      const output = await spawnKubectl([
+        '--context', context, '--namespace', namespace,
+        'get', 'secret', name, '-o', 'json'
+      ])
+      const secret = JSON.parse(output) as { data?: Record<string, string> }
+      const encoded = secret.data?.[key]
+      if (!encoded) throw new Error(`Key '${key}' not found in secret`)
+      return Buffer.from(encoded, 'base64').toString('utf8')
     }
   )
 
