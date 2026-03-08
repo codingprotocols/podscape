@@ -355,15 +355,33 @@ function UrlCell({ url }: { url: string }) {
   )
 }
 
+type SortKey = 'name' | 'namespace' | 'localPort'
+
 export default function PortForwardPanel() {
   const { portForwards, stopPortForward, startPortForward, selectedContext } = useAppStore()
   const [showDialog, setShowDialog] = useState(false)
+  const [filter, setFilter] = useState('')
+  const [sortBy, setSortBy] = useState<SortKey>('name')
 
   const handleStart = (entry: Omit<PortForwardEntry, 'id' | 'status'>) => {
     if (!selectedContext) return
     const id = crypto.randomUUID()
     startPortForward({ ...entry, id, status: 'starting' })
   }
+
+  const filtered = filter.trim()
+    ? portForwards.filter(pf =>
+        pf.name.toLowerCase().includes(filter.toLowerCase()) ||
+        pf.namespace.toLowerCase().includes(filter.toLowerCase()) ||
+        String(pf.localPort).includes(filter)
+      )
+    : portForwards
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortBy === 'name') return a.name.localeCompare(b.name)
+    if (sortBy === 'namespace') return a.namespace.localeCompare(b.namespace)
+    return a.localPort - b.localPort
+  })
 
   return (
     <div className="flex flex-col flex-1 min-w-0 bg-white dark:bg-slate-950 h-full transition-colors duration-200">
@@ -375,14 +393,36 @@ export default function PortForwardPanel() {
             {portForwards.length} active
           </p>
         </div>
-        <button
-          onClick={() => setShowDialog(true)}
-          disabled={!selectedContext}
-          className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-sm transition-all active:scale-95 disabled:opacity-50"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
-          New Forward
-        </button>
+        <div className="flex items-center gap-3">
+          {portForwards.length > 0 && (
+            <>
+              <input
+                type="text"
+                placeholder="Filter..."
+                value={filter}
+                onChange={e => setFilter(e.target.value)}
+                className="w-36 text-xs bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              />
+              <select
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value as SortKey)}
+                className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              >
+                <option value="name">Sort by name</option>
+                <option value="namespace">Sort by namespace</option>
+                <option value="localPort">Sort by local port</option>
+              </select>
+            </>
+          )}
+          <button
+            onClick={() => setShowDialog(true)}
+            disabled={!selectedContext}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-sm transition-all active:scale-95 disabled:opacity-50"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
+            New Forward
+          </button>
+        </div>
       </div>
 
       {/* List */}
@@ -409,7 +449,7 @@ export default function PortForwardPanel() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50 dark:divide-slate-900">
-              {portForwards.map(pf => {
+              {sorted.map(pf => {
                 const url = `http://localhost:${pf.localPort}`
                 const isActive = pf.status === 'active'
                 return (

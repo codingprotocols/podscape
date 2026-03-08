@@ -51,7 +51,7 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-950">
+    <div className="flex flex-col h-full min-h-[400px] bg-slate-50 dark:bg-slate-950">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
         <div className="flex items-center gap-2">
@@ -66,7 +66,7 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
             title="Download YAML"
             className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors uppercase tracking-wider"
           >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" /></svg>
             Download
           </button>
           <button
@@ -88,11 +88,12 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 bg-white dark:bg-slate-950">
+      <div className="flex-1 relative bg-white dark:bg-slate-950">
         <Editor
           height="100%"
           language="yaml"
           value={value}
+          loading={<div className="flex items-center justify-center h-full text-slate-400 text-xs font-bold uppercase tracking-widest">Initializing Editor...</div>}
           onChange={v => editable && setValue(v ?? '')}
           theme={theme === 'dark' ? 'vs-dark' : 'light'}
           options={{
@@ -122,7 +123,7 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
 // ─── Apply YAML panel (full editor for applying new manifests) ────────────────
 
 export function ApplyYAMLPanel(): JSX.Element {
-  const { applyYAML, theme } = useAppStore()
+  const { applyYAML, theme, selectedContext } = useAppStore()
   const [content, setContent] = useState('# Paste your YAML manifest here\n')
   const [result, setResult] = useState('')
   const [applying, setApplying] = useState(false)
@@ -145,7 +146,9 @@ export function ApplyYAMLPanel(): JSX.Element {
       <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-950">
         <div>
           <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Apply YAML</h2>
-          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">Create or update resources</p>
+          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">
+            {selectedContext ? `Target: ${selectedContext}` : 'Select a cluster'}
+          </p>
         </div>
         <button
           onClick={handleApply}

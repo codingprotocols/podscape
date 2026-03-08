@@ -106,8 +106,8 @@ const ICONS = {
   crd: 'M12 2a5 5 0 100 10A5 5 0 0012 2zm-7 14a7 7 0 0114 0',
   event: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
   metrics: 'M3 3v18h18M18.5 8l-5.5 5.5-3-3L7 14',
-  grafana: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',
   terminal: 'M4 17l6-6-6-6M12 19h8',
+  helm: 'M20 7l-8 4-8-4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
   extension: 'M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z',
   settings: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z',
   network: 'M12 5a2 2 0 100-4 2 2 0 000 4zm-7 7a2 2 0 100-4 2 2 0 000 4zm14 0a2 2 0 100-4 2 2 0 000 4zm-7 7a2 2 0 100-4 2 2 0 000 4zM5 12H2m10-7V2m7 10h3M12 17v3M7.05 7.05L5 5m9.95 2.05L17 5M7.05 16.95L5 19m9.95-2.05L17 19',
@@ -118,11 +118,15 @@ const ICONS = {
 
 export default function Sidebar(): JSX.Element {
   const {
-    contexts, selectedContext, namespaces, selectedNamespace,
+    contexts, selectedContext, hotbarContexts, toggleHotbarContext,
+    namespaces, selectedNamespace,
     loadingContexts, loadingNamespaces,
     selectContext, selectNamespace, error, clearError,
     pods, deployments, events
   } = useAppStore()
+
+  const contextNames = new Set(contexts.map(c => c.name))
+  const hotbarValid = hotbarContexts.filter(c => contextNames.has(c))
 
   return (
     <div className="flex flex-col w-64 border-r bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 h-full shrink-0 transition-colors duration-200">
@@ -137,6 +141,32 @@ export default function Sidebar(): JSX.Element {
       </div>
 
       <div className="px-4 pb-4 space-y-4">
+        {/* Hotbar: quick access to multiple clusters */}
+        {hotbarValid.length > 0 && (
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-2">
+              Hotbar
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {hotbarValid.map(ctxName => (
+                <button
+                  key={ctxName}
+                  type="button"
+                  onClick={() => selectContext(ctxName)}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold truncate max-w-[7rem] transition-all
+                    ${selectedContext === ctxName
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400'
+                    }`}
+                  title={ctxName}
+                >
+                  {ctxName}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Context selector */}
         <div>
           <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-2">
@@ -145,22 +175,40 @@ export default function Sidebar(): JSX.Element {
           {loadingContexts ? (
             <Spinner text="Loading..." />
           ) : (
-            <div className="relative group">
-              <select
-                className="w-full bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs rounded-lg px-3 py-2
-                           border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2
-                           focus:ring-blue-500/40 appearance-none cursor-pointer transition-all"
-                value={selectedContext ?? ''}
-                onChange={e => selectContext(e.target.value)}
-              >
-                {contexts.length === 0 && <option value="" disabled>No clusters</option>}
-                {contexts.map(ctx => (
-                  <option key={ctx.name} value={ctx.name}>{ctx.name}</option>
-                ))}
-              </select>
-              <div className="absolute right-3 top-2.5 pointer-events-none text-slate-400">
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M2.5 4l2.5 2.5L7.5 4H2.5z" /></svg>
+            <div className="flex items-center gap-1.5">
+              <div className="relative group flex-1 min-w-0">
+                <select
+                  className="w-full bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs rounded-lg px-3 py-2
+                             border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2
+                             focus:ring-blue-500/40 appearance-none cursor-pointer transition-all"
+                  value={selectedContext ?? ''}
+                  onChange={e => selectContext(e.target.value)}
+                >
+                  {contexts.length === 0 && <option value="" disabled>No clusters</option>}
+                  {contexts.map(ctx => (
+                    <option key={ctx.name} value={ctx.name}>{ctx.name}</option>
+                  ))}
+                </select>
+                <div className="absolute right-3 top-2.5 pointer-events-none text-slate-400">
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M2.5 4l2.5 2.5L7.5 4H2.5z" /></svg>
+                </div>
               </div>
+              {selectedContext && (
+                <button
+                  type="button"
+                  onClick={() => toggleHotbarContext(selectedContext)}
+                  className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors
+                    ${hotbarContexts.includes(selectedContext)
+                      ? 'text-amber-500 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20'
+                      : 'text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  title={hotbarContexts.includes(selectedContext) ? 'Remove from Hotbar' : 'Add to Hotbar'}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                  </svg>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -259,7 +307,6 @@ export default function Sidebar(): JSX.Element {
         <NavGroup title="Observe">
           <NavItem label="Events" section="events" icon={ICONS.event} badge={events.filter(e => e.type === 'Warning').length || undefined} />
           <NavItem label="Metrics" section="metrics" icon={ICONS.metrics} />
-          <NavItem label="Grafana" section="grafana" icon={ICONS.grafana} />
         </NavGroup>
 
         <NavGroup title="Tools">

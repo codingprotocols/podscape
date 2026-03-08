@@ -25,11 +25,11 @@ import PortForwardPanel from './components/PortForwardPanel'
 import EventsView from './components/EventsView'
 import MetricsView from './components/MetricsView'
 import Terminal from './components/Terminal'
-import GrafanaPanel from './components/GrafanaPanel'
 import ExtensionsPanel from './components/ExtensionsPanel'
 import SettingsPanel from './components/SettingsPanel'
 import NetworkPanel from './components/NetworkPanel'
 import ExecPanel from './components/ExecPanel'
+import HelmPanel from './components/HelmPanel'
 import YAMLViewer from './components/YAMLViewer'
 import type {
   KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet, KubeJob, KubeCronJob,
@@ -135,14 +135,15 @@ function DetailPanel({ resource, section }: { resource: AnyKubeResource; section
 
 function DefaultDetail({ resource }: { resource: AnyKubeResource }) {
   const [yaml, setYaml] = React.useState<string | null>(null)
-  const { getYAML, section } = useAppStore()
+  const { getYAML, applyYAML, refresh, section } = useAppStore()
   const clusterScoped = ['nodes', 'namespaces', 'crds', 'ingressclasses', 'pvs', 'storageclasses', 'clusterroles', 'clusterrolebindings'].includes(section)
 
   useEffect(() => {
     getYAML(
       kindForSection(section),
       resource.metadata.name,
-      clusterScoped
+      clusterScoped,
+      resource.metadata.namespace
     ).then(setYaml).catch(() => setYaml('# Unable to fetch YAML'))
   }, [resource.metadata.uid, section])
 
@@ -156,7 +157,20 @@ function DefaultDetail({ resource }: { resource: AnyKubeResource }) {
       </div>
       <div className="flex-1 min-h-0">
         {yaml !== null ? (
-          <YAMLViewer content={yaml} />
+          yaml.startsWith('#') ? (
+            <YAMLViewer content={yaml} />
+          ) : (
+            <YAMLViewer
+              content={yaml}
+              editable
+              onSave={async (updatedYaml) => {
+                await applyYAML(updatedYaml)
+                refresh()
+                const next = await getYAML(kindForSection(section), resource.metadata.name, clusterScoped, resource.metadata.namespace)
+                setYaml(next)
+              }}
+            />
+          )
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
             <div className="w-5 h-5 border-2 border-slate-200 dark:border-slate-800 border-t-blue-500 rounded-full animate-spin" />
@@ -185,19 +199,37 @@ function kindForSection(section: string): string {
 }
 
 export default function App(): JSX.Element {
-  const { init, section, selectedResource, execTarget, closeExec } = useAppStore()
+  const { init, section, setSection, selectedResource, execTarget, closeExec, refresh } = useAppStore()
 
   useEffect(() => { init() }, [])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'r') {
+        e.preventDefault()
+        refresh()
+      }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'T') {
+        e.preventDefault()
+        setSection('terminal')
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [refresh, setSection])
 
   const showListView = LIST_SECTIONS.includes(section)
 
   return (
     <div className="flex h-screen overflow-hidden bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       {/* Left nav sidebar */}
-      <Sidebar />
+      <ErrorBoundary>
+        <Sidebar />
+      </ErrorBoundary>
 
       {/* Main content */}
       <div className="flex flex-1 min-w-0 min-h-0 bg-slate-50 dark:bg-slate-950/50 transition-colors duration-200">
+<<<<<<< HEAD
         {section === 'dashboard' ? (
           <Dashboard />
         ) : section === 'terminal' ? (
@@ -228,6 +260,38 @@ export default function App(): JSX.Element {
             )}
           </>
         ) : null}
+=======
+        <ErrorBoundary>
+          {section === 'dashboard' ? (
+            <Dashboard />
+          ) : section === 'terminal' ? (
+            <Terminal />
+          ) : section === 'events' ? (
+            <EventsView />
+          ) : section === 'metrics' ? (
+            <MetricsView />
+          ) : section === 'extensions' ? (
+            <ExtensionsPanel />
+          ) : section === 'settings' ? (
+            <SettingsPanel />
+          ) : section === 'network' ? (
+            <NetworkPanel />
+          ) : section === 'portforwards' ? (
+            <PortForwardPanel />
+          ) : section === 'helm' ? (
+            <HelmPanel />
+          ) : showListView ? (
+            <>
+              <ResourceList />
+              {selectedResource && (
+                <ErrorBoundary key={selectedResource.metadata.uid}>
+                  <DetailPanel resource={selectedResource} section={section} />
+                </ErrorBoundary>
+              )}
+            </>
+          ) : null}
+        </ErrorBoundary>
+>>>>>>> 135ceb6 (fix)
       </div>
 
       {/* Exec overlay */}

@@ -9,6 +9,8 @@
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "postinstall": "electron-builder install-app-deps && chmod +x node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper node_modules/node-pty/prebuilds/darwin-x64/spawn-helper 2>/dev/null || true",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
@@ -44,6 +46,7 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "@vitest/ui": "^4.0.18",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-web-links": "^0.11.0",
     "@xterm/xterm": "^5.5.0",
@@ -58,6 +61,7 @@
     "tailwindcss": "^3.4.6",
     "typescript": "^5.5.2",
     "vite": "^5.3.3",
+    "vitest": "^4.0.18",
     "zustand": "^4.5.0"
   }
 }

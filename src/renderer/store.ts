@@ -6,7 +6,8 @@ import type {
   KubeConfigMap, KubeSecret, KubePVC, KubePV, KubeStorageClass,
   KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
   KubeNode, KubeEvent, KubeCRD,
-  NodeMetrics, PodMetrics, Plugin, ResourceKind, AnyKubeResource, PortForwardEntry
+  NodeMetrics, PodMetrics, Plugin, ResourceKind, AnyKubeResource, PortForwardEntry,
+  HelmRelease
 } from './types'
 
 // ─── Window type declarations ─────────────────────────────────────────────────
@@ -68,6 +69,10 @@ declare global {
       onPortForwardError: (id: string, cb: (msg: string) => void) => () => void
       onPortForwardExit: (id: string, cb: () => void) => () => void
     }
+    helm: {
+      list: (context: string) => Promise<HelmRelease[]>
+      uninstall: (context: string, name: string, namespace: string) => Promise<string>
+    }
     terminal: {
       create: (context?: string, namespace?: string) => Promise<string>
       write: (id: string, data: string) => Promise<void>
@@ -120,6 +125,8 @@ export interface AppStore {
   // Cluster selection
   contexts: KubeContextEntry[]
   selectedContext: string | null
+  hotbarContexts: string[]
+  toggleHotbarContext: (contextName: string) => void
   namespaces: KubeNamespace[]
   selectedNamespace: string | null
   selectedResource: AnyKubeResource | null
@@ -156,10 +163,7 @@ export interface AppStore {
   nodeMetrics: NodeMetrics[]
   plugins: Plugin[]
   portForwards: PortForwardEntry[]
-
-  // Grafana
-  grafanaUrl: string
-  setGrafanaUrl: (url: string) => void
+  helmReleases: HelmRelease[]
 
   // Exec modal
   execTarget: ExecTarget | null
@@ -215,6 +219,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   contexts: [],
   selectedContext: null,
+  hotbarContexts: (() => {
+    try {
+      const raw = localStorage.getItem('podscape:hotbar')
+      if (!raw) return []
+      const parsed = JSON.parse(raw) as unknown
+      return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : []
+    } catch { return [] }
+  })(),
+  toggleHotbarContext: (contextName) => {
+    const { hotbarContexts } = get()
+    const next = hotbarContexts.includes(contextName)
+      ? hotbarContexts.filter(c => c !== contextName)
+      : [...hotbarContexts, contextName].slice(-10)
+    set({ hotbarContexts: next })
+    localStorage.setItem('podscape:hotbar', JSON.stringify(next))
+  },
   namespaces: [],
   selectedNamespace: null,
   selectedResource: null,
@@ -252,11 +272,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   nodeMetrics: [],
   plugins: [],
   portForwards: [],
-
-  // ── Grafana ────────────────────────────────────────────────────────────────
-
-  grafanaUrl: '',
-  setGrafanaUrl: (url) => set({ grafanaUrl: url }),
+  helmReleases: [],
 
   // ── Exec ───────────────────────────────────────────────────────────────────
 
@@ -306,9 +322,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
         window.kubectl.getContexts(),
         window.kubectl.getCurrentContext().catch(() => null)
       ])
-      const active = currentCtx && ctxList.find(c => c.name === currentCtx)
+      const ctxNames = new Set((ctxList as KubeContextEntry[]).map(c => c.name))
+      const hotbarPruned = get().hotbarContexts.filter(name => ctxNames.has(name))
+      if (hotbarPruned.length !== get().hotbarContexts.length) {
+        localStorage.setItem('podscape:hotbar', JSON.stringify(hotbarPruned))
+      }
+      const active = currentCtx && ctxList.find((c: KubeContextEntry) => c.name === currentCtx)
       const chosen = active ? currentCtx! : ctxList[0]?.name ?? null
-      set({ contexts: ctxList, selectedContext: chosen, loadingContexts: false })
+      set({ contexts: ctxList, selectedContext: chosen, hotbarContexts: hotbarPruned, loadingContexts: false })
 
       if (chosen) await get().selectContext(chosen)
 
@@ -373,8 +394,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
     // null (no ns selected yet) → show empty for namespace-scoped resources
     const nsArg = ns === '_all' ? null : ns
 
+<<<<<<< HEAD
     // These sections don't need resource loading
     if (['terminal', 'grafana', 'extensions', 'metrics', 'network', 'portforwards', 'helm', 'settings'].includes(section)) {
+=======
+    // These sections don't need resource loading (or load separately)
+    if (['terminal', 'extensions', 'metrics', 'network', 'portforwards', 'helm'].includes(section)) {
+      if (section === 'helm' && ctx) {
+        set({ loadingResources: true })
+        try {
+          const releases = await window.helm.list(ctx)
+          set({ helmReleases: releases, loadingResources: false })
+        } catch {
+          set({ helmReleases: [], loadingResources: false })
+        }
+      }
+>>>>>>> 135ceb6 (fix)
       if (section === 'metrics' && ctx) {
         set({ loadingResources: true })
         try {
@@ -508,34 +543,36 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({ loadingResources: true, error: null })
 
     const ns = get().selectedNamespace
+    let firstError: string | null = null
+
+    const setErr = (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (!firstError) firstError = msg
+    }
 
     await Promise.all([
-      // Cluster-scoped — always work
       window.kubectl.getNodes(ctx)
         .then(nodes => set({ nodes }))
-        .catch(() => { }),
+        .catch(e => { setErr(e); set({ nodes: [] }) }),
       window.kubectl.getNodeMetrics(ctx)
         .then(nodeMetrics => set({ nodeMetrics }))
-        .catch(() => { }),
+        .catch(() => set({ nodeMetrics: [] })),
       window.kubectl.getNamespaces(ctx)
         .then(namespaces => set({ namespaces }))
-        .catch(() => { }),
+        .catch(e => { setErr(e); set({ namespaces: [] }) }),
 
-      // Events: try all-namespaces, fall back to selected namespace
       window.kubectl.getEvents(ctx, null)
         .then(events => set({ events }))
         .catch(() => {
           if (ns) window.kubectl.getEvents(ctx, ns).then(events => set({ events })).catch(() => { })
         }),
 
-      // Pods: try all-namespaces, fall back to selected namespace
       window.kubectl.getPods(ctx, null)
         .then(pods => set({ pods }))
         .catch(() => {
           if (ns) window.kubectl.getPods(ctx, ns).then(pods => set({ pods })).catch(() => { })
         }),
 
-      // Deployments: try all-namespaces, fall back to selected namespace
       window.kubectl.getDeployments(ctx, null)
         .then(deployments => set({ deployments }))
         .catch(() => {
@@ -543,6 +580,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         }),
     ])
 
+    if (firstError) set({ error: firstError })
     set({ loadingResources: false })
   },
 

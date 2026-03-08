@@ -87,7 +87,7 @@ export interface PodSpec {
   terminationGracePeriodSeconds?: number
   schedulerName?: string
   priority?: number
-  volumes?: Array<{ name: string; [key: string]: unknown }>
+  volumes?: Array<{ name: string;[key: string]: unknown }>
 }
 
 export interface KubePod {
@@ -355,12 +355,12 @@ export interface KubeHPA {
     scaleTargetRef: { apiVersion?: string; kind: string; name: string }
     minReplicas?: number
     maxReplicas: number
-    metrics?: Array<{ type: string; [key: string]: unknown }>
+    metrics?: Array<{ type: string;[key: string]: unknown }>
   }
   status: {
     currentReplicas: number
     desiredReplicas: number
-    currentMetrics?: Array<{ type: string; [key: string]: unknown }>
+    currentMetrics?: Array<{ type: string;[key: string]: unknown }>
     conditions?: Array<{ type: string; status: string; reason?: string; message?: string }>
     lastScaleTime?: string
   }
@@ -580,10 +580,22 @@ export interface Plugin {
   panels: PluginPanel[]
 }
 
+// ─── Helm ──────────────────────────────────────────────────────────────────────
+
+export interface HelmRelease {
+  name: string
+  namespace: string
+  chart: string
+  app_version: string
+  status: string
+  updated: string
+}
+
 // ─── Navigation ───────────────────────────────────────────────────────────────
 
 export type ResourceKind =
   | 'dashboard'
+  | 'helm'
   | 'pods'
   | 'deployments'
   | 'daemonsets'
@@ -614,7 +626,6 @@ export type ResourceKind =
   | 'events'
   | 'crds'
   | 'metrics'
-  | 'grafana'
   | 'terminal'
   | 'extensions'
   | 'settings'
@@ -654,11 +665,11 @@ export type AnyKubeResource =
 
 export function podPhaseBg(phase: string): string {
   switch (phase) {
-    case 'Running':   return 'bg-green-500/20 text-green-300 ring-green-500/30'
+    case 'Running': return 'bg-green-500/20 text-green-300 ring-green-500/30'
     case 'Succeeded': return 'bg-blue-500/20 text-blue-300 ring-blue-500/30'
-    case 'Pending':   return 'bg-yellow-500/20 text-yellow-300 ring-yellow-500/30'
-    case 'Failed':    return 'bg-red-500/20 text-red-300 ring-red-500/30'
-    default:          return 'bg-gray-500/20 text-gray-300 ring-gray-500/30'
+    case 'Pending': return 'bg-yellow-500/20 text-yellow-300 ring-yellow-500/30'
+    case 'Failed': return 'bg-red-500/20 text-red-300 ring-red-500/30'
+    default: return 'bg-gray-500/20 text-gray-300 ring-gray-500/30'
   }
 }
 
