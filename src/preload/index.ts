@@ -46,11 +46,19 @@ const kubectl = {
   getEvents: (context: string, namespace: string | null) =>
     ipcRenderer.invoke('kubectl:getEvents', context, namespace),
 
+  // Generic CRD instance fetcher (for Traefik IngressRoute, Istio VirtualService, etc.)
+  getCustomResource: (context: string, namespace: string | null, crdName: string) =>
+    ipcRenderer.invoke('kubectl:getCustomResource', context, namespace, crdName),
+
   // Metrics
   getPodMetrics: (context: string, namespace: string | null) =>
     ipcRenderer.invoke('kubectl:getPodMetrics', context, namespace),
   getNodeMetrics: (context: string) =>
     ipcRenderer.invoke('kubectl:getNodeMetrics', context),
+
+  // Debug Pod
+  createDebugPod: (context: string, namespace: string, image: string, name: string) =>
+    ipcRenderer.invoke('kubectl:createDebugPod', context, namespace, image, name),
 
   // Operations
   scale: (context: string, namespace: string, name: string, replicas: number) =>

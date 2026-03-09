@@ -16,6 +16,7 @@ export interface KubeProvider {
     getYAML(context: string, namespace: string | null, kind: string, name: string): Promise<string>;
     applyYAML(context: string, yamlContent: string): Promise<string>;
     execCommand(context: string, namespace: string, pod: string, container: string, command: string[]): Promise<{ stdout: string, exitCode: number }>;
+    createDebugPod(context: string, namespace: string, image: string, name: string): Promise<void>;
     // Streaming methods
     spawnLogs(context: string, namespace: string, pod: string, container?: string): any; // child process
     spawnPortForward(context: string, namespace: string, type: string, name: string, localPort: number, remotePort: number): any;

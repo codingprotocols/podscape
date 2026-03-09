@@ -20,6 +20,7 @@ import RoleBindingDetail from './components/RoleBindingDetail'
 import RoleDetail from './components/RoleDetail'
 import ReplicaSetDetail from './components/ReplicaSetDetail'
 import NamespaceDetail from './components/NamespaceDetail'
+import CRDDetail from './components/CRDDetail'
 import HelmPanel from './components/HelmPanel'
 import PortForwardPanel from './components/PortForwardPanel'
 import EventsView from './components/EventsView'
@@ -30,11 +31,12 @@ import SettingsPanel from './components/SettingsPanel'
 import NetworkPanel from './components/NetworkPanel'
 import ExecPanel from './components/ExecPanel'
 import ConnectivityTester from './components/ConnectivityTester'
+import DebugPodLauncher from './components/DebugPodLauncher'
 import YAMLViewer from './components/YAMLViewer'
 import KubeConfigOnboarding from './components/KubeConfigOnboarding'
 import type {
   KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet, KubeJob, KubeCronJob,
-  KubeService, KubeIngress, KubeNode,
+  KubeService, KubeIngress, KubeNode, KubeCRD,
   KubeConfigMap, KubeSecret, KubeHPA, KubePVC, KubeRoleBinding, KubeClusterRoleBinding,
   KubeRole, KubeClusterRole, KubeReplicaSet, KubeNamespace,
   AnyKubeResource
@@ -192,6 +194,9 @@ function DetailPanel({ resource, section }: { resource: AnyKubeResource; section
     case 'namespaces':
       content = <NamespaceDetail namespace={resource as KubeNamespace} />
       break
+    case 'crds':
+      content = <CRDDetail crd={resource as KubeCRD} />
+      break
     default:
       content = <DefaultDetail resource={resource} section={section} />
   }
@@ -324,6 +329,8 @@ export default function App(): JSX.Element {
           <HelmPanel />
         ) : section === 'connectivity' ? (
           <ConnectivityTester />
+        ) : section === 'debugpod' ? (
+          <DebugPodLauncher />
         ) : (LIST_SECTIONS as string[]).includes(section) ? (
           <>
             <ResourceList />
