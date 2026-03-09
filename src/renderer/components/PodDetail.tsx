@@ -1,17 +1,26 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import type { KubePod } from '../types'
+import type { KubePod, KubeEvent } from '../types'
 import { podPhaseBg, formatAge } from '../types'
 import { useAppStore } from '../store'
 import { Maximize2, Minimize2, Copy, Download, Search, X, ChevronDown, Terminal, Trash2, Activity, FileCode } from 'lucide-react'
 import PodRestartAnalyzer from './PodRestartAnalyzer'
 import YAMLViewer from './YAMLViewer'
+import AnalysisView from './AnalysisView'
+import PodLifecycleTimeline from './PodLifecycleTimeline'
+import { Shield, Clock as ClockIcon } from 'lucide-react'
 
 interface Props {
   pod: KubePod
 }
 
 export default function PodDetail({ pod }: Props): JSX.Element {
-  const { selectedContext, selectedNamespace, openExec, getYAML, applyYAML, refresh } = useAppStore()
+  const {
+    selectedContext, selectedNamespace, openExec, getYAML, applyYAML, refresh,
+    scanResults, scanResource, isScanning
+  } = useAppStore()
+  const [activeTab, setActiveTab] = useState<'logs' | 'analysis' | 'lifecycle'>('logs')
+  const [events, setEvents] = useState<KubeEvent[]>([])
+  const [eventsLoading, setEventsLoading] = useState(false)
   const [logs, setLogs] = useState<string[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [logError, setLogError] = useState<string | null>(null)
@@ -90,6 +99,28 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     setLogs([])
     setLogError(null)
     setSearch('')
+    // Trigger scan
+    scanResource(pod)
+    // Fetch events for timeline
+    const fetchEvents = async () => {
+      if (!selectedContext) return
+      setEventsLoading(true)
+      try {
+        const evs = await window.kubectl.getResourceEvents(
+          selectedContext,
+          pod.metadata.namespace ?? '',
+          'Pod',
+          pod.metadata.name
+        )
+        setEvents(evs)
+      } catch (err) {
+        console.error('[PodDetail] Failed to fetch events:', err)
+      } finally {
+        setEventsLoading(false)
+      }
+    }
+    fetchEvents()
+
     // Read directly from ref to avoid stale closure
     const id = activeStreamIdRef.current
     if (id) {
@@ -97,8 +128,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
       activeStreamIdRef.current = null
       setIsStreaming(false)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pod.metadata.uid, selectedContainer])
+  }, [pod.metadata.uid, selectedContainer, selectedContext, scanResource])
 
   const handleViewYAML = async () => {
     setYaml(null); setYamlError(null); setYamlLoading(true)
@@ -493,35 +523,85 @@ export default function PodDetail({ pod }: Props): JSX.Element {
           )}
         </div>
 
-        {/* Log viewer */}
-        <div className={`flex flex-col transition-all duration-500 overflow-hidden ${isStreaming || logs.length > 0 ? 'flex-1 min-h-[300px]' : 'shrink-0'}`}>
-          {LogToolbar}
-
-          {(isStreaming || logs.length > 0) && (
-            <div className="flex flex-col flex-1 min-h-0 animate-in slide-in-from-bottom-4 duration-500">
-              {logError && (
-                <div className="mx-6 mt-3 shrink-0 px-4 py-2.5 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 rounded-xl text-red-600 dark:text-red-400 text-[10px] font-bold">
-                  {logError}
-                </div>
-              )}
-
-              <div className="flex-1 relative m-6 mt-3 mb-6 bg-slate-950 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800/50 shadow-inner">
-                {LogContent(logContainerRef)}
-                {logs.length > 0 && (
-                  <button
-                    onClick={() => setAutoScroll(v => !v)}
-                    className={`absolute bottom-3 right-3 px-2 py-1 text-[9px] font-bold rounded-md border transition-all
-                      ${autoScroll
-                        ? 'bg-emerald-900/60 border-emerald-700/60 text-emerald-400'
-                        : 'bg-slate-800/60 border-slate-700/60 text-slate-500'}`}
-                  >
-                    ↓ AUTO
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+        {/* Tabs */}
+        <div className="px-6 flex items-center gap-6 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
+          <TabButton
+            active={activeTab === 'logs'}
+            onClick={() => setActiveTab('logs')}
+            label="Logs"
+            icon={<Terminal size={14} />}
+          />
+          <TabButton
+            active={activeTab === 'analysis'}
+            onClick={() => setActiveTab('analysis')}
+            label="Analysis"
+            icon={<Shield size={14} />}
+            count={scanResults[pod.metadata.uid]?.summary.errors || 0}
+            countType="error"
+          />
+          <TabButton
+            active={activeTab === 'lifecycle'}
+            onClick={() => setActiveTab('lifecycle')}
+            label="Lifecycle"
+            icon={<ClockIcon size={14} />}
+          />
         </div>
+
+        {/* Tab Content */}
+        {activeTab === 'logs' && (
+          <div className={`flex flex-col transition-all duration-500 overflow-hidden ${isStreaming || logs.length > 0 ? 'flex-1 min-h-[300px]' : 'shrink-0'}`}>
+            {LogToolbar}
+
+            {(isStreaming || logs.length > 0) && (
+              <div className="flex flex-col flex-1 min-h-0 animate-in slide-in-from-bottom-4 duration-500">
+                {logError && (
+                  <div className="mx-6 mt-3 shrink-0 px-4 py-2.5 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 rounded-xl text-red-600 dark:text-red-400 text-[10px] font-bold">
+                    {logError}
+                  </div>
+                )}
+
+                <div className="flex-1 relative m-6 mt-3 mb-6 bg-slate-950 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800/50 shadow-inner">
+                  {LogContent(logContainerRef)}
+                  {logs.length > 0 && (
+                    <button
+                      onClick={() => setAutoScroll(v => !v)}
+                      className={`absolute bottom-3 right-3 px-2 py-1 text-[9px] font-bold rounded-md border transition-all
+                        ${autoScroll
+                          ? 'bg-emerald-900/60 border-emerald-700/60 text-emerald-400'
+                          : 'bg-slate-800/60 border-slate-700/60 text-slate-500'}`}
+                    >
+                      ↓ AUTO
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'analysis' && (
+          <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
+            {(isScanning && !scanResults[pod.metadata.uid]) ? (
+              <div className="flex items-center justify-center h-32">
+                <span className="text-[10px] font-bold text-slate-400 animate-pulse">Running analysis…</span>
+              </div>
+            ) : scanResults[pod.metadata.uid] ? (
+              <AnalysisView result={scanResults[pod.metadata.uid]} />
+            ) : null}
+          </div>
+        )}
+
+        {activeTab === 'lifecycle' && (
+          <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
+            {eventsLoading ? (
+              <div className="flex items-center justify-center h-32">
+                <span className="text-[10px] font-bold text-slate-400 animate-pulse">Fetching events…</span>
+              </div>
+            ) : (
+              <PodLifecycleTimeline pod={pod} events={events} />
+            )}
+          </div>
+        )}
       </div>
 
       {/* Premium YAML Modal */}
@@ -616,5 +696,36 @@ function ResourceLimit({ label, value }: { label: string; value: string }) {
       <dt className="text-[9px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-tighter">{label}</dt>
       <dd className="text-[10px] font-bold font-mono text-slate-600 dark:text-slate-300">{value}</dd>
     </div>
+  )
+}
+
+interface TabButtonProps {
+  active: boolean
+  onClick: () => void
+  label: string
+  icon: React.ReactNode
+  count?: number
+  countType?: 'error' | 'warning' | 'info'
+}
+
+function TabButton({ active, onClick, label, icon, count, countType }: TabButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      className={`relative px-1 py-4 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all
+        ${active ? 'text-blue-500' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
+    >
+      <span className={active ? 'text-blue-500' : 'text-slate-400'}>{icon}</span>
+      {label}
+      {count !== undefined && count > 0 && (
+        <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-black leading-none
+          ${countType === 'error' ? 'bg-red-500 text-white' : 'bg-amber-500 text-white'}`}>
+          {count}
+        </span>
+      )}
+      {active && (
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full animate-in fade-in slide-in-from-bottom-1 duration-300" />
+      )}
+    </button>
   )
 }

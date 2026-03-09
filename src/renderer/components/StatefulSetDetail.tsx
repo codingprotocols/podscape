@@ -4,13 +4,14 @@ import { formatAge } from '../types'
 import { useAppStore } from '../store'
 import { FileCode, X, Activity, RefreshCw, Zap, Server } from 'lucide-react'
 import YAMLViewer from './YAMLViewer'
+import AnalysisView from './AnalysisView'
 
 interface Props { statefulSet: KubeStatefulSet }
 
-type Tab = 'overview' | 'events'
+type Tab = 'overview' | 'events' | 'analysis'
 
 export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Element {
-  const { rolloutRestart, getYAML, applyYAML, refresh, selectedContext, selectedNamespace } = useAppStore()
+  const { rolloutRestart, getYAML, applyYAML, refresh, selectedContext, selectedNamespace, scanResource, scanResults, isScanning } = useAppStore()
   const [tab, setTab] = useState<Tab>('overview')
   const [showScale, setShowScale] = useState(false)
   const [scaleVal, setScaleVal] = useState(String(s.spec.replicas ?? 1))
@@ -93,6 +94,10 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
   }
 
   useEffect(() => {
+    scanResource(s as any)
+  }, [s.metadata.uid])
+
+  useEffect(() => {
     if (tab === 'events') loadEvents()
   }, [tab, s.metadata.uid])
 
@@ -146,10 +151,18 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
             {tab === t && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />}
           </button>
         ))}
+        <button onClick={() => setTab('analysis')}
+          className={`px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all relative flex items-center gap-1.5 ${tab === 'analysis' ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}>
+          Analysis
+          {scanResults[s.metadata.uid]?.summary.errors > 0 && (
+            <span className="text-[9px] font-black bg-red-500/20 text-red-400 rounded-full px-1.5 py-0.5">{scanResults[s.metadata.uid].summary.errors}</span>
+          )}
+          {tab === 'analysis' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />}
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
-        {tab === 'overview' ? (
+        {tab === 'overview' && (
           <div className="space-y-8">
             <section>
               <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -185,7 +198,9 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
               </div>
             </section>
           </div>
-        ) : (
+        )}
+
+        {tab === 'events' && (
           <div className="space-y-3">
             {events.map((e, i) => (
               <div key={e.metadata.uid || i} className={`p-4 rounded-2xl border transition-all ${e.type === 'Warning' ? 'bg-amber-500/5 border-amber-500/10' : 'bg-slate-50 dark:bg-white/[0.02] border-slate-100 dark:border-white/5'}`}>
@@ -201,6 +216,23 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
               <div className="text-center py-20 bg-slate-50 dark:bg-white/[0.01] rounded-3xl border border-dashed border-slate-200 dark:border-white/10 mt-4">
                 <Activity size={32} className="mx-auto text-slate-700 mb-4 opacity-20" />
                 <p className="text-sm text-slate-500 font-medium">No recent events found</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'analysis' && (
+          <div>
+            {(isScanning && !scanResults[s.metadata.uid]) ? (
+              <div className="flex items-center gap-2 py-20 justify-center">
+                <div className="w-4 h-4 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+                <span className="text-[10px] font-bold text-slate-400 animate-pulse">Running analysis…</span>
+              </div>
+            ) : scanResults[s.metadata.uid] ? (
+              <AnalysisView result={scanResults[s.metadata.uid]} />
+            ) : (
+              <div className="text-center py-20">
+                <p className="text-sm text-slate-500 font-medium">No scan results yet</p>
               </div>
             )}
           </div>

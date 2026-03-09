@@ -9,6 +9,7 @@ import {
     NodeMetrics, PodMetrics, Plugin, ResourceKind, AnyKubeResource, PortForwardEntry,
     HelmRelease, DebugPodEntry
 } from '../types'
+import { AnalysisSlice } from './slices/analysisSlice'
 
 declare global {
     interface Window {
@@ -118,7 +119,7 @@ export interface ExecTarget {
     namespace: string
 }
 
-export interface AppStore {
+export interface AppStore extends AnalysisSlice {
     // Navigation
     section: ResourceKind
     setSection: (s: ResourceKind) => void
