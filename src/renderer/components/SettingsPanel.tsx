@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import Editor from '@monaco-editor/react'
 import { useAppStore } from '../store'
 
 interface SettingsForm {
@@ -6,16 +7,31 @@ interface SettingsForm {
   shellPath: string
   helmPath: string
   theme: string
+  kubeconfigPath: string
 }
 
 export default function SettingsPanel(): JSX.Element {
-  const { theme, setTheme } = useAppStore()
-  const [form, setForm] = useState<SettingsForm>({ kubectlPath: '', shellPath: '', helmPath: '', theme })
+  const { theme, setTheme, init } = useAppStore()
+  const [form, setForm] = useState<SettingsForm>({ kubectlPath: '', shellPath: '', helmPath: '', theme, kubeconfigPath: '' })
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // ── Kubeconfig editor state ────────────────────────────────────────────────
+  const [kubeconfigPath, setKubeconfigPath] = useState('')
+  const [kubeconfigContent, setKubeconfigContent] = useState('')
+  const [kubeconfigOriginal, setKubeconfigOriginal] = useState('')
+  const [kubeconfigSaving, setKubeconfigSaving] = useState(false)
+  const [kubeconfigSaved, setKubeconfigSaved] = useState(false)
+  const [kubeconfigError, setKubeconfigError] = useState<string | null>(null)
+  const [showEditor, setShowEditor] = useState(false)
+
   useEffect(() => {
     window.settings.get().then(s => setForm({ ...s })).catch(() => { })
+    window.kubeconfig.get().then(({ path, content }) => {
+      setKubeconfigPath(path)
+      setKubeconfigContent(content)
+      setKubeconfigOriginal(content)
+    }).catch(() => { })
   }, [])
 
   // Keep form.theme in sync with store theme
@@ -36,6 +52,44 @@ export default function SettingsPanel(): JSX.Element {
       setError(e instanceof Error ? e.message : 'Failed to save')
     }
   }
+
+  const handleSaveKubeconfig = async () => {
+    setKubeconfigError(null)
+    setKubeconfigSaved(false)
+    setKubeconfigSaving(true)
+    try {
+      await window.kubeconfig.set(kubeconfigContent)
+      setKubeconfigOriginal(kubeconfigContent)
+      setKubeconfigSaved(true)
+      setTimeout(() => setKubeconfigSaved(false), 2500)
+      // Reload contexts so changes take effect immediately
+      await init()
+    } catch (e) {
+      setKubeconfigError(e instanceof Error ? e.message : 'Failed to save kubeconfig')
+    } finally {
+      setKubeconfigSaving(false)
+    }
+  }
+
+  const handleSelectKubeconfigPath = async () => {
+    const path = await window.kubeconfig.selectPath()
+    if (path) {
+      setForm(f => ({ ...f, kubeconfigPath: path }))
+      setKubeconfigPath(path)
+      // Trigger reload
+      await init()
+    }
+  }
+
+  const handleClearKubeconfigPath = async () => {
+    await window.kubeconfig.clearPath()
+    setForm(f => ({ ...f, kubeconfigPath: '' }))
+    const { path } = await window.kubeconfig.get()
+    setKubeconfigPath(path)
+    await init()
+  }
+
+  const kubeconfigDirty = kubeconfigContent !== kubeconfigOriginal
 
   return (
     <div className="flex-1 overflow-auto p-4 md:p-12 bg-white dark:bg-[hsl(var(--bg-dark))] transition-colors duration-300">
@@ -175,6 +229,116 @@ export default function SettingsPanel(): JSX.Element {
                   Reset
                 </button>
               </div>
+            </div>
+          </section>
+
+          {/* ── Kubeconfig ──────────────────────────────────────────────────── */}
+          <section className="bg-white/[0.03] dark:bg-white/[0.03] backdrop-blur-md rounded-3xl border border-slate-200 dark:border-white/5 overflow-hidden shadow-2xl">
+            <div className="px-8 py-5 border-b border-slate-100 dark:border-white/5 bg-white/5 flex items-center justify-between">
+              <div>
+                <h2 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Kubeconfig</h2>
+                {kubeconfigPath && (
+                  <p className="text-[10px] font-mono text-slate-500 dark:text-slate-600 mt-1 truncate max-w-[400px]">{kubeconfigPath}</p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => window.kubeconfig.reveal()}
+                  className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest
+                             text-slate-400 hover:text-slate-200 bg-white/[0.04] hover:bg-white/[0.08]
+                             border border-white/10 rounded-xl transition-all"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                  </svg>
+                  Reveal
+                </button>
+                <button
+                  onClick={handleSelectKubeconfigPath}
+                  className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest
+                             text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20
+                             border border-blue-500/20 rounded-xl transition-all"
+                >
+                  Change Path
+                </button>
+                {form.kubeconfigPath && (
+                  <button
+                    onClick={handleClearKubeconfigPath}
+                    className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest
+                              text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20
+                              border border-red-500/20 rounded-xl transition-all"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="p-8">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Manage your cluster configurations by selecting a different kubeconfig file or editing the current one manually.
+                </p>
+                <button
+                  onClick={() => setShowEditor(!showEditor)}
+                  className="text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-slate-300 transition-colors"
+                >
+                  {showEditor ? 'Hide Manual Editor' : 'Edit Manually'}
+                </button>
+              </div>
+
+              {showEditor && (
+                <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="rounded-xl overflow-hidden border border-white/10 bg-[#1e1e1e]" style={{ height: 360 }}>
+                    <Editor
+                      height="360px"
+                      language="yaml"
+                      theme="vs-dark"
+                      value={kubeconfigContent}
+                      onChange={v => setKubeconfigContent(v ?? '')}
+                      options={{
+                        fontSize: 12,
+                        fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                        minimap: { enabled: false },
+                        scrollBeyondLastLine: false,
+                        lineNumbers: 'on',
+                        wordWrap: 'off',
+                        tabSize: 2,
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs min-h-5">
+                      {kubeconfigError && <span className="text-red-500 text-xs">{kubeconfigError}</span>}
+                      {kubeconfigSaved && <span className="text-emerald-500 text-xs font-medium">Saved. Contexts reloaded.</span>}
+                      {!kubeconfigError && !kubeconfigSaved && kubeconfigDirty && (
+                        <span className="text-amber-500 text-xs font-medium">Unsaved changes</span>
+                      )}
+                    </div>
+                    <div className="flex gap-3">
+                      {kubeconfigDirty && (
+                        <button
+                          onClick={() => { setKubeconfigContent(kubeconfigOriginal); setKubeconfigError(null) }}
+                          className="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-200
+                                     bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 rounded-xl transition-all"
+                        >
+                          Discard
+                        </button>
+                      )}
+                      <button
+                        onClick={handleSaveKubeconfig}
+                        disabled={kubeconfigSaving || !kubeconfigDirty}
+                        className="px-5 py-2 text-[10px] font-black uppercase tracking-widest
+                                   bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed
+                                   text-white rounded-xl shadow-sm shadow-blue-500/20 transition-all"
+                      >
+                        {kubeconfigSaving ? 'Saving…' : 'Save & Reload'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 

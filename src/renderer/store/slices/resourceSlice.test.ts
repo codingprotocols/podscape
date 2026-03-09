@@ -78,4 +78,34 @@ describe('resourceSlice', () => {
         slice.refresh()
         expect(state.loadSection).toHaveBeenCalledWith('deployments')
     })
+
+    it('loadDashboard sets error and loadingResources=false when getNodes fails', async () => {
+        windowMock.kubectl.getNodes.mockRejectedValue(new Error('nodes unreachable'))
+        windowMock.kubectl.getNodeMetrics.mockResolvedValue([])
+        windowMock.kubectl.getNamespaces.mockResolvedValue([])
+        windowMock.kubectl.getEvents.mockResolvedValue([])
+        windowMock.kubectl.getPods.mockResolvedValue([])
+        windowMock.kubectl.getDeployments.mockResolvedValue([])
+
+        const slice = createResourceSlice(set, get, {} as any)
+        await slice.loadDashboard()
+
+        expect(state.error).toBe('nodes unreachable')
+        expect(state.loadingResources).toBe(false)
+    })
+
+    it('loadDashboard retains only the first error when multiple fetches fail', async () => {
+        windowMock.kubectl.getNodes.mockRejectedValue(new Error('first error'))
+        windowMock.kubectl.getNodeMetrics.mockResolvedValue([])
+        windowMock.kubectl.getNamespaces.mockRejectedValue(new Error('second error'))
+        windowMock.kubectl.getEvents.mockResolvedValue([])
+        windowMock.kubectl.getPods.mockResolvedValue([])
+        windowMock.kubectl.getDeployments.mockResolvedValue([])
+
+        const slice = createResourceSlice(set, get, {} as any)
+        await slice.loadDashboard()
+
+        expect(state.error).toBe('first error')
+        expect(state.loadingResources).toBe(false)
+    })
 })

@@ -4,7 +4,7 @@ import { existsSync, writeFileSync, mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { getAugmentedEnv } from './env'
-import { getSettings } from './settings'
+import { getSettings } from './settings_storage'
 import { KubeProvider } from './kubeProvider'
 
 const KUBECTL_PATHS = [
@@ -23,14 +23,90 @@ export function findKubectl(): string {
   return 'kubectl'
 }
 
+const EXEC_ALLOWED_COMMANDS = new Set(['curl', 'nc', 'ping'])
+
+/**
+ * Maps raw kubectl stderr / Node.js child-process errors to short, user-friendly messages.
+ * The `raw` argument is the Node.js Error object from execFile.
+ */
+function humanizeKubectlError(stderr: string, raw: Error & { code?: unknown; killed?: boolean }): Error {
+  const text = stderr.trim() || raw.message
+
+  // Timeout / network unreachable
+  if (
+    raw.killed ||
+    text.includes('i/o timeout') ||
+    raw.code === 'ETIMEDOUT' ||
+    raw.name === 'AbortError'
+  ) return new Error('Cluster connection timed out. Check your network or VPN and try again.')
+
+  if (text.includes('Unable to connect to the server') || text.includes('connection refused'))
+    return new Error('Cannot reach the cluster. Check that it is running and your network/VPN is active.')
+
+  // Auth / OIDC
+  if (text.includes('Unauthorized') || text.includes('You must be logged in') || text.includes('401'))
+    return new Error('Authentication failed. Your token may have expired — try re-logging into the cluster.')
+
+  // RBAC
+  if (text.includes('Forbidden') || text.includes('cannot list') || text.includes('cannot get') || text.includes('403'))
+    return new Error('Permission denied. Your account does not have access to this resource in this cluster.')
+
+  // Context / kubeconfig
+  if (text.includes('does not exist') && text.includes('context'))
+    return new Error('Context not found in kubeconfig. The cluster entry may have been removed or renamed.')
+
+  if (text.includes('no server found for cluster') || text.includes('no such host'))
+    return new Error('Cluster host not found. The server address in your kubeconfig may be incorrect.')
+
+  // Resource type unsupported (e.g. CRD not installed)
+  if (text.includes("server doesn't have a resource type") || text.includes('no matches for kind'))
+    return new Error('This resource type is not available in the cluster. The required API or CRD may not be installed.')
+
+  // kubectl binary missing
+  if (raw.code === 'ENOENT')
+    return new Error('kubectl not found. Set the path in Settings or install kubectl and restart the app.')
+
+  // EKS / AWS auth
+  if (text.includes('exec plugin') || text.includes('aws-iam-authenticator') || text.includes('aws eks'))
+    return new Error('AWS authentication failed. Ensure aws-iam-authenticator or aws CLI is installed and configured.')
+
+  // Strip the "Command failed: /path/kubectl arg1 arg2 ..." prefix that Node appends
+  // when stderr is empty — it leaks full command args including sensitive context names.
+  if (!stderr.trim() && raw.message.startsWith('Command failed:'))
+    return new Error('kubectl command failed. The cluster may be unavailable or you may lack permissions.')
+
+  // Fallback: use stderr if available (it's already the kubectl-formatted message), otherwise generic
+  return new Error(text || 'An unknown kubectl error occurred.')
+}
+
 export class KubectlProvider implements KubeProvider {
-  private spawnKubectl(args: string[]): Promise<string> {
+  private spawnKubectl(args: string[], timeoutMs = 10000): Promise<string> {
     return new Promise((resolve, reject) => {
       const binary = findKubectl()
       const env = getAugmentedEnv()
-      execFile(binary, args, { maxBuffer: 20 * 1024 * 1024, env }, (error, stdout, stderr) => {
-        if (error) reject(new Error(stderr || error.message))
-        else resolve(stdout)
+      execFile(binary, args, { maxBuffer: 20 * 1024 * 1024, env, timeout: timeoutMs }, (error, stdout, stderr) => {
+        if (error) {
+          reject(humanizeKubectlError(stderr, error))
+        } else {
+          resolve(stdout)
+        }
+      })
+    })
+  }
+
+  // Unlike spawnKubectl, this always resolves — even on non-zero exit — so callers
+  // can inspect exitCode and present the output (e.g. the connectivity tester).
+  private spawnKubectlExec(args: string[], timeoutMs = 30000): Promise<{ stdout: string; exitCode: number }> {
+    return new Promise((resolve) => {
+      const binary = findKubectl()
+      const env = getAugmentedEnv()
+      execFile(binary, args, { maxBuffer: 20 * 1024 * 1024, env, timeout: timeoutMs }, (error, stdout, stderr) => {
+        if (error) {
+          const exitCode = typeof (error as any).code === 'number' ? (error as any).code : 1
+          resolve({ stdout: stdout + (stderr ? '\n' + stderr : ''), exitCode })
+        } else {
+          resolve({ stdout, exitCode: 0 })
+        }
       })
     })
   }
@@ -50,17 +126,25 @@ export class KubectlProvider implements KubeProvider {
   }
 
   async getNamespaces(context: string): Promise<unknown[]> {
-    return this.getResources(context, null, 'namespaces')
+    // Namespaces are cluster-scoped — never pass --all-namespaces or --namespace.
+    // Use a longer timeout since EKS token refresh can take several seconds.
+    return this.getResources(context, undefined, 'namespaces', 25000)
   }
 
-  async getResources(context: string, namespace: string | null, kind: string): Promise<unknown[]> {
+  async getResources(context: string, namespace: string | null | undefined, kind: string, timeoutMs?: number): Promise<unknown[]> {
     const args = ['get', kind]
     if (context) args.push('--context', context)
-    if (namespace) args.push('--namespace', namespace)
-    else if (namespace === null) args.push('--all-namespaces')
+    if (typeof namespace === 'string') {
+      // Named namespace: scope to it
+      args.push('--namespace', namespace)
+    } else if (namespace === null) {
+      // null means "all namespaces" — only valid for namespace-scoped resources
+      args.push('--all-namespaces')
+    }
+    // undefined means cluster-scoped — no namespace flag at all
     args.push('-o', 'json')
     try {
-      const output = await this.spawnKubectl(args)
+      const output = await this.spawnKubectl(args, timeoutMs)
       try { return (JSON.parse(output).items ?? []) as unknown[] } catch { return [] }
     } catch (err) {
       console.error(`[kubectl] getResources ${kind} failed:`, (err as Error).message)
@@ -76,7 +160,8 @@ export class KubectlProvider implements KubeProvider {
 
   async getNodeMetrics(context: string): Promise<unknown[]> {
     try {
-      return await this.getResources(context, null, 'nodemetrics.metrics.k8s.io')
+      // Node metrics are cluster-scoped
+      return await this.getResources(context, undefined, 'nodemetrics.metrics.k8s.io')
     } catch { return [] }
   }
 
@@ -155,6 +240,14 @@ export class KubectlProvider implements KubeProvider {
       '--context', context, '--namespace', namespace
     ], { env })
   }
+  async execCommand(context: string, namespace: string, pod: string, container: string, command: string[]): Promise<{ stdout: string; exitCode: number }> {
+    if (command.length === 0 || !EXEC_ALLOWED_COMMANDS.has(command[0])) {
+      throw new Error(`Command not allowed: '${command[0] ?? ''}'. Permitted: ${[...EXEC_ALLOWED_COMMANDS].join(', ')}`)
+    }
+    return this.spawnKubectlExec([
+      'exec', pod, '--context', context, '--namespace', namespace, '--container', container, '--', ...command
+    ])
+  }
 }
 
 const activeStreams = new Map<string, ReturnType<typeof spawn>>()
@@ -178,7 +271,7 @@ export function registerKubectlHandlers(): void {
   ipcMain.handle('kubectl:getPodDisruptionBudgets', (_e, ctx, ns) => provider.getResources(ctx, ns, 'poddisruptionbudgets'))
   ipcMain.handle('kubectl:getServices', (_e, ctx, ns) => provider.getResources(ctx, ns, 'services'))
   ipcMain.handle('kubectl:getIngresses', (_e, ctx, ns) => provider.getResources(ctx, ns, 'ingresses'))
-  ipcMain.handle('kubectl:getIngressClasses', (_e, ctx) => provider.getResources(ctx, null, 'ingressclasses'))
+  ipcMain.handle('kubectl:getIngressClasses', (_e, ctx) => provider.getResources(ctx, undefined, 'ingressclasses'))
   ipcMain.handle('kubectl:getNetworkPolicies', (_e, ctx, ns) => provider.getResources(ctx, ns, 'networkpolicies'))
   ipcMain.handle('kubectl:getEndpoints', (_e, ctx, ns) => provider.getResources(ctx, ns, 'endpoints'))
   ipcMain.handle('kubectl:getConfigMaps', (_e, ctx, ns) => provider.getResources(ctx, ns, 'configmaps'))
@@ -187,15 +280,15 @@ export function registerKubectlHandlers(): void {
     return items.map(s => ({ ...s, data: s.data ? Object.fromEntries(Object.keys(s.data).map(k => [k, '***MASKED***'])) : undefined }))
   })
   ipcMain.handle('kubectl:getPVCs', (_e, ctx, ns) => provider.getResources(ctx, ns, 'persistentvolumeclaims'))
-  ipcMain.handle('kubectl:getPVs', (_e, ctx) => provider.getResources(ctx, null, 'persistentvolumes'))
-  ipcMain.handle('kubectl:getStorageClasses', (_e, ctx) => provider.getResources(ctx, null, 'storageclasses'))
+  ipcMain.handle('kubectl:getPVs', (_e, ctx) => provider.getResources(ctx, undefined, 'persistentvolumes'))
+  ipcMain.handle('kubectl:getStorageClasses', (_e, ctx) => provider.getResources(ctx, undefined, 'storageclasses'))
   ipcMain.handle('kubectl:getServiceAccounts', (_e, ctx, ns) => provider.getResources(ctx, ns, 'serviceaccounts'))
   ipcMain.handle('kubectl:getRoles', (_e, ctx, ns) => provider.getResources(ctx, ns, 'roles'))
-  ipcMain.handle('kubectl:getClusterRoles', (_e, ctx) => provider.getResources(ctx, null, 'clusterroles'))
+  ipcMain.handle('kubectl:getClusterRoles', (_e, ctx) => provider.getResources(ctx, undefined, 'clusterroles'))
   ipcMain.handle('kubectl:getRoleBindings', (_e, ctx, ns) => provider.getResources(ctx, ns, 'rolebindings'))
-  ipcMain.handle('kubectl:getClusterRoleBindings', (_e, ctx) => provider.getResources(ctx, null, 'clusterrolebindings'))
-  ipcMain.handle('kubectl:getNodes', (_e, ctx) => provider.getResources(ctx, null, 'nodes'))
-  ipcMain.handle('kubectl:getCRDs', (_e, ctx) => provider.getResources(ctx, null, 'customresourcedefinitions'))
+  ipcMain.handle('kubectl:getClusterRoleBindings', (_e, ctx) => provider.getResources(ctx, undefined, 'clusterrolebindings'))
+  ipcMain.handle('kubectl:getNodes', (_e, ctx) => provider.getResources(ctx, undefined, 'nodes'))
+  ipcMain.handle('kubectl:getCRDs', (_e, ctx) => provider.getResources(ctx, undefined, 'customresourcedefinitions'))
   ipcMain.handle('kubectl:getEvents', (_e, ctx, ns) => provider.getResources(ctx, ns, 'events'))
   ipcMain.handle('kubectl:getPodMetrics', (_e, ctx, ns) => provider.getPodMetrics(ctx, ns))
   ipcMain.handle('kubectl:getNodeMetrics', (_e, ctx) => provider.getNodeMetrics(ctx))
@@ -208,6 +301,7 @@ export function registerKubectlHandlers(): void {
   ipcMain.handle('kubectl:deleteResource', (_e, ctx, ns, kind, name) => provider.deleteResource(ctx, ns, kind, name))
   ipcMain.handle('kubectl:getYAML', (_e, ctx, ns, kind, name) => provider.getYAML(ctx, ns, kind, name))
   ipcMain.handle('kubectl:getSecretValue', (_e, ctx, ns, name, key) => provider.getSecretValue(ctx, ns, name, key))
+  ipcMain.handle('kubectl:execCommand', (_e, ctx, ns, pod, container, cmd) => provider.execCommand(ctx, ns, pod, container, cmd))
   ipcMain.handle('kubectl:applyYAML', (_e, ctx, yaml) => provider.applyYAML(ctx, yaml))
 
   ipcMain.handle('kubectl:streamLogs', async (event, ctx, ns, pod, container) => {

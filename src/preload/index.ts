@@ -71,6 +71,8 @@ const kubectl = {
     ipcRenderer.invoke('kubectl:getYAML', context, namespace, kind, name),
   getSecretValue: (context: string, namespace: string, name: string, key: string) =>
     ipcRenderer.invoke('kubectl:getSecretValue', context, namespace, name, key),
+  execCommand: (context: string, namespace: string, pod: string, container: string, command: string[]) =>
+    ipcRenderer.invoke('kubectl:execCommand', context, namespace, pod, container, command),
   applyYAML: (context: string, yaml: string) =>
     ipcRenderer.invoke('kubectl:applyYAML', context, yaml),
 
@@ -248,7 +250,24 @@ const settings = {
   get: (): Promise<{ kubectlPath: string; shellPath: string; helmPath: string; theme: string }> =>
     ipcRenderer.invoke('settings:get'),
   set: (s: { kubectlPath: string; shellPath: string; helmPath: string; theme: string }): Promise<void> =>
-    ipcRenderer.invoke('settings:set', s)
+    ipcRenderer.invoke('settings:set', s),
+  checkTools: (): Promise<{ kubectlOk: boolean; helmOk: boolean; kubeconfigOk: boolean }> =>
+    ipcRenderer.invoke('settings:checkTools')
+}
+
+// ─── kubeconfig API ───────────────────────────────────────────────────────────
+
+const kubeconfig = {
+  get: (): Promise<{ path: string; content: string }> =>
+    ipcRenderer.invoke('kubeconfig:get'),
+  set: (content: string): Promise<void> =>
+    ipcRenderer.invoke('kubeconfig:set', content),
+  reveal: (): Promise<void> =>
+    ipcRenderer.invoke('kubeconfig:reveal'),
+  selectPath: (): Promise<string | null> =>
+    ipcRenderer.invoke('kubeconfig:selectPath'),
+  clearPath: (): Promise<void> =>
+    ipcRenderer.invoke('kubeconfig:clearPath')
 }
 
 // ─── Expose ───────────────────────────────────────────────────────────────────
@@ -262,6 +281,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('exec', exec)
     contextBridge.exposeInMainWorld('plugins', plugins)
     contextBridge.exposeInMainWorld('settings', settings)
+    contextBridge.exposeInMainWorld('kubeconfig', kubeconfig)
   } catch (error) {
     console.error(error)
   }
@@ -280,4 +300,6 @@ if (process.contextIsolated) {
   window.plugins = plugins
   // @ts-ignore
   window.settings = settings
+  // @ts-ignore
+  window.kubeconfig = kubeconfig
 }

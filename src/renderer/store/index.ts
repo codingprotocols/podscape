@@ -25,23 +25,57 @@ export const useAppStore = create<AppStore>()((...a) => ({
 
         set({ loadingContexts: true, error: null })
         try {
-            const [ctxList, currentCtx] = await Promise.all([
-                window.kubectl.getContexts(),
-                window.kubectl.getCurrentContext().catch(() => null)
-            ])
-            const ctxNames = new Set((ctxList as KubeContextEntry[]).map(c => c.name))
-            const hotbarPruned = get().hotbarContexts.filter(name => ctxNames.has(name))
-            if (hotbarPruned.length !== get().hotbarContexts.length) {
-                localStorage.setItem('podscape:hotbar', JSON.stringify(hotbarPruned))
-            }
-            const active = currentCtx && ctxList.find((c: KubeContextEntry) => c.name === currentCtx)
-            const chose = active ? currentCtx! : ctxList[0]?.name ?? null
-            set({ contexts: ctxList, selectedContext: chose, hotbarContexts: hotbarPruned, loadingContexts: false })
+            // 1. Check tools
+            const toolsState = await window.settings.checkTools()
+            set({ ...toolsState })
 
-            if (!chose) {
-                set({ error: 'No Kubernetes contexts found. Please check your kubeconfig.' })
-            } else {
-                await get().selectContext(chose)
+            // 2. Load contexts if config exists
+            let ctxList: KubeContextEntry[] = []
+            let currentCtx: string | null = null
+
+            if (toolsState.kubeconfigOk) {
+                try {
+                    const [list, current] = await Promise.all([
+                        window.kubectl.getContexts(),
+                        window.kubectl.getCurrentContext().catch(() => null)
+                    ])
+                    ctxList = list as KubeContextEntry[]
+                    currentCtx = current
+                } catch (e) {
+                    console.error('[init] Failed to load contexts:', e)
+                    // We don't fail here, we just have an empty list
+                }
+            }
+
+            const ctxNames = new Set(ctxList.map(c => c.name))
+            const active = (currentCtx && ctxNames.has(currentCtx))
+                ? currentCtx
+                : (get().starredContext && ctxNames.has(get().starredContext!))
+                    ? get().starredContext!
+                    : ctxList[0]?.name ?? null
+
+            // If new user (no hotbar), load all available contexts into it.
+            let hotbarPruned = get().hotbarContexts
+            if (!localStorage.getItem('podscape:hotbar') && ctxList.length > 0) {
+                hotbarPruned = ctxList.map(c => c.name)
+                localStorage.setItem('podscape:hotbar', JSON.stringify(hotbarPruned))
+            } else if (ctxList.length > 0) {
+                // Prune non-existent contexts from hotbar
+                hotbarPruned = hotbarPruned.filter(name => ctxNames.has(name))
+                if (hotbarPruned.length !== get().hotbarContexts.length) {
+                    localStorage.setItem('podscape:hotbar', JSON.stringify(hotbarPruned))
+                }
+            }
+
+            set({
+                contexts: ctxList,
+                selectedContext: active,
+                hotbarContexts: hotbarPruned,
+                loadingContexts: false
+            })
+
+            if (active) {
+                await get().selectContext(active)
             }
 
             const pluginList = await window.plugins.list().catch(() => [])

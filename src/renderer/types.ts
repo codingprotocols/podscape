@@ -643,6 +643,7 @@ export type ResourceKind =
   | 'extensions'
   | 'settings'
   | 'network'
+  | 'connectivity'
   | 'helm'
 
 export type AnyKubeResource =
