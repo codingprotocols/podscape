@@ -29,7 +29,7 @@ export const createNavigationSlice: StoreSlice<NavigationSlice> = (set, get) => 
         set({ detailWidth })
         localStorage.setItem('podscape:detailWidth', detailWidth.toString())
     },
-    theme: (localStorage.getItem('theme') as 'light' | 'dark') || 'dark',
+    theme: (localStorage.getItem('theme') === 'light' ? 'light' : 'dark'),
     setTheme: (theme) => {
         set({ theme })
         localStorage.setItem('theme', theme)
