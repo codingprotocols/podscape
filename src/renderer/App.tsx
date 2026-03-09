@@ -53,7 +53,7 @@ class ErrorBoundary extends React.Component<
   render() {
     if (this.state.error) {
       return (
-        <div className="flex flex-col items-center justify-center h-full gap-4 p-8 bg-white dark:bg-slate-950">
+        <div className="flex flex-col items-center justify-center h-full gap-4 p-8 bg-white dark:bg-[hsl(var(--bg-dark))]">
           <div className="w-10 h-10 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400">
               <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
@@ -117,7 +117,7 @@ function DetailPanelContainer({ children }: { children: React.ReactNode }) {
 
   return (
     <div
-      className="relative flex flex-col border-l border-slate-200 dark:border-white/20 glass-heavy h-full shadow-2xl animate-in slide-in-from-right-4 z-50"
+      className="relative flex flex-col border-l border-slate-200 dark:border-white/5 glass-heavy h-full shadow-2xl animate-in slide-in-from-right-4 z-50"
       style={{ width: `${detailWidth}px` }}
     >
       <div
@@ -289,7 +289,7 @@ export default function App(): JSX.Element {
   const showListView = LIST_SECTIONS.includes(section)
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+    <div className="flex h-screen overflow-hidden bg-white dark:bg-[hsl(var(--bg-dark))] text-slate-900 dark:text-slate-100 transition-colors duration-200">
       {/* Left nav sidebar */}
       <ErrorBoundary>
         <Sidebar />

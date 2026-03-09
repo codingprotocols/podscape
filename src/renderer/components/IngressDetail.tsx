@@ -58,14 +58,14 @@ export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
   return (
     <div className="flex flex-col w-full h-full overflow-y-auto">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <div className="px-6 py-6 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
         <div className="flex items-start gap-2">
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-mono truncate">{ing.metadata.name}</h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{ing.metadata.namespace}</p>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white font-mono truncate">{ing.metadata.name}</h3>
+            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{ing.metadata.namespace} · INGRESS</p>
           </div>
           {ing.spec.ingressClassName && (
-            <span className="shrink-0 text-xs bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded font-mono">
+            <span className="shrink-0 text-[10px] font-black bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2.5 py-1 rounded-lg font-mono uppercase tracking-tight">
               {ing.spec.ingressClassName}
             </span>
           )}
@@ -82,9 +82,9 @@ export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
           </div>
         )}
 
-        <div className="flex gap-2 mt-2.5">
+        <div className="flex gap-2 mt-3.5">
           <button onClick={handleViewYAML} disabled={yamlLoading}
-            className="text-xs px-3 py-1 rounded bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-800 hover:bg-white/10 transition-colors disabled:opacity-50">
+            className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-all disabled:opacity-50 uppercase tracking-wider">
             {yamlLoading ? 'Loading…' : 'YAML'}
           </button>
         </div>
@@ -95,19 +95,19 @@ export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
 
       {/* TLS section */}
       {ing.spec.tls && ing.spec.tls.length > 0 && (
-        <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-yellow-500/5 shrink-0">
-          <div className="flex items-center gap-2 mb-1.5">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-yellow-400">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/5 bg-yellow-500/5 shrink-0">
+          <div className="flex items-center gap-2 mb-2">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-yellow-500">
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0110 0v4" />
             </svg>
-            <span className="text-xs font-medium text-yellow-400 uppercase tracking-wider">TLS</span>
+            <span className="text-[10px] font-black text-yellow-500/60 uppercase tracking-[0.2em]">TLS SECURITY</span>
           </div>
           {ing.spec.tls.map((tls, i) => (
-            <div key={i} className="text-xs space-y-0.5">
+            <div key={i} className="text-[11px] space-y-1 px-1">
               {tls.hosts?.map(h => (
                 <div key={h} className="flex items-center gap-2">
-                  <span className="text-slate-400 dark:text-slate-500 font-mono">{h}</span>
-                  {tls.secretName && <span className="text-slate-500 dark:text-slate-400">→ {tls.secretName}</span>}
+                  <span className="text-slate-400 dark:text-slate-400 font-bold font-mono">{h}</span>
+                  {tls.secretName && <span className="text-slate-500 dark:text-slate-600 font-bold">→ {tls.secretName}</span>}
                 </div>
               ))}
             </div>
@@ -213,13 +213,12 @@ export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
         </div>
       )}
 
-      {/* YAML viewer */}
       {(yamlLoading || yaml !== null || yamlError !== null) && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-8">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-3xl max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{yamlLoading ? 'Loading YAML…' : `YAML — ${ing.metadata.name}`}</h3>
-              <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }} className="text-slate-400 dark:text-slate-500 hover:text-white">✕</button>
+        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 dark:border-white/10 bg-white/5 backdrop-blur-xl shrink-0">
+              <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">{yamlLoading ? 'Loading YAML…' : `YAML — ${ing.metadata.name}`}</h3>
+              <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 transition-colors">✕</button>
             </div>
             <div className="flex-1 min-h-0">
               {yamlError ? (

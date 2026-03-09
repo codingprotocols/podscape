@@ -53,7 +53,7 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
   return (
     <div className="flex flex-col h-full min-h-[400px] bg-slate-50 dark:bg-[hsl(var(--bg-dark))]">
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 bg-white dark:bg-white/5 backdrop-blur-xl border-b border-slate-200 dark:border-white/5 shrink-0">
         <div className="flex items-center gap-2">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-400"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9zM13 2v7h7" /></svg>
           <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">YAML SOURCE</span>
@@ -142,8 +142,8 @@ export function ApplyYAMLPanel(): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-[hsl(var(--bg-dark))]">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-white dark:bg-[hsl(var(--bg-dark))]">
+    <div className="flex flex-col h-full bg-white dark:bg-[hsl(var(--bg-dark))]">
+      <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 dark:border-white/5 shrink-0 bg-white dark:bg-white/5 backdrop-blur-xl">
         <div>
           <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Apply YAML</h2>
           <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">

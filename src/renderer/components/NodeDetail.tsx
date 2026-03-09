@@ -37,37 +37,47 @@ export default function NodeDetail({ node }: Props): JSX.Element {
 
   return (
     <div className="flex flex-col w-full h-full overflow-y-auto">
-      <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
-        <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-mono flex-1 truncate">{node.metadata.name}</h3>
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${ready ? 'bg-green-500/20 text-green-300 ring-green-500/30' : 'bg-red-500/20 text-red-300 ring-red-500/30'
-            }`}>
-            {ready ? 'Ready' : 'NotReady'}
-          </span>
+      <div className="px-6 py-6 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-blue-600/10 dark:bg-blue-500/20 flex items-center justify-center shrink-0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-600 dark:text-blue-400">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white font-mono truncate">{node.metadata.name}</h3>
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-widest ring-1 ring-inset ${ready ? 'bg-emerald-500/10 text-emerald-500 ring-emerald-500/20' : 'bg-red-500/10 text-red-500 ring-red-500/20'}`}>
+                {ready ? 'Ready' : 'NotReady'}
+              </span>
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{formatAge(node.metadata.creationTimestamp)} old</span>
+            </div>
+          </div>
         </div>
-        <div className="flex gap-2 mt-2.5">
+        <div className="flex gap-2 mt-4">
           <button onClick={handleViewYAML} disabled={yamlLoading}
-            className="text-xs px-3 py-1 rounded bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-800 hover:bg-white/10 transition-colors disabled:opacity-50">
+            className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-all disabled:opacity-50 uppercase tracking-wider">
             {yamlLoading ? 'Loading…' : 'YAML'}
           </button>
         </div>
       </div>
 
       {/* Addresses */}
-      <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-        <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Addresses</h4>
-        <dl className="space-y-1.5">
+      <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
+        <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Addresses</h4>
+        <dl className="space-y-1.5 px-1">
           <Row label="Internal IP" value={internalIP} mono />
           <Row label="External IP" value={externalIP} mono />
           <Row label="Pod CIDR" value={node.spec.podCIDR ?? '—'} mono />
-          <Row label="Created" value={formatAge(node.metadata.creationTimestamp) + ' ago'} />
         </dl>
       </div>
 
       {/* Capacity */}
-      <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-        <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2.5">Capacity</h4>
-        <div className="space-y-3">
+      <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
+        <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Capacity</h4>
+        <div className="space-y-4 px-1">
           <ResourceBar
             label="CPU"
             used={cpuAlloc}
@@ -124,8 +134,8 @@ export default function NodeDetail({ node }: Props): JSX.Element {
             {node.status.conditions.map(c => (
               <div key={c.type} className="flex items-center gap-2">
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${(c.type === 'Ready' && c.status === 'True') ||
-                    (c.type !== 'Ready' && c.status === 'False')
-                    ? 'bg-green-400' : 'bg-red-400'
+                  (c.type !== 'Ready' && c.status === 'False')
+                  ? 'bg-green-400' : 'bg-red-400'
                   }`} />
                 <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">{c.type}</span>
                 {c.reason && <span className="text-xs text-slate-500 dark:text-slate-400 truncate">— {c.reason}</span>}
@@ -137,14 +147,11 @@ export default function NodeDetail({ node }: Props): JSX.Element {
 
       {/* YAML viewer modal */}
       {(yamlLoading || yaml !== null || yamlError !== null) && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-8">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-3xl max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-                {yamlLoading ? 'Loading YAML…' : `YAML — ${node.metadata.name}`}
-              </h3>
-              <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }}
-                className="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-white">✕</button>
+        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 dark:border-white/10 bg-white/5 backdrop-blur-xl shrink-0">
+              <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">{yamlLoading ? 'Loading YAML…' : `YAML — ${node.metadata.name}`}</h3>
+              <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 transition-colors">✕</button>
             </div>
             <div className="flex-1 min-h-0">
               {yamlError ? (
@@ -186,9 +193,9 @@ function ResourceBar({ label, used, total, format }: {
         <span className="text-xs text-slate-400 dark:text-slate-500">{label}</span>
         <span className="text-xs text-slate-600 dark:text-slate-300">{format(used)} / {format(total)}</span>
       </div>
-      <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+      <div className="h-2 bg-slate-200 dark:bg-white/5 rounded-full overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all ${pct > 80 ? 'bg-red-500' : pct > 60 ? 'bg-yellow-500' : 'bg-blue-500'}`}
+          className={`h-full rounded-full transition-all duration-500 ease-out shadow-[0_0_8px_rgba(59,130,246,0.3)] ${pct > 80 ? 'bg-red-500' : pct > 60 ? 'bg-yellow-500' : 'bg-blue-500'}`}
           style={{ width: `${pct}%` }}
         />
       </div>

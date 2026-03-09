@@ -63,34 +63,43 @@ export default function JobDetail({ job }: Props): JSX.Element {
   return (
     <div className="flex flex-col w-full h-full overflow-y-auto">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
-        <div className="flex items-start gap-2">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-mono truncate">{job.metadata.name}</h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{job.metadata.namespace}</p>
+      <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-blue-600/10 dark:bg-blue-500/20 flex items-center justify-center shrink-0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-600 dark:text-blue-400">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
           </div>
-          <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${isComplete
-              ? 'bg-green-500/20 text-green-300 ring-green-500/30'
-              : failed > 0
-                ? 'bg-red-500/20 text-red-300 ring-red-500/30'
-                : 'bg-blue-500/20 text-blue-300 ring-blue-500/30'
-            }`}>
-            {isComplete ? 'Complete' : active > 0 ? 'Running' : 'Failed'}
-          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white font-mono truncate">{job.metadata.name}</h3>
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-widest ring-1 ring-inset ${isComplete
+                ? 'bg-emerald-500/10 text-emerald-500 ring-emerald-500/20'
+                : failed > 0
+                  ? 'bg-red-500/10 text-red-500 ring-red-500/20'
+                  : 'bg-blue-500/10 text-blue-500 ring-blue-500/20'
+                }`}>
+                {isComplete ? 'Complete' : active > 0 ? 'Running' : 'Failed'}
+              </span>
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{job.metadata.namespace} · JOB</span>
+            </div>
+          </div>
         </div>
-        <div className="flex gap-2 mt-2.5">
+        <div className="flex gap-2 mt-4">
           <button onClick={handleViewYAML} disabled={yamlLoading}
-            className="text-xs px-3 py-1 rounded bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-800 hover:bg-white/10 transition-colors disabled:opacity-50">
+            className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-all disabled:opacity-50 uppercase tracking-wider">
             {yamlLoading ? 'Loading…' : 'YAML'}
           </button>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <div className="flex px-4 py-2 gap-2 border-b border-slate-100 dark:border-white/5 bg-white/[0.02] shrink-0">
         {(['overview', 'events'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 text-xs font-medium capitalize transition-colors ${tab === t ? 'text-blue-400 border-b-2 border-blue-500' : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:text-slate-300'
+            className={`px-4 py-1.5 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all ${tab === t
+              ? 'bg-blue-600/10 text-blue-400 shadow-[inset_0_0_12px_rgba(59,130,246,0.1)]'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white/5'
               }`}>
             {t}
           </button>
@@ -100,17 +109,17 @@ export default function JobDetail({ job }: Props): JSX.Element {
       {tab === 'overview' && (
         <>
           {/* Status counters */}
-          <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-            <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2.5">Status</h4>
-            <div className="grid grid-cols-3 gap-2">
+          <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Status</h4>
+            <div className="grid grid-cols-3 gap-3">
               {[
                 { label: 'Active', value: active, color: active > 0 ? 'text-blue-400' : 'text-slate-500 dark:text-slate-400' },
-                { label: 'Succeeded', value: succeeded, color: succeeded > 0 ? 'text-green-400' : 'text-slate-500 dark:text-slate-400' },
+                { label: 'Succeeded', value: succeeded, color: succeeded > 0 ? 'text-emerald-400' : 'text-slate-500 dark:text-slate-400' },
                 { label: 'Failed', value: failed, color: failed > 0 ? 'text-red-400' : 'text-slate-500 dark:text-slate-400' },
               ].map(({ label, value, color }) => (
-                <div key={label} className="text-center bg-white/5 rounded p-2">
-                  <p className={`text-lg font-bold ${color}`}>{value}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{label}</p>
+                <div key={label} className="text-center bg-white/[0.03] border border-white/5 rounded-2xl py-4 transition-all hover:bg-white/[0.05]">
+                  <p className={`text-xl font-bold ${color} tabular-nums`}>{value}</p>
+                  <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{label}</p>
                 </div>
               ))}
             </div>
@@ -130,14 +139,14 @@ export default function JobDetail({ job }: Props): JSX.Element {
 
           {/* Conditions */}
           {job.status.conditions && job.status.conditions.length > 0 && (
-            <div className="px-4 py-3">
-              <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Conditions</h4>
-              <div className="space-y-1.5">
+            <div className="px-6 py-5">
+              <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Conditions</h4>
+              <div className="space-y-2 px-1">
                 {job.status.conditions.map(c => (
-                  <div key={c.type} className="flex items-center gap-2">
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${c.status === 'True' ? 'bg-green-400' : 'bg-slate-400 dark:bg-slate-500'}`} />
-                    <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">{c.type}</span>
-                    {c.reason && <span className="text-xs text-slate-500 dark:text-slate-400">— {c.reason}</span>}
+                  <div key={c.type} className="flex items-center gap-2.5">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${c.status === 'True' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.4)]' : 'bg-slate-400 dark:bg-slate-600'}`} />
+                    <span className="text-[11px] text-slate-600 dark:text-slate-300 font-bold uppercase tracking-tight">{c.type}</span>
+                    {c.reason && <span className="text-[11px] text-slate-500 dark:text-slate-500 font-mono truncate">— {c.reason}</span>}
                   </div>
                 ))}
               </div>
@@ -179,13 +188,12 @@ export default function JobDetail({ job }: Props): JSX.Element {
         </div>
       )}
 
-      {/* YAML viewer */}
       {(yamlLoading || yaml !== null || yamlError !== null) && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-8">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-3xl max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{yamlLoading ? 'Loading YAML…' : `YAML — ${job.metadata.name}`}</h3>
-              <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }} className="text-slate-400 dark:text-slate-500 hover:text-white">✕</button>
+        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 dark:border-white/10 bg-white/5 backdrop-blur-xl shrink-0">
+              <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">{yamlLoading ? 'Loading YAML…' : `YAML — ${job.metadata.name}`}</h3>
+              <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 transition-colors">✕</button>
             </div>
             <div className="flex-1 min-h-0">
               {yamlError ? (

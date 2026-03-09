@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import type { KubePod } from '../types'
 import { podPhaseBg, formatAge } from '../types'
 import { useAppStore } from '../store'
+import { Maximize2, Minimize2, Copy, Download, Search, X, ChevronDown, Terminal, Trash2 } from 'lucide-react'
 
 interface Props {
   pod: KubePod
@@ -17,6 +18,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const [selectedContainer, setSelectedContainer] = useState(pod.spec.containers[0]?.name ?? '')
   const [search, setSearch] = useState('')
   const [logFullscreen, setLogFullscreen] = useState(false)
+  const [wrapLogs, setWrapLogs] = useState(false)
   const logContainerRef = useRef<HTMLPreElement>(null)
   const fsLogContainerRef = useRef<HTMLPreElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -125,100 +127,96 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   // ── Shared log toolbar content ────────────────────────────────────────────
 
   const LogToolbar = (
-    <div className="px-6 py-3 border-b border-slate-100 dark:border-slate-900 shrink-0 space-y-2">
-      <div className="flex items-center justify-between">
+    <div className="px-6 py-4 border-b border-slate-100 dark:border-white/5 shrink-0 bg-white/5 backdrop-blur-xl sticky top-0 z-10 transition-colors">
+      <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em]">Logs</h4>
-          {isStreaming && (
-            <span className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              LIVE
-            </span>
-          )}
+          <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500">
+            <Terminal className="w-4 h-4" />
+          </div>
+          <div className="flex flex-col">
+            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">Console</h4>
+            <div className="flex items-center gap-2 mt-1">
+              {isStreaming && (
+                <span className="flex items-center gap-1.5 text-[9px] font-bold text-emerald-500 px-1.5 py-0.5 rounded bg-emerald-500/10">
+                  <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                  LIVE
+                </span>
+              )}
+              {logs.length > 0 && (
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-600">
+                  {filteredLogs.length} LINES
+                </span>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {copyMsg && <span className="text-[10px] font-bold text-blue-500">{copyMsg}</span>}
-          {logs.length > 0 && (
-            <>
-              <button onClick={copyLogs}
-                className="text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors uppercase tracking-wider">
-                Copy
-              </button>
-              <button onClick={downloadLogs}
-                title="Download logs as .log file"
-                className="text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors uppercase tracking-wider">
-                Download
-              </button>
-              <button onClick={() => setLogs([])}
-                className="text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors uppercase tracking-wider">
-                Clear
-              </button>
-            </>
-          )}
-          {/* Fullscreen toggle */}
-          <button
-            onClick={() => setLogFullscreen(v => !v)}
-            title={logFullscreen ? 'Exit fullscreen' : 'Fullscreen logs'}
-            className="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200
-                       hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          >
-            {logFullscreen
-              ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                <path d="M8 3v3a2 2 0 01-2 2H3M21 8h-3a2 2 0 01-2-2V3M3 16h3a2 2 0 012 2v3M16 21v-3a2 2 0 012-2h3" />
+
+        <div className="flex items-center gap-1.5">
+          {/* Action Buttons */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-lg p-0.5 border border-slate-200 dark:border-slate-800">
+            {logs.length > 0 && (
+              <>
+                <ToolbarButton onClick={copyLogs} icon={<Copy className="w-3 h-3" />} title={copyMsg || "Copy Logs"} active={!!copyMsg} />
+                <ToolbarButton onClick={downloadLogs} icon={<Download className="w-3 h-3" />} title="Download" />
+                <ToolbarButton onClick={() => setLogs([])} icon={<Trash2 className="w-3 h-3" />} title="Clear" />
+                <div className="w-[1px] h-3 bg-slate-200 dark:bg-slate-800 mx-0.5" />
+              </>
+            )}
+            <ToolbarButton onClick={() => setWrapLogs(v => !v)} icon={
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                <path d="M4 6h16M4 12h10c1.5 0 3 1.5 3 3s-1.5 3-3 3h-2" /><path d="M12 15l-3 3 3 3" />
               </svg>
-              : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                <path d="M8 3H5a2 2 0 00-2 2v3M21 8V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3M16 21h3a2 2 0 002-2v-3" />
-              </svg>
-            }
-          </button>
+            } title="Wrap Lines" active={wrapLogs} />
+            <ToolbarButton
+              onClick={() => setLogFullscreen(v => !v)}
+              icon={logFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+              title={logFullscreen ? 'Exit Fullscreen' : 'Maximize'}
+            />
+          </div>
           {isStreaming ? (
             <button
               onClick={stopStream}
-              className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold text-red-600 dark:text-red-400
-                         bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30
-                         rounded-lg transition-colors border border-red-100 dark:border-red-900/30"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-red-500
+                         bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-all border border-red-500/20"
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+              <div className="w-1.5 h-1.5 rounded-sm bg-red-500" />
               STOP
             </button>
           ) : (
             <button
               onClick={startStream}
-              className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold text-blue-600 dark:text-blue-400
-                         bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30
-                         rounded-lg transition-all active:scale-95 border border-blue-100 dark:border-blue-900/30"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-blue-500
+                         bg-blue-500/10 hover:bg-blue-500/20 rounded-lg transition-all active:scale-95 border border-blue-500/20"
             >
               <svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor"><path d="M2 1.5l7 3.5-7 3.5V1.5z" /></svg>
-              LOAD LOGS
+              STREAM
             </button>
           )}
         </div>
       </div>
+
       {logs.length > 0 && (
-        <div className="relative">
-          <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-600 pointer-events-none"
-            width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-            <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
-          </svg>
+        <div className="mt-3 relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-600 w-3.5 h-3.5" />
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search logs…"
-            className="w-full pl-7 pr-8 py-1.5 text-[11px] font-mono bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800
-                       text-slate-700 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-600
-                       rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            placeholder="Search patterns or grep logs..."
+            className="w-full pl-8 pr-8 py-2 text-[11px] font-mono bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800
+                       text-slate-700 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500
+                       rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
           />
           {search && (
             <button onClick={() => setSearch('')}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><path d="M18 6L6 18M6 6l12 12" /></svg>
+              <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
       )}
       {search && (
-        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-600">
+        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-600 mt-2">
           {filteredLogs.length} / {logs.length} lines match
         </p>
       )}
@@ -228,7 +226,8 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const LogContent = (containerRef: React.RefObject<HTMLPreElement>) => (
     <pre
       ref={containerRef}
-      className="absolute inset-0 overflow-auto p-4 font-mono text-[11px] text-emerald-400/90 leading-relaxed whitespace-pre-wrap break-all scrollbar-hide"
+      className={`absolute inset-0 overflow-auto p-4 font-mono text-[11px] text-emerald-400/90 leading-relaxed scrollbar-hide
+                 ${wrapLogs ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'}`}
       onScroll={e => {
         const el = e.currentTarget
         setAutoScroll(el.scrollHeight - el.scrollTop - el.clientHeight < 60)
@@ -253,17 +252,20 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   // ── Fullscreen overlay ────────────────────────────────────────────────────
 
   const FullscreenOverlay = logFullscreen ? (
-    <div className="fixed inset-0 z-50 flex flex-col bg-slate-950 animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-[hsl(var(--bg-dark))] animate-in zoom-in-95 duration-200">
       {/* Fullscreen header */}
-      <div className="flex items-center justify-between px-6 py-3 bg-slate-900 border-b border-slate-800 shrink-0">
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-bold text-slate-400 font-mono">{pod.metadata.name}</span>
+      <div className="flex items-center justify-between px-6 py-4 bg-white/5 backdrop-blur-xl border-b border-slate-100 dark:border-white/5 shrink-0">
+        <div className="flex items-center gap-4">
+          <div className="flex flex-col">
+            <span className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-tighter">{pod.metadata.name}</span>
+            <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">{selectedContainer}</span>
+          </div>
           {pod.spec.containers.length > 1 && (
             <select
               value={selectedContainer}
               onChange={e => setSelectedContainer(e.target.value)}
-              className="bg-slate-800 text-slate-200 text-[10px] font-bold rounded-lg px-2.5 py-1
-                         border border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              className="bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-[10px] font-bold rounded-lg px-2.5 py-1.5
+                         border border-slate-200 dark:border-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             >
               {pod.spec.containers.map(c => (
                 <option key={c.name} value={c.name}>{c.name}</option>
@@ -273,34 +275,33 @@ export default function PodDetail({ pod }: Props): JSX.Element {
         </div>
         <button
           onClick={() => setLogFullscreen(false)}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-          title="Exit fullscreen (Esc)"
+          className="p-2 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900 transition-all active:scale-90"
+          title="Close (Esc)"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-            <path d="M8 3v3a2 2 0 01-2 2H3M21 8h-3a2 2 0 01-2-2V3M3 16h3a2 2 0 012 2v3M16 21v-3a2 2 0 012-2h3" />
-          </svg>
+          <X className="w-5 h-5" />
         </button>
       </div>
 
       {/* Toolbar */}
-      <div className="bg-slate-900">
+      <div className="shrink-0">
         {LogToolbar}
       </div>
 
       {/* Log area */}
-      <div className="flex-1 relative overflow-hidden">
-        {LogContent(fsLogContainerRef)}
-        {logs.length > 0 && (
+      <div className="flex-1 relative overflow-hidden m-4 md:m-8 mt-2 md:mt-4 bg-slate-950 rounded-3xl border border-slate-200 dark:border-slate-800/50 shadow-2xl overflow-hidden group">
+        <div className="absolute top-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={() => setAutoScroll(v => !v)}
-            className={`absolute bottom-4 right-6 px-2.5 py-1 text-[9px] font-bold rounded-md border transition-all
+            className={`flex items-center gap-2 px-3 py-1.5 text-[10px] font-bold rounded-xl border backdrop-blur-md transition-all
               ${autoScroll
-                ? 'bg-emerald-900/60 border-emerald-700/60 text-emerald-400'
-                : 'bg-slate-800/80 border-slate-700/60 text-slate-500'}`}
+                ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                : 'bg-slate-900/60 border-slate-700/60 text-slate-500 shadow-xl'}`}
           >
-            ↓ AUTO
+            <ChevronDown className={`w-3.5 h-3.5 ${autoScroll ? 'animate-bounce' : ''}`} />
+            {autoScroll ? 'AUTO-SCROLL ON' : 'AUTO-SCROLL OFF'}
           </button>
-        )}
+        </div>
+        {LogContent(fsLogContainerRef)}
       </div>
     </div>
   ) : null
@@ -320,14 +321,14 @@ export default function PodDetail({ pod }: Props): JSX.Element {
 
       <div
         ref={panelRef}
-        className="flex flex-col bg-white dark:bg-slate-950 h-full transition-colors duration-200 relative w-full"
+        className="flex flex-col bg-transparent h-full transition-colors duration-200 relative w-full"
       >
 
         {/* Header */}
-        <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-900 shrink-0">
-          <div className="flex items-start gap-3">
+        <div className="px-6 py-6 border-b border-slate-100 dark:border-white/5 shrink-0 bg-white/5">
+          <div className="flex items-start gap-4">
             <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-bold text-slate-800 dark:text-white font-mono truncate tracking-tight">{pod.metadata.name}</h3>
+              <h3 className="text-sm font-black text-slate-900 dark:text-white font-mono truncate tracking-tight">{pod.metadata.name}</h3>
               <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{pod.metadata.namespace}</p>
             </div>
             <span className={`shrink-0 inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold outline outline-1 transition-all ${podPhaseBg(phase)}`}>
@@ -337,7 +338,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
         </div>
 
         {/* Metadata */}
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-900 shrink-0">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/5 shrink-0">
           <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] mb-3">Resource Info</h4>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-2.5">
             <MetaRow label="Node" value={pod.spec.nodeName ?? '—'} mono />
@@ -350,9 +351,9 @@ export default function PodDetail({ pod }: Props): JSX.Element {
         </div>
 
         {/* Containers */}
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-900 shrink-0">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/5 shrink-0">
           <div className="flex items-center justify-between mb-3">
-            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em]">Containers</h4>
+            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Containers</h4>
             {pod.spec.containers.length > 1 && (
               <select
                 value={selectedContainer}
@@ -370,7 +371,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
             {pod.spec.containers.map(c => {
               const status = pod.status.containerStatuses?.find(s => s.name === c.name)
               return (
-                <div key={c.name} className="flex items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/50">
+                <div key={c.name} className="flex items-center justify-between gap-3 bg-slate-50/50 dark:bg-white/[0.03] p-2.5 rounded-xl border border-slate-100 dark:border-white/5">
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-slate-700 dark:text-slate-200 font-mono truncate">{c.name}</p>
                     <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 truncate mt-0.5">{c.image}</p>
@@ -411,7 +412,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
             <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] mb-3">Resources</h4>
             <div className="space-y-2.5">
               {pod.spec.containers.filter(c => c.resources?.requests || c.resources?.limits).map(c => (
-                <div key={c.name} className="bg-slate-50/50 dark:bg-slate-900/40 rounded-xl p-2.5 border border-slate-100 dark:border-slate-800/50">
+                <div key={c.name} className="bg-slate-50/50 dark:bg-white/[0.03] rounded-xl p-2.5 border border-slate-100 dark:border-white/5">
                   <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 font-mono mb-2">{c.name}</p>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                     {c.resources?.requests?.cpu && (
@@ -460,6 +461,19 @@ export default function PodDetail({ pod }: Props): JSX.Element {
         </div>
       </div>
     </>
+  )
+}
+
+function ToolbarButton({ onClick, icon, title, active }: { onClick: () => void; icon: React.ReactNode; title: string; active?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={`p-1.5 rounded-md transition-all hover:bg-slate-200 dark:hover:bg-slate-800 
+                 ${active ? 'text-blue-500 bg-blue-500/10' : 'text-slate-500'}`}
+    >
+      {icon}
+    </button>
   )
 }
 

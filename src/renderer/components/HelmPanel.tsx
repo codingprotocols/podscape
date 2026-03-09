@@ -8,13 +8,13 @@ import { formatAge } from '../types'
 function StatusBadge({ status }: { status: string }) {
   const s = status.toLowerCase()
   const cls =
-    s === 'deployed'   ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' :
-    s === 'failed'     ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400' :
-    s === 'pending-install' || s === 'pending-upgrade' || s === 'pending-rollback'
-                       ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400' :
-    s === 'uninstalling' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400' :
-    s === 'superseded' ? 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' :
-                         'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
+    s === 'deployed' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' :
+      s === 'failed' ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400' :
+        s === 'pending-install' || s === 'pending-upgrade' || s === 'pending-rollback'
+          ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400' :
+          s === 'uninstalling' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400' :
+            s === 'superseded' ? 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' :
+              'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
 
   return (
     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${cls}`}>
@@ -79,9 +79,9 @@ function ReleaseDrawer({
   const TABS: DrawerTab[] = ['overview', 'values', 'history']
 
   return (
-    <div className="flex flex-col w-[520px] min-w-[400px] border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 h-full shadow-2xl">
+    <div className="flex flex-col w-[520px] min-w-[400px] border-l border-slate-200 dark:border-white/5 glass-heavy h-full shadow-2xl">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
+      <div className="px-6 py-4 border-b border-slate-200 dark:border-white/5 shrink-0">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 font-mono truncate">{release.name}</h3>
@@ -112,11 +112,10 @@ function ReleaseDrawer({
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-t-lg border-b-2 transition-colors capitalize ${
-                tab === t
+              className={`px-3 py-1.5 text-xs font-semibold rounded-t-lg border-b-2 transition-colors capitalize ${tab === t
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-              }`}
+                }`}
             >{t}</button>
           ))}
         </div>
@@ -177,11 +176,10 @@ function ReleaseDrawer({
               <div className="space-y-2">
                 {[...history].reverse().map((entry) => (
                   <div key={entry.revision}
-                    className={`rounded-xl p-3 border transition-colors ${
-                      rollbackTarget === entry.revision
+                    className={`rounded-xl p-3 border transition-colors ${rollbackTarget === entry.revision
                         ? 'border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20'
                         : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
@@ -289,7 +287,7 @@ export default function HelmPanel(): JSX.Element {
       {/* List */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0">
         {/* Toolbar */}
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/30 shrink-0">
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-200 dark:border-white/5 bg-white dark:bg-[hsl(var(--bg-dark),_0.7)] backdrop-blur-xl shrink-0">
           <div className="flex items-center gap-2">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-slate-400">
               <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
@@ -307,7 +305,7 @@ export default function HelmPanel(): JSX.Element {
           <div className="relative">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
               className="absolute left-2.5 top-2 text-slate-400 pointer-events-none">
-              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+              <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
             </svg>
             <input
               type="text"
@@ -324,7 +322,7 @@ export default function HelmPanel(): JSX.Element {
                        hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-40">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
               className={loading ? 'animate-spin' : ''}>
-              <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+              <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
             </svg>
             Refresh
           </button>
@@ -348,7 +346,7 @@ export default function HelmPanel(): JSX.Element {
             <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
               <div className="w-10 h-10 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-red-400">
-                  <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
+                  <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
                 </svg>
               </div>
               <div>
@@ -371,8 +369,8 @@ export default function HelmPanel(): JSX.Element {
             </div>
           ) : (
             <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
+              <thead className="sticky top-0 z-10">
+                <tr className="border-b border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-white/5 backdrop-blur-md">
                   {['Name', 'Namespace', 'Chart', 'Version', 'Status', 'Updated'].map(h => (
                     <th key={h} className="text-left px-4 py-2.5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest whitespace-nowrap">
                       {h}
@@ -387,11 +385,10 @@ export default function HelmPanel(): JSX.Element {
                     <tr
                       key={`${r.namespace}/${r.name}`}
                       onClick={() => setSelected(isActive ? null : r)}
-                      className={`border-b border-slate-100 dark:border-slate-800/50 cursor-pointer transition-colors ${
-                        isActive
+                      className={`border-b border-slate-100 dark:border-slate-800/50 cursor-pointer transition-colors ${isActive
                           ? 'bg-blue-50 dark:bg-blue-900/20'
                           : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'
-                      }`}
+                        }`}
                     >
                       <td className="px-4 py-2.5 font-mono font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">{r.name}</td>
                       <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">{r.namespace}</td>
@@ -428,7 +425,7 @@ export default function HelmPanel(): JSX.Element {
             <div className="flex items-center gap-3 mb-4">
               <div className="w-9 h-9 rounded-xl bg-red-100 dark:bg-red-900/20 flex items-center justify-center shrink-0">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-red-500">
-                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2"/>
+                  <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2" />
                 </svg>
               </div>
               <div>

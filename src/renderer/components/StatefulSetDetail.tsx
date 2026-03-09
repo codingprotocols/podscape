@@ -86,7 +86,7 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
   return (
     <div className="flex flex-col w-full h-full overflow-y-auto">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
         <div className="flex items-start gap-2">
           <div className="flex-1 min-w-0">
             <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-mono truncate">{s.metadata.name}</h3>
@@ -103,11 +103,11 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
             Scale
           </button>
           <button onClick={handleRestart}
-            className="text-xs px-3 py-1 rounded bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-800 hover:bg-white/10 transition-colors">
+            className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-all uppercase tracking-wider">
             Restart
           </button>
           <button onClick={handleViewYAML} disabled={yamlLoading}
-            className="text-xs px-3 py-1 rounded bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-800 hover:bg-white/10 transition-colors disabled:opacity-50">
+            className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-all disabled:opacity-50 uppercase tracking-wider">
             {yamlLoading ? 'Loading…' : 'YAML'}
           </button>
         </div>
@@ -129,18 +129,18 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
       {tab === 'overview' && (
         <>
           {/* Replicas */}
-          <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-            <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2.5">Replicas</h4>
-            <div className="grid grid-cols-4 gap-2">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-white/5">
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Replicas</h4>
+            <div className="grid grid-cols-4 gap-3">
               {[
                 { label: 'Desired', value: desired, color: 'text-slate-700 dark:text-slate-200' },
-                { label: 'Ready', value: ready, color: ready >= desired ? 'text-green-400' : 'text-yellow-400' },
+                { label: 'Ready', value: ready, color: ready >= desired ? 'text-green-500 shadow-[0_0_12px_rgba(34,197,94,0.3)]' : 'text-yellow-400' },
                 { label: 'Current', value: current, color: 'text-slate-600 dark:text-slate-300' },
-                { label: 'Updated', value: updated, color: 'text-blue-400' }
+                { label: 'Updated', value: updated, color: 'text-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.3)]' }
               ].map(({ label, value, color }) => (
-                <div key={label} className="text-center bg-white/5 rounded p-2">
-                  <p className={`text-lg font-bold ${color}`}>{value}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{label}</p>
+                <div key={label} className="text-center bg-white/[0.03] rounded-2xl p-3 border border-slate-100 dark:border-white/5">
+                  <p className={`text-xl font-black ${color}`}>{value}</p>
+                  <p className="text-[9px] font-black text-slate-500 dark:text-slate-600 mt-1 uppercase tracking-widest leading-none">{label}</p>
                 </div>
               ))}
             </div>
@@ -227,13 +227,12 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
         </div>
       )}
 
-      {/* YAML viewer */}
-      {(yamlLoading || yaml !== null || yamlError !== null) && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-8">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-3xl max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{yamlLoading ? 'Loading YAML…' : `YAML — ${s.metadata.name}`}</h3>
-              <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }} className="text-slate-400 dark:text-slate-500 hover:text-white">✕</button>
+      {((yamlLoading || yaml !== null || yamlError !== null)) && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 dark:border-white/10 bg-white/5 backdrop-blur-xl shrink-0">
+              <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">{yamlLoading ? 'Loading YAML…' : `YAML — ${s.metadata.name}`}</h3>
+              <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 transition-colors">✕</button>
             </div>
             <div className="flex-1 min-h-0">
               {yamlError ? (

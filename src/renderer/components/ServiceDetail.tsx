@@ -27,20 +27,20 @@ export default function ServiceDetail({ service: svc }: Props): JSX.Element {
 
   return (
     <div className="flex flex-col w-full h-full overflow-y-auto">
-      <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-mono truncate">{svc.metadata.name}</h3>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{svc.metadata.namespace}</p>
-        <div className="flex gap-2 mt-2.5">
+      <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
+        <h3 className="text-sm font-bold text-slate-900 dark:text-white font-mono truncate">{svc.metadata.name}</h3>
+        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{svc.metadata.namespace} · SERVICE</p>
+        <div className="flex gap-2 mt-3.5">
           <button onClick={handleViewYAML} disabled={yamlLoading}
-            className="text-xs px-3 py-1 rounded bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-800 hover:bg-white/10 transition-colors disabled:opacity-50">
+            className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-all disabled:opacity-50 uppercase tracking-wider">
             {yamlLoading ? 'Loading…' : 'YAML'}
           </button>
         </div>
       </div>
 
-      <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-        <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Spec</h4>
-        <dl className="space-y-1.5">
+      <div className="px-5 py-4 border-b border-slate-100 dark:border-white/5">
+        <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-3">Spec</h4>
+        <dl className="space-y-1.5 px-1">
           <Row label="Type" value={svc.spec.type ?? 'ClusterIP'} />
           <Row label="Cluster IP" value={svc.spec.clusterIP ?? '—'} mono />
           {svc.spec.externalIPs?.length && <Row label="External IPs" value={svc.spec.externalIPs.join(', ')} mono />}
@@ -93,16 +93,15 @@ export default function ServiceDetail({ service: svc }: Props): JSX.Element {
         </div>
       )}
 
-      {/* YAML viewer modal */}
       {(yamlLoading || yaml !== null || yamlError !== null) && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-8">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-3xl max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 dark:border-white/10 bg-white/5 backdrop-blur-xl shrink-0">
+              <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">
                 {yamlLoading ? 'Loading YAML…' : `YAML — ${svc.metadata.name}`}
               </h3>
               <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }}
-                className="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-white">✕</button>
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 transition-colors">✕</button>
             </div>
             <div className="flex-1 min-h-0">
               {yamlError ? (

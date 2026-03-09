@@ -105,7 +105,7 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
   return (
     <div className="flex flex-col w-full h-full overflow-y-auto">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
         <div className="flex items-start gap-2">
           <div className="flex-1 min-w-0">
             <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-mono truncate">{d.metadata.name}</h3>
@@ -123,11 +123,11 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
             Scale
           </button>
           <button onClick={handleRestart}
-            className="text-xs px-3 py-1 rounded bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-800 hover:bg-white/10 transition-colors">
+            className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-all uppercase tracking-wider">
             Restart
           </button>
           <button onClick={handleViewYAML} disabled={yamlLoading}
-            className="text-xs px-3 py-1 rounded bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-800 hover:bg-white/10 transition-colors disabled:opacity-50">
+            className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-all disabled:opacity-50 uppercase tracking-wider">
             {yamlLoading ? 'Loading…' : 'YAML'}
           </button>
         </div>
@@ -135,7 +135,7 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <div className="flex border-b border-slate-100 dark:border-white/5 shrink-0 bg-white/5">
         {(['overview', 'history', 'events'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2 text-xs font-medium capitalize transition-colors ${tab === t ? 'text-blue-400 border-b-2 border-blue-500' : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:text-slate-300'
@@ -149,27 +149,27 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
       {tab === 'overview' && (
         <>
           {/* Replicas */}
-          <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-            <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2.5">Replicas</h4>
-            <div className="grid grid-cols-4 gap-2">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-white/5">
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Replicas</h4>
+            <div className="grid grid-cols-4 gap-3">
               {[
                 { label: 'Desired', value: desired, color: 'text-slate-700 dark:text-slate-200' },
-                { label: 'Ready', value: ready, color: ready >= desired ? 'text-green-400' : 'text-yellow-400' },
+                { label: 'Ready', value: ready, color: ready >= desired ? 'text-green-500 shadow-[0_0_12px_rgba(34,197,94,0.3)]' : 'text-yellow-400' },
                 { label: 'Available', value: available, color: 'text-slate-600 dark:text-slate-300' },
-                { label: 'Updated', value: updated, color: 'text-blue-400' }
+                { label: 'Updated', value: updated, color: 'text-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.3)]' }
               ].map(({ label, value, color }) => (
-                <div key={label} className="text-center bg-white/5 rounded p-2">
-                  <p className={`text-lg font-bold ${color}`}>{value}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{label}</p>
+                <div key={label} className="text-center bg-white/[0.03] rounded-2xl p-3 border border-slate-100 dark:border-white/5">
+                  <p className={`text-xl font-black ${color}`}>{value}</p>
+                  <p className="text-[9px] font-black text-slate-500 dark:text-slate-600 mt-1 uppercase tracking-widest leading-none">{label}</p>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Strategy */}
-          <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-            <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Strategy</h4>
-            <dl className="space-y-1.5">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-white/5">
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-3">Strategy</h4>
+            <dl className="space-y-1.5 px-1">
               <Row label="Type" value={d.spec.strategy?.type ?? 'RollingUpdate'} />
               {d.spec.strategy?.rollingUpdate && (
                 <>
@@ -183,11 +183,11 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
 
           {/* Selector labels */}
           {d.spec.selector.matchLabels && (
-            <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-              <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Selector</h4>
-              <div className="flex flex-wrap gap-1.5">
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-white/5">
+              <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-3">Selector</h4>
+              <div className="flex flex-wrap gap-2 px-1">
                 {Object.entries(d.spec.selector.matchLabels).map(([k, v]) => (
-                  <span key={k} className="text-xs bg-blue-500/10 text-blue-300 border border-blue-500/20 px-2 py-0.5 rounded font-mono">
+                  <span key={k} className="text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-1 rounded-lg font-mono">
                     {k}={v}
                   </span>
                 ))}
@@ -197,14 +197,14 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
 
           {/* Conditions */}
           {d.status.conditions && d.status.conditions.length > 0 && (
-            <div className="px-4 py-3">
-              <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Conditions</h4>
-              <div className="space-y-1.5">
+            <div className="px-5 py-4">
+              <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Conditions</h4>
+              <div className="space-y-2 px-1">
                 {d.status.conditions.map(c => (
-                  <div key={c.type} className="flex items-center gap-2">
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${c.status === 'True' ? 'bg-green-400' : 'bg-slate-400 dark:bg-slate-500'}`} />
-                    <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">{c.type}</span>
-                    {c.reason && <span className="text-xs text-slate-500 dark:text-slate-400">— {c.reason}</span>}
+                  <div key={c.type} className="flex items-center gap-3">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${c.status === 'True' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-slate-400 dark:bg-slate-600'}`} />
+                    <span className="text-xs text-slate-700 dark:text-slate-300 font-bold">{c.type}</span>
+                    {c.reason && <span className="text-[11px] text-slate-500 dark:text-slate-500 font-medium tracking-tight">— {c.reason}</span>}
                   </div>
                 ))}
               </div>
@@ -214,60 +214,65 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
       )}
 
       {tab === 'history' && (
-        <div className="px-4 py-3 flex-1">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Rollout History</h4>
+        <div className="px-5 py-4 flex-1">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Rollout History</h4>
             <div className="flex gap-2">
               <button onClick={loadHistory} disabled={historyLoading}
-                className="text-xs px-2 py-1 rounded bg-white/5 text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-800 hover:bg-white/10 transition-colors disabled:opacity-50">
+                className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-colors disabled:opacity-50">
                 {historyLoading ? '…' : 'Refresh'}
               </button>
               <button onClick={() => handleUndo()} disabled={undoLoading}
-                className="text-xs px-2 py-1 rounded bg-yellow-600/20 text-yellow-300 border border-yellow-500/30 hover:bg-yellow-600/30 transition-colors disabled:opacity-50">
+                className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-yellow-600/20 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-600/30 transition-colors disabled:opacity-50">
                 {undoLoading ? 'Rolling back…' : 'Undo Last'}
               </button>
             </div>
           </div>
           {undoMsg && (
-            <p className={`text-xs mb-3 ${undoMsg.startsWith('Error') ? 'text-red-400' : 'text-green-400'}`}>{undoMsg}</p>
+            <p className={`text-[11px] font-bold mb-4 px-3 py-2 rounded-lg bg-white/5 border ${undoMsg.startsWith('Error') ? 'text-red-400 border-red-500/20' : 'text-emerald-400 border-emerald-500/20'}`}>{undoMsg}</p>
           )}
           {historyLoading ? (
             <div className="flex items-center justify-center h-24">
-              <div className="w-5 h-5 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-slate-200 dark:border-white/10 border-t-blue-500 rounded-full animate-spin" />
             </div>
           ) : history ? (
-            <pre className="text-xs text-slate-600 dark:text-slate-300 bg-black/30 rounded p-3 overflow-x-auto whitespace-pre font-mono leading-relaxed">{history}</pre>
+            <pre className="text-[11px] font-bold font-mono text-slate-600 dark:text-slate-300 bg-black/40 rounded-2xl p-4 overflow-x-auto whitespace-pre leading-relaxed border border-white/5 shadow-inner">{history}</pre>
           ) : null}
         </div>
       )}
 
       {tab === 'events' && (
-        <div className="px-4 py-3 flex-1">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Events</h4>
+        <div className="px-5 py-4 flex-1">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Events</h4>
             <button onClick={loadEvents} disabled={eventsLoading}
-              className="text-xs px-2 py-1 rounded bg-white/5 text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-800 hover:bg-white/10 transition-colors disabled:opacity-50">
+              className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-colors disabled:opacity-50">
               {eventsLoading ? '…' : 'Refresh'}
             </button>
           </div>
           {eventsLoading ? (
             <div className="flex items-center justify-center h-24">
-              <div className="w-5 h-5 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-slate-200 dark:border-white/10 border-t-blue-500 rounded-full animate-spin" />
             </div>
           ) : events.length === 0 ? (
-            <p className="text-xs text-slate-500 dark:text-slate-400 text-center py-8">No events found</p>
+            <p className="text-[11px] font-bold text-slate-500 dark:text-slate-500 text-center py-12 uppercase tracking-widest opacity-40">No events found</p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {events.map((e, i) => (
-                <div key={e.metadata.uid || i} className={`rounded p-2 text-xs ${e.type === 'Warning' ? 'bg-yellow-500/10 border border-yellow-500/20' : 'bg-white/5 border border-slate-100 dark:border-slate-800'
+                <div key={e.metadata.uid || i} className={`rounded-xl p-3 text-[11px] border transition-all ${e.type === 'Warning'
+                  ? 'bg-orange-500/5 border-orange-500/20 shadow-[inset_0_0_12px_rgba(249,115,22,0.05)]'
+                  : 'bg-white/[0.02] border-slate-100 dark:border-white/5'
                   }`}>
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className={`font-medium ${e.type === 'Warning' ? 'text-yellow-300' : 'text-slate-600 dark:text-slate-300'}`}>{e.reason}</span>
-                    <span className="text-slate-500 dark:text-slate-400 text-[10px]">{e.count ? `×${e.count}` : ''}</span>
+                  <div className="flex items-center justify-between gap-3 mb-1.5">
+                    <span className={`font-black uppercase tracking-wider ${e.type === 'Warning' ? 'text-orange-400' : 'text-slate-700 dark:text-slate-400'}`}>{e.reason}</span>
+                    <span className="text-slate-400 dark:text-slate-600 font-bold">{e.count ? `×${e.count}` : ''}</span>
                   </div>
-                  <p className="text-slate-400 dark:text-slate-500 leading-relaxed">{e.message}</p>
+                  <p className="text-slate-500 dark:text-slate-400 font-medium leading-relaxed">{e.message}</p>
                   {e.lastTimestamp && (
-                    <p className="text-slate-500 dark:text-slate-400 mt-1">{formatAge(e.lastTimestamp)} ago</p>
+                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/[0.03]">
+                      <span className="w-1 h-1 rounded-full bg-slate-600" />
+                      <p className="text-[10px] font-bold text-slate-500 dark:text-slate-600 uppercase tracking-widest">{formatAge(e.lastTimestamp)} ago</p>
+                    </div>
                   )}
                 </div>
               ))}
@@ -283,9 +288,9 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
 
       {/* YAML viewer */}
       {(yamlLoading || yaml !== null || yamlError !== null) && (
-        <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-8 animate-in fade-in duration-200" role="dialog" aria-modal="true">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl h-full max-h-[85vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 shrink-0">
+        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200" role="dialog" aria-modal="true">
+          <div className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 dark:border-white/10 bg-white/5 backdrop-blur-xl shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
                   {yamlLoading

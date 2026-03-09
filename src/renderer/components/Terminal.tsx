@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -60,15 +60,15 @@ export default function Terminal(): JSX.Element {
   }, [])
 
   return (
-    <div className="flex flex-col flex-1 bg-slate-950 h-full overflow-hidden">
+    <div className="flex flex-col flex-1 bg-white dark:bg-[hsl(var(--bg-dark))] h-full overflow-hidden transition-colors duration-200">
       {/* Tab bar */}
-      <div className="flex items-center bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 shrink-0 px-4 h-12 gap-1.5 overflow-x-auto no-scrollbar">
+      <div className="flex items-center bg-white dark:bg-white/5 backdrop-blur-xl border-b border-slate-200 dark:border-white/5 shrink-0 px-4 h-12 gap-1.5 overflow-x-auto no-scrollbar">
         {sessions.map((s, i) => (
           <div
             key={s.id}
             className={`flex items-center gap-2.5 px-4 h-9 text-[10px] font-bold cursor-pointer rounded-t-xl border-x border-t transition-all select-none
               ${i === activeIdx
-                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 border-slate-200 dark:border-slate-800 shadow-[0_-2px_8px_rgba(0,0,0,0.05)]'
+                ? 'bg-white dark:bg-white/10 text-blue-600 dark:text-blue-400 border-slate-200 dark:border-white/10 shadow-[0_-2px_8px_rgba(0,0,0,0.05)]'
                 : 'bg-transparent text-slate-400 dark:text-slate-600 border-transparent hover:text-slate-600 dark:hover:text-slate-400'}`}
             onClick={() => setActiveIdx(i)}
             onDoubleClick={e => startRename(i, s.title, e)}
@@ -117,7 +117,7 @@ export default function Terminal(): JSX.Element {
       </div>
 
       {/* Terminal panes */}
-      <div className="flex-1 min-h-0 relative bg-white dark:bg-slate-950">
+      <div className="flex-1 min-h-0 relative bg-white dark:bg-[hsl(var(--bg-dark))]">
         {sessions.map((session, i) => (
           <div
             key={session.id}
@@ -242,9 +242,9 @@ function TermPane({ sessionId, context, namespace, theme, onPtyReady }: TermPane
   return (
     <div className="relative w-full h-full">
       {!ptyReady && (
-        <div className="absolute inset-0 flex items-center justify-center gap-3 bg-slate-950 z-10">
-          <div className="w-4 h-4 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Initializing terminal…</span>
+        <div className="absolute inset-0 flex items-center justify-center gap-3 bg-[hsl(var(--bg-dark))] z-10 transition-colors">
+          <div className="w-4 h-4 border-2 border-slate-100 dark:border-white/10 border-t-blue-500 rounded-full animate-spin" />
+          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Initializing terminal…</span>
         </div>
       )}
       <div ref={containerRef} className="w-full h-full p-4" />

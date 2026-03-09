@@ -38,7 +38,7 @@ export default function DaemonSetDetail({ daemonSet: ds }: { daemonSet: KubeDaem
   return (
     <div className="flex flex-col w-full h-full overflow-y-auto">
       {/* Header */}
-      <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 shrink-0">
+      <div className="px-6 py-6 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
         <div className="flex items-start gap-3">
           <div className="w-9 h-9 rounded-xl bg-blue-600/10 dark:bg-blue-500/20 flex items-center justify-center shrink-0">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-600 dark:text-blue-400">
@@ -57,8 +57,8 @@ export default function DaemonSetDetail({ daemonSet: ds }: { daemonSet: KubeDaem
       <div className="px-6 py-4 space-y-6">
         {/* Status bars */}
         <div>
-          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">Status</p>
-          <div className="space-y-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl p-4">
+          <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Status</p>
+          <div className="space-y-4 bg-white/[0.03] rounded-2xl p-4 border border-slate-100 dark:border-white/5">
             <StatBar label="Ready" value={ds.status.numberReady} max={desired} color="bg-emerald-500" />
             <StatBar label="Available" value={ds.status.numberAvailable ?? 0} max={desired} color="bg-blue-500" />
             {(ds.status.numberUnavailable ?? 0) > 0 && (
@@ -69,8 +69,8 @@ export default function DaemonSetDetail({ daemonSet: ds }: { daemonSet: KubeDaem
 
         {/* Update strategy */}
         <div>
-          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">Configuration</p>
-          <div className="bg-slate-50 dark:bg-slate-900/60 rounded-xl px-4 py-2">
+          <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Configuration</p>
+          <div className="bg-white/[0.03] rounded-2xl px-5 py-3 border border-slate-100 dark:border-white/5">
             <InfoRow label="Update Strategy" value={ds.spec.updateStrategy?.type ?? 'RollingUpdate'} />
             {ds.spec.updateStrategy?.rollingUpdate?.maxUnavailable !== undefined && (
               <InfoRow label="Max Unavailable" value={String(ds.spec.updateStrategy.rollingUpdate.maxUnavailable)} />
@@ -83,10 +83,10 @@ export default function DaemonSetDetail({ daemonSet: ds }: { daemonSet: KubeDaem
 
         {/* Pod template containers */}
         <div>
-          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">Containers</p>
-          <div className="space-y-2">
+          <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Containers</p>
+          <div className="space-y-2.5">
             {ds.spec.template.spec.containers.map(c => (
-              <div key={c.name} className="bg-slate-50 dark:bg-slate-900/60 rounded-xl px-4 py-3">
+              <div key={c.name} className="bg-white/[0.03] rounded-2xl px-5 py-4 border border-slate-100 dark:border-white/5">
                 <p className="text-xs font-bold text-slate-700 dark:text-slate-200 font-mono">{c.name}</p>
                 <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 font-mono truncate">{c.image}</p>
               </div>
@@ -97,10 +97,10 @@ export default function DaemonSetDetail({ daemonSet: ds }: { daemonSet: KubeDaem
         {/* Labels */}
         {ds.metadata.labels && Object.keys(ds.metadata.labels).length > 0 && (
           <div>
-            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">Labels</p>
-            <div className="flex flex-wrap gap-1.5">
+            <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Labels</p>
+            <div className="flex flex-wrap gap-2">
               {Object.entries(ds.metadata.labels).map(([k, v]) => (
-                <span key={k} className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded-md text-[10px] font-mono">
+                <span key={k} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.03] border border-slate-100 dark:border-white/5 rounded-xl text-[10px] font-mono">
                   <span className="text-slate-400 dark:text-slate-500">{k}</span>
                   <span className="text-slate-600 dark:text-slate-300">=</span>
                   <span className="text-blue-600 dark:text-blue-400 font-semibold">{v}</span>

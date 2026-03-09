@@ -31,52 +31,48 @@ export default function EventsView(): JSX.Element {
     }), [events, filter, search])
 
   return (
-    <div className="flex flex-col flex-1 bg-gray-900/50 h-full">
+    <div className="flex flex-col flex-1 bg-white dark:bg-[hsl(var(--bg-dark))] h-full transition-colors duration-200">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10 shrink-0">
+      <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 dark:border-white/5 shrink-0 bg-white/5 backdrop-blur-xl">
         <div>
-          <h2 className="text-sm font-semibold text-white">Events</h2>
-          <p className="text-xs text-gray-400 mt-0.5">
+          <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight leading-none">Events</h2>
+          <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mt-2.5 flex items-center gap-2">
+            <span className="w-1 h-1 rounded-full bg-slate-400 dark:bg-slate-600" />
             {selectedNamespace} · {events.length} total{warnings > 0 ? ` · ${warnings} warnings` : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <input
             type="text"
-            placeholder="Filter…"
+            placeholder="Filter events..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="bg-gray-800 text-white text-xs rounded px-2.5 py-1.5 border border-white/10
-                       focus:outline-none focus:ring-1 focus:ring-blue-500 w-36 placeholder-gray-600"
+            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] font-bold rounded-xl px-4 py-2.5 border border-transparent
+                       focus:border-blue-500/50 focus:outline-none focus:ring-4 focus:ring-blue-500/10 w-48 transition-all placeholder-slate-400 dark:placeholder-slate-600"
           />
           {/* Filter tabs */}
-          <div className="flex rounded overflow-hidden border border-white/10">
+          <div className="flex rounded-xl overflow-hidden glass-panel border border-slate-200 dark:border-white/5 p-1 bg-white/5">
             {(['all', 'Warning', 'Normal'] as EventFilter[]).map(f => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
-                className={`px-3 py-1.5 text-xs transition-colors ${
-                  filter === f
-                    ? f === 'Warning' ? 'bg-orange-600/30 text-orange-300' : 'bg-blue-600/30 text-blue-300'
-                    : 'bg-gray-800 text-gray-400 hover:text-gray-200'
-                }`}
+                className={`px-4 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all rounded-lg ${filter === f
+                    ? f === 'Warning' ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                  }`}
               >
                 {f === 'all' ? 'All' : f}
-                {f === 'Warning' && warnings > 0 && (
-                  <span className="ml-1.5 bg-orange-500/30 text-orange-300 text-xs px-1 rounded-full">
-                    {warnings}
-                  </span>
-                )}
               </button>
             ))}
           </div>
           <button
             onClick={refresh}
             disabled={loadingResources}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-300
-                       bg-white/5 hover:bg-white/10 rounded transition-colors disabled:opacity-50 border border-white/10"
+            className="flex items-center gap-2 px-5 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300
+                       glass-panel hover:bg-white/10 dark:hover:bg-white/5 rounded-xl shadow-sm
+                       disabled:opacity-50 active:scale-95 border border-slate-200 dark:border-white/5"
           >
-            <span className={loadingResources ? 'animate-spin inline-block' : 'inline-block'}>↻</span>
+            <span className={`transition-transform duration-700 ${loadingResources ? 'animate-spin inline-block' : 'inline-block'}`}>↻</span>
             Refresh
           </button>
         </div>
@@ -114,11 +110,10 @@ function EventRow({ event: e }: { event: KubeEvent }) {
     <div className={`px-5 py-3 hover:bg-white/3 transition-colors ${isWarning ? 'border-l-2 border-orange-500/50' : ''}`}>
       <div className="flex items-start gap-3">
         <div className="shrink-0 mt-0.5">
-          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
-            isWarning
+          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${isWarning
               ? 'bg-orange-500/20 text-orange-300'
               : 'bg-gray-500/20 text-gray-400'
-          }`}>
+            }`}>
             {e.type ?? 'Unknown'}
           </span>
         </div>
