@@ -74,7 +74,15 @@ function clusterColor(name: string): string {
 }
 
 function clusterInitials(name: string): string {
-  return name.replace(/[^a-zA-Z0-9]/g, ' ').split(' ').filter(Boolean).map(w => w[0].toUpperCase()).slice(0, 2).join('') || name.slice(0, 2).toUpperCase()
+  // Extract cluster name if it's an ARN or has hierarchical structure
+  const clusterName = name.split('/').pop() || name
+
+  // Treat - and _ as word separators
+  const words = clusterName.replace(/[-_]/g, ' ').split(' ').filter(Boolean)
+  if (words.length > 1) {
+    return words.map(w => w[0].toUpperCase()).join('')
+  }
+  return clusterName.slice(0, 2).toUpperCase()
 }
 
 // ─── Collapsible nav group ────────────────────────────────────────────────────
