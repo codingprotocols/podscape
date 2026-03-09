@@ -4,13 +4,14 @@ import { formatAge } from '../types'
 import { useAppStore } from '../store'
 import ScaleDialog from './ScaleDialog'
 import YAMLViewer from './YAMLViewer'
+import { FileCode, X, Activity, Layers, History, Settings, Zap, RefreshCw } from 'lucide-react'
 
 interface Props { deployment: KubeDeployment }
 
 type Tab = 'overview' | 'history' | 'events'
 
 export default function DeploymentDetail({ deployment: d }: Props): JSX.Element {
-  const { rolloutRestart, getYAML, selectedContext, selectedNamespace } = useAppStore()
+  const { rolloutRestart, getYAML, applyYAML, refresh, selectedContext, selectedNamespace } = useAppStore()
   const [showScale, setShowScale] = useState(false)
   const [yaml, setYaml] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
@@ -52,6 +53,16 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
       setYamlError((err as Error).message ?? 'Failed to fetch YAML')
     } finally {
       setYamlLoading(false)
+    }
+  }
+
+  const handleApplyYAML = async (newYaml: string) => {
+    try {
+      await applyYAML(newYaml)
+      refresh()
+      setYaml(null)
+    } catch (err) {
+      throw err
     }
   }
 
@@ -103,190 +114,180 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
   }, [tab, d.metadata.uid])
 
   return (
-    <div className="flex flex-col w-full h-full overflow-y-auto">
+    <div className="flex flex-col w-full h-full relative font-sans">
       {/* Header */}
       <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
-        <div className="flex items-start gap-2">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-mono truncate">{d.metadata.name}</h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{d.metadata.namespace}</p>
+        <div className="flex items-start justify-between">
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white font-mono truncate">{d.metadata.name}</h3>
+            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{d.metadata.namespace} · DEPLOYMENT</p>
           </div>
-          <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${ready >= desired ? 'bg-green-500/20 text-green-300 ring-green-500/30' : 'bg-yellow-500/20 text-yellow-300 ring-yellow-500/30'
-            }`}>
-            {ready}/{desired} ready
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleViewYAML}
+              disabled={yamlLoading}
+              className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
+            >
+              <FileCode size={14} className="group-hover:text-blue-400 transition-colors" />
+              {yamlLoading ? 'Loading...' : 'YAML'}
+            </button>
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold outline outline-1 ${ready >= desired ? 'bg-emerald-500/10 text-emerald-500 outline-emerald-500/20' : 'bg-amber-500/10 text-amber-500 outline-amber-500/20'}`}>
+              {ready}/{desired} READY
+            </span>
+          </div>
         </div>
-        {/* Actions */}
-        <div className="flex gap-2 mt-2.5">
+        <div className="flex gap-2 mt-4">
           <button onClick={() => setShowScale(true)}
-            className="text-xs px-3 py-1 rounded bg-blue-600/20 text-blue-300 border border-blue-500/30 hover:bg-blue-600/30 transition-colors">
-            Scale
+            className="text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all flex items-center gap-2">
+            <Zap size={14} /> Scale
           </button>
           <button onClick={handleRestart}
-            className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-all uppercase tracking-wider">
-            Restart
-          </button>
-          <button onClick={handleViewYAML} disabled={yamlLoading}
-            className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-all disabled:opacity-50 uppercase tracking-wider">
-            {yamlLoading ? 'Loading…' : 'YAML'}
+            className="text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2">
+            <RefreshCw size={14} /> Restart
           </button>
         </div>
-        {restartMsg && <p className="text-xs text-green-400 mt-1.5">{restartMsg}</p>}
+        {restartMsg && (
+          <p className="text-[10px] font-bold text-emerald-400 mt-3 uppercase tracking-wider">{restartMsg}</p>
+        )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-slate-100 dark:border-white/5 shrink-0 bg-white/5">
+      <div className="flex border-b border-slate-100 dark:border-slate-800 shrink-0 bg-white/[0.02]">
         {(['overview', 'history', 'events'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 text-xs font-medium capitalize transition-colors ${tab === t ? 'text-blue-400 border-b-2 border-blue-500' : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:text-slate-300'
+            className={`px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all relative ${tab === t
+              ? 'text-blue-400'
+              : 'text-slate-500 hover:text-slate-300'
               }`}>
             {t}
+            {tab === t && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />}
           </button>
         ))}
       </div>
 
-      {/* Tab content */}
-      {tab === 'overview' && (
-        <>
-          {/* Replicas */}
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-white/5">
-            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Replicas</h4>
-            <div className="grid grid-cols-4 gap-3">
-              {[
-                { label: 'Desired', value: desired, color: 'text-slate-700 dark:text-slate-200' },
-                { label: 'Ready', value: ready, color: ready >= desired ? 'text-green-500' : 'text-yellow-400' },
-                { label: 'Available', value: available, color: 'text-slate-600 dark:text-slate-300' },
-                { label: 'Updated', value: updated, color: 'text-blue-500' }
-              ].map(({ label, value, color }) => (
-                <div key={label} className="text-center bg-white/[0.03] rounded-2xl p-3 border border-slate-100 dark:border-white/5">
-                  <p className={`text-xl font-black ${color}`}>{value}</p>
-                  <p className="text-[9px] font-black text-slate-500 dark:text-slate-600 mt-1 uppercase tracking-widest leading-none">{label}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Strategy */}
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-white/5">
-            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-3">Strategy</h4>
-            <dl className="space-y-1.5 px-1">
-              <Row label="Type" value={d.spec.strategy?.type ?? 'RollingUpdate'} />
-              {d.spec.strategy?.rollingUpdate && (
-                <>
-                  <Row label="Max Surge" value={String(d.spec.strategy.rollingUpdate.maxSurge ?? '25%')} />
-                  <Row label="Max Unavailable" value={String(d.spec.strategy.rollingUpdate.maxUnavailable ?? '25%')} />
-                </>
-              )}
-              <Row label="Created" value={formatAge(d.metadata.creationTimestamp) + ' ago'} />
-            </dl>
-          </div>
-
-          {/* Selector labels */}
-          {d.spec.selector.matchLabels && (
-            <div className="px-5 py-4 border-b border-slate-100 dark:border-white/5">
-              <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-3">Selector</h4>
-              <div className="flex flex-wrap gap-2 px-1">
-                {Object.entries(d.spec.selector.matchLabels).map(([k, v]) => (
-                  <span key={k} className="text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-1 rounded-lg font-mono">
-                    {k}={v}
-                  </span>
-                ))}
+      <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
+        {tab === 'overview' && (
+          <div className="space-y-8">
+            <section>
+              <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <Layers size={12} /> Replicas
+              </h4>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatusCard label="Desired" value={desired} color="text-slate-200" />
+                <StatusCard label="Ready" value={ready} color={ready >= desired ? 'text-emerald-400' : 'text-amber-400'} />
+                <StatusCard label="Available" value={available} color="text-blue-400" />
+                <StatusCard label="Updated" value={updated} color="text-slate-400" />
               </div>
-            </div>
-          )}
+            </section>
 
-          {/* Conditions */}
-          {d.status.conditions && d.status.conditions.length > 0 && (
-            <div className="px-5 py-4">
-              <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Conditions</h4>
-              <div className="space-y-2 px-1">
-                {d.status.conditions.map(c => (
-                  <div key={c.type} className="flex items-center gap-3">
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${c.status === 'True' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-slate-400 dark:bg-slate-600'}`} />
-                    <span className="text-xs text-slate-700 dark:text-slate-300 font-bold">{c.type}</span>
-                    {c.reason && <span className="text-[11px] text-slate-500 dark:text-slate-500 font-medium tracking-tight">— {c.reason}</span>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {tab === 'history' && (
-        <div className="px-5 py-4 flex-1">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Rollout History</h4>
-            <div className="flex gap-2">
-              <button onClick={loadHistory} disabled={historyLoading}
-                className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-colors disabled:opacity-50">
-                {historyLoading ? '…' : 'Refresh'}
-              </button>
-              <button onClick={() => handleUndo()} disabled={undoLoading}
-                className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-yellow-600/20 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-600/30 transition-colors disabled:opacity-50">
-                {undoLoading ? 'Rolling back…' : 'Undo Last'}
-              </button>
-            </div>
-          </div>
-          {undoMsg && (
-            <p className={`text-[11px] font-bold mb-4 px-3 py-2 rounded-lg bg-white/5 border ${undoMsg.startsWith('Error') ? 'text-red-400 border-red-500/20' : 'text-emerald-400 border-emerald-500/20'}`}>{undoMsg}</p>
-          )}
-          {historyLoading ? (
-            <div className="flex items-center justify-center h-24">
-              <div className="w-5 h-5 border-2 border-slate-200 dark:border-white/10 border-t-blue-500 rounded-full animate-spin" />
-            </div>
-          ) : history ? (
-            <pre className="text-[11px] font-bold font-mono text-slate-600 dark:text-slate-300 bg-black/40 rounded-2xl p-4 overflow-x-auto whitespace-pre leading-relaxed border border-white/5 shadow-inner">{history}</pre>
-          ) : null}
-        </div>
-      )}
-
-      {tab === 'events' && (
-        <div className="px-5 py-4 flex-1">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Events</h4>
-            <button onClick={loadEvents} disabled={eventsLoading}
-              className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-colors disabled:opacity-50">
-              {eventsLoading ? '…' : 'Refresh'}
-            </button>
-          </div>
-          {eventsLoading ? (
-            <div className="flex items-center justify-center h-24">
-              <div className="w-5 h-5 border-2 border-slate-200 dark:border-white/10 border-t-blue-500 rounded-full animate-spin" />
-            </div>
-          ) : events.length === 0 ? (
-            <p className="text-[11px] font-bold text-slate-500 dark:text-slate-500 text-center py-12 uppercase tracking-widest opacity-40">No events found</p>
-          ) : (
-            <div className="space-y-2.5">
-              {events.map((e, i) => (
-                <div key={e.metadata.uid || i} className={`rounded-xl p-3 text-[11px] border transition-all ${e.type === 'Warning'
-                  ? 'bg-orange-500/5 border-orange-500/20 shadow-[inset_0_0_12px_rgba(249,115,22,0.05)]'
-                  : 'bg-white/[0.02] border-slate-100 dark:border-white/5'
-                  }`}>
-                  <div className="flex items-center justify-between gap-3 mb-1.5">
-                    <span className={`font-black uppercase tracking-wider ${e.type === 'Warning' ? 'text-orange-400' : 'text-slate-700 dark:text-slate-400'}`}>{e.reason}</span>
-                    <span className="text-slate-400 dark:text-slate-600 font-bold">{e.count ? `×${e.count}` : ''}</span>
-                  </div>
-                  <p className="text-slate-500 dark:text-slate-400 font-medium leading-relaxed">{e.message}</p>
-                  {e.lastTimestamp && (
-                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/[0.03]">
-                      <span className="w-1 h-1 rounded-full bg-slate-600" />
-                      <p className="text-[10px] font-bold text-slate-500 dark:text-slate-600 uppercase tracking-widest">{formatAge(e.lastTimestamp)} ago</p>
-                    </div>
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
+              <div>
+                <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <Settings size={12} /> Strategy
+                </h4>
+                <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-2xl p-4 space-y-3">
+                  <InfoRow label="Strategy Type" value={d.spec.strategy?.type ?? 'RollingUpdate'} />
+                  {d.spec.strategy?.rollingUpdate && (
+                    <>
+                      <InfoRow label="Max Surge" value={String(d.spec.strategy.rollingUpdate.maxSurge ?? '25%')} />
+                      <InfoRow label="Max Unavailable" value={String(d.spec.strategy.rollingUpdate.maxUnavailable ?? '25%')} />
+                    </>
                   )}
+                  <InfoRow label="Created" value={formatAge(d.metadata.creationTimestamp) + ' ago'} />
                 </div>
-              ))}
+              </div>
+
+              <div>
+                <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4 uppercase tracking-widest">Selectors</h4>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(d.spec.selector.matchLabels || {}).map(([k, v]) => (
+                    <span key={k} className="text-[10px] font-bold bg-blue-500/5 text-blue-400/80 border border-blue-500/10 px-2.5 py-1 rounded-lg font-mono">
+                      {k}={v}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            {/* Conditions */}
+            {d.status.conditions && d.status.conditions.length > 0 && (
+              <section>
+                <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4">Conditions</h4>
+                <div className="space-y-3">
+                  {d.status.conditions.map(c => (
+                    <div key={c.type} className={`p-4 rounded-2xl border transition-all ${c.status === 'True' ? 'bg-emerald-500/5 border-emerald-500/10' : 'bg-slate-50 dark:bg-white/[0.02] border-slate-100 dark:border-white/5'}`}>
+                      <div className="flex items-center justify-between gap-4 mb-1">
+                        <span className={`text-[10px] font-black uppercase tracking-widest ${c.status === 'True' ? 'text-emerald-400' : 'text-slate-400'}`}>{c.type}</span>
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">{c.reason}</span>
+                      </div>
+                      <p className="text-xs text-slate-400 leading-relaxed font-medium">{c.message}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+
+        {tab === 'history' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest flex items-center gap-2">
+                <History size={12} /> Rollout Timeline
+              </h4>
+              <div className="flex gap-2">
+                <button onClick={loadHistory} disabled={historyLoading}
+                  className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 transition-all outline-none">
+                  {historyLoading ? '...' : 'Refresh'}
+                </button>
+                <button onClick={() => handleUndo()} disabled={undoLoading}
+                  className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-amber-600/10 text-amber-500 border border-amber-500/20 hover:bg-amber-600/20 transition-all outline-none">
+                  {undoLoading ? 'Rolling back...' : 'Undo Last'}
+                </button>
+              </div>
             </div>
-          )}
-        </div>
-      )}
+            {undoMsg && (
+              <p className={`text-[10px] font-black uppercase tracking-widest p-3 rounded-xl border ${undoMsg.startsWith('Error') ? 'bg-red-500/5 text-red-400 border-red-500/10' : 'bg-emerald-500/5 text-emerald-400 border-emerald-500/10'}`}>{undoMsg}</p>
+            )}
+            <div className="bg-slate-950 rounded-2xl border border-white/5 p-6 shadow-inner overflow-hidden">
+              {historyLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="w-6 h-6 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+                </div>
+              ) : history ? (
+                <pre className="text-[11px] font-bold font-mono text-slate-400 whitespace-pre overflow-x-auto leading-relaxed">{history}</pre>
+              ) : (
+                <p className="text-xs text-slate-600 italic text-center py-12">No history available</p>
+              )}
+            </div>
+          </div>
+        )}
 
-      {/* Scale dialog */}
-      {showScale && (
-        <ScaleDialog deployment={d} onClose={() => setShowScale(false)} />
-      )}
+        {tab === 'events' && (
+          <div className="space-y-3">
+            {eventsLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+              </div>
+            ) : events.map((e, i) => (
+              <div key={e.metadata.uid || i} className={`p-4 rounded-2xl border transition-all ${e.type === 'Warning' ? 'bg-amber-500/5 border-amber-500/10' : 'bg-slate-50 dark:bg-white/[0.02] border-slate-100 dark:border-white/5'}`}>
+                <div className="flex items-center justify-between gap-4 mb-2">
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${e.type === 'Warning' ? 'text-amber-400' : 'text-blue-400'}`}>{e.reason}</span>
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">{formatAge(e.lastTimestamp || e.metadata.creationTimestamp)} ago</span>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed font-medium">{e.message}</p>
+              </div>
+            ))}
+            {!eventsLoading && events.length === 0 && (
+              <div className="text-center py-20 bg-slate-50 dark:bg-white/[0.01] rounded-3xl border border-dashed border-slate-200 dark:border-white/10 mt-4">
+                <Activity size={32} className="mx-auto text-slate-700 mb-4 opacity-20" />
+                <p className="text-sm text-slate-500 font-medium">No recent events found</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
-      {/* YAML viewer */}
+      {/* Premium YAML Modal */}
       {(yamlLoading || yaml !== null || yamlError !== null) && (
         <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200" role="dialog" aria-modal="true">
           <div className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden">
@@ -295,50 +296,67 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
                 <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
                   {yamlLoading
                     ? <div className="w-4 h-4 border-2 border-slate-400 border-t-blue-500 rounded-full animate-spin" />
-                    : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-500"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9zM13 2v7h7" /></svg>
+                    : <FileCode size={18} className="text-blue-500" />
                   }
                 </div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest">
-                  {yamlLoading ? 'Loading YAML…' : `YAML — ${d.metadata.name}`}
+                  {yamlLoading ? 'Loading YAML…' : `Edit — ${d.metadata.name}`}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors focus:outline-none"
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                <X size={20} strokeWidth={2.5} />
               </button>
             </div>
             <div className="flex-1 min-h-0 bg-slate-950">
               {yamlError ? (
-                <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
-                  <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
+                <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center">
+                  <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center mb-2">
+                    <Activity size={20} className="text-red-400" />
                   </div>
-                  <p className="text-sm font-bold text-red-400 text-center">Failed to load YAML</p>
-                  <pre className="text-xs text-slate-400 text-center max-w-lg break-words whitespace-pre-wrap">{yamlError}</pre>
+                  <p className="text-sm font-bold text-red-400 uppercase tracking-widest">Failed to load manifest</p>
+                  <pre className="text-xs text-slate-400 max-w-lg break-words whitespace-pre-wrap font-mono bg-white/5 p-4 rounded-xl border border-white/5">{yamlError}</pre>
                 </div>
               ) : yamlLoading ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
               ) : yaml !== null ? (
-                <YAMLViewer content={yaml} />
+                <YAMLViewer
+                  content={yaml}
+                  onSave={handleApplyYAML}
+                />
               ) : null}
             </div>
           </div>
         </div>
       )}
+
+      {/* Scale dialog */}
+      {showScale && (
+        <ScaleDialog deployment={d} onClose={() => setShowScale(false)} />
+      )}
     </div>
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function StatusCard({ label, value, color }: { label: string, value: number, color: string }) {
   return (
-    <div className="flex items-baseline gap-2">
-      <dt className="text-xs text-slate-500 dark:text-slate-400 w-28 shrink-0">{label}</dt>
-      <dd className="text-xs text-slate-700 dark:text-slate-200">{value}</dd>
+    <div className="bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/5 rounded-2xl p-4">
+      <p className={`text-2xl font-black ${color} tracking-tight`}>{value}</p>
+      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-1">{label}</p>
+    </div>
+  )
+}
+
+function InfoRow({ label, value }: { label: string, value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-1">
+      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{label}</span>
+      <span className="text-[11px] font-bold text-slate-300">{value || '—'}</span>
     </div>
   )
 }

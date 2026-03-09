@@ -1,35 +1,17 @@
-import React, { useState, useEffect } from 'react'
-import type { KubeJob, KubeEvent } from '../types'
+import React, { useState } from 'react'
+import type { KubeJob } from '../types'
 import { formatAge } from '../types'
 import { useAppStore } from '../store'
+import { Play, CheckCircle2, Circle, Clock, FileCode, X, Activity, History } from 'lucide-react'
 import YAMLViewer from './YAMLViewer'
 
 interface Props { job: KubeJob }
 
-type Tab = 'overview' | 'events'
-
 export default function JobDetail({ job }: Props): JSX.Element {
-  const { getYAML, selectedContext, selectedNamespace } = useAppStore()
-  const [tab, setTab] = useState<Tab>('overview')
+  const { refresh, applyYAML, getYAML } = useAppStore()
   const [yaml, setYaml] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
   const [yamlError, setYamlError] = useState<string | null>(null)
-  const [events, setEvents] = useState<KubeEvent[]>([])
-  const [eventsLoading, setEventsLoading] = useState(false)
-
-  const active = job.status.active ?? 0
-  const succeeded = job.status.succeeded ?? 0
-  const failed = job.status.failed ?? 0
-  const completions = job.spec.completions ?? 1
-  const isComplete = succeeded >= completions
-
-  const ns = selectedNamespace === '_all'
-    ? (job.metadata.namespace ?? '')
-    : (selectedNamespace ?? job.metadata.namespace ?? '')
-
-  const duration = job.status.startTime && job.status.completionTime
-    ? formatAge(job.status.startTime) + ' → ' + formatAge(job.status.completionTime)
-    : job.status.startTime ? 'Running for ' + formatAge(job.status.startTime) : '—'
 
   const handleViewYAML = async () => {
     setYaml(null); setYamlError(null); setYamlLoading(true)
@@ -43,169 +25,161 @@ export default function JobDetail({ job }: Props): JSX.Element {
     }
   }
 
-  const loadEvents = async () => {
-    if (!selectedContext) return
-    setEventsLoading(true)
+  const handleApplyYAML = async (newYaml: string) => {
     try {
-      const evts = await window.kubectl.getResourceEvents(selectedContext, ns, 'Job', job.metadata.name)
-      setEvents(evts)
-    } catch {
-      setEvents([])
-    } finally {
-      setEventsLoading(false)
+      await applyYAML(newYaml)
+      refresh()
+      setYaml(null)
+    } catch (err) {
+      throw err
     }
   }
 
-  useEffect(() => {
-    if (tab === 'events') loadEvents()
-  }, [tab, job.metadata.uid])
+  const conditions = job.status.conditions ?? []
+  const startTime = job.status.startTime
+  const completionTime = job.status.completionTime
 
   return (
-    <div className="flex flex-col w-full h-full overflow-y-auto">
-      {/* Header */}
+    <div className="flex flex-col w-full h-full relative">
       <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-blue-600/10 dark:bg-blue-500/20 flex items-center justify-center shrink-0">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-600 dark:text-blue-400">
-              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
-            </svg>
-          </div>
-          <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between">
+          <div className="min-w-0">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white font-mono truncate">{job.metadata.name}</h3>
-            <div className="flex items-center gap-2 mt-1">
-              <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-widest ring-1 ring-inset ${isComplete
-                ? 'bg-emerald-500/10 text-emerald-500 ring-emerald-500/20'
-                : failed > 0
-                  ? 'bg-red-500/10 text-red-500 ring-red-500/20'
-                  : 'bg-blue-500/10 text-blue-500 ring-blue-500/20'
-                }`}>
-                {isComplete ? 'Complete' : active > 0 ? 'Running' : 'Failed'}
-              </span>
-              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{job.metadata.namespace} · JOB</span>
-            </div>
+            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{job.metadata.namespace}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleViewYAML}
+              disabled={yamlLoading}
+              className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
+            >
+              <FileCode size={14} className="group-hover:text-blue-400 transition-colors" />
+              {yamlLoading ? 'Loading...' : 'YAML'}
+            </button>
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold outline outline-1 ${job.status.succeeded ? 'bg-emerald-500/10 text-emerald-500 outline-emerald-500/20' : job.status.failed ? 'bg-red-500/10 text-red-500 outline-red-500/20' : 'bg-blue-500/10 text-blue-500 outline-blue-500/20'}`}>
+              {job.status.succeeded ? 'COMPLETED' : job.status.failed ? 'FAILED' : 'RUNNING'}
+            </span>
           </div>
         </div>
-        <div className="flex gap-2 mt-4">
-          <button onClick={handleViewYAML} disabled={yamlLoading}
-            className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-all disabled:opacity-50 uppercase tracking-wider">
-            {yamlLoading ? 'Loading…' : 'YAML'}
-          </button>
-        </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex px-4 py-2 gap-2 border-b border-slate-100 dark:border-white/5 bg-white/[0.02] shrink-0">
-        {(['overview', 'events'] as Tab[]).map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-1.5 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all ${tab === t
-              ? 'bg-blue-600/10 text-blue-400 shadow-[inset_0_0_12px_rgba(59,130,246,0.1)]'
-              : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white/5'
-              }`}>
-            {t}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'overview' && (
-        <>
-          {/* Status counters */}
-          <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
-            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Status</h4>
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { label: 'Active', value: active, color: active > 0 ? 'text-blue-400' : 'text-slate-500 dark:text-slate-400' },
-                { label: 'Succeeded', value: succeeded, color: succeeded > 0 ? 'text-emerald-400' : 'text-slate-500 dark:text-slate-400' },
-                { label: 'Failed', value: failed, color: failed > 0 ? 'text-red-400' : 'text-slate-500 dark:text-slate-400' },
-              ].map(({ label, value, color }) => (
-                <div key={label} className="text-center bg-white/[0.03] border border-white/5 rounded-2xl py-4 transition-all hover:bg-white/[0.05]">
-                  <p className={`text-xl font-bold ${color} tabular-nums`}>{value}</p>
-                  <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{label}</p>
+      <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-6">
+            {/* Progress */}
+            <section>
+              <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <Play size={12} /> Progress
+              </h4>
+              <div className="bg-slate-50 dark:bg-white/[0.03] rounded-2xl p-4 border border-slate-100 dark:border-white/5">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-tighter">Completions</span>
+                  <span className="text-sm font-black text-slate-700 dark:text-slate-200 font-mono italic">
+                    {job.status.succeeded ?? 0} / {job.spec.completions ?? 1}
+                  </span>
                 </div>
-              ))}
-            </div>
-          </div>
+                <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500 transition-all duration-1000"
+                    style={{ width: `${((job.status.succeeded ?? 0) / (job.spec.completions ?? 1)) * 100}%` }}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-6 py-4 border-t border-slate-100 dark:border-white/5">
+                  <MetaItem label="Active" value={String(job.status.active ?? 0)} />
+                  <MetaItem label="Succeeded" value={String(job.status.succeeded ?? 0)} />
+                  <MetaItem label="Failed" value={String(job.status.failed ?? 0)} />
+                  <MetaItem label="Parallelism" value={String(job.spec.parallelism ?? 1)} />
+                </div>
+              </div>
+            </section>
 
-          {/* Spec */}
-          <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-            <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Spec</h4>
-            <dl className="space-y-1.5">
-              <Row label="Completions" value={String(completions)} />
-              <Row label="Parallelism" value={String(job.spec.parallelism ?? 1)} />
-              <Row label="Backoff Limit" value={String(job.spec.backoffLimit ?? 6)} />
-              <Row label="Duration" value={duration} />
-              <Row label="Created" value={formatAge(job.metadata.creationTimestamp) + ' ago'} />
-            </dl>
+            {/* Timing */}
+            <section>
+              <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <Clock size={12} /> Timing
+              </h4>
+              <div className="space-y-3">
+                <TimeRow label="Started" value={startTime ? formatAge(startTime) + ' ago' : '—'} />
+                <TimeRow label="Finished" value={completionTime ? formatAge(completionTime) + ' ago' : '—'} />
+                <TimeRow label="Duration" value={startTime && completionTime ? calculateDuration(startTime, completionTime) : 'In progress...'} />
+              </div>
+            </section>
           </div>
 
           {/* Conditions */}
-          {job.status.conditions && job.status.conditions.length > 0 && (
-            <div className="px-6 py-5">
-              <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Conditions</h4>
-              <div className="space-y-2 px-1">
-                {job.status.conditions.map(c => (
-                  <div key={c.type} className="flex items-center gap-2.5">
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${c.status === 'True' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.4)]' : 'bg-slate-400 dark:bg-slate-600'}`} />
-                    <span className="text-[11px] text-slate-600 dark:text-slate-300 font-bold uppercase tracking-tight">{c.type}</span>
-                    {c.reason && <span className="text-[11px] text-slate-500 dark:text-slate-500 font-mono truncate">— {c.reason}</span>}
+          <section>
+            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <History size={12} /> Timeline
+            </h4>
+            <div className="space-y-3">
+              {conditions.map((c, i) => (
+                <div key={i} className="flex gap-4 p-4 bg-slate-50 dark:bg-white/[0.03] rounded-2xl border border-slate-100 dark:border-white/5 relative overflow-hidden group">
+                  {c.status === 'True' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500/50" />}
+                  <div className={`mt-0.5 shrink-0 ${c.status === 'True' ? 'text-emerald-500' : 'text-slate-400'}`}>
+                    {c.type === 'Complete' ? <CheckCircle2 size={16} /> : <Circle size={16} />}
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {tab === 'events' && (
-        <div className="px-4 py-3 flex-1">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Events</h4>
-            <button onClick={loadEvents} disabled={eventsLoading}
-              className="text-xs px-2 py-1 rounded bg-white/5 text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-800 hover:bg-white/10 disabled:opacity-50">
-              {eventsLoading ? '…' : 'Refresh'}
-            </button>
-          </div>
-          {eventsLoading ? (
-            <div className="flex items-center justify-center h-24">
-              <div className="w-5 h-5 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin" />
-            </div>
-          ) : events.length === 0 ? (
-            <p className="text-xs text-slate-500 dark:text-slate-400 text-center py-8">No events found</p>
-          ) : (
-            <div className="space-y-2">
-              {events.map((e, i) => (
-                <div key={e.metadata.uid || i} className={`rounded p-2 text-xs ${e.type === 'Warning' ? 'bg-yellow-500/10 border border-yellow-500/20' : 'bg-white/5 border border-slate-100 dark:border-slate-800'
-                  }`}>
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className={`font-medium ${e.type === 'Warning' ? 'text-yellow-300' : 'text-slate-600 dark:text-slate-300'}`}>{e.reason}</span>
-                    <span className="text-slate-500 dark:text-slate-400 text-[10px]">{e.count ? `×${e.count}` : ''}</span>
+                  <div>
+                    <h5 className="text-[11px] font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest">{c.type}</h5>
+                    <p className="text-[10px] font-bold text-slate-500 mt-1 leading-relaxed">{c.reason}: {c.message}</p>
+                    {c.lastTransitionTime && (
+                      <p className="text-[9px] font-bold text-slate-400 mt-2 uppercase tracking-tighter">{formatAge(c.lastTransitionTime)} ago</p>
+                    )}
                   </div>
-                  <p className="text-slate-400 dark:text-slate-500 leading-relaxed">{e.message}</p>
-                  {e.lastTimestamp && <p className="text-slate-500 dark:text-slate-400 mt-1">{formatAge(e.lastTimestamp)} ago</p>}
                 </div>
               ))}
+              {conditions.length === 0 && (
+                <div className="text-center py-12 bg-slate-50 dark:bg-white/[0.01] rounded-2xl border border-dashed border-slate-200 dark:border-white/10">
+                  <p className="text-xs text-slate-400">No conditions reported yet</p>
+                </div>
+              )}
             </div>
-          )}
+          </section>
         </div>
-      )}
+      </div>
 
+      {/* Premium YAML Modal */}
       {(yamlLoading || yaml !== null || yamlError !== null) && (
-        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200" role="dialog" aria-modal="true">
           <div className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 dark:border-white/10 bg-white/5 backdrop-blur-xl shrink-0">
-              <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">{yamlLoading ? 'Loading YAML…' : `YAML — ${job.metadata.name}`}</h3>
-              <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 transition-colors">✕</button>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
+                  {yamlLoading
+                    ? <div className="w-4 h-4 border-2 border-slate-400 border-t-blue-500 rounded-full animate-spin" />
+                    : <FileCode size={18} className="text-blue-500" />
+                  }
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest">
+                  {yamlLoading ? 'Loading YAML…' : `Edit — ${job.metadata.name}`}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors focus:outline-none"
+              >
+                <X size={20} strokeWidth={2.5} />
+              </button>
             </div>
-            <div className="flex-1 min-h-0">
+            <div className="flex-1 min-h-0 bg-slate-950">
               {yamlError ? (
-                <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
-                  <p className="text-sm font-bold text-red-400">Failed to load YAML</p>
-                  <pre className="text-xs text-slate-400 dark:text-slate-500 whitespace-pre-wrap">{yamlError}</pre>
+                <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center">
+                  <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center mb-2">
+                    <Activity size={20} className="text-red-400" />
+                  </div>
+                  <p className="text-sm font-bold text-red-400 uppercase tracking-widest">Failed to load manifest</p>
+                  <pre className="text-xs text-slate-400 max-w-lg break-words whitespace-pre-wrap font-mono bg-white/5 p-4 rounded-xl border border-white/5">{yamlError}</pre>
                 </div>
               ) : yamlLoading ? (
                 <div className="flex items-center justify-center h-full">
-                  <div className="w-8 h-8 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin" />
+                  <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
-              ) : yaml !== null ? <YAMLViewer content={yaml} /> : null}
+              ) : yaml !== null ? (
+                <YAMLViewer
+                  content={yaml}
+                  onSave={handleApplyYAML}
+                />
+              ) : null}
             </div>
           </div>
         </div>
@@ -214,11 +188,28 @@ export default function JobDetail({ job }: Props): JSX.Element {
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function calculateDuration(start: string, end: string) {
+  const diff = new Date(end).getTime() - new Date(start).getTime()
+  const seconds = Math.floor(diff / 1000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  return `${minutes}m ${seconds % 60}s`
+}
+
+function MetaItem({ label, value }: { label: string, value: string }) {
   return (
-    <div className="flex items-baseline gap-2">
-      <dt className="text-xs text-slate-500 dark:text-slate-400 w-28 shrink-0">{label}</dt>
-      <dd className="text-xs text-slate-700 dark:text-slate-200">{value}</dd>
+    <div>
+      <dt className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">{label}</dt>
+      <dd className="text-xs font-bold text-slate-700 dark:text-slate-200">{value}</dd>
+    </div>
+  )
+}
+
+function TimeRow({ label, value }: { label: string, value: string }) {
+  return (
+    <div className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-white/5 last:border-0 italic">
+      <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">{label}</span>
+      <span className="text-xs font-bold text-slate-600 dark:text-slate-300 font-mono">{value}</span>
     </div>
   )
 }

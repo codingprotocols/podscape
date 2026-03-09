@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useAppStore } from '../store'
 import { KubeCRD } from '../types'
 import { formatAge } from '../types'
+import { FileCode, X, Activity, Database, Info, Layers } from 'lucide-react'
 import YAMLViewer from './YAMLViewer'
 
 interface CRDInstance {
@@ -15,13 +16,15 @@ interface CRDInstance {
 }
 
 export default function CRDDetail({ crd }: { crd: KubeCRD }) {
-  const { selectedContext: ctx, selectedNamespace: ns } = useAppStore()
+  const { selectedContext: ctx, selectedNamespace: ns, getYAML, applyYAML, refresh } = useAppStore()
   const [instances, setInstances] = useState<CRDInstance[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [yamlTarget, setYamlTarget] = useState<CRDInstance | null>(null)
+
   const [yaml, setYaml] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
+  const [yamlError, setYamlError] = useState<string | null>(null)
+  const [yamlContextName, setYamlContextName] = useState<string>('')
 
   const plural = crd.spec.names.plural
   const isNamespaced = crd.spec.scope === 'Namespaced'
@@ -31,137 +34,188 @@ export default function CRDDetail({ crd }: { crd: KubeCRD }) {
     if (!ctx) return
     setLoading(true)
     setError(null)
-    setInstances([])
-    setYamlTarget(null)
-    setYaml(null)
     window.kubectl.getCustomResource(ctx, nsArg, plural)
       .then(items => setInstances(items as CRDInstance[]))
       .catch(e => setError((e as Error).message))
       .finally(() => setLoading(false))
   }, [ctx, ns, plural])
 
-  const handleViewYAML = async (instance: CRDInstance) => {
-    setYamlTarget(instance)
-    setYaml(null)
-    setYamlLoading(true)
+  const handleViewDefinitionYAML = async () => {
+    setYaml(null); setYamlError(null); setYamlLoading(true)
+    setYamlContextName(`Definition: ${crd.metadata.name}`)
     try {
-      const nsForYAML = isNamespaced ? (instance.metadata.namespace ?? null) : null
-      const result = await window.kubectl.getYAML(ctx!, nsForYAML, plural, instance.metadata.name)
-      setYaml(result)
-    } catch (e) {
-      setYaml(`# Error: ${(e as Error).message}`)
+      const content = await getYAML('customresourcedefinition', crd.metadata.name, false)
+      setYaml(content)
+    } catch (err) {
+      setYamlError((err as Error).message ?? 'Failed to fetch YAML')
     } finally {
       setYamlLoading(false)
     }
   }
 
-  // ── YAML viewer overlay ──────────────────────────────────────────────────────
-  if (yamlTarget) {
-    return (
-      <>
-        <div className="px-8 py-5 border-b border-slate-200 dark:border-white/5 shrink-0 flex items-center gap-3">
-          <button
-            onClick={() => { setYamlTarget(null); setYaml(null) }}
-            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 5l-7 7 7 7" /></svg>
-          </button>
-          <div>
-            <p className="text-xs font-black text-slate-900 dark:text-slate-100 font-mono">{yamlTarget.metadata.name}</p>
-            <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-0.5">{crd.spec.names.kind}</p>
-          </div>
-        </div>
-        <div className="flex-1 min-h-0">
-          {yamlLoading ? (
-            <div className="flex items-center justify-center h-full text-xs text-slate-400">Loading…</div>
-          ) : yaml !== null ? (
-            <YAMLViewer content={yaml} />
-          ) : null}
-        </div>
-      </>
-    )
+  const handleViewInstanceYAML = async (instance: CRDInstance) => {
+    setYaml(null); setYamlError(null); setYamlLoading(true)
+    setYamlContextName(`Instance: ${instance.metadata.name}`)
+    try {
+      const nsForYAML = isNamespaced ? (instance.metadata.namespace ?? null) : null
+      const content = await window.kubectl.getYAML(ctx!, nsForYAML, plural, instance.metadata.name)
+      setYaml(content)
+    } catch (err) {
+      setYamlError((err as Error).message ?? 'Failed to fetch YAML')
+    } finally {
+      setYamlLoading(false)
+    }
   }
 
-  // ── Main panel ───────────────────────────────────────────────────────────────
+  const handleApplyYAML = async (newYaml: string) => {
+    try {
+      await applyYAML(newYaml)
+      refresh()
+      setYaml(null)
+    } catch (err) {
+      throw err
+    }
+  }
+
   return (
-    <>
+    <div className="flex flex-col w-full h-full relative font-sans">
       {/* Header */}
-      <div className="px-8 py-6 border-b border-slate-200 dark:border-white/5 shrink-0 bg-white/5">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-2 h-2 rounded-full bg-purple-500 shadow-[0_0_8px_#a855f7]" />
-          <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 font-mono truncate">
-            {crd.spec.names.kind}
-          </h3>
+      <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
+        <div className="flex items-start justify-between mb-4">
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white font-mono truncate">{crd.spec.names.kind}</h3>
+            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{crd.spec.group}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleViewDefinitionYAML}
+              disabled={yamlLoading}
+              className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
+            >
+              <FileCode size={14} className="group-hover:text-blue-400 transition-colors" />
+              Definition YAML
+            </button>
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold outline outline-1 ${isNamespaced ? 'bg-blue-500/10 text-blue-500 outline-blue-500/20' : 'bg-orange-500/10 text-orange-500 outline-orange-500/20'}`}>
+              {crd.spec.scope.toUpperCase()}
+            </span>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-5">
-          <span>Group: <span className="text-slate-600 dark:text-slate-300 font-mono normal-case">{crd.spec.group}</span></span>
-          <span>Plural: <span className="text-slate-600 dark:text-slate-300 font-mono normal-case">{plural}</span></span>
-          <span>Scope: <span className={isNamespaced ? 'text-blue-500' : 'text-orange-500'}>{crd.spec.scope}</span></span>
+        <div className="flex flex-wrap gap-x-6 gap-y-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+          <span className="flex items-center gap-1.5"><Info size={12} className="text-slate-600" /> Plural: <span className="text-slate-300 font-mono normal-case">{plural}</span></span>
+          <span className="flex items-center gap-1.5"><Layers size={12} className="text-slate-600" /> Instances: <span className="text-slate-300">{instances.length}</span></span>
         </div>
       </div>
 
       {/* Instances */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto p-4 scrollbar-hide">
         {loading ? (
-          <div className="flex items-center justify-center py-20 text-xs text-slate-400">
-            Fetching {crd.spec.names.kind} instances…
+          <div className="flex items-center justify-center py-20">
+            <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
           </div>
         ) : error ? (
-          <div className="px-8 py-6">
-            <p className="text-xs font-bold text-red-400 mb-1">Failed to load instances</p>
-            <p className="text-xs text-slate-400 break-words">{error}</p>
-          </div>
-        ) : instances.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-2 text-slate-400">
-            <span className="text-2xl">◻</span>
-            <p className="text-xs font-bold uppercase tracking-widest">No {crd.spec.names.kind} resources found</p>
-            {isNamespaced && ns !== '_all' && (
-              <p className="text-[10px] text-slate-500">Try switching to "All Namespaces"</p>
-            )}
+          <div className="p-8 text-center bg-red-500/5 rounded-3xl border border-red-500/10">
+            <Activity size={32} className="mx-auto text-red-400 mb-4" />
+            <p className="text-sm font-bold text-red-400 uppercase tracking-widest mb-2">Discovery Failed</p>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">{error}</p>
           </div>
         ) : (
-          <table className="w-full text-sm border-collapse">
-            <thead className="sticky top-0 bg-white/70 dark:bg-[hsl(var(--bg-dark),_0.7)] backdrop-blur-xl z-10">
-              <tr className="border-b border-slate-100 dark:border-white/5">
-                <th className="text-left px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Name</th>
-                {isNamespaced && (
-                  <th className="text-left px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Namespace</th>
-                )}
-                <th className="text-left px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Age</th>
-                <th className="w-16" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50 dark:divide-slate-900">
-              {instances.map(inst => (
-                <tr
-                  key={inst.metadata.uid || inst.metadata.name}
-                  className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors group"
-                >
-                  <td className="px-6 py-3 font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[200px]">
-                    {inst.metadata.name}
-                  </td>
+          <div className="rounded-2xl border border-slate-100 dark:border-white/5 bg-slate-50 dark:bg-white/[0.01] overflow-hidden">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-100 dark:bg-white/5 border-b border-slate-200 dark:border-white/10">
+                  <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">Instance Name</th>
                   {isNamespaced && (
-                    <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500 font-mono">
-                      {inst.metadata.namespace ?? '—'}
-                    </td>
+                    <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">Namespace</th>
                   )}
-                  <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">
-                    {formatAge(inst.metadata.creationTimestamp)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => handleViewYAML(inst)}
-                      className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
-                    >
-                      YAML
-                    </button>
-                  </td>
+                  <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">Age</th>
+                  <th className="px-4 py-3 text-right"></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                {instances.map(inst => (
+                  <tr key={inst.metadata.uid || inst.metadata.name} className="hover:bg-white/5 transition-colors group">
+                    <td className="px-4 py-3">
+                      <span className="text-xs font-bold text-slate-300 font-mono break-all">{inst.metadata.name}</span>
+                    </td>
+                    {isNamespaced && (
+                      <td className="px-4 py-3">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{inst.metadata.namespace || '-'}</span>
+                      </td>
+                    )}
+                    <td className="px-4 py-3">
+                      <span className="text-[10px] font-bold text-slate-400">{formatAge(inst.metadata.creationTimestamp)}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => handleViewInstanceYAML(inst)}
+                        className="opacity-0 group-hover:opacity-100 px-3 py-1 rounded-lg bg-blue-500/10 text-blue-400 text-[10px] font-black uppercase tracking-widest border border-blue-500/20 hover:bg-blue-500/20 transition-all"
+                      >
+                        Edit YAML
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {instances.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="py-20 text-center">
+                      <Database size={32} className="mx-auto text-slate-700 mb-4 opacity-20" />
+                      <p className="text-sm text-slate-500 font-medium">No resource instances found</p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
-    </>
+
+      {/* Premium YAML Modal */}
+      {(yamlLoading || yaml !== null || yamlError !== null) && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200" role="dialog" aria-modal="true">
+          <div className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 dark:border-white/10 bg-white/5 backdrop-blur-xl shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
+                  {yamlLoading
+                    ? <div className="w-4 h-4 border-2 border-slate-400 border-t-blue-500 rounded-full animate-spin" />
+                    : <FileCode size={18} className="text-blue-500" />
+                  }
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest">
+                  {yamlLoading ? 'Loading YAML…' : `${yamlContextName}`}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors focus:outline-none"
+              >
+                <X size={20} strokeWidth={2.5} />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 bg-slate-950">
+              {yamlError ? (
+                <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center">
+                  <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center mb-2">
+                    <Activity size={20} className="text-red-400" />
+                  </div>
+                  <p className="text-sm font-bold text-red-400 uppercase tracking-widest">Failed to load manifest</p>
+                  <pre className="text-xs text-slate-400 max-w-lg break-words whitespace-pre-wrap font-mono bg-white/5 p-4 rounded-xl border border-white/5">{yamlError}</pre>
+                </div>
+              ) : yamlLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+                </div>
+              ) : yaml !== null ? (
+                <YAMLViewer
+                  content={yaml}
+                  onSave={handleApplyYAML}
+                />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

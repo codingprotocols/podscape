@@ -4,10 +4,7 @@ import type { HelmRelease, HelmHistoryEntry } from '../types'
 import { formatAge } from '../types'
 import LoadingAnimation from './LoadingAnimation'
 import YAMLViewer from './YAMLViewer'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type DrawerTab = 'overview' | 'history' | 'values'
+import { FileCode, X, Activity, HardDrive, History, Trash2, Clock, Globe, Shield, RefreshCw } from 'lucide-react'
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -42,8 +39,10 @@ function ReleaseDrawer({
   onClose: () => void
   onUninstall: (r: HelmRelease) => void
 }) {
-  const [tab, setTab] = useState<DrawerTab>('overview')
+  const [tab, setTab] = useState<'overview' | 'history'>('overview')
   const [values, setValues] = useState<string | null>(null)
+  const [loadingValues, setLoadingValues] = useState(false)
+  const [valuesError, setValuesError] = useState<string | null>(null)
   const [history, setHistory] = useState<HelmHistoryEntry[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null)
@@ -51,9 +50,6 @@ function ReleaseDrawer({
   const [rbError, setRbError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (tab === 'values' && values === null) {
-      window.helm.values(context, release.namespace, release.name).then(setValues).catch(() => setValues('{}'))
-    }
     if (tab === 'history' && history.length === 0) {
       setLoadingHistory(true)
       window.helm.history(context, release.namespace, release.name)
@@ -62,6 +58,18 @@ function ReleaseDrawer({
         .finally(() => setLoadingHistory(false))
     }
   }, [tab])
+
+  const handleViewValues = async () => {
+    setValues(null); setValuesError(null); setLoadingValues(true)
+    try {
+      const out = await window.helm.values(context, release.namespace, release.name)
+      setValues(out)
+    } catch (err) {
+      setValuesError((err as Error).message ?? 'Failed to fetch values')
+    } finally {
+      setLoadingValues(false)
+    }
+  }
 
   const handleRollback = async () => {
     if (rollbackTarget === null) return
@@ -80,93 +88,98 @@ function ReleaseDrawer({
     }
   }
 
-  const TABS: DrawerTab[] = ['overview', 'values', 'history']
-
   return (
-    <div className="flex flex-col w-[520px] min-w-[420px] border-l border-slate-100 dark:border-white/5 glass-heavy h-full shadow-2xl scale-in origin-right">
+    <div className="flex flex-col w-[520px] min-w-[420px] border-l border-slate-100 dark:border-white/5 glass-heavy h-full shadow-2xl scale-in origin-right z-30">
       {/* Header */}
       <div className="px-6 py-6 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-black text-slate-900 dark:text-white font-mono truncate tracking-tight">{release.name}</h3>
+            <h3 className="text-sm font-black text-slate-900 dark:text-white font-mono truncate tracking-tight uppercase tracking-widest">{release.name}</h3>
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <StatusBadge status={release.status} />
-              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{release.namespace} · REV {release.revision}</span>
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none mt-1">{release.namespace} · REV {release.revision}</span>
             </div>
           </div>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 transition-colors">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
+            <X size={18} />
           </button>
         </div>
 
         <div className="flex gap-2 mt-5">
+          <button
+            onClick={handleViewValues}
+            disabled={loadingValues}
+            className="text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-xl bg-blue-600/10 text-blue-400 border border-blue-500/20 hover:bg-blue-600/20 transition-all flex items-center gap-2"
+          >
+            <FileCode size={14} />
+            {loadingValues ? 'Loading...' : 'Values YAML'}
+          </button>
           <button onClick={() => onUninstall(release)}
-            className="text-[11px] font-black uppercase tracking-widest px-4 py-1.5 rounded-xl bg-red-600/10 text-red-500 border border-red-500/20 hover:bg-red-600/20 transition-all">
+            className="text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-xl bg-red-600/10 text-red-500 border border-red-500/20 hover:bg-red-600/20 transition-all flex items-center gap-2">
+            <Trash2 size={14} />
             Uninstall
           </button>
-          <div className="flex-1" />
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex border-b border-slate-100 dark:border-white/5 shrink-0 bg-white/5">
-        {TABS.map(t => (
+        {(['overview', 'history'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-6 py-2.5 text-[11px] font-black uppercase tracking-widest transition-all ${tab === t ? 'text-blue-500 border-b-2 border-blue-500 bg-blue-500/5' : 'text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-400'
+            className={`px-8 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all relative ${tab === t
+              ? 'text-blue-400'
+              : 'text-slate-500 hover:text-slate-300'
               }`}>
             {t}
+            {tab === t && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />}
           </button>
         ))}
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto bg-slate-50/30 dark:bg-black/20">
+      <div className="flex-1 overflow-y-auto p-5 scrollbar-hide">
         {tab === 'overview' && (
-          <div className="p-5 space-y-6">
-            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Release Details</h4>
-            <div className="grid gap-3">
+          <div className="space-y-6">
+            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <Shield size={12} /> Release Details
+            </h4>
+            <div className="space-y-3">
               {[
-                { label: 'Chart', value: release.chart },
-                { label: 'App Version', value: release.app_version || '—' },
-                { label: 'Namespace', value: release.namespace },
-                { label: 'Revision', value: release.revision },
-                { label: 'Updated', value: release.updated ? formatAge(release.updated) + ' ago' : '—' },
+                { label: 'Chart', value: release.chart, icon: <HardDrive size={14} /> },
+                { label: 'App Version', value: release.app_version || '—', icon: <Globe size={14} /> },
+                { label: 'Namespace', value: release.namespace, icon: <Clock size={14} /> },
+                { label: 'Revision', value: release.revision, icon: <Activity size={14} /> },
+                { label: 'Updated', value: release.updated ? formatAge(release.updated) + ' ago' : '—', icon: <History size={14} /> },
               ].map(({ label, value }) => (
-                <div key={label} className="bg-white/[0.03] rounded-2xl px-5 py-3 border border-slate-100 dark:border-white/5 flex items-center justify-between gap-4">
-                  <span className="text-[10px] font-black text-slate-500 dark:text-slate-600 uppercase tracking-widest">{label}</span>
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200 text-right truncate max-w-[240px] font-mono">{value}</span>
+                <div key={label} className="bg-slate-50 dark:bg-white/[0.03] rounded-2xl px-5 py-4 border border-slate-100 dark:border-white/5 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <span className="text-slate-500">{label}</span>
+                  </div>
+                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 text-right truncate max-w-[240px] font-mono">{value}</span>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {tab === 'values' && (
-          <div className="p-5">
-            {values === null ? (
-              <div className="flex items-center justify-center py-20"><LoadingAnimation /></div>
-            ) : (
-              <div className="bg-slate-950 rounded-2xl border border-white/5 overflow-hidden">
-                <YAMLViewer content={values} />
-              </div>
-            )}
-          </div>
-        )}
-
         {tab === 'history' && (
-          <div className="p-5 space-y-6">
-            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Revision History</h4>
+          <div className="space-y-6">
+            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <History size={12} /> Revision History
+            </h4>
 
             {rbError && (
-              <div className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold">
+              <div className="px-4 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] font-black uppercase tracking-widest">
                 {rbError}
               </div>
             )}
 
             {loadingHistory ? (
-              <div className="flex items-center justify-center py-20"><LoadingAnimation /></div>
+              <div className="flex items-center justify-center py-20">
+                <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+              </div>
             ) : history.length === 0 ? (
-              <p className="text-xs text-slate-400 dark:text-slate-500 italic text-center py-10 uppercase tracking-widest opacity-40">No history available</p>
+              <p className="text-xs text-slate-500 italic text-center py-20 uppercase tracking-widest opacity-40">No history available</p>
             ) : (
               <div className="space-y-3">
                 {[...history].reverse().map((entry) => (
@@ -183,6 +196,11 @@ function ReleaseDrawer({
                           <StatusBadge status={entry.status} />
                         </div>
                         <p className="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-500 truncate">{entry.chart}</p>
+                        {entry.status === 'deployed' && (
+                          <div className="flex items-center gap-1.2 mt-2 text-[9px] font-bold text-emerald-500/80 uppercase tracking-widest">
+                            <Shield size={10} /> Active Release
+                          </div>
+                        )}
                         {entry.description && (
                           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 font-medium leading-relaxed italic opacity-80">{entry.description}</p>
                         )}
@@ -191,12 +209,12 @@ function ReleaseDrawer({
                         <span className="text-[10px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-tighter">
                           {entry.updated ? formatAge(entry.updated) + ' ago' : ''}
                         </span>
-                        {entry.status !== 'superseded' && (
+                        {entry.status !== 'superseded' && entry.status !== 'deployed' && (
                           <button
                             onClick={() => setRollbackTarget(rollbackTarget === entry.revision ? null : entry.revision)}
                             className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border transition-all ${rollbackTarget === entry.revision
-                                ? 'bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20'
-                                : 'bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20'
+                              ? 'bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20'
+                              : 'bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20'
                               }`}
                           >
                             {rollbackTarget === entry.revision ? 'Cancel' : 'Rollback'}
@@ -206,14 +224,15 @@ function ReleaseDrawer({
                     </div>
 
                     {rollbackTarget === entry.revision && (
-                      <div className="mt-4 pt-4 border-t border-blue-500/20 flex items-center gap-3">
-                        <p className="text-[10px] font-black uppercase tracking-wide text-blue-400 flex-1">Confirm rollback to this version?</p>
+                      <div className="mt-4 pt-4 border-t border-blue-500/20 flex flex-col gap-3">
+                        <p className="text-[10px] font-black uppercase tracking-wide text-blue-400">Confirm rollback to this version?</p>
                         <button
                           onClick={handleRollback}
                           disabled={rollingBack}
-                          className="px-4 py-1.5 text-[10px] font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 shadow-lg shadow-blue-500/20"
+                          className="w-full py-2.5 text-[10px] font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-700 text-white rounded-xl disabled:opacity-50 shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2"
                         >
-                          {rollingBack ? 'Processing...' : 'Confirm'}
+                          {rollingBack ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                          {rollingBack ? 'Processing Rollback...' : 'Confirm Rollback'}
                         </button>
                       </div>
                     )}
@@ -224,6 +243,51 @@ function ReleaseDrawer({
           </div>
         )}
       </div>
+
+      {/* Values Modal */}
+      {(loadingValues || values !== null || valuesError !== null) && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200" role="dialog" aria-modal="true">
+          <div className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 dark:border-white/10 bg-white/5 backdrop-blur-xl shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
+                  {loadingValues
+                    ? <div className="w-4 h-4 border-2 border-slate-400 border-t-blue-500 rounded-full animate-spin" />
+                    : <FileCode size={18} className="text-blue-500" />
+                  }
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest leading-none">
+                  {loadingValues ? 'Loading Values…' : `Manifest — ${release.name}`}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setValues(null); setValuesError(null); setLoadingValues(false) }}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors focus:outline-none"
+              >
+                <X size={20} strokeWidth={2.5} />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 bg-slate-950">
+              {valuesError ? (
+                <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
+                  <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center mb-2">
+                    <Activity size={20} className="text-red-400" />
+                  </div>
+                  <p className="text-[10px] font-black text-red-400 uppercase tracking-widest">Failed to load values</p>
+                  <pre className="text-xs text-slate-400 dark:text-slate-500 text-center max-w-lg break-words whitespace-pre-wrap">{valuesError}</pre>
+                </div>
+              ) : loadingValues ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+                </div>
+              ) : values !== null ? (
+                <YAMLViewer content={values} />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -281,14 +345,14 @@ export default function HelmPanel(): JSX.Element {
   return (
     <div className="flex flex-1 min-w-0 min-h-0 bg-white dark:bg-[hsl(var(--bg-dark))] transition-colors duration-200">
       {/* List */}
-      <div className="flex flex-col flex-1 min-w-0 min-h-0">
+      <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
         {/* Toolbar */}
         <div className="flex items-center justify-between px-8 py-7 border-b border-slate-200 dark:border-white/5 shrink-0 bg-white/5 backdrop-blur-md">
           <div className="flex items-center gap-2">
             <div>
               <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight leading-none uppercase">Helm Releases</h2>
               {!loading && (
-                <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[.25em] mt-2.5 flex items-center gap-2">
+                <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[.25em] mt-2.5 flex items-center gap-2 leading-none">
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6]" />
                   {filtered.length} installed
                 </p>
@@ -315,50 +379,46 @@ export default function HelmPanel(): JSX.Element {
             <button onClick={load} disabled={loading}
               className="flex items-center gap-2 px-5 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300
                          glass-panel hover:bg-white/10 dark:hover:bg-white/5 rounded-xl shadow-sm
-                         disabled:opacity-50 active:scale-95">
-              <span className={`transition-transform duration-700 ${loading ? 'animate-spin' : ''}`}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6m12 6a9 9 0 0 1-15-6.7L3 16" /></svg>
-              </span>
+                         disabled:opacity-50 active:scale-95 leading-none">
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
               Sync
             </button>
           </div>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto scrollbar-hide">
           {!selectedContext ? (
             <div className="flex flex-col items-center justify-center py-24 gap-3 text-slate-400">
-              <div className="w-12 h-12 rounded-full bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
-                <span className="text-2xl">◻</span>
+              <div className="w-16 h-16 rounded-3xl bg-slate-50 dark:bg-slate-900 flex items-center justify-center mb-4">
+                <HardDrive size={32} strokeWidth={1.5} />
               </div>
-              <p className="text-xs font-bold uppercase tracking-widest text-center">Select a cluster to view Helm releases</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-center">Select a cluster context to view releases</p>
             </div>
           ) : loading ? (
             <div className="flex items-center justify-center py-24">
-              <LoadingAnimation />
+              <div className="w-10 h-10 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center py-24 gap-4 p-8 text-center">
-              <div className="w-12 h-12 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400">
-                  <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
-                </svg>
+              <div className="w-14 h-14 rounded-full bg-red-500/10 flex items-center justify-center mb-2">
+                <Activity size={24} className="text-red-400" />
               </div>
               <div>
-                <p className="text-sm font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest mb-2">Helm not available</p>
-                <p className="text-xs text-slate-500 dark:text-slate-500 max-w-sm leading-relaxed">{error}</p>
+                <p className="text-sm font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest mb-1.5">Helm discovery failed</p>
+                <p className="text-xs text-slate-500 dark:text-slate-500 max-w-sm leading-relaxed mx-auto italic">{error}</p>
               </div>
-              <button onClick={load} className="px-6 py-2 text-[11px] font-black uppercase tracking-widest text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all shadow-lg active:scale-95">
-                Retry Discovery
+              <button onClick={load} className="px-6 py-2.5 text-[10px] font-black uppercase tracking-widest text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all shadow-lg active:scale-95">
+                Retry Connection
               </button>
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 gap-3 text-slate-400">
-              <div className="w-12 h-12 rounded-full bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
-                <span className="text-2xl">◻</span>
+              <div className="w-16 h-16 rounded-3xl bg-slate-50 dark:bg-slate-900 flex items-center justify-center mb-4">
+                <Globe size={32} strokeWidth={1.5} />
               </div>
-              <p className="text-xs font-bold uppercase tracking-widest leading-none">
-                {filter ? 'No releases match' : 'No Helm releases found'}
+              <p className="text-xs font-bold uppercase tracking-widest">
+                {filter ? 'No results match filter' : 'No Helm releases detected'}
               </p>
             </div>
           ) : (
@@ -366,7 +426,7 @@ export default function HelmPanel(): JSX.Element {
               <thead className="sticky top-0 bg-white/70 dark:bg-[hsl(var(--bg-dark),_0.7)] backdrop-blur-xl z-20">
                 <tr className="border-b border-slate-100 dark:border-white/5">
                   {['Name', 'Namespace', 'Chart', 'Version', 'Status', 'Updated'].map(h => (
-                    <th key={h} className="text-left px-8 py-5 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.15em] whitespace-nowrap">
+                    <th key={h} className="text-left px-8 py-5 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest whitespace-nowrap">
                       {h}
                     </th>
                   ))}
@@ -387,7 +447,7 @@ export default function HelmPanel(): JSX.Element {
                         }`}
                     >
                       <td className="px-8 py-4 font-mono text-xs font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">{r.name}</td>
-                      <td className="px-8 py-4 text-xs font-bold text-slate-500 dark:text-slate-500 font-mono tracking-tighter uppercase">{r.namespace}</td>
+                      <td className="px-8 py-4 text-xs font-bold text-slate-500 dark:text-slate-500 font-mono tracking-tighter uppercase leading-none">{r.namespace}</td>
                       <td className="px-8 py-4 text-xs text-slate-600 dark:text-slate-400 font-mono whitespace-nowrap">{r.chart}</td>
                       <td className="px-8 py-4 text-xs text-slate-500 dark:text-slate-400 font-bold whitespace-nowrap">{r.app_version || '—'}</td>
                       <td className="px-8 py-4 whitespace-nowrap"><StatusBadge status={r.status} /></td>
@@ -421,29 +481,27 @@ export default function HelmPanel(): JSX.Element {
 
       {/* Uninstall confirm modal */}
       {uninstallTarget && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-white/10 shadow-2xl p-8 max-w-sm w-full scale-in">
+        <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-white/10 shadow-2xl p-8 max-w-sm w-full scale-in animate-in zoom-in duration-200">
             <div className="flex flex-col items-center text-center gap-4 mb-6">
-              <div className="w-14 h-14 rounded-2xl bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-red-500">
-                  <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2" />
-                </svg>
+              <div className="w-16 h-16 rounded-2xl bg-red-100 dark:bg-red-500/10 flex items-center justify-center">
+                <Trash2 size={28} className="text-red-500" />
               </div>
               <div>
-                <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Uninstall Release</h3>
-                <p className="text-xs font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">Permanent Action</p>
+                <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">Uninstall Release</h3>
+                <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mt-2 px-3 py-1 bg-red-500/5 rounded-lg border border-red-500/10 inline-block">Destructive Operation</p>
               </div>
             </div>
-            <p className="text-sm text-slate-600 dark:text-slate-400 text-center mb-8 leading-relaxed">
-              Uninstall <span className="font-mono font-black text-slate-900 dark:text-white">{uninstallTarget.name}</span> from <span className="font-bold text-blue-500">{uninstallTarget.namespace}</span>? All associated resources will be deleted.
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 text-center mb-8 leading-relaxed">
+              Are you sure you want to uninstall <span className="font-mono font-bold text-slate-900 dark:text-white">{uninstallTarget.name}</span>? This will remove all associated kubernetes resources.
             </p>
             <div className="flex gap-3">
               <button onClick={() => setUninstallTarget(null)} disabled={uninstalling}
-                className="flex-1 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-xl transition-all disabled:opacity-40">
-                Cancel
+                className="flex-1 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-xl transition-all disabled:opacity-40">
+                Abort
               </button>
               <button onClick={handleUninstall} disabled={uninstalling}
-                className="flex-1 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-white bg-red-600 hover:bg-red-700 rounded-xl transition-all shadow-lg shadow-red-500/20 disabled:opacity-40">
+                className="flex-1 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-white bg-red-600 hover:bg-red-700 rounded-xl transition-all shadow-lg shadow-red-500/20 disabled:opacity-40">
                 {uninstalling ? 'Removing...' : 'Uninstall'}
               </button>
             </div>

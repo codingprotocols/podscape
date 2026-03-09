@@ -209,6 +209,7 @@ export interface AppStore {
     rolloutRestart: (kind: string, name: string, namespace?: string) => Promise<void>
     deleteResource: (kind: string, name: string, clusterScoped?: boolean, namespace?: string) => Promise<void>
     getYAML: (kind: string, name: string, clusterScoped?: boolean, namespace?: string) => Promise<string>
+    getSecretValue: (name: string, key: string, namespace?: string) => Promise<string>
     applyYAML: (yaml: string) => Promise<string>
 
     // Port forwarding

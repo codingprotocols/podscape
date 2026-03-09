@@ -12,6 +12,15 @@ export interface ObjectMeta {
   generation?: number
 }
 
+export interface KubeCondition {
+  type: string
+  status: string
+  reason?: string
+  message?: string
+  lastTransitionTime?: string
+  lastUpdateTime?: string
+}
+
 // ─── Context / Config ─────────────────────────────────────────────────────────
 
 export interface KubeContextEntry {
@@ -49,12 +58,8 @@ export interface ContainerStatus {
   containerID?: string
 }
 
-export interface PodCondition {
-  type: string
-  status: string
+export interface PodCondition extends KubeCondition {
   lastTransitionTime: string
-  reason?: string
-  message?: string
 }
 
 export interface PodStatus {
@@ -121,10 +126,7 @@ export interface KubeDeployment {
     availableReplicas?: number
     updatedReplicas?: number
     unavailableReplicas?: number
-    conditions?: Array<{
-      type: string; status: string; reason?: string
-      message?: string; lastUpdateTime?: string; lastTransitionTime?: string
-    }>
+    conditions?: KubeCondition[]
   }
 }
 
@@ -137,6 +139,7 @@ export interface KubeStatefulSet {
     selector: { matchLabels?: Record<string, string> }
     serviceName: string
     template: { metadata: Partial<ObjectMeta>; spec: PodSpec }
+    updateStrategy?: { type?: 'RollingUpdate' | 'OnDelete'; rollingUpdate?: { partition?: number } }
   }
   status: {
     replicas: number
@@ -144,6 +147,7 @@ export interface KubeStatefulSet {
     currentReplicas?: number
     updatedReplicas?: number
     availableReplicas?: number
+    conditions?: KubeCondition[]
   }
 }
 
@@ -152,7 +156,12 @@ export interface KubeStatefulSet {
 export interface KubeReplicaSet {
   metadata: ObjectMeta
   spec: { replicas?: number; selector: { matchLabels?: Record<string, string> } }
-  status: { replicas: number; readyReplicas?: number; availableReplicas?: number }
+  status: {
+    replicas: number
+    readyReplicas?: number
+    availableReplicas?: number
+    conditions?: KubeCondition[]
+  }
 }
 
 // ─── Job ──────────────────────────────────────────────────────────────────────
@@ -171,7 +180,7 @@ export interface KubeJob {
     failed?: number
     startTime?: string
     completionTime?: string
-    conditions?: Array<{ type: string; status: string; reason?: string; message?: string }>
+    conditions?: KubeCondition[]
   }
 }
 
@@ -245,13 +254,8 @@ export interface KubeIngress {
 
 // ─── Node ─────────────────────────────────────────────────────────────────────
 
-export interface NodeCondition {
-  type: string
-  status: string
-  reason?: string
-  message?: string
+export interface NodeCondition extends KubeCondition {
   lastHeartbeatTime?: string
-  lastTransitionTime?: string
 }
 
 export interface KubeNode {
@@ -330,7 +334,7 @@ export interface KubeCRD {
     versions: Array<{ name: string; served: boolean; storage: boolean }>
   }
   status?: {
-    conditions?: Array<{ type: string; status: string; reason?: string; message?: string }>
+    conditions?: KubeCondition[]
   }
 }
 
@@ -350,6 +354,7 @@ export interface KubeDaemonSet {
     updatedNumberScheduled?: number
     numberAvailable?: number
     numberUnavailable?: number
+    conditions?: KubeCondition[]
   }
 }
 
@@ -367,7 +372,7 @@ export interface KubeHPA {
     currentReplicas: number
     desiredReplicas: number
     currentMetrics?: Array<{ type: string;[key: string]: unknown }>
-    conditions?: Array<{ type: string; status: string; reason?: string; message?: string }>
+    conditions?: KubeCondition[]
     lastScaleTime?: string
   }
 }
@@ -386,6 +391,7 @@ export interface KubePDB {
     desiredHealthy: number
     disruptionsAllowed: number
     expectedPods: number
+    conditions?: KubeCondition[]
   }
 }
 
@@ -393,7 +399,15 @@ export interface KubePDB {
 
 export interface KubeIngressClass {
   metadata: ObjectMeta
-  spec: { controller?: string; parameters?: unknown }
+  spec: {
+    controller?: string
+    parameters?: {
+      apiGroup?: string
+      kind?: string
+      name?: string
+      namespace?: string
+    }
+  }
 }
 
 // ─── NetworkPolicy ────────────────────────────────────────────────────────────
@@ -436,6 +450,7 @@ export interface KubeEndpoints {
   metadata: ObjectMeta
   subsets?: Array<{
     addresses?: Array<{ ip: string; nodeName?: string; targetRef?: { kind: string; name: string } }>
+    notReadyAddresses?: Array<{ ip: string; nodeName?: string; targetRef?: { kind: string; name: string } }>
     ports?: Array<{ name?: string; port: number; protocol?: string }>
   }>
 }
@@ -455,6 +470,7 @@ export interface KubePVC {
     phase?: string
     capacity?: Record<string, string>
     accessModes?: string[]
+    conditions?: KubeCondition[]
   }
 }
 
@@ -471,7 +487,7 @@ export interface KubePV {
     claimRef?: { name?: string; namespace?: string }
     [key: string]: unknown
   }
-  status: { phase?: string; reason?: string }
+  status: { phase?: string; reason?: string; conditions?: KubeCondition[] }
 }
 
 // ─── StorageClass ─────────────────────────────────────────────────────────────
