@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import { homedir } from 'os'
 import { existsSync } from 'fs'
+import { getAugmentedEnv } from './env'
 import { findKubectl } from './kubectl'
 import { getSettings } from './settings'
 
@@ -16,43 +17,7 @@ function newId(prefix: string): string {
   return `${prefix}-${nextPtyId++}`
 }
 
-/**
- * Build a clean env object for node-pty.
- *
- * node-pty's native posix_spawnp call fails with ENOENT/EINVAL if the env
- * array contains any undefined values. process.env has type
- * `Record<string, string | undefined>`, so we must filter them out explicitly
- * before passing to pty.spawn().
- *
- * On macOS, Electron's PATH often omits Homebrew paths, so we augment it.
- */
-function buildEnv(extra: Record<string, string> = {}): Record<string, string> {
-  // Strip undefined values — this is the main source of posix_spawnp failures
-  const base: Record<string, string> = Object.fromEntries(
-    Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined)
-  )
 
-  // Augment PATH on macOS so Homebrew/local kubectl is always reachable
-  if (process.platform === 'darwin') {
-    const existing = (base.PATH ?? '').split(':').filter(Boolean)
-    const macPaths = [
-      '/opt/homebrew/bin',
-      '/opt/homebrew/sbin',
-      '/usr/local/bin',
-      '/usr/local/sbin',
-      '/usr/bin',
-      '/usr/sbin',
-      '/bin',
-      '/sbin'
-    ]
-    for (const p of macPaths) {
-      if (!existing.includes(p)) existing.push(p)
-    }
-    base.PATH = existing.join(':')
-  }
-
-  return { ...base, HOME: homedir(), ...extra }
-}
 
 /** Resolve the shell to use: settings override → SHELL env → known defaults */
 function findShell(): string {
@@ -75,10 +40,10 @@ export function registerTerminalHandlers(): void {
       const id = newId('term')
       const shell = findShell()
       const kubectl = findKubectl()
-      const env = buildEnv({
+      const env = getAugmentedEnv({
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',
-        ...(context   ? { KUBECTL_CONTEXT:   context   } : {}),
+        ...(context ? { KUBECTL_CONTEXT: context } : {}),
         ...(namespace ? { KUBECTL_NAMESPACE: namespace } : {})
       })
 
@@ -127,7 +92,7 @@ export function registerTerminalHandlers(): void {
     (event, context: string, namespace: string, pod: string, container: string) => {
       const id = newId('exec')
       const kubectl = findKubectl()
-      const env    = buildEnv({ TERM: 'xterm-256color', COLORTERM: 'truecolor' })
+      const env = getAugmentedEnv({ TERM: 'xterm-256color', COLORTERM: 'truecolor' })
 
       // Spawn kubectl directly with an argv array — no shell wrapper needed.
       // buildEnv() provides augmented PATH (incl. Homebrew paths) so kubectl is found

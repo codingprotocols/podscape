@@ -2,6 +2,7 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { existsSync } from 'fs'
 import { ipcMain } from 'electron'
+import { getAugmentedEnv } from './env'
 import { getSettings } from './settings'
 
 const execFileAsync = promisify(execFile)
@@ -24,9 +25,10 @@ export function findHelm(): string {
 
 async function spawnHelm(args: string[]): Promise<string> {
   const helm = findHelm()
+  const env = getAugmentedEnv()
   const { stdout } = await execFileAsync(helm, args, {
     maxBuffer: 20 * 1024 * 1024,
-    env: { ...process.env }
+    env
   })
   return stdout
 }
