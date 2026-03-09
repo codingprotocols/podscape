@@ -1,4 +1,4 @@
-import { AppStore, StoreSlice, ExecTarget } from '../types'
+import { StoreSlice, ExecTarget } from '../types'
 import {
     KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet,
     KubeReplicaSet, KubeJob, KubeCronJob, KubeHPA, KubePDB,

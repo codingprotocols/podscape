@@ -1,4 +1,4 @@
-import { StoreSlice, ExecTarget } from '../types'
+import { StoreSlice } from '../types'
 import { ResourceKind } from '../../types'
 
 export interface NavigationSlice {

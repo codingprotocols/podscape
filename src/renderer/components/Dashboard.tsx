@@ -5,6 +5,7 @@ import {
   getNodeReady, formatAge,
   parseCpuMillicores, parseMemoryMiB
 } from '../types'
+import LoadingAnimation from './LoadingAnimation'
 
 // ─── Ring chart (SVG donut) ───────────────────────────────────────────────────
 
@@ -323,108 +324,113 @@ export default function Dashboard(): JSX.Element {
       </div>
 
       <div className="flex-1 px-8 py-8 space-y-10 min-h-0">
-        {/* ── Cluster stats ───────────────────────────────────────────────── */}
-        <section>
-          <h2 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] mb-4">
-            Cluster Overview
-          </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-            <StatCard
-              label="Pods"
-              value={pods.length}
-              sub={`${runningPods} running`}
-              accent={runningPods < pods.length ? 'yellow' : 'green'}
-            />
-            <StatCard
-              label="Deployments"
-              value={deployments.length}
-              sub={`${readyDeploys} ready`}
-              accent={readyDeploys < deployments.length ? 'yellow' : 'green'}
-            />
-            <StatCard
-              label="Nodes"
-              value={nodes.length}
-              sub={`${readyNodes} ready`}
-              accent={readyNodes < nodes.length ? 'red' : 'green'}
-            />
-            <StatCard
-              label="Namespaces"
-              value={namespaces.length}
-              accent="blue"
-            />
-            <StatCard
-              label="Warnings"
-              value={warnEvents}
-              sub={warnEvents > 0 ? 'across all ns' : 'none'}
-              accent={warnEvents > 0 ? 'red' : 'gray'}
-            />
+        {loadingResources ? (
+          <div className="h-full flex items-center justify-center py-24">
+            <LoadingAnimation />
           </div>
-        </section>
-
-        {/* ── Nodes ───────────────────────────────────────────────────────── */}
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em]">
-              Cluster Nodes
-              {nodeMetrics.length === 0 && (
-                <span className="ml-3 text-slate-400/50 normal-case font-medium tracking-tight">
-                  · metrics-server disabled
-                </span>
-              )}
-            </h2>
-            {loadingResources && (
-              <div className="w-4 h-4 border-2 border-slate-200 dark:border-slate-800 border-t-blue-500 rounded-full animate-spin" />
-            )}
-          </div>
-
-          {nodes.length === 0 && !loadingResources ? (
-            <EmptySection message="No nodes discovered" />
-          ) : (
-            <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {nodes.map(node => (
-                <NodeCard
-                  key={node.metadata.uid}
-                  node={node}
-                  metrics={metricsById.get(node.metadata.name)}
+        ) : (
+          <>
+            {/* ── Cluster stats ───────────────────────────────────────────────── */}
+            <section>
+              <h2 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] mb-4">
+                Cluster Overview
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                <StatCard
+                  label="Pods"
+                  value={pods.length}
+                  sub={`${runningPods} running`}
+                  accent={runningPods < pods.length ? 'yellow' : 'green'}
                 />
-              ))}
-            </div>
-          )}
-        </section>
+                <StatCard
+                  label="Deployments"
+                  value={deployments.length}
+                  sub={`${readyDeploys} ready`}
+                  accent={readyDeploys < deployments.length ? 'yellow' : 'green'}
+                />
+                <StatCard
+                  label="Nodes"
+                  value={nodes.length}
+                  sub={`${readyNodes} ready`}
+                  accent={readyNodes < nodes.length ? 'red' : 'green'}
+                />
+                <StatCard
+                  label="Namespaces"
+                  value={namespaces.length}
+                  accent="blue"
+                />
+                <StatCard
+                  label="Warnings"
+                  value={warnEvents}
+                  sub={warnEvents > 0 ? 'across all ns' : 'none'}
+                  accent={warnEvents > 0 ? 'red' : 'gray'}
+                />
+              </div>
+            </section>
 
-        {/* ── Cluster Events ──────────────────────────────────────────────── */}
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em]">
-              Timeline & Events
-            </h2>
-            <div className="flex items-center gap-3">
-              {warnEvents > 0 && (
-                <span className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 px-2.5 py-0.5 rounded-full font-bold">
-                  {warnEvents} WARNINGS
-                </span>
+            {/* ── Nodes ───────────────────────────────────────────────────────── */}
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em]">
+                  Cluster Nodes
+                  {nodeMetrics.length === 0 && (
+                    <span className="ml-3 text-slate-400/50 normal-case font-medium tracking-tight">
+                      · metrics-server disabled
+                    </span>
+                  )}
+                </h2>
+              </div>
+
+              {nodes.length === 0 && !loadingResources ? (
+                <EmptySection message="No nodes discovered" />
+              ) : (
+                <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {nodes.map(node => (
+                    <NodeCard
+                      key={node.metadata.uid}
+                      node={node}
+                      metrics={metricsById.get(node.metadata.name)}
+                    />
+                  ))}
+                </div>
               )}
-            </div>
-          </div>
+            </section>
 
-          {recentEvents.length === 0 && !loadingResources ? (
-            <EmptySection message="No recent events" />
-          ) : (
-            <div className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 shadow-sm rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800/50">
-              {/* Warnings first */}
-              {recentEvents
-                .sort((a, b) => {
-                  if (a.type === 'Warning' && b.type !== 'Warning') return -1
-                  if (a.type !== 'Warning' && b.type === 'Warning') return 1
-                  return 0
-                })
-                .map(event => (
-                  <EventRow key={event.metadata.uid} event={event} />
-                ))
-              }
-            </div>
-          )}
-        </section>
+            {/* ── Cluster Events ──────────────────────────────────────────────── */}
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em]">
+                  Timeline & Events
+                </h2>
+                <div className="flex items-center gap-3">
+                  {warnEvents > 0 && (
+                    <span className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 px-2.5 py-0.5 rounded-full font-bold">
+                      {warnEvents} WARNINGS
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {recentEvents.length === 0 && !loadingResources ? (
+                <EmptySection message="No recent events" />
+              ) : (
+                <div className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 shadow-sm rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800/50">
+                  {/* Warnings first */}
+                  {recentEvents
+                    .sort((a, b) => {
+                      if (a.type === 'Warning' && b.type !== 'Warning') return -1
+                      if (a.type !== 'Warning' && b.type === 'Warning') return 1
+                      return 0
+                    })
+                    .map(event => (
+                      <EventRow key={event.metadata.uid} event={event} />
+                    ))
+                  }
+                </div>
+              )}
+            </section>
+          </>
+        )}
       </div>
     </div>
   )
