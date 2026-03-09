@@ -46,17 +46,18 @@ export default function SecretDetail({ secret: sec }: Props): JSX.Element {
 
   return (
     <div className="flex flex-col w-full h-full">
-      <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-mono truncate">{sec.metadata.name}</h3>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+      <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
+        <h3 className="text-sm font-bold text-slate-900 dark:text-white font-mono truncate">{sec.metadata.name}</h3>
+        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">
           {sec.metadata.namespace} · {sec.type ?? 'Opaque'} · {formatAge(sec.metadata.creationTimestamp)} ago
         </p>
       </div>
 
       {/* Security notice */}
-      <div className="mx-4 mt-3 px-3 py-2 bg-yellow-900/30 border border-yellow-500/25 rounded shrink-0">
-        <p className="text-xs text-yellow-300">
-          Values are hidden by default. Click <strong>Reveal</strong> to decrypt and display individual keys.
+      <div className="mx-6 mt-4 px-4 py-3 bg-orange-500/5 border border-orange-500/20 rounded-2xl shrink-0 shadow-[inset_0_0_12px_rgba(249,115,22,0.05)]">
+        <p className="text-[11px] font-medium text-orange-400 leading-relaxed">
+          <span className="font-black uppercase tracking-widest mr-2">Security Note:</span>
+          Values are hidden by default. Click <strong className="font-black underline underline-offset-4 decoration-orange-500/50">Reveal</strong> to decrypt and display individual keys.
         </p>
       </div>
 
@@ -69,9 +70,9 @@ export default function SecretDetail({ secret: sec }: Props): JSX.Element {
               const state = keyStates.get(key) ?? { status: 'hidden' }
               const isRevealed = state.status !== 'hidden'
               return (
-                <div key={key} className="bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700 rounded-lg overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100 dark:border-slate-700">
-                    <span className="text-xs font-mono text-slate-700 dark:text-slate-200 font-medium">{key}</span>
+                <div key={key} className="bg-white/[0.03] border border-slate-100 dark:border-white/5 rounded-2xl overflow-hidden transition-all hover:bg-white/[0.05]">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-white/5 bg-white/5">
+                    <span className="text-[11px] font-black font-mono text-slate-700 dark:text-slate-300 uppercase tracking-widest">{key}</span>
                     <button
                       onClick={() => handleToggle(key)}
                       disabled={state.status === 'loading'}
@@ -115,11 +116,11 @@ export default function SecretDetail({ secret: sec }: Props): JSX.Element {
 
       {/* Labels */}
       {sec.metadata.labels && Object.keys(sec.metadata.labels).length > 0 && (
-        <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 shrink-0">
-          <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Labels</h4>
-          <div className="flex flex-wrap gap-1.5">
+        <div className="px-6 py-5 border-t border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
+          <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Labels</h4>
+          <div className="flex flex-wrap gap-2 px-1">
             {Object.entries(sec.metadata.labels).map(([k, v]) => (
-              <span key={k} className="text-xs bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-800 px-2 py-0.5 rounded font-mono">
+              <span key={k} className="text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-1 rounded-lg font-mono">
                 {k}={v}
               </span>
             ))}

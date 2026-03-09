@@ -114,23 +114,41 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             if (section === 'metrics' && ctx) {
                 set({ loadingResources: true })
                 try {
-                    const [pm, nm] = await Promise.all([
+                    const [pm, nm, pds, nds, hpas] = await Promise.all([
                         window.kubectl.getPodMetrics(ctx, nsArg),
-                        window.kubectl.getNodeMetrics(ctx)
+                        window.kubectl.getNodeMetrics(ctx),
+                        window.kubectl.getPods(ctx, nsArg),
+                        window.kubectl.getNodes(ctx),
+                        window.kubectl.getHPAs(ctx, nsArg)
                     ])
-                    set({ podMetrics: pm, nodeMetrics: nm, loadingResources: false })
+                    set({
+                        podMetrics: pm,
+                        nodeMetrics: nm,
+                        pods: pds as KubePod[],
+                        nodes: nds as KubeNode[],
+                        hpas: hpas as KubeHPA[],
+                        loadingResources: false
+                    })
                 } catch { set({ loadingResources: false }) }
             }
             if (section === 'network' && ctx) {
                 set({ loadingResources: true })
                 try {
-                    const [svcs, ings, pds, nss] = await Promise.all([
+                    const [svcs, ings, pds, nss, nps] = await Promise.all([
                         window.kubectl.getServices(ctx, nsArg),
                         window.kubectl.getIngresses(ctx, nsArg),
                         window.kubectl.getPods(ctx, nsArg),
-                        window.kubectl.getNamespaces(ctx)
+                        window.kubectl.getNamespaces(ctx),
+                        window.kubectl.getNetworkPolicies(ctx, nsArg)
                     ])
-                    set({ services: svcs as KubeService[], ingresses: ings as KubeIngress[], pods: pds as KubePod[], namespaces: nss, loadingResources: false })
+                    set({
+                        services: svcs as KubeService[],
+                        ingresses: ings as KubeIngress[],
+                        pods: pds as KubePod[],
+                        namespaces: nss,
+                        networkpolicies: nps as KubeNetworkPolicy[],
+                        loadingResources: false
+                    })
                 } catch { set({ loadingResources: false }) }
             }
             return

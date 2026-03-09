@@ -56,32 +56,41 @@ export default function CronJobDetail({ cronJob: c }: Props): JSX.Element {
   return (
     <div className="flex flex-col w-full h-full overflow-y-auto">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
-        <div className="flex items-start gap-2">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-mono truncate">{c.metadata.name}</h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{c.metadata.namespace}</p>
+      <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-purple-600/10 dark:bg-purple-500/20 flex items-center justify-center shrink-0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-purple-600 dark:text-purple-400">
+              <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+            </svg>
           </div>
-          <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${isSuspended
-              ? 'bg-slate-500/20 text-slate-400 dark:text-slate-500 ring-gray-500/30'
-              : 'bg-green-500/20 text-green-300 ring-green-500/30'
-            }`}>
-            {isSuspended ? 'Suspended' : 'Active'}
-          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white font-mono truncate">{c.metadata.name}</h3>
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-widest ring-1 ring-inset ${isSuspended
+                ? 'bg-slate-500/10 text-slate-400 ring-slate-500/20'
+                : 'bg-emerald-500/10 text-emerald-500 ring-emerald-500/20'
+                }`}>
+                {isSuspended ? 'Suspended' : 'Active'}
+              </span>
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{c.metadata.namespace} · CRONJOB</span>
+            </div>
+          </div>
         </div>
-        <div className="flex gap-2 mt-2.5">
+        <div className="flex gap-2 mt-4">
           <button onClick={handleViewYAML} disabled={yamlLoading}
-            className="text-xs px-3 py-1 rounded bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-800 hover:bg-white/10 transition-colors disabled:opacity-50">
+            className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-all disabled:opacity-50 uppercase tracking-wider">
             {yamlLoading ? 'Loading…' : 'YAML'}
           </button>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <div className="flex px-4 py-2 gap-2 border-b border-slate-100 dark:border-white/5 bg-white/[0.02] shrink-0">
         {(['overview', 'events'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 text-xs font-medium capitalize transition-colors ${tab === t ? 'text-blue-400 border-b-2 border-blue-500' : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:text-slate-300'
+            className={`px-4 py-1.5 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all ${tab === t
+              ? 'bg-blue-600/10 text-blue-400 shadow-[inset_0_0_12px_rgba(59,130,246,0.1)]'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white/5'
               }`}>
             {t}
           </button>
@@ -91,9 +100,9 @@ export default function CronJobDetail({ cronJob: c }: Props): JSX.Element {
       {tab === 'overview' && (
         <>
           {/* Schedule */}
-          <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-            <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Schedule</h4>
-            <div className="bg-black/30 rounded px-3 py-2 font-mono text-sm text-green-400">
+          <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Schedule</h4>
+            <div className="bg-white/[0.05] border border-white/5 rounded-2xl px-4 py-4 font-mono text-sm text-emerald-400 shadow-[inset_0_0_12px_rgba(52,211,153,0.05)] text-center tracking-widest font-bold">
               {c.spec.schedule}
             </div>
           </div>
@@ -171,13 +180,12 @@ export default function CronJobDetail({ cronJob: c }: Props): JSX.Element {
         </div>
       )}
 
-      {/* YAML viewer */}
       {(yamlLoading || yaml !== null || yamlError !== null) && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-8">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-3xl max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{yamlLoading ? 'Loading YAML…' : `YAML — ${c.metadata.name}`}</h3>
-              <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }} className="text-slate-400 dark:text-slate-500 hover:text-white">✕</button>
+        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 dark:border-white/10 bg-white/5 backdrop-blur-xl shrink-0">
+              <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">{yamlLoading ? 'Loading YAML…' : `YAML — ${c.metadata.name}`}</h3>
+              <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 transition-colors">✕</button>
             </div>
             <div className="flex-1 min-h-0">
               {yamlError ? (

@@ -21,26 +21,26 @@ export default function ConfigMapDetail({ configMap: cm }: Props): JSX.Element {
 
   return (
     <div className="flex flex-col w-full h-full">
-      <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-mono truncate">{cm.metadata.name}</h3>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+      <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
+        <h3 className="text-sm font-bold text-slate-900 dark:text-white font-mono truncate">{cm.metadata.name}</h3>
+        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">
           {cm.metadata.namespace} · {entries.length} key{entries.length !== 1 ? 's' : ''} · {formatAge(cm.metadata.creationTimestamp)} ago
         </p>
       </div>
 
       <div className="flex flex-1 min-h-0">
         {/* Key list */}
-        <div className="w-36 shrink-0 border-r border-slate-100 dark:border-slate-800 overflow-y-auto bg-slate-50 dark:bg-slate-800/60">
+        <div className="w-44 shrink-0 border-r border-slate-100 dark:border-white/5 overflow-y-auto bg-white/[0.02]">
           {entries.length === 0 ? (
-            <p className="text-xs text-slate-500 dark:text-slate-400 px-3 py-4">No data keys</p>
+            <p className="text-[10px] font-black text-slate-500 dark:text-slate-500 px-4 py-8 uppercase tracking-widest text-center opacity-40">No data keys</p>
           ) : (
-            <ul className="py-1">
+            <ul className="py-2">
               {entries.map(([key]) => (
-                <li key={key}>
+                <li key={key} className="px-2 mb-0.5">
                   <button
                     onClick={() => setSelected(key)}
-                    className={`w-full text-left px-3 py-2 text-xs font-mono truncate transition-colors
-                      ${selected === key ? 'bg-blue-600/25 text-blue-200' : 'text-slate-400 dark:text-slate-500 hover:bg-white/5 hover:text-slate-700 dark:text-slate-200'}`}
+                    className={`w-full text-left px-3 py-2 text-[11px] font-bold font-mono truncate transition-all rounded-lg
+                      ${selected === key ? 'bg-blue-600/20 text-blue-400 shadow-[inset_0_0_12px_rgba(59,130,246,0.1)]' : 'text-slate-400 dark:text-slate-500 hover:bg-white/5 hover:text-slate-700 dark:hover:text-slate-200'}`}
                     title={key}
                   >
                     {key}
@@ -55,9 +55,9 @@ export default function ConfigMapDetail({ configMap: cm }: Props): JSX.Element {
         <div className="flex-1 min-w-0 min-h-0 flex flex-col">
           {selected ? (
             <>
-              <div className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 flex items-center justify-between shrink-0">
-                <span className="text-xs text-slate-400 dark:text-slate-500 font-mono truncate">{selected}</span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
+              <div className="px-4 py-2 border-b border-slate-100 dark:border-white/5 bg-white/[0.05] backdrop-blur-md flex items-center justify-between shrink-0">
+                <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 font-mono truncate uppercase tracking-widest">{selected}</span>
+                <span className="text-[10px] font-black text-slate-500 dark:text-slate-600 uppercase tracking-widest">
                   {selectedValue.split('\n').length} lines
                 </span>
               </div>

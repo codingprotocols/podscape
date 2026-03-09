@@ -5,27 +5,29 @@ import { formatAge } from '../types'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800">
-      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">{title}</p>
-      {children}
+    <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
+      <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">{title}</p>
+      <div className="px-1">
+        {children}
+      </div>
     </div>
   )
 }
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4 py-1.5">
-      <span className="text-xs text-slate-500 dark:text-slate-400 shrink-0 w-28">{label}</span>
-      <span className="text-xs font-medium text-slate-800 dark:text-slate-200 text-right break-all">{value}</span>
+    <div className="flex items-start justify-between gap-4 py-2 border-b border-white/[0.02] last:border-0">
+      <span className="text-[11px] font-medium text-slate-500 dark:text-slate-500 shrink-0 w-28 uppercase tracking-wider">{label}</span>
+      <span className="text-xs font-bold text-slate-800 dark:text-slate-200 text-right break-all">{value}</span>
     </div>
   )
 }
 
 function ReplicaCounter({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div className="flex flex-col items-center gap-1 bg-slate-50 dark:bg-slate-800/60 rounded-xl px-4 py-3 min-w-[70px]">
-      <span className={`text-lg font-bold ${color}`}>{value}</span>
-      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">{label}</span>
+    <div className="flex flex-col items-center gap-1 bg-white/[0.03] border border-white/5 rounded-2xl px-4 py-3 min-w-[80px] transition-all hover:bg-white/[0.05]">
+      <span className={`text-xl font-bold tabular-nums ${color}`}>{value}</span>
+      <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">{label}</span>
     </div>
   )
 }
@@ -57,16 +59,16 @@ export default function ReplicaSetDetail({ replicaSet: rs }: Props): JSX.Element
   return (
     <div className="flex flex-col w-full h-full transition-colors duration-200">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
-        <div className="flex items-start justify-between gap-3 mb-4">
+      <div className="px-6 py-5 border-b border-slate-200 dark:border-white/5 bg-white/5 shrink-0">
+        <div className="flex items-start justify-between gap-3 mb-5">
           <div className="min-w-0">
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 font-mono truncate">{rs.metadata.name}</h3>
             {rs.metadata.namespace && (
-              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-0.5 uppercase tracking-wider">{rs.metadata.namespace}</p>
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{rs.metadata.namespace} · REPLICSET</p>
             )}
           </div>
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">
-            Age: {formatAge(rs.metadata.creationTimestamp)}
+          <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+            {formatAge(rs.metadata.creationTimestamp)} old
           </span>
         </div>
 
@@ -79,12 +81,12 @@ export default function ReplicaSetDetail({ replicaSet: rs }: Props): JSX.Element
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 -mb-px">
+        <div className="flex gap-2">
           {(['overview', 'events'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-t-lg border-b-2 transition-colors capitalize ${tab === t
-                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              className={`px-4 py-1.5 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all ${tab === t
+                ? 'bg-blue-600/10 text-blue-400 shadow-[inset_0_0_12px_rgba(59,130,246,0.1)]'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white/5'
                 }`}
             >{t}</button>
           ))}

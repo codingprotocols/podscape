@@ -7,6 +7,7 @@ export interface ObjectMeta {
   creationTimestamp: string
   labels?: Record<string, string>
   annotations?: Record<string, string>
+  ownerReferences?: Array<{ apiVersion: string; kind: string; name: string; uid: string }>
   resourceVersion?: string
   generation?: number
 }
@@ -392,13 +393,35 @@ export interface KubeIngressClass {
 
 // ─── NetworkPolicy ────────────────────────────────────────────────────────────
 
+export interface NetworkPolicyPort {
+  protocol?: string
+  port?: number | string
+  endPort?: number
+}
+
+export interface NetworkPolicyPeer {
+  podSelector?: { matchLabels?: Record<string, string> }
+  namespaceSelector?: { matchLabels?: Record<string, string> }
+  ipBlock?: { cidr: string; except?: string[] }
+}
+
+export interface NetworkPolicyIngressRule {
+  from?: NetworkPolicyPeer[]
+  ports?: NetworkPolicyPort[]
+}
+
+export interface NetworkPolicyEgressRule {
+  to?: NetworkPolicyPeer[]
+  ports?: NetworkPolicyPort[]
+}
+
 export interface KubeNetworkPolicy {
   metadata: ObjectMeta
   spec: {
     podSelector: { matchLabels?: Record<string, string> }
     policyTypes?: string[]
-    ingress?: Array<unknown>
-    egress?: Array<unknown>
+    ingress?: NetworkPolicyIngressRule[]
+    egress?: NetworkPolicyEgressRule[]
   }
 }
 

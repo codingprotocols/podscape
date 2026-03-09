@@ -14,17 +14,17 @@ export default function ExtensionsPanel(): JSX.Element {
   useEffect(() => { reloadPlugins() }, [])
 
   return (
-    <div className="flex flex-1 bg-slate-50 dark:bg-slate-950 h-full transition-colors duration-200">
+    <div className="flex flex-1 bg-white dark:bg-[hsl(var(--bg-dark))] h-full transition-colors duration-300">
       {/* Plugin list sidebar */}
-      <div className="w-72 border-r border-slate-200 dark:border-slate-800 flex flex-col bg-white dark:bg-slate-900/30">
-        <div className="flex items-center justify-between px-6 py-6 border-b border-slate-100 dark:border-slate-800/50">
-          <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Extensions</h2>
+      <div className="w-80 border-r border-slate-200 dark:border-white/5 flex flex-col bg-white/5 backdrop-blur-md">
+        <div className="flex items-center justify-between px-8 py-8 border-b border-slate-100 dark:border-white/5">
+          <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tighter uppercase tracking-[0.05em]">Extensions</h2>
           <button
             onClick={reloadPlugins}
-            className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-all hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+            className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white transition-all hover:bg-white/10 rounded-2xl border border-white/5 active:scale-95 shadow-lg"
             title="Reload plugins"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6m12 6a9 9 0 0 1-15-6.7L3 16" /></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6m12 6a9 9 0 0 1-15-6.7L3 16" /></svg>
           </button>
         </div>
 
@@ -49,10 +49,10 @@ export default function ExtensionsPanel(): JSX.Element {
         </div>
 
         {/* Plugin SDK info */}
-        <div className="px-6 py-5 border-t border-slate-100 dark:border-slate-800/50 shrink-0 bg-slate-50/50 dark:bg-slate-900/50">
-          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-600 leading-relaxed uppercase tracking-tighter">
-            Plugin path:<br />
-            <span className="font-mono text-blue-500 dark:text-blue-400 normal-case">~/.podscape/plugins/</span>
+        <div className="px-8 py-6 border-t border-slate-100 dark:border-white/5 shrink-0 bg-white/5">
+          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-loose">
+            SDK Path<br />
+            <span className="font-mono text-blue-400 lowercase tracking-normal">~/.podscape/plugins/</span>
           </p>
         </div>
       </div>
@@ -78,10 +78,10 @@ function PluginEntry({
     <div className="mb-2">
       <button
         onClick={() => setExpanded(e => !e)}
-        className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all group"
+        className="flex items-center gap-4 w-full px-5 py-4 hover:bg-white/5 rounded-2xl transition-all group"
       >
-        <div className="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 shrink-0 shadow-sm transition-transform group-hover:scale-110">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+        <div className="w-10 h-10 rounded-2xl bg-purple-600/10 dark:bg-purple-500/20 flex items-center justify-center text-purple-600 dark:text-purple-400 shrink-0 shadow-[0_0_15px_rgba(168,85,247,0.15)] transition-all group-hover:scale-110 group-active:scale-90 border border-purple-500/20">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
         </div>
         <div className="flex-1 min-w-0 text-left">
           <p className="text-xs font-black text-slate-800 dark:text-white truncate tracking-tight">{plugin.name}</p>
@@ -98,10 +98,10 @@ function PluginEntry({
             <button
               key={panel.id}
               onClick={() => onSelectPanel(panel)}
-              className={`w-full text-left px-3 py-2 text-[11px] font-bold rounded-lg transition-all
+              className={`w-full text-left px-4 py-2.5 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all
                 ${selected === panel.id
-                  ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 shadow-sm'
-                  : 'text-slate-500 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
+                  ? 'bg-purple-600/10 text-purple-400 shadow-[inset_0_0_12px_rgba(168,85,247,0.1)] border border-purple-500/20'
+                  : 'text-slate-500 hover:bg-white/5 hover:text-white'
                 }`}
             >
               {panel.title}
@@ -119,11 +119,11 @@ function PluginEntry({
 
 function PanelViewer({ panel, plugin }: { panel: PluginPanel; plugin: Plugin }) {
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-slate-950">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
+    <div className="flex flex-col h-full bg-white dark:bg-[hsl(var(--bg-dark))] transition-colors duration-300">
+      <div className="flex items-center justify-between px-8 py-6 border-b border-slate-200 dark:border-white/5 bg-white/5 backdrop-blur-xl shrink-0">
         <div>
-          <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">{panel.title}</h3>
-          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{plugin.name} · v{plugin.version}</p>
+          <h3 className="text-xl font-black text-slate-900 dark:text-white tracking-widest uppercase">{panel.title}</h3>
+          <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-[0.2em]">{plugin.name} · v{plugin.version}</p>
         </div>
         {panel.url && (
           <button

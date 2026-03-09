@@ -189,7 +189,6 @@ export default function Sidebar(): JSX.Element {
     namespaces, selectedNamespace,
     loadingContexts, loadingNamespaces,
     selectContext, selectNamespace, error, clearError,
-    refresh,
     section, setSection,
     pods, deployments, events,
     navWidth, setNavWidth
@@ -503,13 +502,13 @@ function ClusterAvatar({
                     bg-gradient-to-br ${clusterColor(name)} text-white
                     transition-all duration-500 shadow-xl
                     ${active
-            ? 'ring-[2.5px] ring-blue-500 ring-offset-[3px] ring-offset-[#040609] scale-105 rotate-[-2deg]'
+            ? 'ring-[2.5px] ring-blue-500 ring-offset-[3px] ring-offset-[#020617] scale-105 rotate-[-2deg]'
             : 'opacity-60 grayscale-[30%] hover:opacity-100 hover:grayscale-0 hover:scale-110 hover:rotate-[2deg]'
           }`}
       >
         {clusterInitials(name)}
         {pinned && !active && (
-          <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-amber-500 border-2 border-[#040609] flex items-center justify-center shadow-lg">
+          <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-amber-500 border-2 border-[#020617] flex items-center justify-center shadow-lg">
             <svg width="6" height="6" viewBox="0 0 24 24" fill="white"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
           </div>
         )}

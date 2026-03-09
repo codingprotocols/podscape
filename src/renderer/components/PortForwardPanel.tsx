@@ -60,16 +60,16 @@ function StatusBadge({ status, error }: { status: PortForwardEntry['status']; er
     )
   }
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500">
-      <span className="w-2 h-2 rounded-full bg-slate-400" />
+    <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500">
+      <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
       Stopped
     </span>
   )
 }
 
-const SELECT_CLS = "w-full bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs rounded-lg px-3 py-2 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono appearance-none"
+const SELECT_CLS = "w-full bg-white/[0.03] text-slate-900 dark:text-slate-100 text-xs rounded-xl px-4 py-3 border border-white/5 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono appearance-none transition-all hover:bg-white/[0.05]"
 
-const INPUT_CLS = "w-full bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs rounded-lg px-3 py-2 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono"
+const INPUT_CLS = "w-full bg-white/[0.03] text-slate-900 dark:text-slate-100 text-xs rounded-xl px-4 py-3 border border-white/5 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono transition-all hover:bg-white/[0.05]"
 
 function SelectWrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -124,8 +124,8 @@ function NewForwardDialog({
       setPortMap(map)
       setResourceNames(Object.keys(map).sort())
     })
-    .catch(() => { setPortMap({}); setResourceNames([]) })
-    .finally(() => setLoadingNames(false))
+      .catch(() => { setPortMap({}); setResourceNames([]) })
+      .finally(() => setLoadingNames(false))
   }, [type, ns, selectedContext])
 
   // Auto-fill ports when a resource is selected
@@ -304,7 +304,7 @@ function NewForwardDialog({
 
 // Opens a URL in the system default browser via Electron shell
 function openInBrowser(url: string) {
-  ;(window.electron as unknown as { shell: { openExternal: (u: string) => void } })
+  ; ((window as any).electron as { shell: { openExternal: (u: string) => void } })
     .shell.openExternal(url)
 }
 
@@ -331,14 +331,14 @@ function UrlCell({ url }: { url: string }) {
       >
         {url}
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-             className="opacity-60 group-hover:opacity-100 transition-opacity shrink-0">
+          className="opacity-60 group-hover:opacity-100 transition-opacity shrink-0">
           <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" />
         </svg>
       </button>
       <button
         onClick={handleCopy}
         title="Copy URL"
-        className="w-6 h-6 flex items-center justify-center rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
+        className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-500 hover:text-white hover:bg-white/10 transition-all shrink-0"
       >
         {copied ? (
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-emerald-500">
@@ -371,10 +371,10 @@ export default function PortForwardPanel() {
 
   const filtered = filter.trim()
     ? portForwards.filter(pf =>
-        pf.name.toLowerCase().includes(filter.toLowerCase()) ||
-        pf.namespace.toLowerCase().includes(filter.toLowerCase()) ||
-        String(pf.localPort).includes(filter)
-      )
+      pf.name.toLowerCase().includes(filter.toLowerCase()) ||
+      pf.namespace.toLowerCase().includes(filter.toLowerCase()) ||
+      String(pf.localPort).includes(filter)
+    )
     : portForwards
 
   const sorted = [...filtered].sort((a, b) => {
@@ -384,7 +384,7 @@ export default function PortForwardPanel() {
   })
 
   return (
-    <div className="flex flex-col flex-1 min-w-0 bg-white dark:bg-slate-950 h-full transition-colors duration-200">
+    <div className="flex flex-col flex-1 min-w-0 bg-white dark:bg-[hsl(var(--bg-dark))] h-full transition-colors duration-300">
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 dark:border-slate-800 shrink-0">
         <div>
@@ -393,33 +393,33 @@ export default function PortForwardPanel() {
             {portForwards.filter(p => p.status === 'active').length} active
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           {portForwards.length > 0 && (
-            <>
+            <div className="flex items-center gap-2">
               <input
                 type="text"
-                placeholder="Filter..."
+                placeholder="Search Forwards..."
                 value={filter}
                 onChange={e => setFilter(e.target.value)}
-                className="w-36 text-xs bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-48 text-[11px] font-bold bg-white/5 text-slate-100 rounded-xl px-4 py-2 border border-white/5 focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder-slate-600 transition-all uppercase tracking-widest"
               />
               <select
                 value={sortBy}
                 onChange={e => setSortBy(e.target.value as SortKey)}
-                className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="text-[11px] font-black bg-white/5 text-slate-100 rounded-xl px-4 py-2 border border-white/5 focus:outline-none focus:ring-2 focus:ring-blue-500/40 appearance-none uppercase tracking-widest cursor-pointer hover:bg-white/10 transition-all"
               >
-                <option value="name">Sort by name</option>
-                <option value="namespace">Sort by namespace</option>
-                <option value="localPort">Sort by local port</option>
+                <option value="name">NAME</option>
+                <option value="namespace">NAMESPACE</option>
+                <option value="localPort">PORT</option>
               </select>
-            </>
+            </div>
           )}
           <button
             onClick={() => setShowDialog(true)}
             disabled={!selectedContext}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-all active:scale-95 disabled:opacity-50"
+            className="flex items-center gap-2 px-5 py-2 text-[11px] font-black text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-[0_0_20px_rgba(59,130,246,0.2)] transition-all active:scale-95 disabled:opacity-50 uppercase tracking-[0.1em]"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12h14" /></svg>
             New Forward
           </button>
         </div>

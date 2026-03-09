@@ -28,25 +28,20 @@ export default function DeleteConfirm({ name, kind, onConfirm, onCancel }: Props
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-8" onClick={onCancel}>
+    <div className="fixed inset-0 z-[60] bg-[#0a0c10]/60 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200">
       <div
-        className="bg-gray-900 border border-red-500/25 rounded-xl w-full max-w-sm shadow-2xl"
+        className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-[2rem] shadow-2xl border border-white/10 w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200"
         onClick={e => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b border-white/10">
-          <h3 className="text-sm font-semibold text-red-400">Delete {kind}</h3>
-        </div>
+        <div className="px-8 py-8 text-center">
+          <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center text-red-500 mx-auto mb-6 shadow-[0_0_20px_rgba(239,44,44,0.15)] ring-1 ring-red-500/20">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6" /></svg>
+          </div>
+          <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2 uppercase tracking-tight">Delete {kind}</h3>
+          <p className="text-sm font-bold text-slate-500 dark:text-slate-500 leading-relaxed uppercase tracking-widest mb-6">
+            Type <span className="text-red-400 font-mono italic lowercase tracking-normal">{name}</span> to confirm.
+          </p>
 
-        <div className="px-5 py-5">
-          <p className="text-sm text-gray-300 mb-1">
-            This will permanently delete:
-          </p>
-          <p className="font-mono text-sm text-white bg-gray-800 px-3 py-2 rounded mb-4 border border-white/10 break-all">
-            {name}
-          </p>
-          <p className="text-xs text-gray-400 mb-3">
-            Type the resource name to confirm deletion:
-          </p>
           <input
             autoFocus
             type="text"
@@ -54,24 +49,22 @@ export default function DeleteConfirm({ name, kind, onConfirm, onCancel }: Props
             value={typed}
             onChange={e => setTyped(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && confirmed) handleDelete() }}
-            className="w-full bg-gray-800 text-white text-sm rounded px-3 py-2 border border-white/10
-                       focus:outline-none focus:ring-1 focus:ring-red-500 placeholder-gray-600 font-mono"
+            className="w-full bg-white/[0.03] text-slate-900 dark:text-white text-xs rounded-xl px-4 py-3 border border-white/5 focus:outline-none focus:ring-2 focus:ring-red-500/40 text-center font-mono placeholder-white/10"
           />
-          {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+          {error && <p className="text-[10px] font-bold text-red-400 mt-4 uppercase tracking-widest">{error}</p>}
         </div>
 
-        <div className="flex gap-2 px-5 pb-5">
+        <div className="flex gap-4 px-8 py-6 border-t border-white/5 bg-white/5">
           <button
             onClick={onCancel}
-            className="flex-1 py-2 text-sm text-gray-300 bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 transition-colors"
+            className="flex-1 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-white hover:bg-white/5 transition-all active:scale-95"
           >
             Cancel
           </button>
           <button
             onClick={handleDelete}
             disabled={!confirmed || pending}
-            className="flex-1 py-2 text-sm text-white bg-red-600 hover:bg-red-500 rounded-lg
-                       transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/20 transition-all active:scale-95 disabled:opacity-50"
           >
             {pending ? 'Deleting…' : 'Delete'}
           </button>

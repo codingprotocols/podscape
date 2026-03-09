@@ -15,7 +15,7 @@ export default function SettingsPanel(): JSX.Element {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    window.settings.get().then(s => setForm({ ...s })).catch(() => {})
+    window.settings.get().then(s => setForm({ ...s })).catch(() => { })
   }, [])
 
   // Keep form.theme in sync with store theme
@@ -38,40 +38,40 @@ export default function SettingsPanel(): JSX.Element {
   }
 
   return (
-    <div className="flex-1 overflow-auto p-8 bg-slate-50 dark:bg-slate-950">
-      <div className="max-w-xl mx-auto">
+    <div className="flex-1 overflow-auto p-4 md:p-12 bg-white dark:bg-[hsl(var(--bg-dark))] transition-colors duration-300">
+      <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Settings</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Configure appearance and binary paths.
+        <div className="mb-10 px-2">
+          <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight uppercase tracking-[0.05em]">Settings</h1>
+          <p className="text-sm font-bold text-slate-500 dark:text-slate-500 mt-2 uppercase tracking-widest">
+            Identity, Preferences, and System Paths
           </p>
         </div>
 
         <div className="space-y-4">
           {/* ── Appearance ──────────────────────────────────────────────────── */}
-          <section className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800">
-              <h2 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Appearance</h2>
+          <section className="bg-white/[0.03] dark:bg-white/[0.03] backdrop-blur-md rounded-3xl border border-slate-200 dark:border-white/5 overflow-hidden shadow-2xl">
+            <div className="px-8 py-5 border-b border-slate-100 dark:border-white/5 bg-white/5">
+              <h2 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Appearance</h2>
             </div>
-            <div className="p-6">
-              <label className="block mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-                Theme
+            <div className="p-8">
+              <label className="block mb-4 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+                Interface Color Scheme
               </label>
-              <div className="flex gap-3">
+              <div className="flex gap-4">
                 {(['light', 'dark'] as const).map(t => (
                   <button
                     key={t}
                     onClick={() => { setForm(f => ({ ...f, theme: t })); setTheme(t) }}
-                    className={`flex-1 flex items-center justify-center gap-2.5 py-3 rounded-xl border-2 text-sm font-semibold transition-all
+                    className={`flex-1 flex items-center justify-center gap-3 py-4 rounded-2xl border-2 text-[11px] font-black uppercase tracking-[0.15em] transition-all
                       ${form.theme === t
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 shadow-sm shadow-blue-500/10'
-                        : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600'
+                        ? 'border-blue-500 bg-blue-600/10 text-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20'
+                        : 'border-white/5 bg-white/[0.02] text-slate-500 hover:border-white/10 hover:bg-white/[0.05]'
                       }`}
                   >
                     {t === 'light'
-                      ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-                      : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+                      ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="5" /><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" /></svg>
+                      : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" /></svg>
                     }
                     {t.charAt(0).toUpperCase() + t.slice(1)}
                   </button>
@@ -81,37 +81,34 @@ export default function SettingsPanel(): JSX.Element {
           </section>
 
           {/* ── Binary Paths ────────────────────────────────────────────────── */}
-          <section className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
-            <div className="px-6 py-4">
-              <h2 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Binary Paths</h2>
+          <section className="bg-white/[0.03] dark:bg-white/[0.03] backdrop-blur-md rounded-3xl border border-slate-200 dark:border-white/5 overflow-hidden divide-y divide-slate-100 dark:divide-white/5 shadow-2xl">
+            <div className="px-8 py-5 bg-white/5">
+              <h2 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Binary Paths</h2>
             </div>
 
             {/* kubectl path */}
-            <div className="p-6">
-              <label className="block mb-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+            <div className="p-8">
+              <label className="block mb-1 text-[11px] font-black text-slate-700 dark:text-slate-200 uppercase tracking-wider">
                 kubectl path
               </label>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">
-                Absolute path to kubectl. Leave blank to auto-detect from{' '}
-                <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">/opt/homebrew/bin</code>,{' '}
-                <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">/usr/local/bin</code>.
-                Run <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">which kubectl</code> in your terminal to get the path.
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mb-4 uppercase tracking-tight">
+                Absolute path to kubectl.
               </p>
-              <div className="flex gap-2">
+              <div className="flex gap-3">
                 <input
                   type="text"
                   value={form.kubectlPath}
                   onChange={e => setForm(f => ({ ...f, kubectlPath: e.target.value }))}
                   placeholder="/opt/homebrew/bin/kubectl"
-                  className="flex-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700
-                             text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600
-                             rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono"
+                  className="flex-1 text-sm bg-white/[0.05] border border-white/10
+                             text-slate-900 dark:text-slate-100 placeholder-slate-700
+                             rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono transition-all"
                 />
                 <button
                   onClick={() => setForm(f => ({ ...f, kubectlPath: '' }))}
-                  className="px-3 py-2 text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200
-                             bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700
-                             rounded-lg transition-colors"
+                  className="px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white
+                             bg-white/[0.05] border border-white/10
+                             rounded-xl transition-all hover:bg-white/10"
                 >
                   Reset
                 </button>

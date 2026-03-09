@@ -82,41 +82,41 @@ export default function ExecPanel({ target, onClose }: Props): JSX.Element {
   }, [theme])
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-md flex flex-col p-8 animate-in fade-in zoom-in-95 duration-200">
-      <div className="flex flex-col flex-1 bg-white dark:bg-slate-950 rounded-3xl overflow-hidden shadow-2xl border border-white/20 dark:border-slate-800 animate-in slide-in-from-bottom-4 duration-300">
+    <div className="fixed inset-0 z-50 bg-[#0a0c10]/60 backdrop-blur-md flex flex-col p-4 md:p-12 animate-in fade-in zoom-in-95 duration-200">
+      <div className="flex flex-col flex-1 bg-white dark:bg-[hsl(var(--bg-dark))] rounded-[2rem] overflow-hidden shadow-2xl border border-white/10 animate-in slide-in-from-bottom-4 duration-300">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800 shrink-0">
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1 rounded-full uppercase tracking-widest leading-none">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Live Exec
+        <div className="flex items-center justify-between px-8 py-5 bg-white/5 border-b border-white/5 shrink-0 backdrop-blur-xl">
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-2 text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full uppercase tracking-[0.2em] leading-none ring-1 ring-emerald-500/20 shadow-[0_0_15px_rgba(52,211,153,0.1)]">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Live Terminal
             </span>
-            <span className="text-xs font-bold text-slate-800 dark:text-white font-mono truncate max-w-xs">
+            <span className="text-xs font-bold text-slate-800 dark:text-white font-mono truncate max-w-sm">
               {target.pod}
-              {target.container && <span className="text-slate-400 dark:text-slate-600 ml-1">/ {target.container}</span>}
+              {target.container && <span className="text-slate-500 ml-2 font-medium">/ {target.container}</span>}
             </span>
-            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-              @{target.namespace}
+            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest bg-white/5 px-2 py-0.5 rounded-lg border border-white/5">
+              {target.namespace}
             </span>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="hidden sm:block text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-tighter italic">
-              Press Ctrl+D to exit
+          <div className="flex items-center gap-6">
+            <span className="hidden lg:block text-[10px] font-black text-slate-500 uppercase tracking-widest italic opacity-50">
+              Ctrl+D to exit session
             </span>
             <button
               onClick={() => {
                 if (ptyIdRef.current) window.exec.kill(ptyIdRef.current).catch(() => { })
                 onClose()
               }}
-              className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm transition-all active:scale-95"
+              className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white bg-white/5 border border-white/10 rounded-2xl shadow-xl transition-all active:scale-90 hover:bg-red-500/20 hover:border-red-500/30 group"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" className="group-hover:rotate-90 transition-transform"><path d="M18 6L6 18M6 6l12 12" /></svg>
             </button>
           </div>
         </div>
 
         {/* Terminal */}
-        <div ref={containerRef} className="flex-1 min-h-0 bg-white dark:bg-slate-950 p-4" />
+        <div ref={containerRef} className="flex-1 min-h-0 bg-[#0a0c10] p-6 shadow-[inset_0_0_40px_rgba(0,0,0,0.4)]" />
       </div>
     </div>
   )
