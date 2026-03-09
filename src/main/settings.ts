@@ -10,10 +10,10 @@ export interface PodscapeSettings {
   theme: 'light' | 'dark' | ''   // '' means use last-used / OS preference
 }
 
-const SETTINGS_DIR  = join(homedir(), '.podscape')
+const SETTINGS_DIR = join(homedir(), '.podscape')
 const SETTINGS_FILE = join(SETTINGS_DIR, 'settings.json')
 
-const DEFAULTS: PodscapeSettings = { kubectlPath: '', shellPath: '', helmPath: '', theme: '' }
+const DEFAULTS: PodscapeSettings = { kubectlPath: '', shellPath: '', helmPath: '', theme: 'dark' }
 
 export function getSettings(): PodscapeSettings {
   try {
