@@ -3,6 +3,7 @@ import { execFile, spawn } from 'child_process'
 import { existsSync, writeFileSync, mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { getAugmentedEnv } from './env'
 import { getSettings } from './settings'
 import { KubeProvider } from './kubeProvider'
 
@@ -26,7 +27,8 @@ export class KubectlProvider implements KubeProvider {
   private spawnKubectl(args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
       const binary = findKubectl()
-      execFile(binary, args, { maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
+      const env = getAugmentedEnv()
+      execFile(binary, args, { maxBuffer: 20 * 1024 * 1024, env }, (error, stdout, stderr) => {
         if (error) reject(new Error(stderr || error.message))
         else resolve(stdout)
       })
@@ -141,15 +143,17 @@ export class KubectlProvider implements KubeProvider {
     const binary = findKubectl()
     const args = ['logs', pod, '--context', context, '--namespace', namespace, '--follow', '--tail', '200']
     if (container) args.push('--container', container)
-    return spawn(binary, args)
+    const env = getAugmentedEnv()
+    return spawn(binary, args, { env })
   }
 
   spawnPortForward(context: string, namespace: string, type: string, name: string, localPort: number, remotePort: number) {
     const binary = findKubectl()
+    const env = getAugmentedEnv()
     return spawn(binary, [
       'port-forward', `${type}/${name}`, `${localPort}:${remotePort}`,
       '--context', context, '--namespace', namespace
-    ])
+    ], { env })
   }
 }
 
