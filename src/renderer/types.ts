@@ -37,7 +37,12 @@ export interface ContainerStatus {
   state: {
     running?: { startedAt: string }
     waiting?: { reason: string; message?: string }
-    terminated?: { exitCode: number; reason?: string; message?: string }
+    terminated?: { exitCode: number; reason?: string; message?: string; startedAt?: string; finishedAt?: string; containerID?: string }
+  }
+  lastState?: {
+    running?: { startedAt: string }
+    waiting?: { reason: string; message?: string }
+    terminated?: { exitCode: number; reason?: string; message?: string; startedAt?: string; finishedAt?: string; containerID?: string }
   }
   image: string
   imageID: string
