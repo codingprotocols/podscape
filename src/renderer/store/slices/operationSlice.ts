@@ -7,6 +7,7 @@ export interface OperationSlice {
     rolloutRestart: (kind: string, name: string, namespace?: string) => Promise<void>
     deleteResource: (kind: string, name: string, clusterScoped?: boolean, namespace?: string) => Promise<void>
     getYAML: (kind: string, name: string, clusterScoped?: boolean, namespace?: string) => Promise<string>
+    getSecretValue: (name: string, key: string, namespace?: string) => Promise<string>
     applyYAML: (yaml: string) => Promise<string>
     startPortForward: (entry: PortForwardEntry) => void
     stopPortForward: (id: string) => void
@@ -49,6 +50,13 @@ export const createOperationSlice: StoreSlice<OperationSlice> = (set, get) => ({
         if (!ctx) return ''
         const actualNs = clusterScoped ? null : (namespace ?? (ns === '_all' ? (selectedResource?.metadata.namespace ?? null) : ns))
         return window.kubectl.getYAML(ctx, actualNs, kind, name)
+    },
+    getSecretValue: async (name, key, namespace) => {
+        const { selectedContext: ctx, selectedNamespace: ns, selectedResource } = get()
+        if (!ctx) return ''
+        const actualNs = namespace ?? (ns === '_all' ? (selectedResource?.metadata.namespace ?? null) : ns)
+        if (!actualNs) return ''
+        return window.kubectl.getSecretValue(ctx, actualNs, name, key)
     },
     applyYAML: async (yaml) => {
         const { selectedContext: ctx } = get()

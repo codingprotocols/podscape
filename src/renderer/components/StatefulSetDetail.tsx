@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import type { KubeStatefulSet, KubeEvent } from '../types'
 import { formatAge } from '../types'
 import { useAppStore } from '../store'
+import { FileCode, X, Activity, RefreshCw, Zap, Server } from 'lucide-react'
 import YAMLViewer from './YAMLViewer'
 
 interface Props { statefulSet: KubeStatefulSet }
@@ -9,16 +10,18 @@ interface Props { statefulSet: KubeStatefulSet }
 type Tab = 'overview' | 'events'
 
 export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Element {
-  const { rolloutRestart, getYAML, selectedContext, selectedNamespace } = useAppStore()
+  const { rolloutRestart, getYAML, applyYAML, refresh, selectedContext, selectedNamespace } = useAppStore()
   const [tab, setTab] = useState<Tab>('overview')
   const [showScale, setShowScale] = useState(false)
   const [scaleVal, setScaleVal] = useState(String(s.spec.replicas ?? 1))
   const [scaleLoading, setScaleLoading] = useState(false)
   const [scaleMsg, setScaleMsg] = useState('')
   const [restartMsg, setRestartMsg] = useState('')
+
   const [yaml, setYaml] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
   const [yamlError, setYamlError] = useState<string | null>(null)
+
   const [events, setEvents] = useState<KubeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
 
@@ -66,6 +69,16 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
     }
   }
 
+  const handleApplyYAML = async (newYaml: string) => {
+    try {
+      await applyYAML(newYaml)
+      refresh()
+      setYaml(null)
+    } catch (err) {
+      throw err
+    }
+  }
+
   const loadEvents = async () => {
     if (!selectedContext) return
     setEventsLoading(true)
@@ -84,167 +97,199 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
   }, [tab, s.metadata.uid])
 
   return (
-    <div className="flex flex-col w-full h-full overflow-y-auto">
-      {/* Header */}
+    <div className="flex flex-col w-full h-full relative">
       <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
-        <div className="flex items-start gap-2">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-mono truncate">{s.metadata.name}</h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{s.metadata.namespace}</p>
+        <div className="flex items-start justify-between">
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white font-mono truncate">{s.metadata.name}</h3>
+            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{s.metadata.namespace}</p>
           </div>
-          <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${ready >= desired ? 'bg-green-500/20 text-green-300 ring-green-500/30' : 'bg-yellow-500/20 text-yellow-300 ring-yellow-500/30'
-            }`}>
-            {ready}/{desired} ready
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleViewYAML}
+              disabled={yamlLoading}
+              className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
+            >
+              <FileCode size={14} className="group-hover:text-blue-400 transition-colors" />
+              {yamlLoading ? 'Loading...' : 'YAML'}
+            </button>
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold outline outline-1 ${ready >= desired ? 'bg-emerald-500/10 text-emerald-500 outline-emerald-500/20' : 'bg-amber-500/10 text-amber-500 outline-amber-500/20'}`}>
+              {ready}/{desired} READY
+            </span>
+          </div>
         </div>
-        <div className="flex gap-2 mt-2.5">
+        <div className="flex gap-2 mt-4">
           <button onClick={() => setShowScale(true)}
-            className="text-xs px-3 py-1 rounded bg-blue-600/20 text-blue-300 border border-blue-500/30 hover:bg-blue-600/30 transition-colors">
-            Scale
+            className="text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all flex items-center gap-2">
+            <Zap size={14} /> Scale
           </button>
           <button onClick={handleRestart}
-            className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-all uppercase tracking-wider">
-            Restart
-          </button>
-          <button onClick={handleViewYAML} disabled={yamlLoading}
-            className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-all disabled:opacity-50 uppercase tracking-wider">
-            {yamlLoading ? 'Loading…' : 'YAML'}
+            className="text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2">
+            <RefreshCw size={14} /> Restart
           </button>
         </div>
-        {restartMsg && <p className="text-xs text-green-400 mt-1.5">{restartMsg}</p>}
-        {scaleMsg && <p className={`text-xs mt-1.5 ${scaleMsg.startsWith('Error') ? 'text-red-400' : 'text-green-400'}`}>{scaleMsg}</p>}
+        {(restartMsg || scaleMsg) && (
+          <p className={`text-[10px] font-bold mt-3 uppercase tracking-wider ${scaleMsg.startsWith('Error') ? 'text-red-400' : 'text-emerald-400'}`}>
+            {restartMsg || scaleMsg}
+          </p>
+        )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <div className="flex border-b border-slate-100 dark:border-slate-800 shrink-0 bg-white/[0.02]">
         {(['overview', 'events'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 text-xs font-medium capitalize transition-colors ${tab === t ? 'text-blue-400 border-b-2 border-blue-500' : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:text-slate-300'
+            className={`px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all relative ${tab === t
+              ? 'text-blue-400'
+              : 'text-slate-500 hover:text-slate-300'
               }`}>
             {t}
+            {tab === t && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />}
           </button>
         ))}
       </div>
 
-      {tab === 'overview' && (
-        <>
-          {/* Replicas */}
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-white/5">
-            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Replicas</h4>
-            <div className="grid grid-cols-4 gap-3">
-              {[
-                { label: 'Desired', value: desired, color: 'text-slate-700 dark:text-slate-200' },
-                { label: 'Ready', value: ready, color: ready >= desired ? 'text-green-500' : 'text-yellow-400' },
-                { label: 'Current', value: current, color: 'text-slate-600 dark:text-slate-300' },
-                { label: 'Updated', value: updated, color: 'text-blue-500' }
-              ].map(({ label, value, color }) => (
-                <div key={label} className="text-center bg-white/[0.03] rounded-2xl p-3 border border-slate-100 dark:border-white/5">
-                  <p className={`text-xl font-black ${color}`}>{value}</p>
-                  <p className="text-[9px] font-black text-slate-500 dark:text-slate-600 mt-1 uppercase tracking-widest leading-none">{label}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Info */}
-          <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-            <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Info</h4>
-            <dl className="space-y-1.5">
-              <Row label="Service Name" value={s.spec.serviceName} />
-              <Row label="Created" value={formatAge(s.metadata.creationTimestamp) + ' ago'} />
-            </dl>
-          </div>
-
-          {/* Selector */}
-          {s.spec.selector.matchLabels && (
-            <div className="px-4 py-3">
-              <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Selector</h4>
-              <div className="flex flex-wrap gap-1.5">
-                {Object.entries(s.spec.selector.matchLabels).map(([k, v]) => (
-                  <span key={k} className="text-xs bg-blue-500/10 text-blue-300 border border-blue-500/20 px-2 py-0.5 rounded font-mono">
-                    {k}={v}
-                  </span>
-                ))}
+      <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
+        {tab === 'overview' ? (
+          <div className="space-y-8">
+            <section>
+              <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <Server size={12} /> Replicas
+              </h4>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatusCard label="Desired" value={desired} color="text-slate-200" />
+                <StatusCard label="Ready" value={ready} color={ready >= desired ? 'text-emerald-400' : 'text-amber-400'} />
+                <StatusCard label="Current" value={current} color="text-slate-400" />
+                <StatusCard label="Updated" value={updated} color="text-blue-400" />
               </div>
-            </div>
-          )}
-        </>
-      )}
+            </section>
 
-      {tab === 'events' && (
-        <div className="px-4 py-3 flex-1">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Events</h4>
-            <button onClick={loadEvents} disabled={eventsLoading}
-              className="text-xs px-2 py-1 rounded bg-white/5 text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-800 hover:bg-white/10 transition-colors disabled:opacity-50">
-              {eventsLoading ? '…' : 'Refresh'}
-            </button>
-          </div>
-          {eventsLoading ? (
-            <div className="flex items-center justify-center h-24">
-              <div className="w-5 h-5 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin" />
-            </div>
-          ) : events.length === 0 ? (
-            <p className="text-xs text-slate-500 dark:text-slate-400 text-center py-8">No events found</p>
-          ) : (
-            <div className="space-y-2">
-              {events.map((e, i) => (
-                <div key={e.metadata.uid || i} className={`rounded p-2 text-xs ${e.type === 'Warning' ? 'bg-yellow-500/10 border border-yellow-500/20' : 'bg-white/5 border border-slate-100 dark:border-slate-800'
-                  }`}>
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className={`font-medium ${e.type === 'Warning' ? 'text-yellow-300' : 'text-slate-600 dark:text-slate-300'}`}>{e.reason}</span>
-                    <span className="text-slate-500 dark:text-slate-400 text-[10px]">{e.count ? `×${e.count}` : ''}</span>
-                  </div>
-                  <p className="text-slate-400 dark:text-slate-500 leading-relaxed">{e.message}</p>
-                  {e.lastTimestamp && <p className="text-slate-500 dark:text-slate-400 mt-1">{formatAge(e.lastTimestamp)} ago</p>}
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
+              <div>
+                <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4">Core Info</h4>
+                <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-2xl p-4 space-y-3">
+                  <InfoRow label="Service Name" value={s.spec.serviceName} mono />
+                  <InfoRow label="Update Strategy" value={s.spec.updateStrategy?.type ?? 'RollingUpdate'} />
+                  <InfoRow label="Created" value={formatAge(s.metadata.creationTimestamp) + ' ago'} />
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+              </div>
 
-      {/* Inline scale dialog */}
-      {showScale && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-8">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-80 p-6">
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-4">Scale StatefulSet</h3>
-            <label className="block text-xs text-slate-400 dark:text-slate-500 mb-1">Replicas</label>
-            <input type="number" min={0} value={scaleVal} onChange={e => setScaleVal(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm rounded border border-slate-200 dark:border-slate-700 px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-            />
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setShowScale(false)}
-                className="text-xs px-4 py-2 rounded bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-800 hover:bg-white/10 transition-colors">
-                Cancel
-              </button>
-              <button onClick={handleScale} disabled={scaleLoading}
-                className="text-xs px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50">
-                {scaleLoading ? 'Scaling…' : 'Scale'}
-              </button>
-            </div>
+              <div>
+                <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4">Selectors</h4>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(s.spec.selector.matchLabels || {}).map(([k, v]) => (
+                    <span key={k} className="text-[10px] font-bold bg-blue-500/5 text-blue-400/80 border border-blue-500/10 px-2.5 py-1 rounded-lg font-mono">
+                      {k}={v}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </section>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="space-y-3">
+            {events.map((e, i) => (
+              <div key={e.metadata.uid || i} className={`p-4 rounded-2xl border transition-all ${e.type === 'Warning' ? 'bg-amber-500/5 border-amber-500/10' : 'bg-slate-50 dark:bg-white/[0.02] border-slate-100 dark:border-white/5'}`}>
+                <div className="flex items-center justify-between gap-4 mb-2">
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${e.type === 'Warning' ? 'text-amber-400' : 'text-blue-400'}`}>{e.reason}</span>
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">{formatAge(e.lastTimestamp || e.metadata.creationTimestamp)} ago</span>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed font-medium">{e.message}</p>
+                {e.count && e.count > 1 && <span className="inline-block mt-2 px-1.5 py-0.5 rounded bg-white/5 text-[9px] font-bold text-slate-500 uppercase tracking-widest">Seen {e.count} times</span>}
+              </div>
+            ))}
+            {events.length === 0 && (
+              <div className="text-center py-20 bg-slate-50 dark:bg-white/[0.01] rounded-3xl border border-dashed border-slate-200 dark:border-white/10 mt-4">
+                <Activity size={32} className="mx-auto text-slate-700 mb-4 opacity-20" />
+                <p className="text-sm text-slate-500 font-medium">No recent events found</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
-      {((yamlLoading || yaml !== null || yamlError !== null)) && (
-        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200">
+      {/* Premium YAML Modal */}
+      {(yamlLoading || yaml !== null || yamlError !== null) && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200" role="dialog" aria-modal="true">
           <div className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 dark:border-white/10 bg-white/5 backdrop-blur-xl shrink-0">
-              <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">{yamlLoading ? 'Loading YAML…' : `YAML — ${s.metadata.name}`}</h3>
-              <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 transition-colors">✕</button>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
+                  {yamlLoading
+                    ? <div className="w-4 h-4 border-2 border-slate-400 border-t-blue-500 rounded-full animate-spin" />
+                    : <FileCode size={18} className="text-blue-500" />
+                  }
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest">
+                  {yamlLoading ? 'Loading YAML…' : `Edit — ${s.metadata.name}`}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors focus:outline-none"
+              >
+                <X size={20} strokeWidth={2.5} />
+              </button>
             </div>
-            <div className="flex-1 min-h-0">
+            <div className="flex-1 min-h-0 bg-slate-950">
               {yamlError ? (
-                <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
-                  <p className="text-sm font-bold text-red-400">Failed to load YAML</p>
-                  <pre className="text-xs text-slate-400 dark:text-slate-500 whitespace-pre-wrap">{yamlError}</pre>
+                <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center">
+                  <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center mb-2">
+                    <Activity size={20} className="text-red-400" />
+                  </div>
+                  <p className="text-sm font-bold text-red-400 uppercase tracking-widest">Failed to load manifest</p>
+                  <pre className="text-xs text-slate-400 max-w-lg break-words whitespace-pre-wrap font-mono bg-white/5 p-4 rounded-xl border border-white/5">{yamlError}</pre>
                 </div>
               ) : yamlLoading ? (
                 <div className="flex items-center justify-center h-full">
-                  <div className="w-8 h-8 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin" />
+                  <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
-              ) : yaml !== null ? <YAMLViewer content={yaml} /> : null}
+              ) : yaml !== null ? (
+                <YAMLViewer
+                  content={yaml}
+                  onSave={handleApplyYAML}
+                />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Scale Dialog */}
+      {showScale && (
+        <div className="fixed inset-0 z-[70] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-xs overflow-hidden">
+            <div className="p-6">
+              <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest mb-6">Scale Resource</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Target Replicas</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={scaleVal}
+                    onChange={e => setScaleVal(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-white/5 text-slate-900 dark:text-white text-sm font-bold py-3 px-4 rounded-2xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                    placeholder="0"
+                    autoFocus
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex bg-slate-50 dark:bg-white/5 p-4 gap-3">
+              <button
+                onClick={() => setShowScale(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleScale}
+                disabled={scaleLoading}
+                className="flex-1 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50 shadow-lg shadow-blue-500/20"
+              >
+                {scaleLoading ? 'Scaling...' : 'Confirm'}
+              </button>
             </div>
           </div>
         </div>
@@ -253,11 +298,20 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function StatusCard({ label, value, color }: { label: string, value: number, color: string }) {
   return (
-    <div className="flex items-baseline gap-2">
-      <dt className="text-xs text-slate-500 dark:text-slate-400 w-28 shrink-0">{label}</dt>
-      <dd className="text-xs text-slate-700 dark:text-slate-200">{value}</dd>
+    <div className="bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/5 rounded-2xl p-4 transition-colors">
+      <p className={`text-2xl font-black ${color} tracking-tight`}>{value}</p>
+      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widst mt-1">{label}</p>
+    </div>
+  )
+}
+
+function InfoRow({ label, value, mono }: { label: string, value: string, mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{label}</span>
+      <span className={`text-[11px] font-bold text-slate-300 ${mono ? 'font-mono' : ''}`}>{value || '—'}</span>
     </div>
   )
 }

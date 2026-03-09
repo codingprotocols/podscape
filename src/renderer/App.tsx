@@ -21,6 +21,13 @@ import RoleDetail from './components/RoleDetail'
 import ReplicaSetDetail from './components/ReplicaSetDetail'
 import NamespaceDetail from './components/NamespaceDetail'
 import CRDDetail from './components/CRDDetail'
+import PDBDetail from './components/PDBDetail'
+import IngressClassDetail from './components/IngressClassDetail'
+import NetworkPolicyDetail from './components/NetworkPolicyDetail'
+import EndpointsDetail from './components/EndpointsDetail'
+import StorageClassDetail from './components/StorageClassDetail'
+import PVDetail from './components/PVDetail'
+import SADetail from './components/SADetail'
 import HelmPanel from './components/HelmPanel'
 import PortForwardPanel from './components/PortForwardPanel'
 import EventsView from './components/EventsView'
@@ -39,6 +46,8 @@ import type {
   KubeService, KubeIngress, KubeNode, KubeCRD,
   KubeConfigMap, KubeSecret, KubeHPA, KubePVC, KubeRoleBinding, KubeClusterRoleBinding,
   KubeRole, KubeClusterRole, KubeReplicaSet, KubeNamespace,
+  KubePDB, KubeIngressClass, KubeNetworkPolicy, KubeEndpoints,
+  KubeStorageClass, KubePV, KubeServiceAccount,
   AnyKubeResource
 } from './types'
 
@@ -172,6 +181,27 @@ function DetailPanel({ resource, section }: { resource: AnyKubeResource; section
       break
     case 'hpas':
       content = <HPADetail hpa={resource as KubeHPA} />
+      break
+    case 'pdbs':
+      content = <PDBDetail pdb={resource as KubePDB} />
+      break
+    case 'ingressclasses':
+      content = <IngressClassDetail ic={resource as KubeIngressClass} />
+      break
+    case 'networkpolicies':
+      content = <NetworkPolicyDetail np={resource as KubeNetworkPolicy} />
+      break
+    case 'endpoints':
+      content = <EndpointsDetail ep={resource as KubeEndpoints} />
+      break
+    case 'storageclasses':
+      content = <StorageClassDetail sc={resource as KubeStorageClass} />
+      break
+    case 'pvs':
+      content = <PVDetail pv={resource as KubePV} />
+      break
+    case 'serviceaccounts':
+      content = <SADetail sa={resource as KubeServiceAccount} />
       break
     case 'pvcs':
       content = <PVCDetail pvc={resource as KubePVC} />

@@ -1,109 +1,207 @@
-import React from 'react'
+import React, { useState } from 'react'
 import type { KubeRoleBinding, KubeClusterRoleBinding } from '../types'
 import { formatAge } from '../types'
+import { useAppStore } from '../store'
+import { FileCode, X, Activity, Link as LinkIcon, Users, User, Box } from 'lucide-react'
+import YAMLViewer from './YAMLViewer'
 
 type Binding = KubeRoleBinding | KubeClusterRoleBinding
 
 export default function RoleBindingDetail({ binding }: { binding: Binding }) {
+  const { getYAML, applyYAML, refresh } = useAppStore()
+  const [yaml, setYaml] = useState<string | null>(null)
+  const [yamlLoading, setYamlLoading] = useState(false)
+  const [yamlError, setYamlError] = useState<string | null>(null)
+
   const isCluster = !binding.metadata.namespace
   const subjects = binding.subjects ?? []
 
+  const handleViewYAML = async () => {
+    setYaml(null); setYamlError(null); setYamlLoading(true)
+    try {
+      const kind = isCluster ? 'clusterrolebinding' : 'rolebinding'
+      const content = await getYAML(kind, binding.metadata.name, false, binding.metadata.namespace)
+      setYaml(content)
+    } catch (err) {
+      setYamlError((err as Error).message ?? 'Failed to fetch YAML')
+    } finally {
+      setYamlLoading(false)
+    }
+  }
+
+  const handleApplyYAML = async (newYaml: string) => {
+    try {
+      await applyYAML(newYaml)
+      refresh()
+      setYaml(null)
+    } catch (err) {
+      throw err
+    }
+  }
+
   return (
-    <div className="flex flex-col w-full h-full overflow-y-auto">
+    <div className="flex flex-col w-full h-full relative font-sans">
       {/* Header */}
-      <div className="px-6 py-6 border-b border-white/5 bg-white/5 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-violet-600/10 dark:bg-violet-500/20 flex items-center justify-center shrink-0">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-violet-600 dark:text-violet-400">
-              <path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-            </svg>
-          </div>
-          <div className="min-w-0 flex-1">
+      <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
+        <div className="flex items-start justify-between">
+          <div className="min-w-0">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white font-mono truncate">{binding.metadata.name}</h3>
             <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">
-              {isCluster ? 'cluster-wide' : binding.metadata.namespace} · {isCluster ? 'CRB' : 'RB'} · {formatAge(binding.metadata.creationTimestamp)} old
+              {isCluster ? 'CLUSTER-WIDE SCOPED' : `${binding.metadata.namespace} · ROLE BINDING`}
             </p>
           </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleViewYAML}
+              disabled={yamlLoading}
+              className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
+            >
+              <FileCode size={14} className="group-hover:text-blue-400 transition-colors" />
+              {yamlLoading ? 'Loading...' : 'YAML'}
+            </button>
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold outline outline-1 ${isCluster ? 'bg-purple-500/10 text-purple-400 outline-purple-500/20' : 'bg-violet-500/10 text-violet-400 outline-violet-500/20'}`}>
+              {isCluster ? 'CRB' : 'RB'}
+            </span>
+          </div>
         </div>
       </div>
 
-      <div className="px-6 py-4 space-y-6">
-        {/* Role Ref card */}
-        <div>
-          <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4 px-1">Role Reference</p>
-          <div className="bg-violet-500/5 border border-violet-500/20 rounded-2xl px-5 py-4 space-y-3 shadow-[inset_0_0_20px_rgba(139,92,246,0.05)]">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black text-violet-400/60 uppercase tracking-widest">Kind</span>
-              <span className="text-xs font-black text-violet-400 uppercase tracking-wider">{binding.roleRef.kind}</span>
+      <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
+        <div className="space-y-8">
+          {/* Role Ref */}
+          <section>
+            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <LinkIcon size={12} /> Role Reference
+            </h4>
+            <div className="bg-violet-500/5 border border-violet-500/10 rounded-2xl p-5 shadow-[inset_0_0_25px_rgba(139,92,246,0.03)] group">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative">
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-[9px] font-black text-violet-400/60 uppercase tracking-widest mb-1.5">Reference Kind</p>
+                    <span className="text-sm font-black text-violet-400 uppercase tracking-widest">{binding.roleRef.kind}</span>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-black text-violet-400/60 uppercase tracking-widest mb-1.5">Target Name</p>
+                    <span className="text-xs font-bold text-slate-200 font-mono italic break-all underline decoration-violet-500/30 underline-offset-4">{binding.roleRef.name}</span>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-[9px] font-black text-violet-400/60 uppercase tracking-widest mb-1.5">API Group</p>
+                    <span className="text-[10px] font-bold text-slate-400 font-mono">{binding.roleRef.apiGroup || 'rbac.authorization.k8s.io'}</span>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-black text-violet-400/60 uppercase tracking-widest mb-1.5">Created</p>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{formatAge(binding.metadata.creationTimestamp)} ago</span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="flex items-center justify-between border-t border-violet-500/10 pt-3">
-              <span className="text-[10px] font-black text-violet-400/60 uppercase tracking-widest">Name</span>
-              <span className="text-xs font-bold text-slate-200 font-mono italic">{binding.roleRef.name}</span>
-            </div>
-            <div className="flex items-center justify-between border-t border-violet-500/10 pt-3">
-              <span className="text-[10px] font-black text-violet-400/60 uppercase tracking-widest">API Group</span>
-              <span className="text-[11px] font-medium text-slate-500 tabular-nums">{binding.roleRef.apiGroup || 'rbac.authorization.k8s.io'}</span>
-            </div>
-          </div>
-        </div>
+          </section>
 
-        {/* Subjects table */}
-        <div>
-          <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4 px-1">
-            Subjects ({subjects.length})
-          </p>
-          {subjects.length === 0 ? (
-            <p className="text-xs text-slate-400 dark:text-slate-500 italic px-1">No subjects bound</p>
-          ) : (
-            <div className="rounded-2xl overflow-hidden border border-white/5 bg-white/[0.02] shadow-[0_8px_32px_rgba(0,0,0,0.2)]">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-white/5 border-b border-white/10 backdrop-blur-xl">
-                    <th className="text-left px-4 py-3 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">Kind</th>
-                    <th className="text-left px-4 py-3 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">Name</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {subjects.map((s, i) => (
-                    <tr key={i} className="hover:bg-white/[0.03] transition-colors group">
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-widest
-                          ${s.kind === 'ServiceAccount' ? 'bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20'
-                            : s.kind === 'User' ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20'
-                              : 'bg-orange-500/10 text-orange-400 ring-1 ring-orange-500/20'}`}>
-                          {s.kind}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="font-bold text-slate-200 font-mono tracking-tight">{s.name}</span>
-                          {s.namespace && <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{s.namespace}</span>}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {/* Subjects */}
+          <section>
+            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <Users size={12} /> Bound Subjects ({subjects.length})
+            </h4>
+            <div className="space-y-3">
+              {subjects.map((s, i) => (
+                <div key={i} className="bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-2xl p-4 flex items-center gap-4 transition-all hover:bg-white/[0.04]">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${s.kind === 'ServiceAccount' ? 'bg-blue-500/10 text-blue-400' :
+                      s.kind === 'User' ? 'bg-emerald-500/10 text-emerald-400' :
+                        'bg-orange-500/10 text-orange-400'
+                    }`}>
+                    {s.kind === 'ServiceAccount' ? <Box size={18} /> :
+                      s.kind === 'User' ? <User size={18} /> :
+                        <Users size={18} />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-xs font-bold text-slate-200 font-mono truncate">{s.name}</span>
+                      <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-lg border ${s.kind === 'ServiceAccount' ? 'bg-blue-500/5 text-blue-500/80 border-blue-500/10' :
+                          s.kind === 'User' ? 'bg-emerald-500/5 text-emerald-500/80 border-emerald-500/10' :
+                            'bg-orange-500/5 text-orange-500/80 border-orange-500/10'
+                        }`}>
+                        {s.kind.toUpperCase()}
+                      </span>
+                    </div>
+                    {s.namespace && (
+                      <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{s.namespace}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {subjects.length === 0 && (
+                <div className="text-center py-10 bg-slate-50 dark:bg-white/[0.01] rounded-3xl border border-dashed border-slate-200 dark:border-white/10">
+                  <p className="text-xs text-slate-500 font-medium italic">No subjects bound to this role</p>
+                </div>
+              )}
             </div>
+          </section>
+
+          {/* Labels */}
+          {binding.metadata.labels && (
+            <section>
+              <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4">Labels</h4>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(binding.metadata.labels).map(([k, v]) => (
+                  <span key={k} className="px-3 py-1.5 bg-white/[0.02] border border-white/5 rounded-xl text-[10px] font-bold font-mono text-slate-400">
+                    <span className="text-blue-400/70">{k}</span>={v}
+                  </span>
+                ))}
+              </div>
+            </section>
           )}
         </div>
+      </div>
 
-        {/* Labels */}
-        {binding.metadata.labels && Object.keys(binding.metadata.labels).length > 0 && (
-          <div>
-            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">Labels</p>
-            <div className="flex flex-wrap gap-1.5">
-              {Object.entries(binding.metadata.labels).map(([k, v]) => (
-                <span key={k} className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded-md text-[10px] font-mono">
-                  <span className="text-slate-400 dark:text-slate-500">{k}</span>
-                  <span className="text-slate-600 dark:text-slate-300">=</span>
-                  <span className="text-blue-600 dark:text-blue-400 font-semibold">{v}</span>
-                </span>
-              ))}
+      {/* Premium YAML Modal */}
+      {(yamlLoading || yaml !== null || yamlError !== null) && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200" role="dialog" aria-modal="true">
+          <div className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 dark:border-white/10 bg-white/5 backdrop-blur-xl shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
+                  {yamlLoading
+                    ? <div className="w-4 h-4 border-2 border-slate-400 border-t-blue-500 rounded-full animate-spin" />
+                    : <FileCode size={18} className="text-blue-500" />
+                  }
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest">
+                  {yamlLoading ? 'Loading YAML…' : `Edit — ${binding.metadata.name}`}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors focus:outline-none"
+              >
+                <X size={20} strokeWidth={2.5} />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 bg-slate-950">
+              {yamlError ? (
+                <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center">
+                  <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center mb-2">
+                    <Activity size={20} className="text-red-400" />
+                  </div>
+                  <p className="text-sm font-bold text-red-400 uppercase tracking-widest">Failed to load manifest</p>
+                  <pre className="text-xs text-slate-400 max-w-lg break-words whitespace-pre-wrap font-mono bg-white/5 p-4 rounded-xl border border-white/5">{yamlError}</pre>
+                </div>
+              ) : yamlLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+                </div>
+              ) : yaml !== null ? (
+                <YAMLViewer
+                  content={yaml}
+                  onSave={handleApplyYAML}
+                />
+              ) : null}
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
