@@ -3,7 +3,7 @@ import { promisify } from 'util'
 import { existsSync } from 'fs'
 import { ipcMain } from 'electron'
 import { getAugmentedEnv } from './env'
-import { getSettings } from './settings'
+import { getSettings } from './settings_storage'
 
 const execFileAsync = promisify(execFile)
 

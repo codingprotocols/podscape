@@ -71,6 +71,7 @@ export const setupMocks = () => {
             rolloutRestart: vi.fn(),
             deleteResource: vi.fn(),
             getYAML: vi.fn(),
+            execCommand: vi.fn(),
             applyYAML: vi.fn(),
             portForward: vi.fn(),
             stopPortForward: vi.fn(),

@@ -47,6 +47,7 @@ const ICONS = {
   extension: 'M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z',
   settings: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z',
   network: 'M12 5a2 2 0 100-4 2 2 0 000 4zm-7 7a2 2 0 100-4 2 2 0 000 4zm14 0a2 2 0 100-4 2 2 0 000 4zm-7 7a2 2 0 100-4 2 2 0 000 4zM5 12H2m10-7V2m7 10h3M12 17v3M7.05 7.05L5 5m9.95 2.05L17 5M7.05 16.95L5 19m9.95-2.05L17 19',
+  connectivity: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
   helm: 'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16zM12 22.08V12M3.27 6.96L12 12.01l8.73-5.05',
   dashboard: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6',
   chevronDown: 'M6 9l6 6 6-6',
@@ -193,7 +194,8 @@ function RailBtn({
 
 export default function Sidebar(): JSX.Element {
   const {
-    contexts, selectedContext, hotbarContexts, toggleHotbarContext,
+    contexts, selectedContext, starredContext, setStarredContext,
+    hotbarContexts, toggleHotbarContext,
     namespaces, selectedNamespace,
     loadingContexts, loadingNamespaces,
     selectContext, selectNamespace, error, clearError,
@@ -231,7 +233,11 @@ export default function Sidebar(): JSX.Element {
   }, [isResizing, setNavWidth])
 
   const contextNames = new Set(contexts.map(c => c.name))
-  const hotbarValid = hotbarContexts.filter(c => contextNames.has(c))
+  // While contexts are loading (or if they failed to load), show all saved hotbar
+  // entries rather than filtering against an empty set and showing nothing.
+  const hotbarValid = loadingContexts || contexts.length === 0
+    ? hotbarContexts
+    : hotbarContexts.filter(c => contextNames.has(c))
   // Contexts not already visible in the rail (not hotbarred and not the current active)
   const otherContexts = contexts.filter(c =>
     !hotbarContexts.includes(c.name) && c.name !== selectedContext
@@ -276,8 +282,10 @@ export default function Sidebar(): JSX.Element {
                 <ClusterAvatar
                   name={selectedContext}
                   active={true}
+                  starred={starredContext === selectedContext}
                   onClick={() => selectContext(selectedContext)}
                   onTogglePin={() => toggleHotbarContext(selectedContext)}
+                  onToggleStar={() => setStarredContext(starredContext === selectedContext ? null : selectedContext)}
                   pinned={false}
                 />
               )}
@@ -287,8 +295,10 @@ export default function Sidebar(): JSX.Element {
                   key={name}
                   name={name}
                   active={selectedContext === name}
+                  starred={starredContext === name}
                   onClick={() => selectContext(name)}
                   onTogglePin={() => toggleHotbarContext(name)}
+                  onToggleStar={() => setStarredContext(starredContext === name ? null : name)}
                   pinned={true}
                 />
               ))}
@@ -420,6 +430,7 @@ export default function Sidebar(): JSX.Element {
             <NavItem label="Endpoints" section="endpoints" icon={ICONS.endpoints} />
             <NavItem label="Port Forwards" section="portforwards" icon={ICONS.portforward} />
             <NavItem label="Network Map" section="network" icon={ICONS.network} />
+            <NavItem label="Connectivity" section="connectivity" icon={ICONS.connectivity} />
           </NavGroup>
 
           <NavGroup title="Config">
@@ -475,12 +486,14 @@ export default function Sidebar(): JSX.Element {
 // ─── Cluster Avatar ───────────────────────────────────────────────────────────
 
 function ClusterAvatar({
-  name, active, onClick, onTogglePin, pinned
+  name, active, starred, onClick, onTogglePin, onToggleStar, pinned
 }: {
   name: string
   active: boolean
+  starred: boolean
   onClick: () => void
   onTogglePin: () => void
+  onToggleStar: () => void
   pinned: boolean
 }) {
   const [menu, setMenu] = useState<{ top: number; left: number } | null>(null)
@@ -515,9 +528,9 @@ function ClusterAvatar({
           }`}
       >
         {clusterInitials(name)}
-        {pinned && !active && (
-          <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-amber-500 border-2 border-[#020617] flex items-center justify-center shadow-lg">
-            <svg width="6" height="6" viewBox="0 0 24 24" fill="white"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+        {starred && (
+          <div className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-blue-500 border-2 border-[#020617] flex items-center justify-center shadow-lg z-10 animate-in fade-in scale-in duration-300">
+            <svg width="7" height="7" viewBox="0 0 24 24" fill="white"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
           </div>
         )}
       </button>
@@ -568,6 +581,17 @@ function ClusterAvatar({
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
               </svg>
               {pinned ? 'Unpin from Hotbar' : 'Pin to Hotbar'}
+            </button>
+            <button
+              onClick={() => { onToggleStar(); setMenu(null) }}
+              className="flex items-center gap-3 w-full px-4 py-3 text-[12px] text-slate-300
+                         hover:bg-white/10 hover:text-white transition-all font-semibold"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill={starred ? 'currentColor' : 'none'}
+                stroke="currentColor" strokeWidth="2.5" className={starred ? 'text-blue-400' : 'text-slate-400'}>
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              </svg>
+              {starred ? 'Remove Default' : 'Set as Default'}
             </button>
           </div>
         </>

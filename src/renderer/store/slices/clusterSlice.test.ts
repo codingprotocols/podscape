@@ -82,7 +82,7 @@ describe('clusterSlice', () => {
         const slice = createClusterSlice(set, get, {} as any)
         const promise = slice.selectContext('my-ctx')
 
-        vi.advanceTimersByTime(8001)
+        vi.advanceTimersByTime(30001)
 
         await expect(promise).resolves.toBeUndefined() // It catches internally and sets error
         expect(set).toHaveBeenCalledWith(expect.objectContaining({

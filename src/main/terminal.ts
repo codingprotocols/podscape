@@ -3,7 +3,7 @@ import { homedir } from 'os'
 import { existsSync } from 'fs'
 import { getAugmentedEnv } from './env'
 import { findKubectl } from './kubectl'
-import { getSettings } from './settings'
+import { getSettings } from './settings_storage'
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pty = require('node-pty') as typeof import('node-pty')

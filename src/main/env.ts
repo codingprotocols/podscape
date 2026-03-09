@@ -1,4 +1,6 @@
 import { homedir } from 'os'
+import { join } from 'path'
+import { getSettings } from './settings_storage'
 
 /**
  * Build a clean env object for subprocesses.
@@ -30,5 +32,8 @@ export function getAugmentedEnv(extra: Record<string, string> = {}): Record<stri
         base.PATH = existing.join(':')
     }
 
-    return { ...base, HOME: homedir(), ...extra }
+    const { kubeconfigPath } = getSettings()
+    const kubecfg = kubeconfigPath || process.env.KUBECONFIG || join(homedir(), '.kube', 'config')
+
+    return { ...base, HOME: homedir(), KUBECONFIG: kubecfg, ...extra }
 }

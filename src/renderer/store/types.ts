@@ -55,6 +55,7 @@ declare global {
             deleteResource: (context: string, namespace: string | null, kind: string, name: string) => Promise<string>
             getYAML: (context: string, namespace: string | null, kind: string, name: string) => Promise<string>
             getSecretValue: (context: string, namespace: string, name: string, key: string) => Promise<string>
+            execCommand: (context: string, namespace: string, pod: string, container: string, command: string[]) => Promise<{ stdout: string; exitCode: number }>
             applyYAML: (context: string, yaml: string) => Promise<string>
             streamLogs: (
                 context: string, namespace: string, pod: string, container: string | undefined,
@@ -95,8 +96,16 @@ declare global {
             list: () => Promise<Plugin[]>
         }
         settings: {
-            get: () => Promise<{ kubectlPath: string; shellPath: string; helmPath: string; theme: string }>
-            set: (s: { kubectlPath: string; shellPath: string; helmPath: string; theme: string }) => Promise<void>
+            get: () => Promise<{ kubectlPath: string; shellPath: string; helmPath: string; theme: string; kubeconfigPath: string }>
+            set: (s: { kubectlPath: string; shellPath: string; helmPath: string; theme: string; kubeconfigPath: string }) => Promise<void>
+            checkTools: () => Promise<{ kubectlOk: boolean; helmOk: boolean; kubeconfigOk: boolean }>
+        }
+        kubeconfig: {
+            get: () => Promise<{ path: string; content: string }>
+            set: (content: string) => Promise<void>
+            reveal: () => Promise<void>
+            selectPath: () => Promise<string | null>
+            clearPath: () => Promise<void>
         }
     }
 }
@@ -122,11 +131,16 @@ export interface AppStore {
     // Cluster selection
     contexts: KubeContextEntry[]
     selectedContext: string | null
+    starredContext: string | null
+    setStarredContext: (name: string | null) => void
     hotbarContexts: string[]
     toggleHotbarContext: (contextName: string) => void
     namespaces: KubeNamespace[]
     selectedNamespace: string | null
     selectedResource: AnyKubeResource | null
+    kubectlOk: boolean
+    helmOk: boolean
+    kubeconfigOk: boolean
 
     // Resources
     pods: KubePod[]
