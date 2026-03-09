@@ -36,13 +36,12 @@ export default function NodeDetail({ node }: Props): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col w-[440px] min-w-[340px] border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 h-full overflow-y-auto">
+    <div className="flex flex-col w-full h-full overflow-y-auto">
       <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-mono flex-1 truncate">{node.metadata.name}</h3>
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${
-            ready ? 'bg-green-500/20 text-green-300 ring-green-500/30' : 'bg-red-500/20 text-red-300 ring-red-500/30'
-          }`}>
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${ready ? 'bg-green-500/20 text-green-300 ring-green-500/30' : 'bg-red-500/20 text-red-300 ring-red-500/30'
+            }`}>
             {ready ? 'Ready' : 'NotReady'}
           </span>
         </div>
@@ -124,11 +123,10 @@ export default function NodeDetail({ node }: Props): JSX.Element {
           <div className="space-y-1">
             {node.status.conditions.map(c => (
               <div key={c.type} className="flex items-center gap-2">
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                  (c.type === 'Ready' && c.status === 'True') ||
-                  (c.type !== 'Ready' && c.status === 'False')
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${(c.type === 'Ready' && c.status === 'True') ||
+                    (c.type !== 'Ready' && c.status === 'False')
                     ? 'bg-green-400' : 'bg-red-400'
-                }`} />
+                  }`} />
                 <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">{c.type}</span>
                 {c.reason && <span className="text-xs text-slate-500 dark:text-slate-400 truncate">— {c.reason}</span>}
               </div>

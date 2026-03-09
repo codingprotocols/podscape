@@ -7,10 +7,6 @@ interface Props {
   pod: KubePod
 }
 
-const MIN_WIDTH = 360
-const MAX_WIDTH = 900
-const DEFAULT_WIDTH = 460
-
 export default function PodDetail({ pod }: Props): JSX.Element {
   const { selectedContext, selectedNamespace, openExec } = useAppStore()
   const [logs, setLogs] = useState<string[]>([])
@@ -20,14 +16,10 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const [copyMsg, setCopyMsg] = useState('')
   const [selectedContainer, setSelectedContainer] = useState(pod.spec.containers[0]?.name ?? '')
   const [search, setSearch] = useState('')
-  const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH)
   const [logFullscreen, setLogFullscreen] = useState(false)
   const logContainerRef = useRef<HTMLPreElement>(null)
   const fsLogContainerRef = useRef<HTMLPreElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const draggingRef = useRef(false)
-  const dragStartXRef = useRef(0)
-  const dragStartWidthRef = useRef(0)
   // Use a ref for activeStreamId so cleanup effects always have the latest value
   const activeStreamIdRef = useRef<string | null>(null)
   const isMountedRef = useRef(true)
@@ -107,29 +99,6 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     fsLogContainerRef.current && (fsLogContainerRef.current.scrollTop = fsLogContainerRef.current.scrollHeight)
   }, [logs, autoScroll])
 
-  // ── Panel resize (drag left edge) ─────────────────────────────────────────
-
-  const onResizeMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    draggingRef.current = true
-    dragStartXRef.current = e.clientX
-    dragStartWidthRef.current = panelWidth
-
-    const onMove = (mv: MouseEvent) => {
-      if (!draggingRef.current) return
-      // Dragging LEFT increases width; dragging RIGHT decreases
-      const delta = dragStartXRef.current - mv.clientX
-      const next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, dragStartWidthRef.current + delta))
-      setPanelWidth(next)
-    }
-    const onUp = () => {
-      draggingRef.current = false
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-    }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-  }, [panelWidth])
 
   const phase = pod.status.phase ?? 'Unknown'
   const filteredLogs = search
@@ -195,11 +164,11 @@ export default function PodDetail({ pod }: Props): JSX.Element {
           >
             {logFullscreen
               ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                  <path d="M8 3v3a2 2 0 01-2 2H3M21 8h-3a2 2 0 01-2-2V3M3 16h3a2 2 0 012 2v3M16 21v-3a2 2 0 012-2h3"/>
-                </svg>
+                <path d="M8 3v3a2 2 0 01-2 2H3M21 8h-3a2 2 0 01-2-2V3M3 16h3a2 2 0 012 2v3M16 21v-3a2 2 0 012-2h3" />
+              </svg>
               : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                  <path d="M8 3H5a2 2 0 00-2 2v3M21 8V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3M16 21h3a2 2 0 002-2v-3"/>
-                </svg>
+                <path d="M8 3H5a2 2 0 00-2 2v3M21 8V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3M16 21h3a2 2 0 002-2v-3" />
+              </svg>
             }
           </button>
           {isStreaming ? (
@@ -219,7 +188,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
                          bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30
                          rounded-lg transition-all active:scale-95 border border-blue-100 dark:border-blue-900/30"
             >
-              <svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor"><path d="M2 1.5l7 3.5-7 3.5V1.5z"/></svg>
+              <svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor"><path d="M2 1.5l7 3.5-7 3.5V1.5z" /></svg>
               LOAD LOGS
             </button>
           )}
@@ -229,7 +198,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
         <div className="relative">
           <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-600 pointer-events-none"
             width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+            <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
           </svg>
           <input
             type="text"
@@ -243,7 +212,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
           {search && (
             <button onClick={() => setSearch('')}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><path d="M18 6L6 18M6 6l12 12"/></svg>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><path d="M18 6L6 18M6 6l12 12" /></svg>
             </button>
           )}
         </div>
@@ -267,15 +236,15 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     >
       {filteredLogs.length === 0
         ? (isStreaming
-            ? <span className="text-slate-600 animate-pulse"># Waiting for logs…{'\n'}</span>
-            : logs.length > 0
-              ? <span className="text-slate-600"># No lines match search{'\n'}</span>
-              : <span className="text-slate-600"># Press LOAD LOGS to stream logs{'\n'}</span>
-          )
+          ? <span className="text-slate-600 animate-pulse"># Waiting for logs…{'\n'}</span>
+          : logs.length > 0
+            ? <span className="text-slate-600"># No lines match search{'\n'}</span>
+            : <span className="text-slate-600"># Press LOAD LOGS to stream logs{'\n'}</span>
+        )
         : search
           ? filteredLogs.map((line, i) => (
-              <LogLine key={i} line={line} search={search} />
-            ))
+            <LogLine key={i} line={line} search={search} />
+          ))
           : filteredLogs.join('\n')
       }
     </pre>
@@ -308,7 +277,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
           title="Exit fullscreen (Esc)"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-            <path d="M8 3v3a2 2 0 01-2 2H3M21 8h-3a2 2 0 01-2-2V3M3 16h3a2 2 0 012 2v3M16 21v-3a2 2 0 012-2h3"/>
+            <path d="M8 3v3a2 2 0 01-2 2H3M21 8h-3a2 2 0 01-2-2V3M3 16h3a2 2 0 012 2v3M16 21v-3a2 2 0 012-2h3" />
           </svg>
         </button>
       </div>
@@ -351,15 +320,8 @@ export default function PodDetail({ pod }: Props): JSX.Element {
 
       <div
         ref={panelRef}
-        className="flex flex-col border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-full transition-colors duration-200 relative"
-        style={{ width: panelWidth, minWidth: MIN_WIDTH, maxWidth: MAX_WIDTH }}
+        className="flex flex-col bg-white dark:bg-slate-950 h-full transition-colors duration-200 relative w-full"
       >
-        {/* Drag resize handle (left edge) */}
-        <div
-          onMouseDown={onResizeMouseDown}
-          className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-blue-500/40 active:bg-blue-500/60 transition-colors"
-          title="Drag to resize"
-        />
 
         {/* Header */}
         <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-900 shrink-0">

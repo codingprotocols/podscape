@@ -54,7 +54,7 @@ export default function CronJobDetail({ cronJob: c }: Props): JSX.Element {
   }, [tab, c.metadata.uid])
 
   return (
-    <div className="flex flex-col w-[440px] min-w-[340px] border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 h-full overflow-y-auto">
+    <div className="flex flex-col w-full h-full overflow-y-auto">
       {/* Header */}
       <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
         <div className="flex items-start gap-2">
@@ -62,11 +62,10 @@ export default function CronJobDetail({ cronJob: c }: Props): JSX.Element {
             <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-mono truncate">{c.metadata.name}</h3>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{c.metadata.namespace}</p>
           </div>
-          <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${
-            isSuspended
+          <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${isSuspended
               ? 'bg-slate-500/20 text-slate-400 dark:text-slate-500 ring-gray-500/30'
               : 'bg-green-500/20 text-green-300 ring-green-500/30'
-          }`}>
+            }`}>
             {isSuspended ? 'Suspended' : 'Active'}
           </span>
         </div>
@@ -82,9 +81,8 @@ export default function CronJobDetail({ cronJob: c }: Props): JSX.Element {
       <div className="flex border-b border-slate-100 dark:border-slate-800 shrink-0">
         {(['overview', 'events'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 text-xs font-medium capitalize transition-colors ${
-              tab === t ? 'text-blue-400 border-b-2 border-blue-500' : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:text-slate-300'
-            }`}>
+            className={`px-4 py-2 text-xs font-medium capitalize transition-colors ${tab === t ? 'text-blue-400 border-b-2 border-blue-500' : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:text-slate-300'
+              }`}>
             {t}
           </button>
         ))}
@@ -158,9 +156,8 @@ export default function CronJobDetail({ cronJob: c }: Props): JSX.Element {
           ) : (
             <div className="space-y-2">
               {events.map((e, i) => (
-                <div key={e.metadata.uid || i} className={`rounded p-2 text-xs ${
-                  e.type === 'Warning' ? 'bg-yellow-500/10 border border-yellow-500/20' : 'bg-white/5 border border-slate-100 dark:border-slate-800'
-                }`}>
+                <div key={e.metadata.uid || i} className={`rounded p-2 text-xs ${e.type === 'Warning' ? 'bg-yellow-500/10 border border-yellow-500/20' : 'bg-white/5 border border-slate-100 dark:border-slate-800'
+                  }`}>
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <span className={`font-medium ${e.type === 'Warning' ? 'text-yellow-300' : 'text-slate-600 dark:text-slate-300'}`}>{e.reason}</span>
                     <span className="text-slate-500 dark:text-slate-400 text-[10px]">{e.count ? `×${e.count}` : ''}</span>

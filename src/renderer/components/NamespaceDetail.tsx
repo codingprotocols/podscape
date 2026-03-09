@@ -32,10 +32,10 @@ export default function NamespaceDetail({ namespace: ns }: Props): JSX.Element {
 
   const phase = ns.status.phase
   const phaseColor = phase === 'Active'
-    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
     : phase === 'Terminating'
-    ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
-    : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+      ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+      : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
 
   useEffect(() => {
     if (!selectedContext || tab !== 'events') return
@@ -44,7 +44,7 @@ export default function NamespaceDetail({ namespace: ns }: Props): JSX.Element {
   }, [tab, ns.metadata.uid, selectedContext])
 
   return (
-    <div className="flex flex-col w-[520px] min-w-[400px] border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 h-full shadow-2xl transition-colors duration-200">
+    <div className="flex flex-col w-full h-full transition-colors duration-200">
       {/* Header */}
       <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
         <div className="flex items-start justify-between gap-3 mb-4">
@@ -61,11 +61,10 @@ export default function NamespaceDetail({ namespace: ns }: Props): JSX.Element {
         <div className="flex gap-1 -mb-px">
           {(['overview', 'events'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-t-lg border-b-2 transition-colors capitalize ${
-                tab === t
+              className={`px-3 py-1.5 text-xs font-semibold rounded-t-lg border-b-2 transition-colors capitalize ${tab === t
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-              }`}
+                }`}
             >{t}</button>
           ))}
         </div>
@@ -115,11 +114,10 @@ export default function NamespaceDetail({ namespace: ns }: Props): JSX.Element {
             ) : (
               <div className="space-y-2">
                 {events.map((ev, i) => (
-                  <div key={i} className={`rounded-lg px-3 py-2 text-xs ${
-                    ev.type === 'Warning'
+                  <div key={i} className={`rounded-lg px-3 py-2 text-xs ${ev.type === 'Warning'
                       ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40'
                       : 'bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800'
-                  }`}>
+                    }`}>
                     <div className="flex items-center justify-between gap-2 mb-0.5">
                       <span className={`font-bold text-[10px] uppercase ${ev.type === 'Warning' ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400 dark:text-slate-500'}`}>{ev.reason}</span>
                       <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">{ev.lastTimestamp ? formatAge(ev.lastTimestamp) + ' ago' : ''}</span>

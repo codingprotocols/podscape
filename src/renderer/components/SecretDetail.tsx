@@ -45,7 +45,7 @@ export default function SecretDetail({ secret: sec }: Props): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col w-[440px] min-w-[340px] border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 h-full">
+    <div className="flex flex-col w-full h-full">
       <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-mono truncate">{sec.metadata.name}</h3>
         <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
@@ -81,8 +81,8 @@ export default function SecretDetail({ secret: sec }: Props): JSX.Element {
                       {state.status === 'loading'
                         ? '⏳ Loading…'
                         : isRevealed
-                        ? '🙈 Hide'
-                        : '👁 Reveal'}
+                          ? '🙈 Hide'
+                          : '👁 Reveal'}
                     </button>
                   </div>
                   <div className="px-3 py-2">

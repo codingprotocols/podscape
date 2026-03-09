@@ -87,54 +87,120 @@ const LIST_SECTIONS = [
   'nodes', 'namespaces', 'crds'
 ]
 
-function DetailPanel({ resource, section }: { resource: AnyKubeResource; section: string }) {
-  switch (section) {
-    case 'pods':
-      return <PodDetail pod={resource as KubePod} />
-    case 'deployments':
-      return <DeploymentDetail deployment={resource as KubeDeployment} />
-    case 'statefulsets':
-      return <StatefulSetDetail statefulSet={resource as KubeStatefulSet} />
-    case 'jobs':
-      return <JobDetail job={resource as KubeJob} />
-    case 'cronjobs':
-      return <CronJobDetail cronJob={resource as KubeCronJob} />
-    case 'ingresses':
-      return <IngressDetail ingress={resource as KubeIngress} />
-    case 'daemonsets':
-      return <DaemonSetDetail daemonSet={resource as KubeDaemonSet} />
-    case 'services':
-      return <ServiceDetail service={resource as KubeService} />
-    case 'nodes':
-      return <NodeDetail node={resource as KubeNode} />
-    case 'configmaps':
-      return <ConfigMapDetail configMap={resource as KubeConfigMap} />
-    case 'secrets':
-      return <SecretDetail secret={resource as KubeSecret} />
-    case 'hpas':
-      return <HPADetail hpa={resource as KubeHPA} />
-    case 'pvcs':
-      return <PVCDetail pvc={resource as KubePVC} />
-    case 'replicasets':
-      return <ReplicaSetDetail replicaSet={resource as KubeReplicaSet} />
-    case 'rolebindings':
-      return <RoleBindingDetail binding={resource as KubeRoleBinding} />
-    case 'clusterrolebindings':
-      return <RoleBindingDetail binding={resource as KubeClusterRoleBinding} />
-    case 'roles':
-      return <RoleDetail role={resource as KubeRole} clusterScoped={false} />
-    case 'clusterroles':
-      return <RoleDetail role={resource as KubeClusterRole} clusterScoped={true} />
-    case 'namespaces':
-      return <NamespaceDetail namespace={resource as KubeNamespace} />
-    default:
-      return <DefaultDetail resource={resource} />
-  }
+function DetailPanelContainer({ children }: { children: React.ReactNode }) {
+  const { detailWidth, setDetailWidth } = useAppStore()
+  const [isResizing, setIsResizing] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!isResizing) return
+
+    const onMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.max(380, Math.min(window.innerWidth - 300, window.innerWidth - e.clientX))
+      setDetailWidth(newWidth)
+    }
+
+    const onMouseUp = () => {
+      setIsResizing(false)
+      document.body.style.cursor = 'default'
+    }
+
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+    document.body.style.cursor = 'col-resize'
+
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      document.body.style.cursor = 'default'
+    }
+  }, [isResizing, setDetailWidth])
+
+  return (
+    <div
+      className="relative flex flex-col border-l border-slate-200 dark:border-white/20 glass-heavy h-full shadow-2xl animate-in slide-in-from-right-4 z-50"
+      style={{ width: `${detailWidth}px` }}
+    >
+      <div
+        onMouseDown={() => setIsResizing(true)}
+        className="resize-handle-v left-0"
+      />
+      {children}
+    </div>
+  )
 }
 
-function DefaultDetail({ resource }: { resource: AnyKubeResource }) {
+function DetailPanel({ resource, section }: { resource: AnyKubeResource; section: string }) {
+  let content: React.ReactNode
+
+  switch (section) {
+    case 'pods':
+      content = <PodDetail pod={resource as KubePod} />
+      break
+    case 'deployments':
+      content = <DeploymentDetail deployment={resource as KubeDeployment} />
+      break
+    case 'statefulsets':
+      content = <StatefulSetDetail statefulSet={resource as KubeStatefulSet} />
+      break
+    case 'jobs':
+      content = <JobDetail job={resource as KubeJob} />
+      break
+    case 'cronjobs':
+      content = <CronJobDetail cronJob={resource as KubeCronJob} />
+      break
+    case 'ingresses':
+      content = <IngressDetail ingress={resource as KubeIngress} />
+      break
+    case 'daemonsets':
+      content = <DaemonSetDetail daemonSet={resource as KubeDaemonSet} />
+      break
+    case 'services':
+      content = <ServiceDetail service={resource as KubeService} />
+      break
+    case 'nodes':
+      content = <NodeDetail node={resource as KubeNode} />
+      break
+    case 'configmaps':
+      content = <ConfigMapDetail configMap={resource as KubeConfigMap} />
+      break
+    case 'secrets':
+      content = <SecretDetail secret={resource as KubeSecret} />
+      break
+    case 'hpas':
+      content = <HPADetail hpa={resource as KubeHPA} />
+      break
+    case 'pvcs':
+      content = <PVCDetail pvc={resource as KubePVC} />
+      break
+    case 'replicasets':
+      content = <ReplicaSetDetail replicaSet={resource as KubeReplicaSet} />
+      break
+    case 'rolebindings':
+      content = <RoleBindingDetail binding={resource as KubeRoleBinding} />
+      break
+    case 'clusterrolebindings':
+      content = <RoleBindingDetail binding={resource as KubeClusterRoleBinding} />
+      break
+    case 'roles':
+      content = <RoleDetail role={resource as KubeRole} clusterScoped={false} />
+      break
+    case 'clusterroles':
+      content = <RoleDetail role={resource as KubeClusterRole} clusterScoped={true} />
+      break
+    case 'namespaces':
+      content = <NamespaceDetail namespace={resource as KubeNamespace} />
+      break
+    default:
+      content = <DefaultDetail resource={resource} section={section} />
+  }
+
+  return <DetailPanelContainer>{content}</DetailPanelContainer>
+}
+
+function DefaultDetail({ resource, section }: { resource: AnyKubeResource; section: string }) {
   const [yaml, setYaml] = React.useState<string | null>(null)
-  const { getYAML, applyYAML, refresh, section } = useAppStore()
+  const { getYAML, applyYAML, refresh } = useAppStore()
+
   const clusterScoped = ['nodes', 'namespaces', 'crds', 'ingressclasses', 'pvs', 'storageclasses', 'clusterroles', 'clusterrolebindings'].includes(section)
 
   useEffect(() => {
@@ -147,11 +213,14 @@ function DefaultDetail({ resource }: { resource: AnyKubeResource }) {
   }, [resource.metadata.uid, section])
 
   return (
-    <div className="flex flex-col w-[520px] min-w-[400px] border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 h-full shadow-2xl transition-colors duration-200">
-      <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
-        <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 font-mono truncate">{resource.metadata.name}</h3>
+    <>
+      <div className="px-8 py-6 border-b border-slate-200 dark:border-white/5 shrink-0 bg-white/5">
+        <div className="flex items-center gap-3 mb-1">
+          <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6]" />
+          <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 font-mono truncate tracking-tight">{resource.metadata.name}</h3>
+        </div>
         {resource.metadata.namespace && (
-          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-wider">{resource.metadata.namespace}</p>
+          <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.15em] ml-5">{resource.metadata.namespace}</p>
         )}
       </div>
       <div className="flex-1 min-h-0">
@@ -171,13 +240,13 @@ function DefaultDetail({ resource }: { resource: AnyKubeResource }) {
             />
           )
         ) : (
-          <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
-            <div className="w-5 h-5 border-2 border-slate-200 dark:border-slate-800 border-t-blue-500 rounded-full animate-spin" />
-            <span className="text-xs font-medium">Fetching YAML...</span>
+          <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-4">
+            <div className="w-6 h-6 border-2 border-slate-200 dark:border-slate-800 border-t-blue-500 rounded-full animate-spin" />
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] animate-pulse">Retrieving Manifest...</span>
           </div>
         )}
       </div>
-    </div>
+    </>
   )
 }
 
@@ -227,7 +296,7 @@ export default function App(): JSX.Element {
       </ErrorBoundary>
 
       {/* Main content */}
-      <div className="flex flex-1 min-w-0 min-h-0 bg-slate-50 dark:bg-slate-950/50 transition-colors duration-200">
+      <div className="flex flex-1 min-w-0 min-h-0 bg-slate-50 dark:bg-[hsl(var(--bg-dark))]">
         {section === 'dashboard' ? (
           <Dashboard />
         ) : section === 'terminal' ? (

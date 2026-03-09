@@ -134,7 +134,7 @@ function JobRow({ job }: { job: KubeJob }) {
       <td className="px-6 py-3">
         <Badge
           text={done ? 'Complete' : 'Running'}
-          cls={done ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 outline-blue-500/20' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 outline-amber-500/20'}
+          cls={done ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 outline-blue-500/20' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 outline-amber-500/20'}
         />
       </td>
       <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-medium">{job.status.succeeded ?? 0}/{job.spec.completions ?? '?'}</td>
@@ -151,7 +151,7 @@ function CronJobRow({ cj }: { cj: KubeCronJob }) {
       <td className="px-6 py-3">
         <Badge
           text={cj.spec.suspend ? 'Suspended' : 'Active'}
-          cls={cj.spec.suspend ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 outline-slate-500/20' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 outline-emerald-500/20'}
+          cls={cj.spec.suspend ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 outline-slate-500/20' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 outline-emerald-500/20'}
         />
       </td>
       <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(cj.metadata.creationTimestamp)}</td>
@@ -219,7 +219,7 @@ function NodeRow({ node }: { node: KubeNode }) {
       <td className="px-6 py-3">
         <Badge
           text={ready ? 'Ready' : 'NotReady'}
-          cls={ready ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 outline-emerald-500/20' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 outline-red-500/20'}
+          cls={ready ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 outline-emerald-500/20' : 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400 outline-red-500/20'}
         />
       </td>
       <td className="px-6 py-3 text-xs text-slate-500 font-medium">{node.status.nodeInfo?.kubeletVersion ?? '—'}</td>
@@ -235,7 +235,7 @@ function NamespaceRow({ ns }: { ns: KubeNamespace }) {
       <td className="px-6 py-3">
         <Badge
           text={ns.status.phase}
-          cls={ns.status.phase === 'Active' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 outline-emerald-500/20' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 outline-slate-500/20'}
+          cls={ns.status.phase === 'Active' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 outline-emerald-500/20' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 outline-slate-500/20'}
         />
       </td>
       <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(ns.metadata.creationTimestamp)}</td>
@@ -314,7 +314,7 @@ function IngressClassRow({ ic }: { ic: KubeIngressClass }) {
       <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{ic.metadata.name}</td>
       <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono truncate max-w-[200px]">{ic.spec.controller ?? '—'}</td>
       <td className="px-6 py-3">
-        {isDefault && <Badge text="default" cls="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 outline-blue-500/20" />}
+        {isDefault && <Badge text="default" cls="bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 outline-blue-500/20" />}
       </td>
       <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(ic.metadata.creationTimestamp)}</td>
     </>
@@ -351,9 +351,9 @@ function PVCRow({ pvc }: { pvc: KubePVC }) {
   const phase = pvc.status.phase ?? 'Unknown'
   const capacity = Object.values(pvc.status.capacity ?? {})[0] ?? pvc.spec.resources?.requests?.storage ?? '—'
   const modes = (pvc.status.accessModes ?? pvc.spec.accessModes ?? []).join(', ')
-  const phaseCls = phase === 'Bound' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 outline-emerald-500/20'
-    : phase === 'Pending' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 outline-yellow-500/20'
-      : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 outline-red-500/20'
+  const phaseCls = phase === 'Bound' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 outline-emerald-500/20'
+    : phase === 'Pending' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400 outline-yellow-500/20'
+      : 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400 outline-red-500/20'
   return (
     <>
       <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[200px]">{pvc.metadata.name}</td>
@@ -369,8 +369,8 @@ function PVCRow({ pvc }: { pvc: KubePVC }) {
 function PVRow({ pv }: { pv: KubePV }) {
   const phase = pv.status.phase ?? 'Unknown'
   const capacity = Object.values(pv.spec.capacity ?? {})[0] as string ?? '—'
-  const phaseCls = phase === 'Bound' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 outline-emerald-500/20'
-    : phase === 'Available' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 outline-blue-500/20'
+  const phaseCls = phase === 'Bound' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 outline-emerald-500/20'
+    : phase === 'Available' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 outline-blue-500/20'
       : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 outline-slate-500/20'
   return (
     <>
@@ -525,7 +525,7 @@ function ResourceRow({ resource, section }: { resource: AnyKubeResource; section
 
 function Badge({ text, cls }: { text: string; cls: string }) {
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold outline outline-1 transition-all ${cls}`}>
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider outline outline-1 outline-offset-[-1px] shadow-sm transition-all ${cls}`}>
       {text}
     </span>
   )
@@ -667,45 +667,46 @@ export default function ResourceList(): JSX.Element {
     <div className="flex flex-col flex-1 min-w-0 bg-white dark:bg-slate-950 h-full transition-colors duration-200" onClick={() => setContextMenu(null)}>
       {restartError && (
         <div className="flex items-center justify-between gap-3 px-4 py-2 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800 shrink-0">
-          <p className="text-xs font-medium text-red-700 dark:text-red-300">{restartError}</p>
-          <button onClick={() => setRestartError(null)} className="text-red-500 hover:text-red-700 dark:hover:text-red-200 text-xs shrink-0">✕</button>
+          <p className="text-xs font-medium text-red-600 dark:text-red-400">{restartError}</p>
+          <button onClick={() => setRestartError(null)} className="text-red-500 hover:text-red-700 dark:hover:text-red-300 text-xs shrink-0">✕</button>
         </div>
       )}
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 dark:border-slate-800 shrink-0">
+      <div className="flex items-center justify-between px-8 py-7 border-b border-slate-200 dark:border-white/5 shrink-0 bg-white/5 backdrop-blur-md">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">{SECTION_LABELS[section] ?? section}</h2>
-          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">
+          <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight leading-none">{SECTION_LABELS[section] ?? section}</h2>
+          <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mt-2.5 flex items-center gap-2">
+            <span className="w-1 h-1 rounded-full bg-slate-400 dark:bg-slate-600" />
             {clusterScoped ? 'cluster-wide' : selectedNamespace === '_all' ? 'all namespaces' : (selectedNamespace ?? 'no namespace')}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+        <div className="flex items-center gap-4">
+          <div className="relative group">
             <input
               type="text"
-              placeholder="Search..."
+              placeholder="Filter resources..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-xs rounded-lg px-3 py-2 pl-8
+              className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] font-bold rounded-xl px-4 py-2.5 pl-10
                          border border-transparent focus:border-blue-500/50 focus:outline-none focus:ring-4 focus:ring-blue-500/10 
-                         w-48 transition-all placeholder-slate-400 dark:placeholder-slate-500"
+                         w-64 transition-all placeholder-slate-400 dark:placeholder-slate-600"
             />
-            <div className="absolute left-2.5 top-2.5 text-slate-400">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
             </div>
           </div>
 
           <button
             onClick={refresh}
             disabled={loadingResources}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300
-                       bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg shadow-sm
-                       disabled:opacity-50 border border-slate-200 dark:border-slate-800 transition-all active:scale-95"
+            className="flex items-center gap-2 px-5 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300
+                       glass-panel hover:bg-white/10 dark:hover:bg-white/5 rounded-xl shadow-sm
+                       disabled:opacity-50 active:scale-95"
           >
-            <span className={`transition-transform duration-500 ${loadingResources ? 'animate-spin' : ''}`}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6m12 6a9 9 0 0 1-15-6.7L3 16" /></svg>
+            <span className={`transition-transform duration-700 ${loadingResources ? 'animate-spin' : ''}`}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6m12 6a9 9 0 0 1-15-6.7L3 16" /></svg>
             </span>
-            Refresh
+            Sync
           </button>
         </div>
       </div>
@@ -728,19 +729,19 @@ export default function ResourceList(): JSX.Element {
           </div>
         ) : (
           <table className="w-full text-sm border-collapse">
-            <thead className="sticky top-0 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md z-10">
-              <tr className="border-b border-slate-100 dark:border-slate-800">
+            <thead className="sticky top-0 bg-white/70 dark:bg-slate-950/70 backdrop-blur-md z-10">
+              <tr className="border-b border-slate-100 dark:border-white/5">
                 {cols.map(col => (
-                  <th key={col} className="text-left px-6 py-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                  <th key={col} className="text-left px-8 py-5 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.15em]">
                     {col}
                   </th>
                 ))}
                 {showNsCol && (
-                  <th className="text-left px-6 py-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                  <th className="text-left px-8 py-5 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.15em]">
                     Namespace
                   </th>
                 )}
-                <th className="w-12" />
+                <th className="w-14" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50 dark:divide-slate-900">
@@ -752,9 +753,9 @@ export default function ResourceList(): JSX.Element {
                     key={uid}
                     onClick={() => selectResource(isSelected ? null : resource)}
                     onContextMenu={e => handleContextMenu(e, resource)}
-                    className={`group cursor-pointer transition-all duration-150 ${isSelected
-                      ? 'bg-blue-50 dark:bg-blue-900/10'
-                      : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/30'
+                    className={`group cursor-pointer transition-colors duration-200 relative ${isSelected
+                      ? 'bg-blue-600/10 border-l-[3px] border-blue-500 shadow-[inset_4px_0_12px_-4px_rgba(59,130,246,0.3)]'
+                      : 'hover:bg-slate-100/50 dark:hover:bg-white/[0.03] border-l-[3px] border-transparent'
                       }`}
                   >
                     <ResourceRow resource={resource} section={section} />
@@ -780,204 +781,216 @@ export default function ResourceList(): JSX.Element {
       </div>
 
       {/* Context menu */}
-      {contextMenu && (
-        <div
-          className="fixed z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl py-1.5 min-w-[180px] animate-in fade-in zoom-in duration-100"
-          style={{ left: Math.min(contextMenu.x, window.innerWidth - 200), top: Math.min(contextMenu.y, window.innerHeight - 200) }}
-          onClick={e => e.stopPropagation()}
-        >
-          <MenuItem label="Copy Name" onClick={() => handleCopyName(contextMenu.resource)} icon="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          {['services', 'nodes', 'pods'].includes(section) && (
-            <MenuItem label="Copy IP" onClick={() => handleCopyIP(contextMenu.resource)} icon="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9" />
-          )}
-          <MenuItem label="View / Edit YAML" onClick={() => handleViewYAML(contextMenu.resource)} icon="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9zM13 2v7h7" />
-          {['deployments', 'statefulsets'].includes(section) && (
-            <>
-              {section === 'deployments' && (
-                <MenuItem label="Scale…" onClick={() => { setScaleTarget(contextMenu.resource as KubeDeployment); setContextMenu(null) }} icon="M3 6h18M3 12h18M3 18h18" />
-              )}
-              {section === 'statefulsets' && (
-                <MenuItem label="Scale…" onClick={() => {
-                  const sts = contextMenu.resource as KubeStatefulSet
-                  setStsScaleTarget(sts)
-                  setStsScaleVal(String(sts.spec.replicas ?? 1))
-                  setContextMenu(null)
-                }} icon="M3 6h18M3 12h18M3 18h18" />
-              )}
-              <MenuItem label="Restart" onClick={() => handleRestart(contextMenu.resource)} icon="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
-            </>
-          )}
-          {section === 'pods' && (
-            <MenuItem label="Exec Shell" onClick={() => handleExec(contextMenu.resource)} icon="M4 17l6-6-6-6M12 19h8" />
-          )}
-          {['pods', 'services'].includes(section) && (
-            <MenuItem label="Port Forward…" onClick={() => handleOpenPortForward(contextMenu.resource)} icon="M5 12h14M12 5l7 7-7 7" />
-          )}
-          <div className="border-t border-slate-100 dark:border-slate-700 my-1.5" />
-          <MenuItem label="Delete…" onClick={() => handleDelete(contextMenu.resource)} danger icon="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-        </div>
-      )}
+      {
+        contextMenu && (
+          <div
+            className="fixed z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl py-1.5 min-w-[180px] animate-in fade-in zoom-in duration-100"
+            style={{ left: Math.min(contextMenu.x, window.innerWidth - 200), top: Math.min(contextMenu.y, window.innerHeight - 200) }}
+            onClick={e => e.stopPropagation()}
+          >
+            <MenuItem label="Copy Name" onClick={() => handleCopyName(contextMenu.resource)} icon="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            {['services', 'nodes', 'pods'].includes(section) && (
+              <MenuItem label="Copy IP" onClick={() => handleCopyIP(contextMenu.resource)} icon="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9" />
+            )}
+            <MenuItem label="View / Edit YAML" onClick={() => handleViewYAML(contextMenu.resource)} icon="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9zM13 2v7h7" />
+            {['deployments', 'statefulsets'].includes(section) && (
+              <>
+                {section === 'deployments' && (
+                  <MenuItem label="Scale…" onClick={() => { setScaleTarget(contextMenu.resource as KubeDeployment); setContextMenu(null) }} icon="M3 6h18M3 12h18M3 18h18" />
+                )}
+                {section === 'statefulsets' && (
+                  <MenuItem label="Scale…" onClick={() => {
+                    const sts = contextMenu.resource as KubeStatefulSet
+                    setStsScaleTarget(sts)
+                    setStsScaleVal(String(sts.spec.replicas ?? 1))
+                    setContextMenu(null)
+                  }} icon="M3 6h18M3 12h18M3 18h18" />
+                )}
+                <MenuItem label="Restart" onClick={() => handleRestart(contextMenu.resource)} icon="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+              </>
+            )}
+            {section === 'pods' && (
+              <MenuItem label="Exec Shell" onClick={() => handleExec(contextMenu.resource)} icon="M4 17l6-6-6-6M12 19h8" />
+            )}
+            {['pods', 'services'].includes(section) && (
+              <MenuItem label="Port Forward…" onClick={() => handleOpenPortForward(contextMenu.resource)} icon="M5 12h14M12 5l7 7-7 7" />
+            )}
+            <div className="border-t border-slate-100 dark:border-slate-700 my-1.5" />
+            <MenuItem label="Delete…" onClick={() => handleDelete(contextMenu.resource)} danger icon="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+          </div>
+        )
+      }
 
       {/* Dialogs */}
-      {scaleTarget && (
-        <ScaleDialog
-          deployment={scaleTarget}
-          onClose={() => setScaleTarget(null)}
-        />
-      )}
-      {stsScaleTarget && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-8" onClick={() => setStsScaleTarget(null)}>
-          <div className="bg-gray-900 border border-white/15 rounded-xl w-full max-w-sm shadow-2xl p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold text-white mb-1">Scale StatefulSet</h3>
-            <p className="text-xs text-gray-400 font-mono mb-4">{stsScaleTarget.metadata.name}</p>
-            <label className="block text-xs font-medium text-gray-400 mb-2">Replicas</label>
-            <input type="number" min={0} value={stsScaleVal} onChange={e => setStsScaleVal(e.target.value)}
-              className="w-full bg-gray-800 text-white text-sm rounded px-3 py-2 border border-white/10 focus:outline-none focus:ring-1 focus:ring-blue-500 mb-4"
-            />
-            <div className="flex gap-2">
-              <button onClick={() => setStsScaleTarget(null)}
-                className="flex-1 py-2 text-sm text-gray-300 bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 transition-colors">
-                Cancel
-              </button>
-              <button onClick={async () => {
-                const reps = parseInt(stsScaleVal)
-                if (isNaN(reps) || reps < 0) return
-                setStsScaleLoading(true)
-                try {
-                  await scaleStatefulSet(stsScaleTarget.metadata.name, reps, stsScaleTarget.metadata.namespace)
-                  setStsScaleTarget(null)
-                } catch { /* error handled by store */ }
-                setStsScaleLoading(false)
-              }} disabled={stsScaleLoading}
-                className="flex-1 py-2 text-sm text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors disabled:opacity-50">
-                {stsScaleLoading ? 'Scaling…' : 'Scale'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {pfTarget && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setPfTarget(null)}>
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-1">Port Forward</h3>
-            <p className="text-xs font-mono text-slate-400 dark:text-slate-500 mb-4">{pfTarget.metadata.name}</p>
-            <div className="flex gap-3 mb-4">
-              <div className="flex-1">
-                <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">Local Port</label>
-                <input type="number" min={1} max={65535} value={pfLocalPort}
-                  onChange={e => setPfLocalPort(e.target.value)}
-                  placeholder="8080"
-                  className="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                />
-              </div>
-              <div className="flex-1">
-                <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">Remote Port</label>
-                <input type="number" min={1} max={65535} value={pfRemotePort}
-                  onChange={e => setPfRemotePort(e.target.value)}
-                  placeholder="8080"
-                  className="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                />
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setPfTarget(null)}
-                className="flex-1 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors">
-                Cancel
-              </button>
-              <button
-                disabled={pfLoading || !pfLocalPort || !pfRemotePort || !selectedContext}
-                onClick={async () => {
-                  if (!selectedContext || !pfLocalPort || !pfRemotePort) return
-                  setPfLoading(true)
+      {
+        scaleTarget && (
+          <ScaleDialog
+            deployment={scaleTarget}
+            onClose={() => setScaleTarget(null)}
+          />
+        )
+      }
+      {
+        stsScaleTarget && (
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-8" onClick={() => setStsScaleTarget(null)}>
+            <div className="bg-gray-900 border border-white/15 rounded-xl w-full max-w-sm shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+              <h3 className="text-sm font-semibold text-white mb-1">Scale StatefulSet</h3>
+              <p className="text-xs text-gray-400 font-mono mb-4">{stsScaleTarget.metadata.name}</p>
+              <label className="block text-xs font-medium text-gray-400 mb-2">Replicas</label>
+              <input type="number" min={0} value={stsScaleVal} onChange={e => setStsScaleVal(e.target.value)}
+                className="w-full bg-gray-800 text-white text-sm rounded px-3 py-2 border border-white/10 focus:outline-none focus:ring-1 focus:ring-blue-500 mb-4"
+              />
+              <div className="flex gap-2">
+                <button onClick={() => setStsScaleTarget(null)}
+                  className="flex-1 py-2 text-sm text-gray-300 bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 transition-colors">
+                  Cancel
+                </button>
+                <button onClick={async () => {
+                  const reps = parseInt(stsScaleVal)
+                  if (isNaN(reps) || reps < 0) return
+                  setStsScaleLoading(true)
                   try {
-                    const id = crypto.randomUUID()
-                    const type = section === 'services' ? 'service' : 'pod'
-                    startPortForward({
-                      id,
-                      type,
-                      namespace: pfTarget.metadata.namespace ?? selectedNamespace ?? 'default',
-                      name: pfTarget.metadata.name,
-                      localPort: parseInt(pfLocalPort),
-                      remotePort: parseInt(pfRemotePort),
-                      status: 'starting'
-                    })
-                    setPfTarget(null)
-                  } finally {
-                    setPfLoading(false)
-                  }
-                }}
-                className="flex-1 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors disabled:opacity-40">
-                {pfLoading ? 'Starting…' : 'Start Forward'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {deleteTarget && (
-        <DeleteConfirm
-          name={deleteTarget.metadata.name}
-          kind={kindLabel(section)}
-          onConfirm={async () => {
-            await deleteResource(kindLabel(section), deleteTarget.metadata.name, clusterScoped, deleteTarget.metadata.namespace)
-            setDeleteTarget(null)
-          }}
-          onCancel={() => setDeleteTarget(null)}
-        />
-      )}
-      {(yamlLoading || yamlContent !== null || yamlError !== null) && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-8 animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-labelledby="yaml-modal-title">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl h-full max-h-[85vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
-                  {yamlLoading
-                    ? <div className="w-4 h-4 border-2 border-slate-400 border-t-blue-500 rounded-full animate-spin" />
-                    : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-500"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9zM13 2v7h7" /></svg>
-                  }
-                </div>
-                <h3 id="yaml-modal-title" className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest">
-                  {yamlLoading ? 'Loading YAML…' : 'View / Edit YAML'}
-                </h3>
+                    await scaleStatefulSet(stsScaleTarget.metadata.name, reps, stsScaleTarget.metadata.namespace)
+                    setStsScaleTarget(null)
+                  } catch { /* error handled by store */ }
+                  setStsScaleLoading(false)
+                }} disabled={stsScaleLoading}
+                  className="flex-1 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50">
+                  {stsScaleLoading ? 'Scaling…' : 'Scale'}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => { setYamlContent(null); setYamlError(null); setYamlLoading(false) }}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors"
-                aria-label="Close"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div className="flex-1 min-h-0 bg-slate-950">
-              {yamlError ? (
-                <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
-                  <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
-                  </div>
-                  <p className="text-sm font-bold text-red-400 text-center">Failed to load YAML</p>
-                  <pre className="text-xs text-slate-400 text-center max-w-lg break-words whitespace-pre-wrap">{yamlError}</pre>
-                </div>
-              ) : yamlLoading ? (
-                <div className="flex items-center justify-center h-full">
-                  <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
-                </div>
-              ) : yamlContent !== null ? (
-                <YAMLViewer
-                  content={yamlContent}
-                  editable
-                  onSave={async (updatedYaml) => {
-                    await applyYAML(updatedYaml)
-                    setYamlContent(null)
-                    setYamlError(null)
-                    refresh()
-                  }}
-                />
-              ) : null}
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+      {
+        pfTarget && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setPfTarget(null)}>
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-1">Port Forward</h3>
+              <p className="text-xs font-mono text-slate-400 dark:text-slate-500 mb-4">{pfTarget.metadata.name}</p>
+              <div className="flex gap-3 mb-4">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">Local Port</label>
+                  <input type="number" min={1} max={65535} value={pfLocalPort}
+                    onChange={e => setPfLocalPort(e.target.value)}
+                    placeholder="8080"
+                    className="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">Remote Port</label>
+                  <input type="number" min={1} max={65535} value={pfRemotePort}
+                    onChange={e => setPfRemotePort(e.target.value)}
+                    placeholder="8080"
+                    className="w-full text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setPfTarget(null)}
+                  className="flex-1 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors">
+                  Cancel
+                </button>
+                <button
+                  disabled={pfLoading || !pfLocalPort || !pfRemotePort || !selectedContext}
+                  onClick={async () => {
+                    if (!selectedContext || !pfLocalPort || !pfRemotePort) return
+                    setPfLoading(true)
+                    try {
+                      const id = crypto.randomUUID()
+                      const type = section === 'services' ? 'service' : 'pod'
+                      startPortForward({
+                        id,
+                        type,
+                        namespace: pfTarget.metadata.namespace ?? selectedNamespace ?? 'default',
+                        name: pfTarget.metadata.name,
+                        localPort: parseInt(pfLocalPort),
+                        remotePort: parseInt(pfRemotePort),
+                        status: 'starting'
+                      })
+                      setPfTarget(null)
+                    } finally {
+                      setPfLoading(false)
+                    }
+                  }}
+                  className="flex-1 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors disabled:opacity-40">
+                  {pfLoading ? 'Starting…' : 'Start Forward'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+      {
+        deleteTarget && (
+          <DeleteConfirm
+            name={deleteTarget.metadata.name}
+            kind={kindLabel(section)}
+            onConfirm={async () => {
+              await deleteResource(kindLabel(section), deleteTarget.metadata.name, clusterScoped, deleteTarget.metadata.namespace)
+              setDeleteTarget(null)
+            }}
+            onCancel={() => setDeleteTarget(null)}
+          />
+        )
+      }
+      {
+        (yamlLoading || yamlContent !== null || yamlError !== null) && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-8 animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-labelledby="yaml-modal-title">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl h-full max-h-[85vh] flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
+                    {yamlLoading
+                      ? <div className="w-4 h-4 border-2 border-slate-400 border-t-blue-500 rounded-full animate-spin" />
+                      : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-500"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9zM13 2v7h7" /></svg>
+                    }
+                  </div>
+                  <h3 id="yaml-modal-title" className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest">
+                    {yamlLoading ? 'Loading YAML…' : 'View / Edit YAML'}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setYamlContent(null); setYamlError(null); setYamlLoading(false) }}
+                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors"
+                  aria-label="Close"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 bg-slate-950">
+                {yamlError ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
+                    <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
+                    </div>
+                    <p className="text-sm font-bold text-red-400 text-center">Failed to load YAML</p>
+                    <pre className="text-xs text-slate-400 text-center max-w-lg break-words whitespace-pre-wrap">{yamlError}</pre>
+                  </div>
+                ) : yamlLoading ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+                  </div>
+                ) : yamlContent !== null ? (
+                  <YAMLViewer
+                    content={yamlContent}
+                    editable
+                    onSave={async (updatedYaml) => {
+                      await applyYAML(updatedYaml)
+                      setYamlContent(null)
+                      setYamlError(null)
+                      refresh()
+                    }}
+                  />
+                ) : null}
+              </div>
+            </div>
+          </div>
+        )
+      }
+    </div >
   )
 }
 

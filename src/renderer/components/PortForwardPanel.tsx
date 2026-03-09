@@ -292,7 +292,7 @@ function NewForwardDialog({
           <button
             onClick={handleStart}
             disabled={!canStart}
-            className="flex-1 py-2 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 py-2 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Start Forward
           </button>
@@ -390,7 +390,7 @@ export default function PortForwardPanel() {
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Port Forwards</h2>
           <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">
-            {portForwards.length} active
+            {portForwards.filter(p => p.status === 'active').length} active
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -417,7 +417,7 @@ export default function PortForwardPanel() {
           <button
             onClick={() => setShowDialog(true)}
             disabled={!selectedContext}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-sm transition-all active:scale-95 disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-all active:scale-95 disabled:opacity-50"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
             New Forward

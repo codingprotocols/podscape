@@ -143,7 +143,7 @@ export default function Terminal(): JSX.Element {
             <p className="text-[11px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">No active shell sessions</p>
             <button
               onClick={addSession}
-              className="px-6 py-2.5 text-xs font-black text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-lg shadow-blue-500/20 transition-all active:scale-95 uppercase tracking-widest"
+              className="px-6 py-2.5 text-xs font-black text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-lg shadow-blue-500/20 transition-all active:scale-95 uppercase tracking-widest"
             >
               Open New Terminal
             </button>

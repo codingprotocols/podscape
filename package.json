@@ -1,6 +1,6 @@
 {
   "name": "podscape-electron",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Kubernetes management desktop app — Electron + React + TypeScript",
   "main": "./out/main/index.js",
   "author": "Podscape",
@@ -15,18 +15,48 @@
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
-    "build:linux": "npm run build && electron-builder --linux"
+    "build:linux": "npm run build && electron-builder --linux",
+    "release": "npm run build && electron-builder --publish always"
   },
   "build": {
+    "appId": "com.podscape.app",
+    "productName": "Podscape",
+    "copyright": "Copyright © 2025 Podscape",
     "icon": "resources/icon.png",
     "mac": {
-      "icon": "resources/icon.icns"
+      "icon": "resources/icon.icns",
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.inherit.plist",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] },
+        { "target": "zip", "arch": ["arm64", "x64"] }
+      ]
     },
     "win": {
-      "icon": "resources/icon.png"
+      "icon": "resources/icon.png",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ]
     },
     "linux": {
-      "icon": "resources/icon.png"
+      "icon": "resources/icon.png",
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "codingprotocols",
+      "repo": "podscape"
     },
     "asarUnpack": [
       "**/node_modules/node-pty/**"

@@ -4,15 +4,15 @@ import type { KubeRole, KubeClusterRole, PolicyRule, KubeEvent } from '../types'
 import { formatAge } from '../types'
 
 const VERB_COLORS: Record<string, string> = {
-  get:              'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  list:             'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  watch:            'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
-  create:           'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  update:           'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  patch:            'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  delete:           'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
-  deletecollection: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
-  '*':              'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200',
+  get: 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
+  list: 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
+  watch: 'bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400',
+  create: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400',
+  update: 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400',
+  patch: 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400',
+  delete: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400',
+  deletecollection: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400',
+  '*': 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200',
 }
 
 function VerbChip({ verb }: { verb: string }) {
@@ -65,7 +65,7 @@ export default function RoleDetail({ role, clusterScoped = false }: Props): JSX.
   const tabs = ['rules', 'events'] as const
 
   return (
-    <div className="flex flex-col w-[560px] min-w-[440px] border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 h-full shadow-2xl transition-colors duration-200">
+    <div className="flex flex-col w-full h-full transition-colors duration-200">
       {/* Header */}
       <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
         <div className="flex items-start justify-between gap-3">
@@ -76,11 +76,10 @@ export default function RoleDetail({ role, clusterScoped = false }: Props): JSX.
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${
-              clusterScoped
-                ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
-                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
-            }`}>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${clusterScoped
+                ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400'
+                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
+              }`}>
               {clusterScoped ? 'ClusterRole' : 'Role'}
             </span>
             <span className="text-[10px] text-slate-400 dark:text-slate-500">
@@ -95,11 +94,10 @@ export default function RoleDetail({ role, clusterScoped = false }: Props): JSX.
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-t-lg border-b-2 transition-colors capitalize ${
-                tab === t
+              className={`px-3 py-1.5 text-xs font-semibold rounded-t-lg border-b-2 transition-colors capitalize ${tab === t
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-              }`}
+                }`}
             >
               {t === 'rules' ? `Rules (${rules.length})` : 'Events'}
             </button>
@@ -117,7 +115,7 @@ export default function RoleDetail({ role, clusterScoped = false }: Props): JSX.
               <Row label="Created" value={formatAge(role.metadata.creationTimestamp) + ' ago'} />
               {(role as KubeClusterRole).aggregationRule && (
                 <Row label="Aggregation" value={
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 uppercase">Aggregated</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 uppercase">Aggregated</span>
                 } />
               )}
             </Section>
@@ -215,11 +213,10 @@ export default function RoleDetail({ role, clusterScoped = false }: Props): JSX.
             ) : (
               <div className="space-y-2">
                 {events.map((ev, i) => (
-                  <div key={i} className={`rounded-lg px-3 py-2 text-xs ${
-                    ev.type === 'Warning'
+                  <div key={i} className={`rounded-lg px-3 py-2 text-xs ${ev.type === 'Warning'
                       ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40'
                       : 'bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800'
-                  }`}>
+                    }`}>
                     <div className="flex items-center justify-between gap-2 mb-0.5">
                       <span className={`font-bold text-[10px] uppercase ${ev.type === 'Warning' ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400 dark:text-slate-500'}`}>
                         {ev.reason}

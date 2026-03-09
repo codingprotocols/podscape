@@ -166,6 +166,11 @@ export interface AppStore {
   openExec: (target: ExecTarget) => void
   closeExec: () => void
 
+  navWidth: number
+  setNavWidth: (w: number) => void
+  detailWidth: number
+  setDetailWidth: (w: number) => void
+
   theme: 'light' | 'dark'
   setTheme: (theme: 'light' | 'dark') => void
   toggleTheme: () => void
@@ -275,6 +280,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
   execTarget: null,
   openExec: (target) => set({ execTarget: target }),
   closeExec: () => set({ execTarget: null }),
+
+  navWidth: parseInt(localStorage.getItem('podscape:navWidth') ?? '210'),
+  setNavWidth: (navWidth) => {
+    set({ navWidth })
+    localStorage.setItem('podscape:navWidth', navWidth.toString())
+  },
+  detailWidth: parseInt(localStorage.getItem('podscape:detailWidth') ?? '560'),
+  setDetailWidth: (detailWidth) => {
+    set({ detailWidth })
+    localStorage.setItem('podscape:detailWidth', detailWidth.toString())
+  },
 
   // ── Loading / Errors ───────────────────────────────────────────────────────
 

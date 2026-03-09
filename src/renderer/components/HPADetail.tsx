@@ -19,7 +19,7 @@ export default function HPADetail({ hpa }: { hpa: KubeHPA }) {
   const scalePct = max > min ? Math.round(((current - min) / (max - min)) * 100) : 0
 
   return (
-    <div className="flex flex-col w-[520px] min-w-[400px] border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 h-full shadow-2xl overflow-y-auto">
+    <div className="flex flex-col w-full h-full overflow-y-auto">
       {/* Header */}
       <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 shrink-0">
         <div className="flex items-start gap-3">
