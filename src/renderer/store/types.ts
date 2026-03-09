@@ -1,0 +1,199 @@
+import { StateCreator } from 'zustand'
+import {
+    KubeContextEntry, KubeNamespace, KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet,
+    KubeReplicaSet, KubeJob, KubeCronJob, KubeHPA, KubePDB,
+    KubeService, KubeIngress, KubeIngressClass, KubeNetworkPolicy, KubeEndpoints,
+    KubeConfigMap, KubeSecret, KubePVC, KubePV, KubeStorageClass,
+    KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
+    KubeNode, KubeEvent, KubeCRD,
+    NodeMetrics, PodMetrics, Plugin, ResourceKind, AnyKubeResource, PortForwardEntry,
+    HelmRelease
+} from '../types'
+
+declare global {
+    interface Window {
+        kubectl: {
+            getContexts: () => Promise<KubeContextEntry[]>
+            getCurrentContext: () => Promise<string>
+            switchContext: (context: string) => Promise<void>
+            getNamespaces: (context: string) => Promise<KubeNamespace[]>
+            getPods: (context: string, namespace: string | null) => Promise<KubePod[]>
+            getDeployments: (context: string, namespace: string | null) => Promise<KubeDeployment[]>
+            getDaemonSets: (context: string, namespace: string | null) => Promise<KubeDaemonSet[]>
+            getStatefulSets: (context: string, namespace: string | null) => Promise<KubeStatefulSet[]>
+            getReplicaSets: (context: string, namespace: string | null) => Promise<KubeReplicaSet[]>
+            getJobs: (context: string, namespace: string | null) => Promise<KubeJob[]>
+            getCronJobs: (context: string, namespace: string | null) => Promise<KubeCronJob[]>
+            getHPAs: (context: string, namespace: string | null) => Promise<KubeHPA[]>
+            getPodDisruptionBudgets: (context: string, namespace: string | null) => Promise<KubePDB[]>
+            getServices: (context: string, namespace: string | null) => Promise<KubeService[]>
+            getIngresses: (context: string, namespace: string | null) => Promise<KubeIngress[]>
+            getIngressClasses: (context: string) => Promise<KubeIngressClass[]>
+            getNetworkPolicies: (context: string, namespace: string | null) => Promise<KubeNetworkPolicy[]>
+            getEndpoints: (context: string, namespace: string | null) => Promise<KubeEndpoints[]>
+            getConfigMaps: (context: string, namespace: string | null) => Promise<KubeConfigMap[]>
+            getSecrets: (context: string, namespace: string | null) => Promise<KubeSecret[]>
+            getPVCs: (context: string, namespace: string | null) => Promise<KubePVC[]>
+            getPVs: (context: string) => Promise<KubePV[]>
+            getStorageClasses: (context: string) => Promise<KubeStorageClass[]>
+            getServiceAccounts: (context: string, namespace: string | null) => Promise<KubeServiceAccount[]>
+            getRoles: (context: string, namespace: string | null) => Promise<KubeRole[]>
+            getClusterRoles: (context: string) => Promise<KubeClusterRole[]>
+            getRoleBindings: (context: string, namespace: string | null) => Promise<KubeRoleBinding[]>
+            getClusterRoleBindings: (context: string) => Promise<KubeClusterRoleBinding[]>
+            getNodes: (context: string) => Promise<KubeNode[]>
+            getCRDs: (context: string) => Promise<KubeCRD[]>
+            getEvents: (context: string, namespace: string | null) => Promise<KubeEvent[]>
+            getPodMetrics: (context: string, namespace: string | null) => Promise<PodMetrics[]>
+            getNodeMetrics: (context: string) => Promise<NodeMetrics[]>
+            scale: (context: string, namespace: string, name: string, replicas: number) => Promise<string>
+            scaleResource: (context: string, namespace: string, kind: string, name: string, replicas: number) => Promise<string>
+            rolloutRestart: (context: string, namespace: string, kind: string, name: string) => Promise<string>
+            rolloutHistory: (context: string, namespace: string, kind: string, name: string) => Promise<string>
+            rolloutUndo: (context: string, namespace: string, kind: string, name: string, revision?: number) => Promise<string>
+            getResourceEvents: (context: string, namespace: string, kind: string, name: string) => Promise<KubeEvent[]>
+            deleteResource: (context: string, namespace: string | null, kind: string, name: string) => Promise<string>
+            getYAML: (context: string, namespace: string | null, kind: string, name: string) => Promise<string>
+            getSecretValue: (context: string, namespace: string, name: string, key: string) => Promise<string>
+            applyYAML: (context: string, yaml: string) => Promise<string>
+            streamLogs: (
+                context: string, namespace: string, pod: string, container: string | undefined,
+                onChunk: (chunk: string) => void, onEnd: () => void
+            ) => Promise<string>
+            stopLogs: (streamId: string) => Promise<void>
+            portForward: (context: string, namespace: string, type: string, name: string, localPort: number, remotePort: number, id: string) => Promise<string>
+            stopPortForward: (id: string) => Promise<void>
+            onPortForwardReady: (id: string, cb: (msg: string) => void) => () => void
+            onPortForwardError: (id: string, cb: (msg: string) => void) => () => void
+            onPortForwardExit: (id: string, cb: () => void) => () => void
+        }
+        helm: {
+            list: (context: string) => Promise<HelmRelease[]>
+            status: (context: string, namespace: string, release: string) => Promise<string>
+            values: (context: string, namespace: string, release: string) => Promise<string>
+            history: (context: string, namespace: string, release: string) => Promise<unknown[]>
+            rollback: (context: string, namespace: string, release: string, revision: number) => Promise<string>
+            uninstall: (context: string, namespace: string, release: string) => Promise<string>
+        }
+        terminal: {
+            create: (context?: string, namespace?: string) => Promise<string>
+            write: (id: string, data: string) => Promise<void>
+            resize: (id: string, cols: number, rows: number) => Promise<void>
+            kill: (id: string) => Promise<void>
+            onData: (id: string, cb: (data: string) => void) => () => void
+            onExit: (id: string, cb: () => void) => () => void
+        }
+        exec: {
+            start: (context: string, namespace: string, pod: string, container: string) => Promise<string>
+            write: (id: string, data: string) => Promise<void>
+            resize: (id: string, cols: number, rows: number) => Promise<void>
+            kill: (id: string) => Promise<void>
+            onData: (id: string, cb: (data: string) => void) => () => void
+            onExit: (id: string, cb: () => void) => () => void
+        }
+        plugins: {
+            list: () => Promise<Plugin[]>
+        }
+        settings: {
+            get: () => Promise<{ kubectlPath: string; shellPath: string; helmPath: string; theme: string }>
+            set: (s: { kubectlPath: string; shellPath: string; helmPath: string; theme: string }) => Promise<void>
+        }
+    }
+}
+
+export interface ExecTarget {
+    pod: string
+    container: string
+    namespace: string
+}
+
+export interface AppStore {
+    // Navigation
+    section: ResourceKind
+    setSection: (s: ResourceKind) => void
+    navWidth: number
+    setNavWidth: (w: number) => void
+    detailWidth: number
+    setDetailWidth: (w: number) => void
+    theme: 'light' | 'dark'
+    setTheme: (theme: 'light' | 'dark') => void
+    toggleTheme: () => void
+
+    // Cluster selection
+    contexts: KubeContextEntry[]
+    selectedContext: string | null
+    hotbarContexts: string[]
+    toggleHotbarContext: (contextName: string) => void
+    namespaces: KubeNamespace[]
+    selectedNamespace: string | null
+    selectedResource: AnyKubeResource | null
+
+    // Resources
+    pods: KubePod[]
+    deployments: KubeDeployment[]
+    daemonsets: KubeDaemonSet[]
+    statefulsets: KubeStatefulSet[]
+    replicasets: KubeReplicaSet[]
+    jobs: KubeJob[]
+    cronjobs: KubeCronJob[]
+    hpas: KubeHPA[]
+    pdbs: KubePDB[]
+    services: KubeService[]
+    ingresses: KubeIngress[]
+    ingressclasses: KubeIngressClass[]
+    networkpolicies: KubeNetworkPolicy[]
+    endpoints: KubeEndpoints[]
+    configmaps: KubeConfigMap[]
+    secrets: KubeSecret[]
+    pvcs: KubePVC[]
+    pvs: KubePV[]
+    storageclasses: KubeStorageClass[]
+    serviceaccounts: KubeServiceAccount[]
+    roles: KubeRole[]
+    clusterroles: KubeClusterRole[]
+    rolebindings: KubeRoleBinding[]
+    clusterrolebindings: KubeClusterRoleBinding[]
+    nodes: KubeNode[]
+    events: KubeEvent[]
+    crds: KubeCRD[]
+    podMetrics: PodMetrics[]
+    nodeMetrics: NodeMetrics[]
+    plugins: Plugin[]
+    portForwards: PortForwardEntry[]
+    helmReleases: HelmRelease[]
+
+    // Exec modal
+    execTarget: ExecTarget | null
+    openExec: (target: ExecTarget) => void
+    closeExec: () => void
+
+    // Loading / errors
+    loadingContexts: boolean
+    loadingNamespaces: boolean
+    loadingResources: boolean
+    error: string | null
+    clearError: () => void
+
+    // Actions
+    init: () => Promise<void>
+    selectContext: (name: string) => Promise<void>
+    selectNamespace: (name: string) => void
+    selectResource: (r: AnyKubeResource | null) => void
+    loadSection: (section: ResourceKind) => Promise<void>
+    loadDashboard: () => Promise<void>
+    refresh: () => Promise<void>
+
+    // Operations
+    scaleDeployment: (name: string, replicas: number, namespace?: string) => Promise<void>
+    scaleStatefulSet: (name: string, replicas: number, namespace?: string) => Promise<void>
+    rolloutRestart: (kind: string, name: string, namespace?: string) => Promise<void>
+    deleteResource: (kind: string, name: string, clusterScoped?: boolean, namespace?: string) => Promise<void>
+    getYAML: (kind: string, name: string, clusterScoped?: boolean, namespace?: string) => Promise<string>
+    applyYAML: (yaml: string) => Promise<string>
+
+    // Port forwarding
+    startPortForward: (entry: PortForwardEntry) => void
+    stopPortForward: (id: string) => void
+}
+
+export type StoreSlice<T> = StateCreator<AppStore, [], [], T>

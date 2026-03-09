@@ -267,7 +267,7 @@ function kindForSection(section: string): string {
 }
 
 export default function App(): JSX.Element {
-  const { init, section, setSection, selectedResource, execTarget, closeExec, refresh } = useAppStore()
+  const { init, section, setSection, selectedResource, execTarget, closeExec, refresh, error, clearError } = useAppStore()
 
   useEffect(() => { init() }, [])
 
@@ -330,6 +330,21 @@ export default function App(): JSX.Element {
       {/* Exec overlay */}
       {execTarget && (
         <ExecPanel target={execTarget} onClose={closeExec} />
+      )}
+      {/* Error Toast */}
+      {error && (
+        <div className="fixed top-4 right-4 z-[9999] animate-in slide-in-from-top duration-300">
+          <div className="bg-red-500 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 max-w-md border border-red-400">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
+            <div className="flex-1">
+              <p className="text-xs font-black uppercase tracking-widest mb-1 opacity-80">Resource Error</p>
+              <p className="text-sm font-bold leading-snug">{error}</p>
+            </div>
+            <button onClick={clearError} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
