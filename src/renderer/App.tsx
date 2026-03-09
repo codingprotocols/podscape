@@ -301,9 +301,11 @@ export default function App(): JSX.Element {
   return (
     <div className="flex h-screen overflow-hidden bg-white dark:bg-[hsl(var(--bg-dark))] text-slate-900 dark:text-slate-100 transition-colors duration-200">
       {/* Left nav sidebar */}
-      <ErrorBoundary>
-        <Sidebar />
-      </ErrorBoundary>
+      {!kubectlOk || !kubeconfigOk ? null : (
+        <ErrorBoundary>
+          <Sidebar />
+        </ErrorBoundary>
+      )}
 
       {/* Main content */}
       <div className="flex flex-1 min-w-0 min-h-0 bg-slate-50 dark:bg-[hsl(var(--bg-dark))]">
