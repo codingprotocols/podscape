@@ -2,9 +2,10 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { ipcMain, shell } from 'electron'
-import { getSettings, saveSettings, findKubeconfigPath, PodscapeSettings } from './settings_storage'
+import { findKubeconfigPath, getSettings, saveSettings, PodscapeSettings } from './settings_storage'
 import { findKubectl } from './kubectl'
 import { findHelm } from './helm'
+import { getAugmentedEnv } from './env'
 
 export function registerSettingsHandlers(): void {
   ipcMain.handle('settings:get', () => {
@@ -65,15 +66,17 @@ export function registerSettingsHandlers(): void {
   ipcMain.handle('settings:checkTools', async () => {
     const kPath = findKubectl()
     const hPath = findHelm()
+    const env = getAugmentedEnv()
 
     // We don't just check path, we check if they are executable
-    const check = (cmd: string): Promise<boolean> => new Promise((resolve) => {
+    const check = (cmd: string, args: string): Promise<boolean> => new Promise((resolve) => {
       const { exec } = require('child_process')
-      exec(`${cmd} version --client`, (err: any) => resolve(!err))
+      // Use augmented env so we can find things in /opt/homebrew/bin etc.
+      exec(`${cmd} ${args}`, { env }, (err: any) => resolve(!err))
     })
 
-    const kubectlOk = await check(kPath)
-    const helmOk = await check(hPath)
+    const kubectlOk = await check(kPath, 'version --client')
+    const helmOk = await check(hPath, 'version')
     const kubeconfigOk = existsSync(findKubeconfigPath())
 
     return { kubectlOk, helmOk, kubeconfigOk }

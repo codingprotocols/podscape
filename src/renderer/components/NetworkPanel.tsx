@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '../store'
 import type { KubeIngress, KubePod, KubeService, KubeNetworkPolicy } from '../types'
 import { Shield } from 'lucide-react'
+import type { ResourceKind } from '../types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,7 +24,7 @@ interface GraphEdge {
   source: string
   target: string
   kind: EdgeKind
-  label?: string          // port label, e.g. ":80"
+  label?: string
 }
 
 interface Graph {
@@ -52,17 +53,17 @@ function nsColor(nsIdx: number) { return NS_PALETTE[nsIdx % NS_PALETTE.length] }
 // ─── Node colours ─────────────────────────────────────────────────────────────
 
 function nodeColor(n: GraphNode): string {
-  if (n.kind === 'ingress') return '#a78bfa' // lighter violet
+  if (n.kind === 'ingress') return '#a78bfa'
   if (n.kind === 'service') {
-    if (n.serviceType === 'LoadBalancer') return '#22d3ee' // cyan
-    if (n.serviceType === 'NodePort') return '#2dd4bf' // teal
-    return '#60a5fa' // blue
+    if (n.serviceType === 'LoadBalancer') return '#22d3ee'
+    if (n.serviceType === 'NodePort') return '#2dd4bf'
+    return '#60a5fa'
   }
-  if (n.kind === 'policy') return '#f472b6' // pink
-  if (n.phase === 'Running') return '#34d399' // emerald
-  if (n.phase === 'Pending') return '#fbbf24' // amber
-  if (n.phase === 'Failed') return '#f87171' // red
-  return '#94a3b8' // slate
+  if (n.kind === 'policy') return '#f472b6'
+  if (n.phase === 'Running') return '#34d399'
+  if (n.phase === 'Pending') return '#fbbf24'
+  if (n.phase === 'Failed') return '#f87171'
+  return '#94a3b8'
 }
 
 function nodeBg(n: GraphNode, dark: boolean): string {
@@ -73,6 +74,42 @@ function nodeBg(n: GraphNode, dark: boolean): string {
 function nodeBorder(n: GraphNode, dark: boolean): string {
   const c = nodeColor(n)
   return dark ? `${c}35` : `${c}25`
+}
+
+// ─── Edge style helper (single source of truth) ───────────────────────────────
+
+function edgeStyle(kind: EdgeKind): { color: string; dur: string } {
+  switch (kind) {
+    case 'ing-svc':     return { color: '#8b5cf6', dur: '1.5s' }
+    case 'policy-pod':  return { color: '#f472b6', dur: '2.5s' }
+    case 'pol-ingress': return { color: '#a78bfa', dur: '1.8s' }
+    case 'pol-egress':  return { color: '#60a5fa', dur: '1.8s' }
+    default:            return { color: '#3b82f6', dur: '2.5s' } // svc-pod
+  }
+}
+
+// All unique edge colors (for predefining arrow markers)
+const ALL_EDGE_COLORS = ['#8b5cf6', '#f472b6', '#a78bfa', '#60a5fa', '#3b82f6']
+
+// ─── Shared SVG defs (glow filter + per-color arrow markers) ─────────────────
+
+function GraphDefs() {
+  return (
+    <defs>
+      <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+      {ALL_EDGE_COLORS.map(c => (
+        <marker key={c} id={`arr-${c.slice(1)}`} markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0 0L6 3L0 6z" fill={c} />
+        </marker>
+      ))}
+    </defs>
+  )
 }
 
 // ─── Graph builder ────────────────────────────────────────────────────────────
@@ -116,7 +153,6 @@ function buildGraph(services: KubeService[], ingresses: KubeIngress[], pods: Kub
         if (svcName) {
           const svcId = `svc:${ing.metadata.namespace}:${svcName}`
           if (svcSet.has(svcId)) {
-            // Carry port as label (number preferred, name as fallback)
             const port = path.backend.service?.port?.number ?? path.backend.service?.port?.name
             addEdge(ingId, svcId, 'ing-svc', port != null ? `:${port}` : undefined)
           }
@@ -138,7 +174,6 @@ function buildGraph(services: KubeService[], ingresses: KubeIngress[], pods: Kub
     const ns = pol.metadata.namespace ?? ''
     const nsPods = podsByNs.get(ns) ?? []
 
-    // 1. Link policy to matched pods (the pods it governs)
     if (!selector || !Object.keys(selector).length) {
       for (const pod of nsPods) addEdge(polId, `pod:${pod.metadata.uid}`, 'policy-pod')
     } else {
@@ -147,32 +182,23 @@ function buildGraph(services: KubeService[], ingresses: KubeIngress[], pods: Kub
           addEdge(polId, `pod:${pod.metadata.uid}`, 'policy-pod')
     }
 
-    // 2. Resolve Ingress rules (Sources -> Policy)
     if (pol.spec.policyTypes?.includes('Ingress') || (pol.spec.ingress && !pol.spec.policyTypes)) {
       for (const rule of pol.spec.ingress ?? []) {
-        if (!rule.from || !rule.from.length) {
-          // Allow from all sources if from is empty? Actually usually means deny if empty, 
-          // but if the rule exists it usually has 'from'.
-          continue
-        }
+        if (!rule.from || !rule.from.length) continue
         for (const peer of rule.from) {
           if (peer.podSelector) {
-            // Find pods in the same namespace (or any if nsSelector is present)
-            const targetNs = peer.namespaceSelector ? null : ns // simplified: current ns if not specified
+            const targetNs = peer.namespaceSelector ? null : ns
             for (const pod of cappedPods) {
               if (targetNs && pod.metadata.namespace !== targetNs) continue
-              // Match labels
               const pSel = peer.podSelector.matchLabels
-              if (!pSel || Object.entries(pSel).every(([k, v]) => pod.metadata.labels?.[k] === v)) {
+              if (!pSel || Object.entries(pSel).every(([k, v]) => pod.metadata.labels?.[k] === v))
                 addEdge(`pod:${pod.metadata.uid}`, polId, 'pol-ingress')
-              }
             }
           }
         }
       }
     }
 
-    // 3. Resolve Egress rules (Policy -> Destinations)
     if (pol.spec.policyTypes?.includes('Egress') || (pol.spec.egress && !pol.spec.policyTypes)) {
       for (const rule of pol.spec.egress ?? []) {
         if (!rule.to || !rule.to.length) continue
@@ -182,9 +208,8 @@ function buildGraph(services: KubeService[], ingresses: KubeIngress[], pods: Kub
             for (const pod of cappedPods) {
               if (targetNs && pod.metadata.namespace !== targetNs) continue
               const pSel = peer.podSelector.matchLabels
-              if (!pSel || Object.entries(pSel).every(([k, v]) => pod.metadata.labels?.[k] === v)) {
+              if (!pSel || Object.entries(pSel).every(([k, v]) => pod.metadata.labels?.[k] === v))
                 addEdge(polId, `pod:${pod.metadata.uid}`, 'pol-egress')
-              }
             }
           }
         }
@@ -196,7 +221,7 @@ function buildGraph(services: KubeService[], ingresses: KubeIngress[], pods: Kub
   return { nodes, edges, namespaces }
 }
 
-// ─── Force simulation ─────────────────────────────────────────────────────────
+// ─── Force simulation (step-based for async rAF) ─────────────────────────────
 
 const REPULSION = 12000
 const ATTRACTION = 0.004
@@ -205,10 +230,10 @@ const DAMPING = 0.82
 const NATURAL_LEN = 300
 const NS_CLUSTER_STR = 0.015
 
-function runForceSimulation(graph: Graph, groupByNs: boolean, iters = 250): Map<string, NodePos> {
+function createSimulator(graph: Graph, groupByNs: boolean): { positions: Map<string, NodePos>; step: (iter: number, total: number) => void } {
   const { nodes, edges, namespaces } = graph
   const positions = new Map<string, NodePos>()
-  if (!nodes.length) return positions
+  if (!nodes.length) return { positions, step: () => { } }
 
   const clusterCenters = new Map<string, { x: number; y: number }>()
 
@@ -242,8 +267,8 @@ function runForceSimulation(graph: Graph, groupByNs: boolean, iters = 250): Map<
   const ids = nodes.map(n => n.id)
   const nodeById = new Map(nodes.map(n => [n.id, n]))
 
-  for (let iter = 0; iter < iters; iter++) {
-    const alpha = 1 - iter / iters
+  function step(iter: number, total: number) {
+    const alpha = 1 - iter / total
 
     for (let i = 0; i < ids.length; i++) {
       const a = positions.get(ids[i])!
@@ -287,7 +312,8 @@ function runForceSimulation(graph: Graph, groupByNs: boolean, iters = 250): Map<
       p.x += p.vx; p.y += p.vy
     }
   }
-  return positions
+
+  return { positions, step }
 }
 
 // ─── Topology layout ──────────────────────────────────────────────────────────
@@ -362,20 +388,47 @@ function computeTopoPositions(graph: Graph, groupByNs: boolean) {
   return { positions, lanes }
 }
 
-// ─── Edge label (SVG text with stroke outline for readability) ────────────────
+// ─── Topology adaptive edge endpoint computation ──────────────────────────────
+
+function computeEdgeEndpoints(
+  sp: { x: number; y: number },
+  tp: { x: number; y: number }
+): { path: string; lx: number; ly: number } {
+  const dx = tp.x - sp.x
+  const dy = tp.y - sp.y
+
+  if (Math.abs(dx) > Math.abs(dy) * 1.5) {
+    // Predominantly horizontal: attach to left/right sides
+    const sign = dx > 0 ? 1 : -1
+    const sx = sp.x + sign * NODE_W / 2, sy = sp.y
+    const tx = tp.x - sign * NODE_W / 2, ty = tp.y
+    const mid = (sx + tx) / 2
+    return {
+      path: `M ${sx} ${sy} C ${mid} ${sy}, ${mid} ${ty}, ${tx} ${ty}`,
+      lx: (sx + tx) / 2,
+      ly: (sy + ty) / 2,
+    }
+  }
+
+  // Predominantly vertical: attach to top/bottom
+  const sign = dy > 0 ? 1 : -1
+  const sx = sp.x, sy = sp.y + sign * NODE_H / 2
+  const tx = tp.x, ty = tp.y - sign * NODE_H / 2
+  const ddy = ty - sy
+  return {
+    path: `M ${sx} ${sy} C ${sx} ${sy + ddy / 2}, ${tx} ${ty - ddy / 2}, ${tx} ${ty}`,
+    lx: (sx + tx) / 2,
+    ly: (sy + ty) / 2,
+  }
+}
+
+// ─── Edge label ───────────────────────────────────────────────────────────────
 
 function EdgeLabel({ x, y, label, color }: { x: number; y: number; label: string; color: string }) {
   return (
-    <text
-      x={x} y={y}
-      textAnchor="middle"
-      fontSize={9} fontWeight={700}
-      fill={color}
-      stroke="rgba(15,23,42,0.75)"
-      strokeWidth={3}
-      paintOrder="stroke"
-      style={{ userSelect: 'none' }}
-    >
+    <text x={x} y={y} textAnchor="middle" fontSize={9} fontWeight={700}
+      fill={color} stroke="rgba(15,23,42,0.75)" strokeWidth={3} paintOrder="stroke"
+      style={{ userSelect: 'none' }}>
       {label}
     </text>
   )
@@ -402,8 +455,6 @@ function Legend({ dark }: { dark: boolean }) {
                     border ${dark ? 'border-slate-800/60' : 'border-slate-200/60'}
                     rounded-2xl shadow-2xl px-4 py-4 min-w-[210px] transition-all duration-300`}>
       <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-400 dark:text-slate-500 mb-3.5">Legend</p>
-
-      {/* Node kinds */}
       <div className="space-y-1.5 mb-3">
         {LEGEND_ENTRIES.map(e => (
           <div key={e.label} className="flex items-center gap-2.5">
@@ -412,8 +463,6 @@ function Legend({ dark }: { dark: boolean }) {
           </div>
         ))}
       </div>
-
-      {/* Edge types */}
       <div className="border-t border-slate-200 dark:border-slate-700 pt-2.5 space-y-1.5">
         <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Edges</p>
         {([
@@ -441,7 +490,7 @@ function Legend({ dark }: { dark: boolean }) {
   )
 }
 
-// ─── Tooltip ──────────────────────────────────────────────────────────────────
+// ─── Node tooltip ─────────────────────────────────────────────────────────────
 
 function NodeTooltip({ node, x, y, dark }: { node: GraphNode; x: number; y: number; dark: boolean }) {
   const color = nodeColor(node)
@@ -463,6 +512,7 @@ function NodeTooltip({ node, x, y, dark }: { node: GraphNode; x: number; y: numb
         {node.ports && node.ports.length > 0 && (
           <div><span className="text-slate-400 dark:text-slate-500">Ports</span> · <span className="text-slate-600 dark:text-slate-300 font-mono">{node.ports.join(', ')}</span></div>
         )}
+        <div className="mt-1.5 pt-1.5 border-t border-slate-200 dark:border-slate-700 text-[10px] text-slate-400">Click to navigate →</div>
       </div>
     </div>
   )
@@ -489,15 +539,10 @@ function TogglePill({ on, onToggle, label, icon }: { on: boolean; onToggle: () =
 
 // ─── Kind filter pill ─────────────────────────────────────────────────────────
 
-function KindPill({
-  color, label, count, active, onToggle
-}: { color: string; label: string; count: number; active: boolean; onToggle: () => void }) {
+function KindPill({ color, label, count, active, onToggle }: { color: string; label: string; count: number; active: boolean; onToggle: () => void }) {
   return (
-    <button
-      onClick={onToggle}
-      title={`${active ? 'Hide' : 'Show'} ${label}`}
-      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-[11px] font-bold
-                  transition-all duration-300 select-none
+    <button onClick={onToggle} title={`${active ? 'Hide' : 'Show'} ${label}`}
+      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-[11px] font-bold transition-all duration-300 select-none
         ${active
           ? 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800/80 backdrop-blur-sm shadow-sm'
           : 'border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-600 opacity-40 grayscale hover:grayscale-0 hover:opacity-100'
@@ -514,49 +559,69 @@ function KindPill({
 
 // ─── Topology View ────────────────────────────────────────────────────────────
 
-function TopologyView({ graph, groupByNs, animate, fitTrigger, dark }: {
+function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onNodeClick }: {
   graph: Graph; groupByNs: boolean; animate: boolean; fitTrigger: number; dark: boolean
+  searchQuery: string; onNodeClick: (node: GraphNode) => void
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [scale, setScale] = useState(1)
   const panRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
   const [tooltip, setTooltip] = useState<{ node: GraphNode; x: number; y: number } | null>(null)
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
 
   const { positions, lanes } = useMemo(() => computeTopoPositions(graph, groupByNs), [graph, groupByNs])
 
-  // Compute tight bounding box and fit view
+  // Search: matched node IDs and connected edge IDs
+  const matchedIds = useMemo(() => {
+    if (!searchQuery.trim()) return null
+    const q = searchQuery.toLowerCase()
+    return new Set(graph.nodes.filter(n => n.name.toLowerCase().includes(q)).map(n => n.id))
+  }, [searchQuery, graph.nodes])
+
+  const connectedEdgeIds = useMemo(() => {
+    if (!hoveredNodeId) return null
+    return new Set(graph.edges.filter(e => e.source === hoveredNodeId || e.target === hoveredNodeId).map(e => e.id))
+  }, [hoveredNodeId, graph.edges])
+
   const fitToScreen = useCallback(() => {
     if (!svgRef.current || !positions.size) return
     const { width: svgW, height: svgH } = svgRef.current.getBoundingClientRect()
-    // SVG not yet laid out — retry after paint
     if (svgW === 0 || svgH === 0) { requestAnimationFrame(fitToScreen); return }
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
     for (const p of positions.values()) {
-      minX = Math.min(minX, p.x - NODE_W / 2)
-      maxX = Math.max(maxX, p.x + NODE_W / 2)
-      minY = Math.min(minY, p.y - NODE_H / 2)
-      maxY = Math.max(maxY, p.y + NODE_H / 2)
+      minX = Math.min(minX, p.x - NODE_W / 2); maxX = Math.max(maxX, p.x + NODE_W / 2)
+      minY = Math.min(minY, p.y - NODE_H / 2); maxY = Math.max(maxY, p.y + NODE_H / 2)
     }
-    // Also account for lane panels in grouped mode
     for (const lane of lanes) {
-      minX = Math.min(minX, lane.x)
-      maxX = Math.max(maxX, lane.x + lane.w)
-      minY = Math.min(minY, lane.y)
-      maxY = Math.max(maxY, lane.y + lane.h)
+      minX = Math.min(minX, lane.x); maxX = Math.max(maxX, lane.x + lane.w)
+      minY = Math.min(minY, lane.y); maxY = Math.max(maxY, lane.y + lane.h)
     }
     const PAD = 48
     const newScale = Math.min(svgW / (maxX - minX + PAD * 2), svgH / (maxY - minY + PAD * 2), 2)
-    const cx = (minX + maxX) / 2
-    const cy = (minY + maxY) / 2
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
     setPan({ x: svgW / 2 - cx * newScale, y: svgH / 2 - cy * newScale })
     setScale(newScale)
   }, [positions, lanes])
 
-  // Initial fit when graph or layout changes
   useEffect(() => { requestAnimationFrame(fitToScreen) }, [graph, groupByNs])  // eslint-disable-line react-hooks/exhaustive-deps
-  // Fit triggered by toolbar button
   useEffect(() => { if (fitTrigger > 0) fitToScreen() }, [fitTrigger, fitToScreen])
+
+  // Auto-pan to search matches
+  useEffect(() => {
+    if (!matchedIds || matchedIds.size === 0 || !svgRef.current) return
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+    for (const id of matchedIds) {
+      const p = positions.get(id)
+      if (!p) continue
+      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x)
+      minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y)
+    }
+    if (minX === Infinity) return
+    const { width: svgW, height: svgH } = svgRef.current.getBoundingClientRect()
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
+    setPan({ x: svgW / 2 - cx * scale, y: svgH / 2 - cy * scale })
+  }, [matchedIds])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const onWheel = (e: React.WheelEvent<SVGSVGElement>) => {
     e.preventDefault()
@@ -567,6 +632,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark }: {
     setPan(p => ({ x: mx - (mx - p.x) * (ns / scale), y: my - (my - p.y) * (ns / scale) }))
     setScale(ns)
   }
+
   const onMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
     if ((e.target as Element).closest('[data-node]')) return
     panRef.current = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y }
@@ -576,9 +642,8 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark }: {
     setPan({ x: panRef.current.px + e.clientX - panRef.current.sx, y: panRef.current.py + e.clientY - panRef.current.sy })
   }
   const onMouseUp = () => { panRef.current = null }
-  const onMouseLeave = () => { panRef.current = null; setTooltip(null) }
+  const onMouseLeave = () => { panRef.current = null; setTooltip(null); setHoveredNodeId(null) }
 
-  // Row labels in flat mode
   const rowLabelX = useMemo(() => {
     if (groupByNs) return {} as Record<string, number>
     const left: Record<string, number> = {}
@@ -590,19 +655,16 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark }: {
     return left
   }, [positions, graph.nodes, groupByNs])
 
+  const searchActive = !!matchedIds
+
   return (
     <div className="relative w-full h-full">
-      <svg
-        ref={svgRef}
+      <svg ref={svgRef}
         className="w-full h-full cursor-grab active:cursor-grabbing select-none"
         onWheel={onWheel} onMouseDown={onMouseDown} onMouseMove={onMouseMove}
         onMouseUp={onMouseUp} onMouseLeave={onMouseLeave}
       >
-        <defs>
-          <marker id="arrowT" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-            <path d="M0 0L6 3L0 6z" fill="#475569" />
-          </marker>
-        </defs>
+        <GraphDefs />
         <g transform={`translate(${pan.x},${pan.y}) scale(${scale})`}>
           {/* Namespace lane panels */}
           {groupByNs && lanes.map(lane => {
@@ -638,38 +700,22 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark }: {
           {graph.edges.map(edge => {
             const s = positions.get(edge.source), t = positions.get(edge.target)
             if (!s || !t) return null
-            const sx = s.x, sy = s.y + NODE_H / 2
-            const tx = t.x, ty = t.y - NODE_H / 2
-            const dy = ty - sy
-            const d = `M ${sx} ${sy} C ${sx} ${sy + dy / 2}, ${tx} ${ty - dy / 2}, ${tx} ${ty}`
-            const color =
-              edge.kind === 'ing-svc' ? '#8b5cf6' :
-                edge.kind === 'policy-pod' ? '#f472b6' :
-                  edge.kind === 'pol-ingress' ? '#a78bfa' :
-                    edge.kind === 'pol-egress' ? '#60a5fa' :
-                      '#3b82f6'
-            const dur =
-              edge.kind === 'ing-svc' ? '1.5s' :
-                edge.kind === 'policy-pod' ? '2.5s' :
-                  edge.kind === 'pol-ingress' ? '1.8s' :
-                    edge.kind === 'pol-egress' ? '1.8s' :
-                      '2.5s'
-            // Midpoint of this symmetric bezier is simply the average of endpoints
-            const mx = (sx + tx) / 2
-            const my = (sy + ty) / 2
+            const { color, dur } = edgeStyle(edge.kind)
+            const { path, lx, ly } = computeEdgeEndpoints(s, t)
+            const isConnected = connectedEdgeIds ? connectedEdgeIds.has(edge.id) : true
+            const edgeOpacity = connectedEdgeIds ? (isConnected ? 0.9 : 0.04) : (animate ? 0.25 : 0.5)
             return (
-              <g key={edge.id}>
-                <path d={d} fill="none" stroke={color} strokeWidth={1.5}
-                  strokeOpacity={animate ? 0.25 : 0.5} markerEnd="url(#arrowT)" />
-                {animate && (
-                  <path d={d} fill="none" stroke={color} strokeWidth={2}
+              <g key={edge.id} style={{ transition: 'opacity 0.2s' }}>
+                <path d={path} fill="none" stroke={color} strokeWidth={isConnected && connectedEdgeIds ? 2 : 1.5}
+                  strokeOpacity={edgeOpacity} markerEnd={`url(#arr-${color.slice(1)})`} />
+                {animate && isConnected && (
+                  <path d={path} fill="none" stroke={color} strokeWidth={2}
                     strokeOpacity={0.85} strokeDasharray="7 9">
                     {/* @ts-ignore */}
                     <animate attributeName="stroke-dashoffset" from="16" to="0" dur={dur} repeatCount="indefinite" />
                   </path>
                 )}
-                {/* Port label at bezier midpoint */}
-                {edge.label && <EdgeLabel x={mx} y={my - 6} label={edge.label} color={color} />}
+                {edge.label && <EdgeLabel x={lx} y={ly - 6} label={edge.label} color={color} />}
               </g>
             )
           })}
@@ -682,31 +728,34 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark }: {
             const bg = nodeBg(n, dark)
             const border = nodeBorder(n, dark)
             const active = tooltip?.node.id === n.id
+            const isMatch = matchedIds ? matchedIds.has(n.id) : true
+            const nodeOpacity = searchActive && !isMatch ? 0.15 : 1
             return (
-              <g key={n.id}
-                onMouseEnter={e => setTooltip({ node: n, x: e.clientX, y: e.clientY })}
+              <g key={n.id} style={{ opacity: nodeOpacity, cursor: 'pointer', transition: 'opacity 0.2s' }}
+                onMouseEnter={e => { setTooltip({ node: n, x: e.clientX, y: e.clientY }); setHoveredNodeId(n.id) }}
                 onMouseMove={e => setTooltip(t => t ? { ...t, x: e.clientX, y: e.clientY } : null)}
-                onMouseLeave={() => setTooltip(null)}
+                onMouseLeave={() => { setTooltip(null); setHoveredNodeId(null) }}
+                onClick={() => onNodeClick(n)}
               >
                 <foreignObject
                   x={p.x - NODE_W / 2} y={p.y - NODE_H / 2}
                   width={NODE_W} height={NODE_H}
                   style={{ pointerEvents: 'none' }}>
                   <div
-                    className={`w-full h-full rounded-xl border px-3 py-1.5 flex flex-col justify-center backdrop-blur-md transition-all duration-300`}
+                    className="w-full h-full rounded-xl border px-3 py-1.5 flex flex-col justify-center backdrop-blur-md transition-all duration-300"
                     style={{
                       fontFamily: 'inherit',
                       backgroundColor: bg,
-                      borderColor: border,
+                      borderColor: isMatch && searchActive ? color : border,
+                      borderWidth: isMatch && searchActive ? 2 : 1,
                       filter: active ? 'url(#glow)' : 'none',
                       transform: active ? 'scale(1.02)' : 'scale(1)'
                     }}>
                     <div className="flex items-center gap-1.5 mb-0.5">
-                      {n.kind === 'policy' ? (
-                        <Shield className="w-3 h-3 shrink-0" style={{ color }} />
-                      ) : (
-                        <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                      )}
+                      {n.kind === 'policy'
+                        ? <Shield className="w-3 h-3 shrink-0" style={{ color }} />
+                        : <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                      }
                       <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: color + 'bb' }}>
                         {n.kind === 'policy' ? 'NetPol' : n.kind}
                       </span>
@@ -732,26 +781,48 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark }: {
   )
 }
 
-// ─── Map View (force-directed) ────────────────────────────────────────────────
+// ─── Map View (force-directed, async rAF simulation) ─────────────────────────
 
 const NODE_R = 26
 
-function MapView({ graph, groupByNs, animate, fitTrigger, dark }: {
+function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onNodeClick }: {
   graph: Graph; groupByNs: boolean; animate: boolean; fitTrigger: number; dark: boolean
+  searchQuery: string; onNodeClick: (node: GraphNode) => void
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [scale, setScale] = useState(1)
-  // Drag overrides: only the dragged node's position is kept in state
   const [dragOverrides, setDragOverrides] = useState<Map<string, { x: number; y: number }>>(new Map())
   const [tooltip, setTooltip] = useState<{ node: GraphNode; x: number; y: number } | null>(null)
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+
+  // Async simulation state
+  const [simPos, setSimPos] = useState<Map<string, NodePos>>(new Map())
 
   const panRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
   const dragRef = useRef<{ id: string; mx: number; my: number; nx: number; ny: number } | null>(null)
 
-  // Simulation runs synchronously in useMemo — same render cycle as the graph,
-  // so fitToScreen always has fresh positions (mirrors how TopologyView works).
-  const simPos = useMemo(() => runForceSimulation(graph, groupByNs), [graph, groupByNs])
+  // Run simulation asynchronously with rAF — shows ring layout immediately, animates into place
+  useEffect(() => {
+    if (!graph.nodes.length) { setSimPos(new Map()); return }
+    const { positions, step } = createSimulator(graph, groupByNs)
+    setSimPos(new Map(positions))   // Show ring layout immediately
+    setDragOverrides(new Map())
+
+    let cancelled = false
+    let iter = 0
+    const TOTAL = 250
+    const BATCH = 8 // iters per frame
+
+    function tick() {
+      if (cancelled) return
+      for (let b = 0; b < BATCH && iter < TOTAL; b++, iter++) step(iter, TOTAL)
+      setSimPos(new Map(positions)) // new Map triggers React re-render
+      if (iter < TOTAL) requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+    return () => { cancelled = true }
+  }, [graph, groupByNs])
 
   // Merge drag overrides on top of simulation positions
   const nodePos = useMemo(() => {
@@ -764,13 +835,41 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark }: {
     return merged
   }, [simPos, dragOverrides])
 
-  // Clear drag overrides when the graph / grouping changes
-  useEffect(() => { setDragOverrides(new Map()) }, [graph, groupByNs])
+  // Search: matched node IDs
+  const matchedIds = useMemo(() => {
+    if (!searchQuery.trim()) return null
+    const q = searchQuery.toLowerCase()
+    return new Set(graph.nodes.filter(n => n.name.toLowerCase().includes(q)).map(n => n.id))
+  }, [searchQuery, graph.nodes])
+
+  // Connected edge IDs for hover highlighting
+  const connectedEdgeIds = useMemo(() => {
+    if (!hoveredNodeId) return null
+    return new Set(graph.edges.filter(e => e.source === hoveredNodeId || e.target === hoveredNodeId).map(e => e.id))
+  }, [hoveredNodeId, graph.edges])
+
+  // Pre-compute edge offsets for fan-out (parallel edges between same node pair)
+  const edgeOffsets = useMemo(() => {
+    const counts = new Map<string, number>()
+    const indices = new Map<string, number>()
+    for (const edge of graph.edges) {
+      const key = [edge.source, edge.target].sort().join('~')
+      indices.set(edge.id, counts.get(key) ?? 0)
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    const offsets = new Map<string, number>()
+    for (const edge of graph.edges) {
+      const key = [edge.source, edge.target].sort().join('~')
+      const idx = indices.get(edge.id) ?? 0
+      const total = counts.get(key) ?? 1
+      offsets.set(edge.id, (idx - (total - 1) / 2) * 24)
+    }
+    return offsets
+  }, [graph.edges])
 
   const fitToScreen = useCallback(() => {
     if (!svgRef.current || !nodePos.size) return
     const { width: svgW, height: svgH } = svgRef.current.getBoundingClientRect()
-    // SVG not yet laid out — retry after paint
     if (svgW === 0 || svgH === 0) { requestAnimationFrame(fitToScreen); return }
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
     for (const p of nodePos.values()) {
@@ -784,10 +883,24 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark }: {
     setScale(newScale)
   }, [nodePos])
 
-  // Fit whenever graph / grouping changes (simPos is already updated in same render)
   useEffect(() => { requestAnimationFrame(fitToScreen) }, [graph, groupByNs])  // eslint-disable-line react-hooks/exhaustive-deps
-  // Fit triggered by toolbar button
   useEffect(() => { if (fitTrigger > 0) fitToScreen() }, [fitTrigger, fitToScreen])
+
+  // Auto-pan to search matches
+  useEffect(() => {
+    if (!matchedIds || matchedIds.size === 0 || !svgRef.current) return
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+    for (const id of matchedIds) {
+      const p = nodePos.get(id)
+      if (!p) continue
+      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x)
+      minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y)
+    }
+    if (minX === Infinity) return
+    const { width: svgW, height: svgH } = svgRef.current.getBoundingClientRect()
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
+    setPan({ x: svgW / 2 - cx * scale, y: svgH / 2 - cy * scale })
+  }, [matchedIds])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Namespace bounding boxes
   const nsBounds = useMemo(() => {
@@ -832,40 +945,40 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark }: {
     if (dragRef.current) {
       const { id, mx, my, nx, ny } = dragRef.current
       const dx = (e.clientX - mx) / scale, dy = (e.clientY - my) / scale
-      setDragOverrides(prev => {
-        const next = new Map(prev)
-        next.set(id, { x: nx + dx, y: ny + dy })
-        return next
-      })
+      setDragOverrides(prev => { const next = new Map(prev); next.set(id, { x: nx + dx, y: ny + dy }); return next })
       return
     }
     if (panRef.current)
       setPan({ x: panRef.current.px + e.clientX - panRef.current.sx, y: panRef.current.py + e.clientY - panRef.current.sy })
   }
 
-  const onMouseUp = () => { dragRef.current = null; panRef.current = null }
-  const onMouseLeave = () => { dragRef.current = null; panRef.current = null; setTooltip(null) }
+  const onMouseUp = (e: React.MouseEvent<SVGSVGElement>) => {
+    // Click = no drag movement
+    if (dragRef.current) {
+      const movedX = Math.abs(e.clientX - dragRef.current.mx)
+      const movedY = Math.abs(e.clientY - dragRef.current.my)
+      if (movedX < 4 && movedY < 4) {
+        // treat as click: find node and navigate
+        const id = dragRef.current.id
+        const node = graph.nodes.find(n => n.id === id)
+        if (node) onNodeClick(node)
+      }
+    }
+    dragRef.current = null
+    panRef.current = null
+  }
+  const onMouseLeave = () => { dragRef.current = null; panRef.current = null; setTooltip(null); setHoveredNodeId(null) }
+
+  const searchActive = !!matchedIds
 
   return (
     <div className="relative w-full h-full">
-      <svg
-        ref={svgRef}
+      <svg ref={svgRef}
         className="w-full h-full cursor-grab active:cursor-grabbing select-none"
         onWheel={onWheel} onMouseDown={onMouseDown} onMouseMove={onMouseMove}
         onMouseUp={onMouseUp} onMouseLeave={onMouseLeave}
       >
-        <defs>
-          <marker id="arrowM" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-            <path d="M0 0L6 3L0 6z" fill="#475569" />
-          </marker>
-          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
+        <GraphDefs />
         <g transform={`translate(${pan.x},${pan.y}) scale(${scale})`}>
           {/* Namespace bounding boxes */}
           {groupByNs && Array.from(nsBounds.entries()).map(([ns, b]) => {
@@ -882,37 +995,34 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark }: {
             )
           })}
 
-          {/* Edges */}
+          {/* Edges — quadratic Bézier with perpendicular fan-out for parallel edges */}
           {graph.edges.map(edge => {
             const s = nodePos.get(edge.source), t = nodePos.get(edge.target)
             if (!s || !t) return null
-            const color =
-              edge.kind === 'ing-svc' ? '#8b5cf6' :
-                edge.kind === 'policy-pod' ? '#f472b6' :
-                  edge.kind === 'pol-ingress' ? '#a78bfa' :
-                    edge.kind === 'pol-egress' ? '#60a5fa' :
-                      '#3b82f6'
-            const dur =
-              edge.kind === 'ing-svc' ? '1.5s' :
-                edge.kind === 'policy-pod' ? '2.5s' :
-                  edge.kind === 'pol-ingress' ? '1.8s' :
-                    edge.kind === 'pol-egress' ? '1.8s' :
-                      '2.5s'
-            const mx = (s.x + t.x) / 2, my = (s.y + t.y) / 2
+            const { color, dur } = edgeStyle(edge.kind)
+            const offset = edgeOffsets.get(edge.id) ?? 0
+            const dx = t.x - s.x, dy = t.y - s.y
+            const len = Math.sqrt(dx * dx + dy * dy) || 1
+            const px = -dy / len * offset, py = dx / len * offset
+            const cx = (s.x + t.x) / 2 + px, cy = (s.y + t.y) / 2 + py
+            // Label midpoint at t=0.5 for quadratic bezier
+            const lx = 0.25 * s.x + 0.5 * cx + 0.25 * t.x
+            const ly = 0.25 * s.y + 0.5 * cy + 0.25 * t.y
+            const path = `M ${s.x} ${s.y} Q ${cx} ${cy} ${t.x} ${t.y}`
+            const isConnected = connectedEdgeIds ? connectedEdgeIds.has(edge.id) : true
+            const edgeOpacity = connectedEdgeIds ? (isConnected ? 0.9 : 0.04) : (animate ? 0.2 : 0.45)
             return (
-              <g key={edge.id}>
-                <line x1={s.x} y1={s.y} x2={t.x} y2={t.y}
-                  stroke={color} strokeWidth={1.5}
-                  strokeOpacity={animate ? 0.2 : 0.45} markerEnd="url(#arrowM)" />
-                {animate && (
-                  <line x1={s.x} y1={s.y} x2={t.x} y2={t.y}
-                    stroke={color} strokeWidth={2} strokeOpacity={0.85} strokeDasharray="7 9">
+              <g key={edge.id} style={{ transition: 'opacity 0.2s' }}>
+                <path d={path} fill="none" stroke={color}
+                  strokeWidth={isConnected && connectedEdgeIds ? 2.5 : 1.5}
+                  strokeOpacity={edgeOpacity} markerEnd={`url(#arr-${color.slice(1)})`} />
+                {animate && isConnected && (
+                  <path d={path} fill="none" stroke={color} strokeWidth={2} strokeOpacity={0.85} strokeDasharray="7 9">
                     {/* @ts-ignore */}
                     <animate attributeName="stroke-dashoffset" from="16" to="0" dur={dur} repeatCount="indefinite" />
-                  </line>
+                  </path>
                 )}
-                {/* Port label at line midpoint */}
-                {edge.label && <EdgeLabel x={mx} y={my - 8} label={edge.label} color={color} />}
+                {edge.label && <EdgeLabel x={lx} y={ly - 8} label={edge.label} color={color} />}
               </g>
             )
           })}
@@ -923,27 +1033,22 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark }: {
             if (!p) return null
             const color = nodeColor(n)
             const bg = nodeBg(n, dark)
-            const border = nodeBorder(n, dark)
             const active = tooltip?.node.id === n.id
+            const isMatch = matchedIds ? matchedIds.has(n.id) : true
+            const nodeOpacity = searchActive && !isMatch ? 0.12 : 1
             const label = n.name.length > 12 ? n.name.slice(0, 11) + '…' : n.name
             const kindIcon = n.kind === 'ingress' ? '⬡' : n.kind === 'service' ? '◈' : n.kind === 'policy' ? '🛡' : '●'
-            const r = NODE_R
+            const strokeW = active ? 2.5 : isMatch && searchActive ? 3 : 1.8
             return (
-              <g key={n.id} data-nid={n.id} style={{ cursor: 'grab' }}
-                onMouseEnter={e => setTooltip({ node: n, x: e.clientX, y: e.clientY })}
+              <g key={n.id} data-nid={n.id} style={{ cursor: 'pointer', opacity: nodeOpacity, transition: 'opacity 0.2s' }}
+                onMouseEnter={e => { setTooltip({ node: n, x: e.clientX, y: e.clientY }); setHoveredNodeId(n.id) }}
                 onMouseMove={e => setTooltip(t => t ? { ...t, x: e.clientX, y: e.clientY } : null)}
-                onMouseLeave={() => setTooltip(null)}
+                onMouseLeave={() => { setTooltip(null); setHoveredNodeId(null) }}
               >
-                <circle cx={p.x} cy={p.y} r={NODE_R + 4} fill={color} fillOpacity={0.08} />
-                <circle
-                  cx={p.x} cy={p.y} r={r}
-                  fill={bg}
-                  stroke={color}
-                  strokeWidth={active ? 2.5 : 1.8}
-                  style={{
-                    filter: active ? 'url(#glow)' : 'none',
-                    borderColor: border // satisfy linter
-                  }}
+                <circle cx={p.x} cy={p.y} r={NODE_R + 4} fill={color} fillOpacity={isMatch && searchActive ? 0.18 : 0.08} />
+                <circle cx={p.x} cy={p.y} r={NODE_R}
+                  fill={bg} stroke={color} strokeWidth={strokeW}
+                  style={{ filter: active ? 'url(#glow)' : 'none' }}
                   className="transition-all duration-300"
                 />
                 <text x={p.x} y={p.y - 4} textAnchor="middle" fontSize={11}
@@ -979,11 +1084,17 @@ const KIND_DEFS: { kind: NodeKind; color: string; label: string }[] = [
   { kind: 'pod', color: '#10b981', label: 'Pods' },
 ]
 
+const KIND_TO_SECTION: Record<NodeKind, ResourceKind> = {
+  ingress: 'ingresses',
+  service: 'services',
+  pod: 'pods',
+  policy: 'networkpolicies',
+}
+
 export default function NetworkPanel(): JSX.Element {
-  const { selectedContext, namespaces, theme } = useAppStore()
+  const { selectedContext, namespaces, theme, setSection, selectResource } = useAppStore()
   const dark = theme === 'dark'
 
-  // Panel-local namespace selector
   const [panelNs, setPanelNs] = useState<string>('_all')
   const [loading, setLoading] = useState(false)
   const [svcs, setSvcs] = useState<KubeService[]>([])
@@ -991,13 +1102,13 @@ export default function NetworkPanel(): JSX.Element {
   const [pds, setPds] = useState<KubePod[]>([])
   const [pols, setPols] = useState<KubeNetworkPolicy[]>([])
 
-  // View controls
   const [tab, setTab] = useState<'topology' | 'map'>('topology')
   const [groupByNs, setGroupByNs] = useState(false)
   const [animate, setAnimate] = useState(false)
   const [showLegend, setShowLegend] = useState(false)
   const [fitTrigger, setFitTrigger] = useState(0)
   const [visibleKinds, setVisibleKinds] = useState<Set<NodeKind>>(new Set(['ingress', 'service', 'policy', 'pod']))
+  const [searchQuery, setSearchQuery] = useState('')
 
   const load = useCallback((ns: string) => {
     if (!selectedContext) return
@@ -1019,10 +1130,8 @@ export default function NetworkPanel(): JSX.Element {
 
   useEffect(() => { load(panelNs) }, [panelNs, load])
 
-  // Raw graph (all kinds) — used for kind pill counts
   const rawGraph = useMemo(() => buildGraph(svcs, ings, pds, pols), [svcs, ings, pds, pols])
 
-  // Filtered graph (respects visibleKinds)
   const graph = useMemo(() => {
     if (visibleKinds.size === 4) return rawGraph
     const nodes = rawGraph.nodes.filter(n => visibleKinds.has(n.kind))
@@ -1043,6 +1152,31 @@ export default function NetworkPanel(): JSX.Element {
     })
   }
 
+  // Click a graph node → navigate to its section + select the resource
+  const handleNodeClick = useCallback((node: GraphNode) => {
+    const section = KIND_TO_SECTION[node.kind]
+    let resource: KubeService | KubePod | KubeIngress | KubeNetworkPolicy | undefined
+
+    switch (node.kind) {
+      case 'service':
+        resource = svcs.find(s => s.metadata.name === node.name && s.metadata.namespace === node.namespace)
+        break
+      case 'pod':
+        resource = pds.find(p => p.metadata.name === node.name && p.metadata.namespace === node.namespace)
+        break
+      case 'ingress':
+        resource = ings.find(i => i.metadata.name === node.name && i.metadata.namespace === node.namespace)
+        break
+      case 'policy':
+        resource = pols.find(p => p.metadata.name === node.name && p.metadata.namespace === node.namespace)
+        break
+    }
+
+    setSection(section)
+    // selectResource runs after setSection's synchronous selectedResource:null clear
+    if (resource) selectResource(resource)
+  }, [svcs, pds, ings, pols, setSection, selectResource])
+
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0 bg-white dark:bg-[hsl(var(--bg-dark))] transition-colors duration-200">
       {/* Header */}
@@ -1062,13 +1196,11 @@ export default function NetworkPanel(): JSX.Element {
         <div className="flex items-center gap-2">
           {/* Namespace dropdown */}
           <div className="relative">
-            <select
-              value={panelNs} onChange={e => setPanelNs(e.target.value)} disabled={loading}
+            <select value={panelNs} onChange={e => setPanelNs(e.target.value)} disabled={loading}
               className="appearance-none pl-3 pr-7 py-1.5 text-xs font-semibold rounded-lg border
                          bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700
                          text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2
-                         focus:ring-blue-500/40 cursor-pointer disabled:opacity-50 transition-colors"
-            >
+                         focus:ring-blue-500/40 cursor-pointer disabled:opacity-50 transition-colors">
               {!selectedContext && <option value="" disabled>Select cluster first</option>}
               {selectedContext && namespaces.length === 0 && !loading && <option value="" disabled>No namespaces</option>}
               <option value="_all">All Namespaces</option>
@@ -1082,13 +1214,11 @@ export default function NetworkPanel(): JSX.Element {
           </div>
 
           {/* Fit to screen */}
-          <button
-            onClick={() => setFitTrigger(t => t + 1)} disabled={loading || graph.nodes.length === 0}
+          <button onClick={() => setFitTrigger(t => t + 1)} disabled={loading || graph.nodes.length === 0}
             title="Fit to screen"
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg
                        bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700
-                       text-slate-600 dark:text-slate-300 transition-colors disabled:opacity-40"
-          >
+                       text-slate-600 dark:text-slate-300 transition-colors disabled:opacity-40">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
             </svg>
@@ -1096,12 +1226,10 @@ export default function NetworkPanel(): JSX.Element {
           </button>
 
           {/* Refresh */}
-          <button
-            onClick={() => load(panelNs)} disabled={loading}
+          <button onClick={() => load(panelNs)} disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg
                        bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700
-                       text-slate-600 dark:text-slate-300 transition-colors disabled:opacity-50"
-          >
+                       text-slate-600 dark:text-slate-300 transition-colors disabled:opacity-50">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
               className={loading ? 'animate-spin' : ''}>
               <path d="M23 4v6h-6M1 20v-6h6" />
@@ -1128,13 +1256,39 @@ export default function NetworkPanel(): JSX.Element {
         {/* Kind filter pills */}
         <div className="flex items-center gap-1.5 pl-3 border-l border-slate-200 dark:border-slate-700 py-2">
           {KIND_DEFS.map(({ kind, color, label }) => (
-            <KindPill
-              key={kind} color={color} label={label}
+            <KindPill key={kind} color={color} label={label}
               count={rawGraph.nodes.filter(n => n.kind === kind).length}
               active={visibleKinds.has(kind)}
               onToggle={() => toggleKind(kind)}
             />
           ))}
+        </div>
+
+        {/* Search input */}
+        <div className="relative ml-2 py-2">
+          <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+            width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Find node…"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="pl-7 pr-3 py-1 text-[11px] font-mono rounded-lg border
+                       bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700
+                       text-slate-700 dark:text-slate-200 placeholder-slate-400
+                       focus:outline-none focus:ring-2 focus:ring-blue-500/40 w-36 transition-all
+                       focus:w-48"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* View toggles */}
@@ -1169,9 +1323,11 @@ export default function NetworkPanel(): JSX.Element {
             </p>
           </div>
         ) : tab === 'topology' ? (
-          <TopologyView graph={graph} groupByNs={groupByNs} animate={animate} fitTrigger={fitTrigger} dark={dark} />
+          <TopologyView graph={graph} groupByNs={groupByNs} animate={animate} fitTrigger={fitTrigger} dark={dark}
+            searchQuery={searchQuery} onNodeClick={handleNodeClick} />
         ) : (
-          <MapView graph={graph} groupByNs={groupByNs} animate={animate} fitTrigger={fitTrigger} dark={dark} />
+          <MapView graph={graph} groupByNs={groupByNs} animate={animate} fitTrigger={fitTrigger} dark={dark}
+            searchQuery={searchQuery} onNodeClick={handleNodeClick} />
         )}
 
         {/* Legend overlay */}
