@@ -1,14 +1,18 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import type { KubeDaemonSet } from '../types'
 import { formatAge } from '../types'
 import { useAppStore } from '../store'
 import { FileCode, X, Activity, Layers, Settings, Box, Info } from 'lucide-react'
 import YAMLViewer from './YAMLViewer'
+import AnalysisView from './AnalysisView'
 
 interface Props { daemonSet: KubeDaemonSet }
 
+type Tab = 'overview' | 'analysis'
+
 export default function DaemonSetDetail({ daemonSet: ds }: Props): JSX.Element {
-  const { getYAML, applyYAML, refresh } = useAppStore()
+  const { getYAML, applyYAML, refresh, scanResource, scanResults, isScanning } = useAppStore()
+  const [tab, setTab] = useState<Tab>('overview')
   const [yaml, setYaml] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
   const [yamlError, setYamlError] = useState<string | null>(null)
@@ -37,6 +41,10 @@ export default function DaemonSetDetail({ daemonSet: ds }: Props): JSX.Element {
     }
   }
 
+  useEffect(() => {
+    scanResource(ds as any)
+  }, [ds.metadata.uid])
+
   return (
     <div className="flex flex-col w-full h-full relative">
       {/* Header */}
@@ -62,8 +70,24 @@ export default function DaemonSetDetail({ daemonSet: ds }: Props): JSX.Element {
         </div>
       </div>
 
+      <div className="flex border-b border-slate-100 dark:border-slate-800 shrink-0 bg-white/[0.02]">
+        <button onClick={() => setTab('overview')}
+          className={`px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all relative ${tab === 'overview' ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}>
+          Overview
+          {tab === 'overview' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />}
+        </button>
+        <button onClick={() => setTab('analysis')}
+          className={`px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all relative flex items-center gap-1.5 ${tab === 'analysis' ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}>
+          Analysis
+          {scanResults[ds.metadata.uid]?.summary.errors > 0 && (
+            <span className="text-[9px] font-black bg-red-500/20 text-red-400 rounded-full px-1.5 py-0.5">{scanResults[ds.metadata.uid].summary.errors}</span>
+          )}
+          {tab === 'analysis' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />}
+        </button>
+      </div>
+
       <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
-        <div className="space-y-8">
+        {tab === 'overview' && <div className="space-y-8">
           {/* Stats Grid */}
           <section>
             <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -135,7 +159,24 @@ export default function DaemonSetDetail({ daemonSet: ds }: Props): JSX.Element {
               </div>
             </section>
           )}
-        </div>
+        </div>}
+
+        {tab === 'analysis' && (
+          <div>
+            {(isScanning && !scanResults[ds.metadata.uid]) ? (
+              <div className="flex items-center gap-2 py-20 justify-center">
+                <div className="w-4 h-4 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+                <span className="text-[10px] font-bold text-slate-400 animate-pulse">Running analysis…</span>
+              </div>
+            ) : scanResults[ds.metadata.uid] ? (
+              <AnalysisView result={scanResults[ds.metadata.uid]} />
+            ) : (
+              <div className="text-center py-20">
+                <p className="text-sm text-slate-500 font-medium">No scan results yet</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Premium YAML Modal */}

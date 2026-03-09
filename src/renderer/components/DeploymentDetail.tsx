@@ -4,14 +4,15 @@ import { formatAge } from '../types'
 import { useAppStore } from '../store'
 import ScaleDialog from './ScaleDialog'
 import YAMLViewer from './YAMLViewer'
+import AnalysisView from './AnalysisView'
 import { FileCode, X, Activity, Layers, History, Settings, Zap, RefreshCw } from 'lucide-react'
 
 interface Props { deployment: KubeDeployment }
 
-type Tab = 'overview' | 'history' | 'events'
+type Tab = 'overview' | 'history' | 'events' | 'analysis'
 
 export default function DeploymentDetail({ deployment: d }: Props): JSX.Element {
-  const { rolloutRestart, getYAML, applyYAML, refresh, selectedContext, selectedNamespace } = useAppStore()
+  const { rolloutRestart, getYAML, applyYAML, refresh, selectedContext, selectedNamespace, scanResource, scanResults, isScanning } = useAppStore()
   const [showScale, setShowScale] = useState(false)
   const [yaml, setYaml] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
@@ -109,6 +110,10 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
   }
 
   useEffect(() => {
+    scanResource(d as any)
+  }, [d.metadata.uid])
+
+  useEffect(() => {
     if (tab === 'history') loadHistory()
     if (tab === 'events') loadEvents()
   }, [tab, d.metadata.uid])
@@ -162,6 +167,14 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
             {tab === t && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />}
           </button>
         ))}
+        <button onClick={() => setTab('analysis')}
+          className={`px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all relative flex items-center gap-1.5 ${tab === 'analysis' ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}>
+          Analysis
+          {scanResults[d.metadata.uid]?.summary.errors > 0 && (
+            <span className="text-[9px] font-black bg-red-500/20 text-red-400 rounded-full px-1.5 py-0.5">{scanResults[d.metadata.uid].summary.errors}</span>
+          )}
+          {tab === 'analysis' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />}
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
@@ -281,6 +294,23 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
               <div className="text-center py-20 bg-slate-50 dark:bg-white/[0.01] rounded-3xl border border-dashed border-slate-200 dark:border-white/10 mt-4">
                 <Activity size={32} className="mx-auto text-slate-700 mb-4 opacity-20" />
                 <p className="text-sm text-slate-500 font-medium">No recent events found</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'analysis' && (
+          <div>
+            {(isScanning && !scanResults[d.metadata.uid]) ? (
+              <div className="flex items-center gap-2 py-20 justify-center">
+                <div className="w-4 h-4 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+                <span className="text-[10px] font-bold text-slate-400 animate-pulse">Running analysis…</span>
+              </div>
+            ) : scanResults[d.metadata.uid] ? (
+              <AnalysisView result={scanResults[d.metadata.uid]} />
+            ) : (
+              <div className="text-center py-20">
+                <p className="text-sm text-slate-500 font-medium">No scan results yet</p>
               </div>
             )}
           </div>
