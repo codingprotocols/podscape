@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '../store'
+import LoadingAnimation from './LoadingAnimation'
 import type {
   KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet, KubeReplicaSet, KubeJob, KubeCronJob,
   KubeHPA, KubePDB, KubeService, KubeIngress, KubeIngressClass, KubeNetworkPolicy, KubeEndpoints,
@@ -714,9 +715,8 @@ export default function ResourceList(): JSX.Element {
       {/* Table */}
       <div className="flex-1 overflow-auto">
         {loadingResources ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-4 text-slate-400">
-            <div className="w-8 h-8 border-3 border-slate-100 dark:border-slate-800 border-t-blue-500 rounded-full animate-spin" />
-            <span className="text-xs font-bold tracking-widest uppercase">Syncing Cluster...</span>
+          <div className="flex items-center justify-center py-24">
+            <LoadingAnimation />
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 gap-3 text-slate-400">

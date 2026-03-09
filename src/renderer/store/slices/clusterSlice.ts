@@ -1,4 +1,4 @@
-import { AppStore, StoreSlice } from '../types'
+import { StoreSlice } from '../types'
 import { KubeContextEntry, KubeNamespace } from '../../types'
 
 export interface ClusterSlice {
