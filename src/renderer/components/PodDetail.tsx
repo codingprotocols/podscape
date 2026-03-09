@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import type { KubePod } from '../types'
 import { podPhaseBg, formatAge } from '../types'
 import { useAppStore } from '../store'
-import { Maximize2, Minimize2, Copy, Download, Search, X, ChevronDown, Terminal, Trash2 } from 'lucide-react'
+import { Maximize2, Minimize2, Copy, Download, Search, X, ChevronDown, Terminal, Trash2, Activity } from 'lucide-react'
+import PodRestartAnalyzer from './PodRestartAnalyzer'
 
 interface Props {
   pod: KubePod
@@ -19,6 +20,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const [search, setSearch] = useState('')
   const [logFullscreen, setLogFullscreen] = useState(false)
   const [wrapLogs, setWrapLogs] = useState(false)
+  const [showAnalyzer, setShowAnalyzer] = useState(false)
   const logContainerRef = useRef<HTMLPreElement>(null)
   const fsLogContainerRef = useRef<HTMLPreElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -127,7 +129,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   // ── Shared log toolbar content ────────────────────────────────────────────
 
   const LogToolbar = (
-    <div className="px-6 py-4 border-b border-slate-100 dark:border-white/5 shrink-0 bg-white/5 backdrop-blur-xl sticky top-0 z-10 transition-colors">
+    <div className={`px-6 py-4 shrink-0 bg-white/5 backdrop-blur-xl sticky top-0 z-10 transition-colors ${(isStreaming || logs.length > 0) ? 'border-b border-slate-100 dark:border-white/5' : ''}`}>
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500">
@@ -337,127 +339,152 @@ export default function PodDetail({ pod }: Props): JSX.Element {
           </div>
         </div>
 
-        {/* Metadata */}
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/5 shrink-0">
-          <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] mb-3">Resource Info</h4>
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-2.5">
-            <MetaRow label="Node" value={pod.spec.nodeName ?? '—'} mono />
-            <MetaRow label="Pod IP" value={pod.status.podIP ?? '—'} mono />
-            <MetaRow label="Host IP" value={pod.status.hostIP ?? '—'} mono />
-            <MetaRow label="QoS Class" value={pod.status.qosClass ?? '—'} />
-            <MetaRow label="Created" value={formatAge(pod.metadata.creationTimestamp) + ' ago'} />
-            <MetaRow label="Restart Policy" value={String(pod.spec.restartPolicy ?? 'Always')} />
-          </dl>
-        </div>
+        {/* Details Wrapper (Scrollable) */}
+        <div className="flex-1 overflow-y-auto min-h-0 scrollbar-hide">
+          {/* Metadata */}
+          <div className="px-6 py-4 border-b border-slate-100 dark:border-white/5 shrink-0">
+            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] mb-3">Resource Info</h4>
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-2.5">
+              <MetaRow label="Node" value={pod.spec.nodeName ?? '—'} mono />
+              <MetaRow label="Pod IP" value={pod.status.podIP ?? '—'} mono />
+              <MetaRow label="Host IP" value={pod.status.hostIP ?? '—'} mono />
+              <MetaRow label="QoS Class" value={pod.status.qosClass ?? '—'} />
+              <MetaRow label="Created" value={formatAge(pod.metadata.creationTimestamp) + ' ago'} />
+              <MetaRow label="Restart Policy" value={String(pod.spec.restartPolicy ?? 'Always')} />
+            </dl>
+          </div>
 
-        {/* Containers */}
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/5 shrink-0">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Containers</h4>
-            {pod.spec.containers.length > 1 && (
-              <select
-                value={selectedContainer}
-                onChange={e => setSelectedContainer(e.target.value)}
-                className="bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-[10px] font-bold rounded-lg px-2.5 py-1
-                           border border-slate-200 dark:border-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              >
-                {pod.spec.containers.map(c => (
-                  <option key={c.name} value={c.name}>{c.name}</option>
-                ))}
-              </select>
+          {/* Containers */}
+          <div className="px-6 py-4 border-b border-slate-100 dark:border-white/5 shrink-0">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Containers</h4>
+                <button
+                  onClick={() => setShowAnalyzer(!showAnalyzer)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider transition-all border
+                    ${showAnalyzer
+                      ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/20'
+                      : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 bg-slate-100/50 dark:bg-white/5 border-slate-200 dark:border-white/10'}`}
+                >
+                  <Activity className={`w-3 h-3 ${showAnalyzer ? 'animate-pulse' : ''}`} />
+                  Analyze Restarts
+                </button>
+              </div>
+              {pod.spec.containers.length > 1 && (
+                <select
+                  value={selectedContainer}
+                  onChange={e => setSelectedContainer(e.target.value)}
+                  className="bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-[10px] font-bold rounded-lg px-2.5 py-1
+                             border border-slate-200 dark:border-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                >
+                  {pod.spec.containers.map(c => (
+                    <option key={c.name} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div className="space-y-3">
+              {pod.spec.containers.map(c => {
+                const status = pod.status.containerStatuses?.find(s => s.name === c.name)
+                return (
+                  <div key={c.name} className="flex items-center justify-between gap-3 bg-slate-50/50 dark:bg-white/[0.03] p-2.5 rounded-xl border border-slate-100 dark:border-white/5">
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-200 font-mono truncate">{c.name}</p>
+                      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 truncate mt-0.5">{c.image}</p>
+                    </div>
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      {status && (
+                        <>
+                          <span className={`w-2 h-2 rounded-full ${status.ready ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.3)]'}`} />
+                          {status.restartCount > 0 && (
+                            <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded-md">
+                              {status.restartCount}↺
+                            </span>
+                          )}
+                        </>
+                      )}
+                      <button
+                        onClick={() => openExec({
+                          pod: pod.metadata.name,
+                          container: c.name,
+                          namespace: pod.metadata.namespace ?? selectedNamespace ?? ''
+                        })}
+                        className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold text-blue-600 dark:text-blue-400
+                                   bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30
+                                   rounded-lg transition-all active:scale-95 border border-blue-100 dark:border-blue-900/30"
+                      >
+                        <span>$</span> SHELL
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {showAnalyzer && (
+              <div className="mt-6 animate-in fade-in slide-in-from-top-2 duration-300">
+                <PodRestartAnalyzer pod={pod} />
+              </div>
             )}
           </div>
-          <div className="space-y-3">
-            {pod.spec.containers.map(c => {
-              const status = pod.status.containerStatuses?.find(s => s.name === c.name)
-              return (
-                <div key={c.name} className="flex items-center justify-between gap-3 bg-slate-50/50 dark:bg-white/[0.03] p-2.5 rounded-xl border border-slate-100 dark:border-white/5">
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200 font-mono truncate">{c.name}</p>
-                    <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 truncate mt-0.5">{c.image}</p>
-                  </div>
-                  <div className="flex items-center gap-2.5 shrink-0">
-                    {status && (
-                      <>
-                        <span className={`w-2 h-2 rounded-full ${status.ready ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.3)]'}`} />
-                        {status.restartCount > 0 && (
-                          <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded-md">
-                            {status.restartCount}↺
-                          </span>
-                        )}
-                      </>
-                    )}
-                    <button
-                      onClick={() => openExec({
-                        pod: pod.metadata.name,
-                        container: c.name,
-                        namespace: pod.metadata.namespace ?? selectedNamespace ?? ''
-                      })}
-                      className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold text-blue-600 dark:text-blue-400
-                                 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30
-                                 rounded-lg transition-all active:scale-95 border border-blue-100 dark:border-blue-900/30"
-                    >
-                      <span>$</span> SHELL
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
 
-        {/* Resource requests / limits */}
-        {pod.spec.containers.some(c => c.resources?.requests || c.resources?.limits) && (
-          <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-900 shrink-0">
-            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] mb-3">Resources</h4>
-            <div className="space-y-2.5">
-              {pod.spec.containers.filter(c => c.resources?.requests || c.resources?.limits).map(c => (
-                <div key={c.name} className="bg-slate-50/50 dark:bg-white/[0.03] rounded-xl p-2.5 border border-slate-100 dark:border-white/5">
-                  <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 font-mono mb-2">{c.name}</p>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                    {c.resources?.requests?.cpu && (
-                      <ResourceLimit label="CPU req" value={c.resources.requests.cpu} />
-                    )}
-                    {c.resources?.limits?.cpu && (
-                      <ResourceLimit label="CPU lim" value={c.resources.limits.cpu} />
-                    )}
-                    {c.resources?.requests?.memory && (
-                      <ResourceLimit label="Mem req" value={c.resources.requests.memory} />
-                    )}
-                    {c.resources?.limits?.memory && (
-                      <ResourceLimit label="Mem lim" value={c.resources.limits.memory} />
-                    )}
+          {/* Resource requests / limits */}
+          {pod.spec.containers.some(c => c.resources?.requests || c.resources?.limits) && (
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-900 shrink-0">
+              <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] mb-3">Resources</h4>
+              <div className="space-y-2.5">
+                {pod.spec.containers.filter(c => c.resources?.requests || c.resources?.limits).map(c => (
+                  <div key={c.name} className="bg-slate-50/50 dark:bg-white/[0.03] rounded-xl p-2.5 border border-slate-100 dark:border-white/5">
+                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 font-mono mb-2">{c.name}</p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                      {c.resources?.requests?.cpu && (
+                        <ResourceLimit label="CPU req" value={c.resources.requests.cpu} />
+                      )}
+                      {c.resources?.limits?.cpu && (
+                        <ResourceLimit label="CPU lim" value={c.resources.limits.cpu} />
+                      )}
+                      {c.resources?.requests?.memory && (
+                        <ResourceLimit label="Mem req" value={c.resources.requests.memory} />
+                      )}
+                      {c.resources?.limits?.memory && (
+                        <ResourceLimit label="Mem lim" value={c.resources.limits.memory} />
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Log viewer */}
-        <div className="flex flex-col flex-1 min-h-0">
-          {LogToolbar}
-
-          {logError && (
-            <div className="mx-6 mt-3 shrink-0 px-4 py-2.5 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 rounded-xl text-red-600 dark:text-red-400 text-[10px] font-bold">
-              {logError}
+                ))}
+              </div>
             </div>
           )}
+        </div>
 
-          <div className="flex-1 relative m-6 mt-3 mb-6 bg-slate-950 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800/50 shadow-inner">
-            {LogContent(logContainerRef)}
-            {logs.length > 0 && (
-              <button
-                onClick={() => setAutoScroll(v => !v)}
-                className={`absolute bottom-3 right-3 px-2 py-1 text-[9px] font-bold rounded-md border transition-all
-                  ${autoScroll
-                    ? 'bg-emerald-900/60 border-emerald-700/60 text-emerald-400'
-                    : 'bg-slate-800/60 border-slate-700/60 text-slate-500'}`}
-              >
-                ↓ AUTO
-              </button>
-            )}
-          </div>
+        {/* Log viewer */}
+        <div className={`flex flex-col transition-all duration-500 overflow-hidden ${isStreaming || logs.length > 0 ? 'flex-1 min-h-[300px]' : 'shrink-0'}`}>
+          {LogToolbar}
+
+          {(isStreaming || logs.length > 0) && (
+            <div className="flex flex-col flex-1 min-h-0 animate-in slide-in-from-bottom-4 duration-500">
+              {logError && (
+                <div className="mx-6 mt-3 shrink-0 px-4 py-2.5 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 rounded-xl text-red-600 dark:text-red-400 text-[10px] font-bold">
+                  {logError}
+                </div>
+              )}
+
+              <div className="flex-1 relative m-6 mt-3 mb-6 bg-slate-950 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800/50 shadow-inner">
+                {LogContent(logContainerRef)}
+                {logs.length > 0 && (
+                  <button
+                    onClick={() => setAutoScroll(v => !v)}
+                    className={`absolute bottom-3 right-3 px-2 py-1 text-[9px] font-bold rounded-md border transition-all
+                      ${autoScroll
+                        ? 'bg-emerald-900/60 border-emerald-700/60 text-emerald-400'
+                        : 'bg-slate-800/60 border-slate-700/60 text-slate-500'}`}
+                  >
+                    ↓ AUTO
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>
