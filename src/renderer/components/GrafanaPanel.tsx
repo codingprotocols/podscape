@@ -57,7 +57,7 @@ export default function GrafanaPanel(): JSX.Element {
             />
             <button
               onClick={handleSave}
-              className="px-6 py-2.5 text-sm font-black text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-lg shadow-blue-500/20
+              className="px-6 py-2.5 text-sm font-black text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-lg shadow-blue-500/20
                          transition-all active:scale-95"
             >
               CONNECT
@@ -115,7 +115,7 @@ export default function GrafanaPanel(): JSX.Element {
             </div>
             <button
               onClick={() => setEditMode(true)}
-              className="px-6 py-2.5 text-xs font-black text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-lg shadow-blue-500/20
+              className="px-6 py-2.5 text-xs font-black text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-lg shadow-blue-500/20
                          transition-all active:scale-95"
             >
               CONFIGURE ENDPOINT

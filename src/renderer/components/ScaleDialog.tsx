@@ -109,7 +109,7 @@ export default function ScaleDialog({ deployment: d, onClose }: Props): JSX.Elem
           <button
             onClick={handleScale}
             disabled={!valid || pending || parsed === current}
-            className="flex-1 py-2 text-sm text-white bg-blue-600 hover:bg-blue-500 rounded-lg
+            className="flex-1 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg
                        transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {pending ? 'Scaling…' : `Scale to ${valid ? parsed : '?'}`}

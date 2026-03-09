@@ -51,7 +51,7 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
   }
 
   return (
-    <div className="flex flex-col h-full min-h-[400px] bg-slate-50 dark:bg-slate-950">
+    <div className="flex flex-col h-full min-h-[400px] bg-slate-50 dark:bg-[hsl(var(--bg-dark))]">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
         <div className="flex items-center gap-2">
@@ -79,7 +79,7 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-1 text-[10px] font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-sm
+              className="px-4 py-1 text-[10px] font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm
                          transition-colors disabled:opacity-50 uppercase tracking-widest"
             >
               {saving ? 'Applying…' : 'Apply'}
@@ -88,7 +88,7 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
         </div>
       </div>
 
-      <div className="flex-1 relative bg-white dark:bg-slate-950">
+      <div className="flex-1 relative bg-white dark:bg-[hsl(var(--bg-dark))]">
         <Editor
           height="100%"
           language="yaml"
@@ -142,8 +142,8 @@ export function ApplyYAMLPanel(): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-950">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-950">
+    <div className="flex flex-col h-full bg-slate-50 dark:bg-[hsl(var(--bg-dark))]">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-white dark:bg-[hsl(var(--bg-dark))]">
         <div>
           <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Apply YAML</h2>
           <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">
@@ -153,7 +153,7 @@ export function ApplyYAMLPanel(): JSX.Element {
         <button
           onClick={handleApply}
           disabled={applying}
-          className="px-6 py-2 text-xs font-black text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-lg shadow-blue-500/20
+          className="px-6 py-2 text-xs font-black text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-lg shadow-blue-500/20
                      transition-all active:scale-95 disabled:opacity-50 uppercase tracking-widest"
         >
           {applying ? 'Applying…' : 'KUBECTL APPLY'}

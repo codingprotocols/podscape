@@ -62,10 +62,10 @@ export default function SettingsPanel(): JSX.Element {
                 {(['light', 'dark'] as const).map(t => (
                   <button
                     key={t}
-                    onClick={() => setForm(f => ({ ...f, theme: t }))}
+                    onClick={() => { setForm(f => ({ ...f, theme: t })); setTheme(t) }}
                     className={`flex-1 flex items-center justify-center gap-2.5 py-3 rounded-xl border-2 text-sm font-semibold transition-all
                       ${form.theme === t
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 shadow-sm shadow-blue-500/10'
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 shadow-sm shadow-blue-500/10'
                         : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600'
                       }`}
                   >
@@ -182,13 +182,13 @@ export default function SettingsPanel(): JSX.Element {
           </section>
 
           {/* ── Exec tip ────────────────────────────────────────────────────── */}
-          <div className="p-5 bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/40 rounded-2xl">
+          <div className="p-5 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/30 rounded-2xl">
             <p className="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1.5 uppercase tracking-wide">
               Exec into container not working?
             </p>
             <p className="text-xs text-amber-700/80 dark:text-amber-400/80 leading-relaxed">
               Set <strong>kubectl path</strong> to the output of{' '}
-              <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">which kubectl</code>{' '}
+              <code className="bg-amber-100 dark:bg-amber-900/20 px-1 rounded">which kubectl</code>{' '}
               in your terminal. Save, then fully quit and relaunch Podscape (Cmd+Q, not just close window).
             </p>
           </div>
@@ -197,7 +197,11 @@ export default function SettingsPanel(): JSX.Element {
           <div className="flex items-center justify-between pt-2">
             <div className="text-sm min-h-5">
               {error && <span className="text-red-500 text-xs">{error}</span>}
-              {saved && <span className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">Saved. Restart the app to apply path changes.</span>}
+              {saved && <span className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">
+                {(form.kubectlPath || form.shellPath || form.helmPath)
+                  ? 'Saved. Restart the app to apply path changes.'
+                  : 'Saved.'}
+              </span>}
             </div>
             <button
               onClick={handleSave}

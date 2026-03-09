@@ -3,13 +3,43 @@
 @tailwind utilities;
 
 @layer base {
-  * { box-sizing: border-box; }
-  
-  html, body {
+  :root {
+    /* More Neutral Premium Palette */
+    --brand-h: 221;
+    --brand-s: 70%;
+    /* Reduced saturation */
+    --brand-l: 55%;
+
+    --primary: hsl(var(--brand-h), var(--brand-s), var(--brand-l));
+    --primary-muted: hsla(var(--brand-h), var(--brand-s), var(--brand-l), 0.1);
+
+    --success: hsl(142, 60%, 45%);
+    --warning: hsl(38, 80%, 50%);
+    --danger: hsl(0, 70%, 60%);
+    --info: hsl(188, 60%, 41%);
+
+    --bg-light: 210, 20%, 98%;
+    --bg-dark: 222, 20%, 6%;
+    /* Much more neutral dark slate */
+
+    --sidebar-light: 210, 20%, 97%;
+    --sidebar-dark: 222, 20%, 8%;
+
+    --border-light: 214, 15%, 85%;
+    --border-dark: 217, 15%, 15%;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
     height: 100%;
     margin: 0;
     padding: 0;
     overflow: hidden;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
 
   body {
@@ -18,38 +48,133 @@
   }
 
   .dark body {
-    @apply bg-slate-950 text-slate-100;
+    background-color: hsl(var(--bg-dark));
+    @apply text-slate-100;
   }
 
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  
-  ::-webkit-scrollbar-thumb { 
-    @apply bg-slate-300 rounded-full;
+  /* Scrollbars */
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
   }
-  
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-300/50 rounded-full hover:bg-slate-400/50 transition-colors;
+  }
+
   .dark ::-webkit-scrollbar-thumb {
-    @apply bg-slate-800;
+    @apply bg-slate-800/50 hover:bg-slate-700/50;
   }
 
-  ::-webkit-scrollbar-thumb:hover { 
-    @apply bg-slate-400;
-  }
-
-  .dark ::-webkit-scrollbar-thumb:hover {
-    @apply bg-slate-700;
-  }
-
-  /* Remove number input arrows */
+  /* Number inputs */
   input[type="number"]::-webkit-outer-spin-button,
-  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-  input[type="number"] { -moz-appearance: textfield; }
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
 }
 
-/* Hide scrollbar utility */
-.scrollbar-hide::-webkit-scrollbar { display: none; }
-.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+@layer components {
 
-/* XTerm scrollbar */
-.dark .xterm-viewport::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
-.xterm-viewport::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
+  /* Surfaces & Hierarchy */
+  .surface-elevated {
+    @apply transition-all duration-300;
+    background-color: hsl(var(--sidebar-light));
+    border-color: hsla(var(--border-light), 0.5);
+  }
+
+  .dark .surface-elevated {
+    background-color: hsl(var(--sidebar-dark));
+    border-color: hsla(var(--border-dark), 0.5);
+  }
+
+  /* Glass Layers */
+  .glass-light {
+    @apply backdrop-blur-sm border transition-all duration-300;
+    background-color: rgba(255, 255, 255, 0.4);
+    border-color: rgba(226, 232, 240, 0.3);
+  }
+
+  .dark .glass-light {
+    background-color: rgba(15, 23, 42, 0.3);
+    border-color: rgba(30, 41, 59, 0.2);
+  }
+
+  .glass-medium {
+    @apply backdrop-blur-md border transition-all duration-300;
+    background-color: rgba(255, 255, 255, 0.6);
+    border-color: rgba(226, 232, 240, 0.5);
+  }
+
+  .dark .glass-medium {
+    background-color: rgba(15, 23, 42, 0.6);
+    border-color: rgba(30, 41, 59, 0.4);
+  }
+
+  .glass-heavy {
+    @apply backdrop-blur-xl border transition-all duration-300;
+    background-color: rgba(255, 255, 255, 0.85);
+    border-color: rgba(226, 232, 240, 0.8);
+  }
+
+  .dark .glass-heavy {
+    background-color: rgba(9, 14, 26, 0.85);
+    /* Slightly darker/denser */
+    border-color: rgba(30, 41, 59, 0.8);
+  }
+
+  /* Standard Components */
+  .glass-panel {
+    @apply glass-medium;
+  }
+
+  .glass-card {
+    @apply glass-medium shadow-lg rounded-2xl hover:shadow-xl;
+  }
+
+  .card-solid {
+    @apply border rounded-2xl transition-all duration-300;
+    background-color: white;
+    border-color: rgba(226, 232, 240, 0.8);
+  }
+
+  .dark .card-solid {
+    background-color: rgba(30, 41, 59, 0.2);
+    border-color: rgba(51, 65, 85, 0.4);
+  }
+
+  .premium-gradient {
+    background: linear-gradient(135deg, var(--primary), hsl(var(--brand-h), var(--brand-s), 40%));
+  }
+
+  .active-glow {
+    box-shadow: 0 0 15px hsla(var(--brand-h), var(--brand-s), var(--brand-l), 0.3);
+  }
+
+  /* Resize Handles */
+  .resize-handle-v {
+    @apply absolute top-0 bottom-0 w-1.5 cursor-col-resize z-50 transition-colors duration-200;
+  }
+
+  .resize-handle-v:hover {
+    @apply bg-blue-500/30;
+  }
+}
+
+/* Utils */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

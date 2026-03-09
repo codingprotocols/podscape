@@ -13,10 +13,10 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 
 function PhaseBadge({ phase }: { phase: string }) {
   const cls =
-    phase === 'Bound' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 ring-emerald-500/30' :
-    phase === 'Pending' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 ring-yellow-500/30' :
-    phase === 'Lost' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 ring-red-500/30' :
-    'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 ring-slate-500/30'
+    phase === 'Bound' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 ring-emerald-500/30' :
+      phase === 'Pending' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400 ring-yellow-500/30' :
+        phase === 'Lost' ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400 ring-red-500/30' :
+          'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 ring-slate-500/30'
 
   return (
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold ring-1 ${cls}`}>
@@ -31,7 +31,7 @@ export default function PVCDetail({ pvc }: { pvc: KubePVC }) {
   const accessModes = (pvc.status.accessModes ?? pvc.spec.accessModes ?? []).join(', ')
 
   return (
-    <div className="flex flex-col w-[520px] min-w-[400px] border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 h-full shadow-2xl overflow-y-auto">
+    <div className="flex flex-col w-full h-full overflow-y-auto">
       {/* Header */}
       <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 shrink-0">
         <div className="flex items-start gap-3">

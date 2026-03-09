@@ -26,20 +26,20 @@ function RingChart({
   const filled = Math.min(1, pct / 100) * circumference
 
   const color =
-    pct >= 85 ? '#ef4444' :
-      pct >= 65 ? '#f97316' :
-        pct >= 45 ? '#eab308' :
-          '#3b82f6'
+    pct >= 85 ? 'var(--danger)' :
+      pct >= 65 ? 'var(--warning)' :
+        pct >= 45 ? 'hsl(38, 92%, 60%)' :
+          'var(--primary)'
 
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div className="flex flex-col items-center gap-1.5">
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         {/* Track */}
         <circle
           cx={cx} cy={cy} r={r}
           fill="none"
           stroke="currentColor"
-          className="text-slate-100 dark:text-slate-800"
+          className="text-slate-100 dark:text-white/5"
           strokeWidth={stroke}
         />
         {/* Fill */}
@@ -51,7 +51,7 @@ function RingChart({
           strokeDasharray={`${filled} ${circumference - filled}`}
           strokeLinecap="round"
           transform={`rotate(-90 ${cx} ${cy})`}
-          style={{ transition: 'stroke-dasharray 0.6s ease' }}
+          style={{ transition: 'stroke-dasharray 0.8s cubic-bezier(0.4, 0, 0.2, 1)' }}
         />
         {/* Percentage */}
         <text
@@ -60,14 +60,14 @@ function RingChart({
           dominantBaseline="middle"
           fill="currentColor"
           className="text-slate-900 dark:text-white"
-          fontSize={size < 60 ? 10 : 12}
-          fontWeight="800"
+          fontSize={size < 60 ? 10 : 13}
+          fontWeight="900"
           fontFamily="monospace"
         >
           {Math.round(pct)}%
         </text>
       </svg>
-      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{label}</span>
+      <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.15em]">{label}</span>
     </div>
   )
 }
@@ -108,19 +108,19 @@ function StatCard({
   accent?: 'green' | 'yellow' | 'red' | 'blue' | 'gray'
 }) {
   const accentMap = {
-    green: 'text-emerald-600 dark:text-emerald-400',
-    yellow: 'text-amber-600 dark:text-amber-400',
-    red: 'text-red-600 dark:text-red-400',
-    blue: 'text-blue-600 dark:text-blue-400',
-    gray: 'text-slate-400 dark:text-slate-500'
+    green: 'text-emerald-500',
+    yellow: 'text-amber-500',
+    red: 'text-rose-500',
+    blue: 'text-blue-500',
+    gray: 'text-slate-500'
   }
   const color = accent ? accentMap[accent] : 'text-slate-900 dark:text-white'
 
   return (
-    <div className="flex flex-col gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-5 py-4 shadow-sm transition-all hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700 min-w-0">
-      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{label}</span>
-      <span className={`text-2xl font-extrabold tabular-nums leading-none tracking-tight ${color}`}>{value}</span>
-      {sub && <span className="text-[10px] font-bold text-slate-400 dark:text-slate-600 truncate">{sub}</span>}
+    <div className="flex flex-col gap-2 card-solid px-6 py-5 min-w-0 group hover:scale-[1.02] hover:border-slate-300 dark:hover:border-slate-700 shadow-sm">
+      <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em]">{label}</span>
+      <span className={`text-3xl font-black tabular-nums leading-none tracking-tighter ${color}`}>{value}</span>
+      {sub && <span className="text-[10px] font-extrabold text-slate-400 dark:text-slate-600 truncate">{sub}</span>}
     </div>
   )
 }
@@ -146,30 +146,26 @@ function NodeCard({ node, metrics }: { node: KubeNode; metrics: NodeMetrics | un
 
   return (
     <div className={`
-      flex flex-col gap-5 bg-white dark:bg-slate-900 border rounded-2xl p-5
-      transition-all shadow-sm hover:shadow-xl hover:-translate-y-1
-      ${ready
-        ? 'border-slate-200 dark:border-slate-800 hover:border-blue-200 dark:hover:border-blue-900/50'
-        : 'border-red-200 dark:border-red-900/30 bg-red-50/50 dark:bg-red-950/10'
-      }
+      flex flex-col gap-6 glass-card glass-light p-6 scale-in
+      ${!ready && 'border-rose-500/30 bg-rose-500/5'}
     `}>
       {/* Header */}
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-sm font-bold text-slate-800 dark:text-slate-100 font-mono truncate tracking-tight">{node.metadata.name}</p>
+          <p className="text-[15px] font-black text-slate-900 dark:text-white font-mono truncate tracking-tight">{node.metadata.name}</p>
           {internalIP && (
-            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 font-mono mt-0.5 tracking-wider">{internalIP}</p>
+            <p className="text-[10px] font-black text-slate-500 dark:text-slate-600 font-mono mt-1 tracking-widest">{internalIP}</p>
           )}
         </div>
         <span className={`
-          shrink-0 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold outline outline-1 transition-all
+          shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest outline outline-1
           ${ready
-            ? 'bg-emerald-50 text-emerald-700 outline-emerald-500/20 dark:bg-emerald-900/20 dark:text-emerald-400'
-            : 'bg-red-50 text-red-700 outline-red-500/20 dark:bg-red-900/20 dark:text-red-400'
+            ? 'bg-emerald-500/10 text-emerald-500 outline-emerald-500/20'
+            : 'bg-rose-500/10 text-rose-500 outline-rose-500/20'
           }
         `}>
-          <span className={`w-1.5 h-1.5 rounded-full ${ready ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
-          {ready ? 'READY' : 'OFFLINE'}
+          <span className={`w-1.5 h-1.5 rounded-full ${ready ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-rose-500'}`} />
+          {ready ? 'Active' : 'Down'}
         </span>
       </div>
 
@@ -232,37 +228,37 @@ function EventRow({ event: e }: { event: KubeEvent }) {
 
   return (
     <div className={`
-      flex items-start gap-4 px-6 py-4 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors
-      ${isWarning ? 'border-l-4 border-amber-500/60 bg-amber-50/10' : 'border-l-4 border-transparent'}
+      flex items-start gap-4 px-8 py-5 hover:bg-white/5 transition-all
+      ${isWarning ? 'bg-rose-500/[0.03]' : ''}
     `}>
-      {/* Type badge */}
-      <span className={`
-        shrink-0 mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider
-        ${isWarning ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}
-      `}>
-        {isWarning ? '!' : '#'} {e.type ?? '?'}
-      </span>
+      {/* Type indicator */}
+      <div className={`shrink-0 mt-1.5 w-2 h-2 rounded-full ${isWarning ? 'bg-rose-500 shadow-[0_0_8px_#f43f5e]' : 'bg-slate-700'}`} />
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-baseline gap-2.5 flex-wrap">
-          <span className="text-xs font-bold text-slate-800 dark:text-slate-100">{e.reason ?? '—'}</span>
-          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 font-mono truncate tracking-tight bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
-            {e.involvedObject.kind}/{e.involvedObject.name}
+      <div className="flex-1 min-w-0 pl-1">
+        <div className="flex items-baseline gap-3 flex-wrap">
+          <span className="text-sm font-black text-slate-900 dark:text-white tracking-tight">{e.reason ?? '—'}</span>
+          <span className="text-[10px] font-black text-slate-500 dark:text-slate-600 font-mono uppercase tracking-widest bg-white/5 px-2 py-0.5 rounded border border-white/5">
+            {e.involvedObject.kind}
+          </span>
+          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 font-mono truncate max-w-[150px]">
+            {e.involvedObject.name}
           </span>
           {e.metadata.namespace && (
-            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-600 font-mono shrink-0">
-              @{e.metadata.namespace}
+            <span className="text-[9px] font-black text-blue-500/60 uppercase tracking-widest">
+              {e.metadata.namespace}
             </span>
           )}
         </div>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 line-clamp-2 leading-relaxed tracking-tight">{e.message ?? ''}</p>
+        <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-2 line-clamp-2 leading-relaxed tracking-tight font-medium">{e.message ?? ''}</p>
       </div>
 
-      {/* Age */}
+      {/* Age & Count */}
       <div className="shrink-0 text-right">
-        {ts && <span className="text-[10px] font-bold text-slate-400 dark:text-slate-600">{formatAge(ts)} AGO</span>}
+        {ts && <span className="text-[10px] font-black text-slate-500 dark:text-slate-600 uppercase tracking-tighter">{formatAge(ts)} ago</span>}
         {e.count && e.count > 1 && (
-          <p className="text-[10px] font-extrabold text-blue-500 dark:text-blue-400 mt-1">×{e.count}</p>
+          <div className="mt-1.5 inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 text-[10px] font-black tracking-tighter">
+            ×{e.count}
+          </div>
         )}
       </div>
     </div>
@@ -300,26 +296,29 @@ export default function Dashboard(): JSX.Element {
     .slice(0, 15)
 
   return (
-    <div className="flex flex-col flex-1 h-full overflow-auto bg-slate-50 dark:bg-slate-950 transition-colors duration-200">
+    <div className="flex flex-col flex-1 h-full overflow-auto bg-slate-50 dark:bg-[hsl(var(--bg-dark))] transition-colors duration-200">
       {/* Top bar */}
-      <div className="flex items-center justify-between px-6 py-6 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-950">
+      <div className="flex items-center justify-between px-8 py-8 border-b border-slate-200 dark:border-white/5 shrink-0 bg-white/5 backdrop-blur-md">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Dashboard</h1>
+          <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter leading-none">Dashboard</h1>
           {selectedContext && (
-            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 font-mono uppercase tracking-[0.2em]">{selectedContext}</p>
+            <p className="text-[10px] font-black text-slate-500 dark:text-slate-600 mt-2.5 font-mono uppercase tracking-[0.25em] flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6]" />
+              {selectedContext}
+            </p>
           )}
         </div>
         <button
           onClick={refresh}
           disabled={loadingResources}
-          className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300
-                     bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg shadow-sm
-                     disabled:opacity-50 border border-slate-200 dark:border-slate-800 transition-all active:scale-95"
+          className="flex items-center gap-2 px-5 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300
+                     glass-panel hover:bg-white/10 dark:hover:bg-white/5 rounded-xl shadow-sm
+                     disabled:opacity-50 active:scale-95"
         >
-          <span className={`transition-transform duration-500 ${loadingResources ? 'animate-spin' : ''}`}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6m12 6a9 9 0 0 1-15-6.7L3 16" /></svg>
+          <span className={`transition-transform duration-700 ${loadingResources ? 'animate-spin' : ''}`}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6m12 6a9 9 0 0 1-15-6.7L3 16" /></svg>
           </span>
-          Refresh
+          Sync
         </button>
       </div>
 
@@ -401,7 +400,7 @@ export default function Dashboard(): JSX.Element {
             </h2>
             <div className="flex items-center gap-3">
               {warnEvents > 0 && (
-                <span className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 px-2.5 py-0.5 rounded-full font-bold">
+                <span className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 px-2.5 py-0.5 rounded-full font-bold">
                   {warnEvents} WARNINGS
                 </span>
               )}

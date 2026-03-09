@@ -9,7 +9,7 @@ export default function RoleBindingDetail({ binding }: { binding: Binding }) {
   const subjects = binding.subjects ?? []
 
   return (
-    <div className="flex flex-col w-[520px] min-w-[400px] border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 h-full shadow-2xl overflow-y-auto">
+    <div className="flex flex-col w-full h-full overflow-y-auto">
       {/* Header */}
       <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 shrink-0">
         <div className="flex items-start gap-3">
@@ -69,9 +69,9 @@ export default function RoleBindingDetail({ binding }: { binding: Binding }) {
                     <tr key={i} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors">
                       <td className="px-4 py-2.5">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold
-                          ${s.kind === 'ServiceAccount' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                          : s.kind === 'User' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                          : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'}`}>
+                          ${s.kind === 'ServiceAccount' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
+                            : s.kind === 'User' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
+                              : 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400'}`}>
                           {s.kind}
                         </span>
                       </td>

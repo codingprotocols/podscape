@@ -20,7 +20,7 @@ export default function ConfigMapDetail({ configMap: cm }: Props): JSX.Element {
   const isYAML = !isJSON && /^[a-zA-Z_][\w.-]*\s*:/m.test(selectedValue)
 
   return (
-    <div className="flex flex-col w-[480px] min-w-[360px] border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 h-full">
+    <div className="flex flex-col w-full h-full">
       <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-mono truncate">{cm.metadata.name}</h3>
         <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">

@@ -580,16 +580,6 @@ export interface Plugin {
   panels: PluginPanel[]
 }
 
-// ─── Helm ──────────────────────────────────────────────────────────────────────
-
-export interface HelmRelease {
-  name: string
-  namespace: string
-  chart: string
-  app_version: string
-  status: string
-  updated: string
-}
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
 
