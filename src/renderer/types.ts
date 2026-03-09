@@ -621,7 +621,6 @@ export type ResourceKind =
   | 'settings'
   | 'network'
   | 'helm'
-  | 'grafana'
 
 export type AnyKubeResource =
   | KubePod

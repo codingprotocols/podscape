@@ -305,8 +305,6 @@ export default function App(): JSX.Element {
           <EventsView />
         ) : section === 'metrics' ? (
           <MetricsView />
-        ) : section === 'grafana' ? (
-          <GrafanaPanel />
         ) : section === 'extensions' ? (
           <ExtensionsPanel />
         ) : section === 'settings' ? (

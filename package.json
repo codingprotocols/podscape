@@ -3,7 +3,7 @@
   "version": "1.1.0",
   "description": "Kubernetes management desktop app — Electron + React + TypeScript",
   "main": "./out/main/index.js",
-  "author": "Podscape",
+  "author": "Coding Protocols Private Limited",
   "homepage": ".",
   "scripts": {
     "start": "electron-vite preview",
@@ -19,9 +19,9 @@
     "release": "npm run build && electron-builder --publish always"
   },
   "build": {
-    "appId": "com.podscape.app",
+    "appId": "com.codingprotocols.podscape",
     "productName": "Podscape",
-    "copyright": "Copyright © 2025 Podscape",
+    "copyright": "Copyright © 2025 Coding Protocols Private Limited",
     "icon": "resources/icon.png",
     "mac": {
       "icon": "resources/icon.icns",
