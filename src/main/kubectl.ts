@@ -52,9 +52,10 @@ export class KubectlProvider implements KubeProvider {
   }
 
   async getResources(context: string, namespace: string | null, kind: string): Promise<unknown[]> {
-    const args = ['get', kind, '--context', context]
+    const args = ['get', kind]
+    if (context) args.push('--context', context)
     if (namespace) args.push('--namespace', namespace)
-    else args.push('--all-namespaces')
+    else if (namespace === null) args.push('--all-namespaces')
     args.push('-o', 'json')
     try {
       const output = await this.spawnKubectl(args)
