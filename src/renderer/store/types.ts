@@ -7,7 +7,7 @@ import {
     KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
     KubeNode, KubeEvent, KubeCRD,
     NodeMetrics, PodMetrics, Plugin, ResourceKind, AnyKubeResource, PortForwardEntry,
-    HelmRelease
+    HelmRelease, DebugPodEntry
 } from '../types'
 
 declare global {
@@ -28,6 +28,7 @@ declare global {
             getPodDisruptionBudgets: (context: string, namespace: string | null) => Promise<KubePDB[]>
             getServices: (context: string, namespace: string | null) => Promise<KubeService[]>
             getIngresses: (context: string, namespace: string | null) => Promise<KubeIngress[]>
+            getCustomResource: (context: string, namespace: string | null, crdName: string) => Promise<unknown[]>
             getIngressClasses: (context: string) => Promise<KubeIngressClass[]>
             getNetworkPolicies: (context: string, namespace: string | null) => Promise<KubeNetworkPolicy[]>
             getEndpoints: (context: string, namespace: string | null) => Promise<KubeEndpoints[]>
@@ -46,6 +47,7 @@ declare global {
             getEvents: (context: string, namespace: string | null) => Promise<KubeEvent[]>
             getPodMetrics: (context: string, namespace: string | null) => Promise<PodMetrics[]>
             getNodeMetrics: (context: string) => Promise<NodeMetrics[]>
+            createDebugPod: (context: string, namespace: string, image: string, name: string) => Promise<void>
             scale: (context: string, namespace: string, name: string, replicas: number) => Promise<string>
             scaleResource: (context: string, namespace: string, kind: string, name: string, replicas: number) => Promise<string>
             rolloutRestart: (context: string, namespace: string, kind: string, name: string) => Promise<string>
@@ -175,6 +177,10 @@ export interface AppStore {
     plugins: Plugin[]
     portForwards: PortForwardEntry[]
     helmReleases: HelmRelease[]
+    debugPods: DebugPodEntry[]
+    addDebugPod: (pod: DebugPodEntry) => void
+    removeDebugPod: (name: string) => void
+    updateDebugPod: (name: string, updates: Partial<DebugPodEntry>) => void
 
     // Exec modal
     execTarget: ExecTarget | null

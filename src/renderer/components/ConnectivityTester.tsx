@@ -1,43 +1,263 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useAppStore } from '../store'
-import { Search, Globe, Terminal as TerminalIcon, Network, Play, Trash2, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 import type { KubePod, KubeService } from '../types'
 
-interface OutputEntry {
-    text: string
-    success: boolean
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type Mode = 'diagnose' | 'manual'
+type Protocol = 'curl' | 'nc' | 'ping'
+type StepStatus = 'idle' | 'running' | 'success' | 'failed' | 'skipped'
+
+interface DiagStep {
+    key: 'dns' | 'tcp' | 'http'
+    label: string
+    cmd: string[]
+    status: StepStatus
+    output: string
+    durationMs: number
 }
 
-const OUTPUT_LIMIT = 50
+interface DiagRun {
+    id: number
+    timestamp: Date
+    from: string
+    to: string
+    steps: DiagStep[]
+    done: boolean
+}
 
-export function buildCommand(protocol: 'curl' | 'nc' | 'ping', host: string, port: string): string[] {
-    if (protocol === 'curl') return ['curl', '-v', '-m', '5', `${host}${port ? ':' + port : ''}`]
+interface ManualRun {
+    id: number
+    timestamp: Date
+    cmd: string[]
+    from: string
+    to: string
+    output: string
+    exitCode: number
+    durationMs: number
+}
+
+// ─── Pure helpers (exported for tests) ───────────────────────────────────────
+
+export function buildCommand(protocol: Protocol, host: string, port: string, path = ''): string[] {
+    const target = `${host}${port ? ':' + port : ''}${path}`
+    if (protocol === 'curl') return ['curl', '-v', '-m', '10', target]
     if (protocol === 'nc') return ['nc', '-zv', '-w', '5', host, port || '80']
     return ['ping', '-c', '3', '-W', '5', host]
 }
 
-export function buildServiceDnsName(svc: { metadata: { name: string; namespace: string } }): string {
-    return `${svc.metadata.name}.${svc.metadata.namespace}.svc.cluster.local`
+export function buildServiceDnsName(svc: { metadata: { name: string; namespace?: string } }): string {
+    return `${svc.metadata.name}.${svc.metadata.namespace || 'default'}.svc.cluster.local`
 }
+
+export function buildPodDnsName(pod: { metadata: { namespace?: string }; status: { podIP?: string } }): string {
+    const ip = pod.status.podIP ?? ''
+    const ns = pod.metadata.namespace ?? 'default'
+    return `${ip.replace(/\./g, '-')}.${ns}.pod.cluster.local`
+}
+
+function podContainerPorts(pod: KubePod): number[] {
+    const ports = new Set<number>()
+    for (const c of pod.spec.containers) {
+        for (const p of c.ports ?? []) {
+            ports.add(p.containerPort)
+        }
+    }
+    return [...ports].sort((a, b) => a - b)
+}
+
+function buildDiagSteps(host: string, port: string, path: string, skipDns: boolean): DiagStep[] {
+    const url = `http://${host}${port ? ':' + port : ''}${path || '/'}`
+    const steps: DiagStep[] = []
+
+    if (!skipDns) {
+        steps.push({
+            key: 'dns', label: 'DNS Resolution', status: 'idle', output: '', durationMs: 0,
+            cmd: ['nslookup', host],
+        })
+    }
+
+    steps.push({
+        key: 'tcp', label: 'TCP Port Check', status: 'idle', output: '', durationMs: 0,
+        cmd: ['nc', '-zv', '-w', '5', host, port || '80'],
+    })
+
+    steps.push({
+        key: 'http', label: 'HTTP Response', status: 'idle', output: '', durationMs: 0,
+        cmd: ['curl', '-s', '-m', '10', '-o', '/dev/null', '-w', 'HTTP %{http_code} (%{time_total}s)', url],
+    })
+
+    return steps
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function StepRow({ step }: { step: DiagStep }) {
+    const [expanded, setExpanded] = useState(false)
+    const hasOutput = step.output.trim().length > 0
+
+    const icon = step.status === 'running'
+        ? <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />
+        : step.status === 'success'
+            ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12" /></svg>
+            : step.status === 'failed'
+                ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                : step.status === 'skipped'
+                    ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                    : <span className="w-3.5 h-3.5 rounded-full border-2 border-current opacity-30 inline-block" />
+
+    const color =
+        step.status === 'success' ? 'text-emerald-500' :
+            step.status === 'failed' ? 'text-red-400' :
+                step.status === 'running' ? 'text-blue-400' :
+                    step.status === 'skipped' ? 'text-slate-500' :
+                        'text-slate-500'
+
+    return (
+        <div className={`border-l-2 pl-4 py-1 ${step.status === 'success' ? 'border-emerald-500' : step.status === 'failed' ? 'border-red-400' : step.status === 'running' ? 'border-blue-400' : 'border-slate-700'}`}>
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                    <span className={color}>{icon}</span>
+                    <span className="text-xs font-bold text-slate-300">{step.label}</span>
+                    {step.status !== 'idle' && step.status !== 'running' && step.durationMs > 0 && (
+                        <span className="text-[10px] text-slate-600 font-mono">{step.durationMs}ms</span>
+                    )}
+                    {step.status === 'running' && (
+                        <span className="text-[10px] text-blue-400 animate-pulse">running…</span>
+                    )}
+                    {step.status === 'skipped' && (
+                        <span className="text-[10px] text-slate-600">DNS failed — skipped</span>
+                    )}
+                </div>
+                {hasOutput && (
+                    <button
+                        onClick={() => setExpanded(e => !e)}
+                        className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors font-bold uppercase tracking-wider"
+                    >
+                        {expanded ? 'Hide' : 'Output'}
+                    </button>
+                )}
+            </div>
+            {hasOutput && expanded && (
+                <pre className="mt-2 text-[10px] leading-relaxed text-slate-400 whitespace-pre-wrap break-all bg-black/30 rounded-lg p-3 max-h-40 overflow-y-auto">
+                    {step.output.trim()}
+                </pre>
+            )}
+        </div>
+    )
+}
+
+function DiagRunCard({ run }: { run: DiagRun }) {
+    const allDone = run.steps.every(s => s.status !== 'idle' && s.status !== 'running')
+    const anyFailed = run.steps.some(s => s.status === 'failed')
+    const allSuccess = run.steps.every(s => s.status === 'success')
+
+    const copyAll = () => {
+        const lines = run.steps.map(s =>
+            `[${s.label}] ${s.status.toUpperCase()}${s.durationMs ? ` (${s.durationMs}ms)` : ''}\n${s.output.trim()}`
+        ).join('\n\n')
+        navigator.clipboard.writeText(`FROM: ${run.from}\nTO: ${run.to}\n\n${lines}`)
+    }
+
+    return (
+        <div className="rounded-xl border border-slate-800 bg-slate-900/60 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/80">
+                <div className="flex items-center gap-2 min-w-0">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${allDone ? (allSuccess ? 'bg-emerald-500' : anyFailed ? 'bg-red-400' : 'bg-slate-500') : 'bg-blue-400 animate-pulse'}`} />
+                    <span className="text-[10px] font-bold text-slate-400 truncate font-mono">{run.from}</span>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0 text-slate-600"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                    <span className="text-[10px] font-bold text-slate-300 truncate font-mono">{run.to}</span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[10px] text-slate-600 font-mono">{run.timestamp.toLocaleTimeString()}</span>
+                    {allDone && (
+                        <button onClick={copyAll} className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors" title="Copy results">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                        </button>
+                    )}
+                </div>
+            </div>
+            <div className="p-4 space-y-3">
+                {run.steps.map(step => <StepRow key={step.key} step={step} />)}
+            </div>
+        </div>
+    )
+}
+
+function ManualRunCard({ run }: { run: ManualRun }) {
+    const copy = () => navigator.clipboard.writeText(run.output)
+
+    return (
+        <div className={`rounded-xl border overflow-hidden ${run.exitCode === 0 ? 'border-emerald-900/60 bg-emerald-950/20' : 'border-red-900/40 bg-red-950/10'}`}>
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-inherit">
+                <div className="flex items-center gap-2 min-w-0">
+                    {run.exitCode === 0
+                        ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="3"><polyline points="20 6 9 17 4 12" /></svg>
+                        : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="3"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                    }
+                    <code className="text-[10px] text-slate-400 font-mono truncate">{run.cmd.join(' ')}</code>
+                </div>
+                <div className="flex items-center gap-3 shrink-0 ml-2">
+                    <span className="text-[10px] text-slate-600 font-mono">{run.timestamp.toLocaleTimeString()}</span>
+                    <button onClick={copy} className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors" title="Copy output">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                    </button>
+                </div>
+            </div>
+            <pre className="px-4 py-3 text-[10px] leading-relaxed text-slate-300 whitespace-pre-wrap break-all max-h-60 overflow-y-auto">
+                {run.output.trim() || '(no output)'}
+            </pre>
+        </div>
+    )
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+const idRef = { current: 0 }
+const nextId = () => ++idRef.current
 
 export default function ConnectivityTester() {
     const { selectedContext, selectedNamespace } = useAppStore()
+
+    // Data
     const [pods, setPods] = useState<KubePod[]>([])
     const [services, setServices] = useState<KubeService[]>([])
+
+    // Source
     const [selectedPod, setSelectedPod] = useState<KubePod | null>(null)
-    const [selectedContainer, setSelectedContainer] = useState<string>('')
+    const [selectedContainer, setSelectedContainer] = useState('')
+    const [searchPod, setSearchPod] = useState('')
+
+    // Target
     const [targetHost, setTargetHost] = useState('')
     const [targetPort, setTargetPort] = useState('')
-    const [protocol, setProtocol] = useState<'curl' | 'nc' | 'ping'>('curl')
-    const [loading, setLoading] = useState(false)
-    const [output, setOutput] = useState<OutputEntry[]>([])
-    const [searchPod, setSearchPod] = useState('')
-    const [searchTarget, setSearchTarget] = useState('')
+    const [targetPath, setTargetPath] = useState('/')
+    const [protocol, setProtocol] = useState<Protocol>('curl')
+    const [searchSvc, setSearchSvc] = useState('')
+    const [searchTargetPod, setSearchTargetPod] = useState('')
+    const [targetPickerTab, setTargetPickerTab] = useState<'services' | 'pods'>('services')
 
+    // Mode & results
+    const [mode, setMode] = useState<Mode>('diagnose')
+    const [running, setRunning] = useState(false)
+    const [activeDiag, setActiveDiag] = useState<DiagRun | null>(null)
+    const [diagHistory, setDiagHistory] = useState<DiagRun[]>([])
+    const [manualHistory, setManualHistory] = useState<ManualRun[]>([])
+
+    const activeDiagRef = useRef<DiagRun | null>(null)
+
+    // Fetch pods + services on context/namespace change
     useEffect(() => {
         if (!selectedContext) return
-        window.kubectl.getPods(selectedContext, selectedNamespace).then(p => setPods(p as KubePod[])).catch(() => setPods([]))
-        window.kubectl.getServices(selectedContext, selectedNamespace).then(s => setServices(s as KubeService[])).catch(() => setServices([]))
+        const nsArg = selectedNamespace === '_all' ? null : selectedNamespace
+        window.kubectl.getPods(selectedContext, nsArg)
+            .then(p => setPods(p as KubePod[]))
+            .catch(() => setPods([]))
+        window.kubectl.getServices(selectedContext, nsArg)
+            .then(s => setServices(s as KubeService[]))
+            .catch(() => setServices([]))
+        setSelectedPod(null)
+        setSelectedContainer('')
     }, [selectedContext, selectedNamespace])
 
     const filteredPods = useMemo(
@@ -48,255 +268,541 @@ export default function ConnectivityTester() {
         [pods, searchPod]
     )
 
-    const filteredServices = useMemo(
-        () => services.filter(s =>
-            s.metadata.name.toLowerCase().includes(searchTarget.toLowerCase())
-        ),
-        [services, searchTarget]
+    const filteredSvcs = useMemo(
+        () => services.filter(s => s.metadata.name.toLowerCase().includes(searchSvc.toLowerCase())),
+        [services, searchSvc]
     )
+
+    const filteredTargetPods = useMemo(
+        () => pods.filter(p =>
+            p.status.phase === 'Running' &&
+            !!p.status.podIP &&
+            p.metadata.name.toLowerCase().includes(searchTargetPod.toLowerCase())
+        ),
+        [pods, searchTargetPod]
+    )
+
+    const containers = selectedPod?.spec.containers.map(c => c.name) ?? []
 
     const handleSelectPod = (pod: KubePod) => {
         setSelectedPod(pod)
         setSelectedContainer(pod.spec.containers[0]?.name ?? '')
     }
 
-    const selectService = (svc: KubeService) => {
+    const handleSelectService = (svc: KubeService, port?: number) => {
         setTargetHost(buildServiceDnsName(svc))
-        if (svc.spec.ports && svc.spec.ports.length > 0) {
-            setTargetPort(svc.spec.ports[0].port.toString())
-        }
+        setTargetPort(String(port ?? svc.spec.ports?.[0]?.port ?? ''))
     }
 
-    const runTest = async () => {
-        if (!selectedPod || !targetHost || !selectedContainer) return
-        setLoading(true)
-        const cmd = buildCommand(protocol, targetHost, targetPort)
+    const handleSelectPodAsTarget = (pod: KubePod, port?: number) => {
+        setTargetHost(buildPodDnsName(pod))
+        if (port !== undefined) setTargetPort(String(port))
+    }
+
+    // Derived state
+    const isIPAddress = /^(\d{1,3}\.){3}\d{1,3}$/.test(targetHost)
+    const canRun = !!selectedPod && !!targetHost && !!selectedContainer && !running
+
+    const fromLabel = selectedPod
+        ? `${selectedPod.metadata.name} (${selectedPod.metadata.namespace ?? selectedNamespace ?? '?'})`
+        : null
+    const toLabel = targetHost
+        ? `${targetHost}${targetPort ? ':' + targetPort : ''}${mode === 'manual' && protocol === 'curl' && targetPath ? targetPath : ''}`
+        : null
+
+    const previewCmd = canRun
+        ? (mode === 'diagnose'
+            ? `nslookup ${targetHost} → nc -zv ${targetHost} ${targetPort || '80'} → curl http://${toLabel}${targetPath || '/'}`
+            : buildCommand(protocol, targetHost, targetPort, protocol === 'curl' ? targetPath : '').join(' ')
+        )
+        : null
+
+    // ── Run diagnose ──────────────────────────────────────────────────────────
+
+    const runDiagnose = useCallback(async () => {
+        if (!canRun) return
+        setRunning(true)
+
+        const steps = buildDiagSteps(targetHost, targetPort, targetPath, isIPAddress)
+        const run: DiagRun = {
+            id: nextId(),
+            timestamp: new Date(),
+            from: fromLabel!,
+            to: toLabel!,
+            steps,
+            done: false,
+        }
+        activeDiagRef.current = run
+        setActiveDiag({ ...run })
+
+        const ns = selectedPod!.metadata.namespace || 'default'
+        const podName = selectedPod!.metadata.name
+        let dnsOk = true
+
+        for (let i = 0; i < steps.length; i++) {
+            const step = steps[i]
+
+            // Update step to running
+            steps[i] = { ...step, status: 'running' }
+            setActiveDiag({ ...run, steps: [...steps] })
+
+            // Skip TCP/HTTP if DNS failed and host is not an IP
+            if (step.key !== 'dns' && !dnsOk && !isIPAddress) {
+                steps[i] = { ...step, status: 'skipped', output: '', durationMs: 0 }
+                setActiveDiag({ ...run, steps: [...steps] })
+                continue
+            }
+
+            const t0 = Date.now()
+            try {
+                const { stdout, exitCode } = await window.kubectl.execCommand(
+                    selectedContext!, ns, podName, selectedContainer, step.cmd
+                )
+                const durationMs = Date.now() - t0
+                const success = exitCode === 0
+                if (step.key === 'dns' && !success) dnsOk = false
+                steps[i] = { ...step, status: success ? 'success' : 'failed', output: stdout, durationMs }
+            } catch (err) {
+                const durationMs = Date.now() - t0
+                if (step.key === 'dns') dnsOk = false
+                steps[i] = { ...step, status: 'failed', output: (err as Error).message, durationMs }
+            }
+
+            setActiveDiag({ ...run, steps: [...steps] })
+        }
+
+        const finished: DiagRun = { ...run, steps: [...steps], done: true }
+        setActiveDiag(null)
+        setDiagHistory(prev => [finished, ...prev].slice(0, 20))
+        setRunning(false)
+    }, [canRun, targetHost, targetPort, targetPath, isIPAddress, selectedPod, selectedContainer, selectedContext, fromLabel, toLabel])
+
+    // ── Run manual ────────────────────────────────────────────────────────────
+
+    const runManual = useCallback(async () => {
+        if (!canRun) return
+        setRunning(true)
+
+        const cmd = buildCommand(protocol, targetHost, targetPort, protocol === 'curl' ? targetPath : '')
+        const ns = selectedPod!.metadata.namespace || 'default'
+        const t0 = Date.now()
+
         try {
             const { stdout, exitCode } = await window.kubectl.execCommand(
-                selectedContext!,
-                selectedPod.metadata.namespace,
-                selectedPod.metadata.name,
-                selectedContainer,
-                cmd
+                selectedContext!, ns, selectedPod!.metadata.name, selectedContainer, cmd
             )
-            setOutput(prev => [{ text: `> ${cmd.join(' ')}\n${stdout}`, success: exitCode === 0 }, ...prev].slice(0, OUTPUT_LIMIT))
+            setManualHistory(prev => [{
+                id: nextId(), timestamp: new Date(),
+                cmd, from: fromLabel!, to: toLabel!,
+                output: stdout, exitCode, durationMs: Date.now() - t0,
+            }, ...prev].slice(0, 20))
         } catch (err) {
-            setOutput(prev => [{ text: `> ${cmd.join(' ')}\nError: ${(err as Error).message}`, success: false }, ...prev].slice(0, OUTPUT_LIMIT))
+            setManualHistory(prev => [{
+                id: nextId(), timestamp: new Date(),
+                cmd, from: fromLabel!, to: toLabel!,
+                output: (err as Error).message, exitCode: 1, durationMs: Date.now() - t0,
+            }, ...prev].slice(0, 20))
         } finally {
-            setLoading(false)
+            setRunning(false)
         }
-    }
+    }, [canRun, protocol, targetHost, targetPort, targetPath, selectedPod, selectedContainer, selectedContext, fromLabel, toLabel])
 
-    const clearOutput = () => setOutput([])
-    const containers = selectedPod?.spec.containers.map(c => c.name) ?? []
+    const handleRun = mode === 'diagnose' ? runDiagnose : runManual
+
+    // Enter key to run
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && canRun) handleRun()
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [handleRun, canRun])
+
+    const history = mode === 'diagnose' ? diagHistory : manualHistory
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     return (
-        <div className="flex-1 flex flex-col h-full bg-slate-50 dark:bg-slate-950 overflow-hidden">
+        <div className="flex-1 flex flex-col h-full bg-[hsl(var(--bg-dark))] overflow-hidden">
+
             {/* Header */}
-            <div className="p-8 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 backdrop-blur-md">
-                <div className="flex items-center gap-4 mb-2">
-                    <div className="w-10 h-10 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500 shadow-lg shadow-blue-500/10">
-                        <Network size={20} />
-                    </div>
-                    <div>
-                        <h1 className="text-xl font-black text-slate-900 dark:text-white tracking-tight uppercase">Connectivity Tester</h1>
-                        <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Debug pod network & DNS issues</p>
-                    </div>
+            <div className="px-8 py-6 border-b border-white/5 shrink-0 flex items-center gap-4">
+                <div className="w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>
+                </div>
+                <div>
+                    <h1 className="text-lg font-black text-white tracking-tight">Connectivity Tester</h1>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Debug pod network & DNS from inside the cluster</p>
                 </div>
             </div>
 
-            <div className="flex-1 p-8 overflow-y-auto space-y-8 max-w-6xl mx-auto w-full">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* Source Config */}
-                    <div className="glass-panel p-6 space-y-6">
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-500">
-                                <TerminalIcon size={16} />
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+
+                {/* Source + Target */}
+                <div className="grid grid-cols-2 gap-4">
+
+                    {/* Source pod */}
+                    <div className="rounded-2xl border border-white/5 bg-white/[0.03] p-5 space-y-4">
+                        <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="3" /><path d="M9 9h6M9 12h6M9 15h4" /></svg>
                             </div>
-                            <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">Source Pod</h2>
+                            <h2 className="text-[11px] font-black text-slate-300 uppercase tracking-widest">Source Pod</h2>
+                            <span className="ml-auto text-[10px] text-slate-600 font-mono">{filteredPods.length} running</span>
                         </div>
 
-                        <div className="space-y-4">
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                <input
-                                    type="text"
-                                    placeholder="Search running pods..."
-                                    value={searchPod}
-                                    onChange={(e) => setSearchPod(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-2.5 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                                />
-                            </div>
+                        {/* Pod search */}
+                        <div className="relative">
+                            <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                            <input
+                                type="text"
+                                placeholder="Filter pods…"
+                                value={searchPod}
+                                onChange={e => setSearchPod(e.target.value)}
+                                className="w-full pl-9 pr-4 py-2 bg-white/5 border border-white/5 rounded-xl text-xs font-mono text-slate-300 placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/10 transition-all"
+                            />
+                        </div>
 
-                            <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
-                                {filteredPods.map(pod => (
-                                    <button
-                                        key={pod.metadata.uid}
-                                        onClick={() => handleSelectPod(pod)}
-                                        className={`flex items-center justify-between p-3 rounded-xl border transition-all ${selectedPod?.metadata.uid === pod.metadata.uid
-                                            ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                                            : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900/40 text-slate-600 dark:text-slate-400'
-                                            }`}
-                                    >
-                                        <span className="text-xs font-bold truncate">{pod.metadata.name}</span>
+                        {/* Pod list */}
+                        <div className="space-y-1 max-h-44 overflow-y-auto pr-1">
+                            {filteredPods.length === 0 ? (
+                                <p className="text-center py-8 text-xs text-slate-600 italic">No running pods found</p>
+                            ) : filteredPods.map(pod => (
+                                <button
+                                    key={pod.metadata.uid}
+                                    onClick={() => handleSelectPod(pod)}
+                                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-all ${selectedPod?.metadata.uid === pod.metadata.uid
+                                        ? 'border-blue-500/50 bg-blue-500/10 text-blue-300'
+                                        : 'border-white/5 hover:border-white/10 bg-white/[0.02] text-slate-400 hover:text-slate-200'
+                                        }`}
+                                >
+                                    <span className="text-xs font-mono font-bold truncate">{pod.metadata.name}</span>
+                                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                                        {pod.metadata.namespace && selectedNamespace === '_all' && (
+                                            <span className="text-[9px] text-slate-600 font-mono">{pod.metadata.namespace}</span>
+                                        )}
                                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                    </button>
-                                ))}
-                                {filteredPods.length === 0 && (
-                                    <div className="text-center py-8 text-slate-400 dark:text-slate-600 italic text-xs">
-                                        No running pods found
                                     </div>
-                                )}
-                            </div>
-
-                            {containers.length > 0 && (
-                                <div>
-                                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Container</label>
-                                    <select
-                                        value={selectedContainer}
-                                        onChange={(e) => setSelectedContainer(e.target.value)}
-                                        className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                                    >
-                                        {containers.map(name => (
-                                            <option key={name} value={name}>{name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
+                                </button>
+                            ))}
                         </div>
+
+                        {/* Container select */}
+                        {containers.length > 1 && (
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Container</label>
+                                <select
+                                    value={selectedContainer}
+                                    onChange={e => setSelectedContainer(e.target.value)}
+                                    className="w-full px-3 py-2 bg-white/5 border border-white/5 rounded-xl text-xs font-mono text-slate-300 focus:outline-none focus:border-blue-500/50 transition-all"
+                                >
+                                    {containers.map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Target Config */}
-                    <div className="glass-panel p-6 space-y-6">
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-                                <Globe size={16} />
+                    {/* Target */}
+                    <div className="rounded-2xl border border-white/5 bg-white/[0.03] p-5 space-y-4">
+                        <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="4" /><line x1="12" y1="2" x2="12" y2="4" /><line x1="12" y1="20" x2="12" y2="22" /><line x1="2" y1="12" x2="4" y2="12" /><line x1="20" y1="12" x2="22" y2="12" /></svg>
                             </div>
-                            <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">Target Endpoint</h2>
+                            <h2 className="text-[11px] font-black text-slate-300 uppercase tracking-widest">Target</h2>
                         </div>
 
-                        <div className="space-y-4">
+                        {/* Picker tab toggle */}
+                        <div className="flex rounded-lg border border-white/5 bg-white/[0.03] p-0.5 gap-0.5">
+                            {(['services', 'pods'] as const).map(tab => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setTargetPickerTab(tab)}
+                                    className={`flex-1 py-1 text-[10px] font-black uppercase tracking-widest rounded-md transition-all ${targetPickerTab === tab
+                                        ? 'bg-white/10 text-white'
+                                        : 'text-slate-500 hover:text-slate-300'
+                                        }`}
+                                >
+                                    {tab === 'services' ? 'Services' : 'Pods'}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Service picker */}
+                        {targetPickerTab === 'services' && (
                             <div>
-                                <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Select Cluster Service</label>
-                                <div className="space-y-2">
-                                    <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                        <input
-                                            type="text"
-                                            placeholder="Search services..."
-                                            value={searchTarget}
-                                            onChange={(e) => setSearchTarget(e.target.value)}
-                                            className="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-[10px] font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-mono"
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-1 gap-1.5 max-h-[120px] overflow-y-auto pr-1 custom-scrollbar">
-                                        {filteredServices.map(svc => (
+                                <div className="relative mb-2">
+                                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                                    <input
+                                        type="text"
+                                        placeholder="Filter services…"
+                                        value={searchSvc}
+                                        onChange={e => setSearchSvc(e.target.value)}
+                                        className="w-full pl-9 pr-4 py-2 bg-white/5 border border-white/5 rounded-xl text-xs font-mono text-slate-300 placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/10 transition-all"
+                                    />
+                                </div>
+                                <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
+                                    {filteredSvcs.map(svc => {
+                                        const ports = svc.spec.ports ?? []
+                                        return (
+                                            <div key={svc.metadata.uid} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-white/5 bg-white/[0.02] hover:border-white/10 transition-all group">
+                                                <span className="text-xs font-mono text-slate-400 group-hover:text-slate-200 truncate flex-1 transition-colors">{svc.metadata.name}</span>
+                                                {svc.metadata.namespace && selectedNamespace === '_all' && (
+                                                    <span className="text-[9px] text-slate-600 font-mono shrink-0">{svc.metadata.namespace}</span>
+                                                )}
+                                                <div className="flex gap-1 shrink-0">
+                                                    {ports.slice(0, 3).map(p => (
+                                                        <button
+                                                            key={p.port}
+                                                            onClick={() => handleSelectService(svc, p.port)}
+                                                            className="px-1.5 py-0.5 text-[9px] font-black rounded bg-slate-800 hover:bg-blue-500/20 hover:text-blue-300 text-slate-400 transition-all font-mono"
+                                                            title={p.name ?? String(p.port)}
+                                                        >
+                                                            {p.port}
+                                                        </button>
+                                                    ))}
+                                                    {ports.length === 0 && (
+                                                        <button
+                                                            onClick={() => handleSelectService(svc)}
+                                                            className="px-1.5 py-0.5 text-[9px] font-black rounded bg-slate-800 hover:bg-blue-500/20 hover:text-blue-300 text-slate-400 transition-all"
+                                                        >
+                                                            Use
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                    {filteredSvcs.length === 0 && (
+                                        <p className="text-center py-4 text-[10px] text-slate-600 italic">No services found</p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Pod hostname picker */}
+                        {targetPickerTab === 'pods' && (
+                            <div>
+                                <div className="relative mb-2">
+                                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                                    <input
+                                        type="text"
+                                        placeholder="Filter pods…"
+                                        value={searchTargetPod}
+                                        onChange={e => setSearchTargetPod(e.target.value)}
+                                        className="w-full pl-9 pr-4 py-2 bg-white/5 border border-white/5 rounded-xl text-xs font-mono text-slate-300 placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/10 transition-all"
+                                    />
+                                </div>
+                                <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
+                                    {filteredTargetPods.length === 0 && (
+                                        <p className="text-center py-4 text-[10px] text-slate-600 italic">No running pods with IP found</p>
+                                    )}
+                                    {filteredTargetPods.map(pod => {
+                                        const hostname = buildPodDnsName(pod)
+                                        const ports = podContainerPorts(pod)
+                                        return (
+                                            <div key={pod.metadata.uid} className="px-3 py-2 rounded-xl border border-white/5 bg-white/[0.02] hover:border-white/10 transition-all">
+                                                <div className="flex items-center gap-2 mb-1.5">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                                    <span className="text-[11px] font-mono font-bold text-slate-300 truncate flex-1">{pod.metadata.name}</span>
+                                                    {pod.metadata.namespace && selectedNamespace === '_all' && (
+                                                        <span className="text-[9px] text-slate-600 font-mono shrink-0">{pod.metadata.namespace}</span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-1.5 pl-3">
+                                                    <code className="text-[9px] font-mono text-slate-500 truncate flex-1" title={hostname}>{hostname}</code>
+                                                    {/* Copy hostname */}
+                                                    <button
+                                                        onClick={() => navigator.clipboard.writeText(hostname)}
+                                                        className="shrink-0 p-1 rounded hover:bg-white/5 text-slate-600 hover:text-slate-300 transition-colors"
+                                                        title="Copy hostname"
+                                                    >
+                                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                                                    </button>
+                                                    {/* Port pills — click to test */}
+                                                    {ports.slice(0, 4).map(p => (
+                                                        <button
+                                                            key={p}
+                                                            onClick={() => handleSelectPodAsTarget(pod, p)}
+                                                            className="px-1.5 py-0.5 text-[9px] font-black rounded bg-slate-800 hover:bg-emerald-500/20 hover:text-emerald-300 text-slate-400 transition-all font-mono"
+                                                            title={`Test port ${p}`}
+                                                        >
+                                                            {p}
+                                                        </button>
+                                                    ))}
+                                                    {ports.length === 0 && (
+                                                        <button
+                                                            onClick={() => handleSelectPodAsTarget(pod)}
+                                                            className="px-1.5 py-0.5 text-[9px] font-black rounded bg-slate-800 hover:bg-emerald-500/20 hover:text-emerald-300 text-slate-400 transition-all"
+                                                        >
+                                                            Use
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                                <p className="mt-1.5 text-[9px] text-slate-700 font-mono">format: &lt;pod-ip-dashes&gt;.&lt;ns&gt;.pod.cluster.local</p>
+                            </div>
+                        )}
+
+                        <div className="border-t border-white/5 pt-4 space-y-3">
+                            {/* Manual host + port */}
+                            <div className="grid grid-cols-3 gap-2">
+                                <div className="col-span-2">
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Hostname or IP</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. my-svc.ns.svc.cluster.local"
+                                        value={targetHost}
+                                        onChange={e => setTargetHost(e.target.value)}
+                                        className="w-full px-3 py-2 bg-white/5 border border-white/5 rounded-xl text-xs font-mono text-slate-300 placeholder-slate-600 focus:outline-none focus:border-blue-500/50 transition-all"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Port</label>
+                                    <input
+                                        type="text"
+                                        placeholder="80"
+                                        value={targetPort}
+                                        onChange={e => setTargetPort(e.target.value)}
+                                        disabled={mode === 'manual' && protocol === 'ping'}
+                                        className="w-full px-3 py-2 bg-white/5 border border-white/5 rounded-xl text-xs font-mono text-slate-300 placeholder-slate-600 focus:outline-none focus:border-blue-500/50 transition-all disabled:opacity-40"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Path (curl / diagnose HTTP step) */}
+                            {(mode === 'diagnose' || protocol === 'curl') && (
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">HTTP Path</label>
+                                    <input
+                                        type="text"
+                                        placeholder="/healthz"
+                                        value={targetPath}
+                                        onChange={e => setTargetPath(e.target.value)}
+                                        className="w-full px-3 py-2 bg-white/5 border border-white/5 rounded-xl text-xs font-mono text-slate-300 placeholder-slate-600 focus:outline-none focus:border-blue-500/50 transition-all"
+                                    />
+                                </div>
+                            )}
+
+                            {/* Protocol (manual only) */}
+                            {mode === 'manual' && (
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Tool</label>
+                                    <div className="flex gap-2">
+                                        {(['curl', 'nc', 'ping'] as Protocol[]).map(p => (
                                             <button
-                                                key={svc.metadata.uid}
-                                                onClick={() => selectService(svc)}
-                                                className="flex items-center justify-between p-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:border-blue-500/50 bg-white dark:bg-slate-900/40 transition-all group"
+                                                key={p}
+                                                onClick={() => setProtocol(p)}
+                                                className={`flex-1 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-all ${protocol === p
+                                                    ? 'border-blue-500/60 bg-blue-500/15 text-blue-300'
+                                                    : 'border-white/5 text-slate-500 hover:text-slate-300 hover:border-white/10'
+                                                    }`}
                                             >
-                                                <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 group-hover:text-blue-500 truncate">{svc.metadata.name}</span>
-                                                <span className="text-[9px] font-black text-slate-400 px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded uppercase">{svc.metadata.namespace}</span>
+                                                {p}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
-                            </div>
-
-                            <div className="pt-2 border-t border-slate-100 dark:border-slate-800/50">
-                                <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Protocol Tool</label>
-                                <div className="flex gap-2">
-                                    {(['curl', 'nc', 'ping'] as const).map(p => (
-                                        <button
-                                            key={p}
-                                            onClick={() => setProtocol(p)}
-                                            className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-all ${protocol === p
-                                                ? 'border-blue-500 bg-blue-500 text-white shadow-lg shadow-blue-500/20'
-                                                : 'border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                                                }`}
-                                        >
-                                            {p}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-3 gap-3">
-                                <div className="col-span-2">
-                                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Hostname or IP</label>
-                                    <input
-                                        type="text"
-                                        placeholder="e.g. google.com"
-                                        value={targetHost}
-                                        onChange={(e) => setTargetHost(e.target.value)}
-                                        className="w-full px-4 py-2.5 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-mono"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Port</label>
-                                    <input
-                                        type="text"
-                                        placeholder="80"
-                                        disabled={protocol === 'ping'}
-                                        value={targetPort}
-                                        onChange={(e) => setTargetPort(e.target.value)}
-                                        className="w-full px-4 py-2.5 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-mono disabled:opacity-50"
-                                    />
-                                </div>
-                            </div>
-
-                            <button
-                                onClick={runTest}
-                                disabled={loading || !selectedPod || !targetHost || !selectedContainer}
-                                className="w-full py-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black uppercase tracking-[0.2em] rounded-xl transition-all shadow-xl shadow-blue-500/20 flex items-center justify-center gap-3 mt-2"
-                            >
-                                {loading ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
-                                {loading ? 'Executing...' : 'Run Connectivity Check'}
-                            </button>
+                            )}
                         </div>
                     </div>
                 </div>
 
-                {/* Output */}
-                <div className="glass-panel flex flex-col min-h-[400px]">
-                    <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <TerminalIcon size={14} className="text-slate-400" />
-                            <h3 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-widest">Output Console</h3>
-                        </div>
-                        {output.length > 0 && (
+                {/* FROM → TO bar */}
+                {fromLabel && toLabel && (
+                    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.03] border border-white/5 text-xs font-mono">
+                        <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest shrink-0">From</span>
+                        <span className="text-blue-300 truncate">{fromLabel}</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-600 shrink-0"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                        <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest shrink-0">To</span>
+                        <span className="text-emerald-300 truncate">{toLabel}</span>
+                    </div>
+                )}
+
+                {/* Mode + Run */}
+                <div className="flex items-center gap-3">
+                    {/* Mode toggle */}
+                    <div className="flex rounded-xl border border-white/5 bg-white/[0.03] p-1 gap-1">
+                        {(['diagnose', 'manual'] as Mode[]).map(m => (
                             <button
-                                onClick={clearOutput}
-                                className="text-[10px] font-black text-rose-500 uppercase tracking-widest hover:text-rose-400 transition-colors flex items-center gap-2"
+                                key={m}
+                                onClick={() => setMode(m)}
+                                className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${mode === m
+                                    ? 'bg-white/10 text-white'
+                                    : 'text-slate-500 hover:text-slate-300'
+                                    }`}
                             >
-                                <Trash2 size={12} />
-                                Clear
+                                {m === 'diagnose' ? '⚡ Diagnose' : '⌨ Manual'}
                             </button>
-                        )}
+                        ))}
                     </div>
 
-                    <div className="flex-1 p-6 font-mono text-xs overflow-y-auto space-y-4 bg-slate-950/20 rounded-b-2xl">
-                        {output.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-slate-500 dark:text-slate-600 gap-4 opacity-50 italic">
-                                <TerminalIcon size={32} strokeWidth={1} />
-                                No tests executed yet
+                    {/* Run button */}
+                    <button
+                        onClick={handleRun}
+                        disabled={!canRun}
+                        className="flex items-center gap-2 px-6 py-2.5 text-xs font-black uppercase tracking-widest text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl transition-all shadow-lg shadow-blue-500/20 active:scale-95"
+                    >
+                        {running
+                            ? <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            : <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+                        }
+                        {running ? 'Running…' : mode === 'diagnose' ? 'Diagnose' : 'Run'}
+                    </button>
+
+                    <span className="text-[10px] text-slate-600 ml-auto">⌘↵ to run</span>
+                </div>
+
+                {/* Command preview */}
+                {previewCmd && (
+                    <div className="flex items-start gap-2 px-4 py-2.5 rounded-xl bg-black/30 border border-white/[0.04]">
+                        <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest shrink-0 mt-0.5">CMD</span>
+                        <code className="text-[10px] text-slate-400 font-mono break-all leading-relaxed">{previewCmd}</code>
+                    </div>
+                )}
+
+                {/* Mode description */}
+                {!fromLabel && !toLabel && (
+                    <div className="rounded-xl border border-white/5 bg-white/[0.02] px-5 py-4">
+                        {mode === 'diagnose' ? (
+                            <div className="space-y-2">
+                                <p className="text-xs font-bold text-slate-300">Diagnose mode runs three checks in sequence:</p>
+                                <div className="space-y-1 text-[11px] text-slate-500">
+                                    <div className="flex items-center gap-2"><span className="text-slate-600 font-mono w-4">1.</span> <strong className="text-slate-400">DNS</strong> — nslookup resolves the hostname</div>
+                                    <div className="flex items-center gap-2"><span className="text-slate-600 font-mono w-4">2.</span> <strong className="text-slate-400">TCP</strong> — nc checks if the port is open</div>
+                                    <div className="flex items-center gap-2"><span className="text-slate-600 font-mono w-4">3.</span> <strong className="text-slate-400">HTTP</strong> — curl checks the HTTP response code</div>
+                                </div>
+                                <p className="text-[10px] text-slate-600">Pick a pod, click a service port, then hit Diagnose.</p>
                             </div>
                         ) : (
-                            output.map((out, i) => (
-                                <div key={i} className={`p-4 rounded-xl border ${out.success ? 'bg-slate-900/50 border-slate-800 text-slate-300' : 'bg-rose-500/5 border-rose-500/20 text-rose-400'}`}>
-                                    <div className="flex items-center gap-2 mb-2">
-                                        {out.success ? <CheckCircle2 size={12} className="text-emerald-500" /> : <XCircle size={12} className="text-rose-500" />}
-                                        <span className="text-[10px] font-bold uppercase tracking-widest">{out.success ? 'Success' : 'Failed'}</span>
-                                    </div>
-                                    <pre className="whitespace-pre-wrap break-all leading-relaxed">
-                                        {out.text}
-                                    </pre>
-                                </div>
-                            ))
+                            <p className="text-xs text-slate-500">Manual mode runs a single command (curl / nc / ping) and shows the full output. Useful when you need verbose details.</p>
                         )}
                     </div>
-                </div>
+                )}
+
+                {/* Active diagnose in progress */}
+                {activeDiag && <DiagRunCard run={activeDiag} />}
+
+                {/* History */}
+                {history.length > 0 && (
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">History</span>
+                            <button
+                                onClick={() => mode === 'diagnose' ? setDiagHistory([]) : setManualHistory([])}
+                                className="text-[10px] text-slate-600 hover:text-red-400 transition-colors font-bold uppercase tracking-wider"
+                            >
+                                Clear
+                            </button>
+                        </div>
+                        {mode === 'diagnose'
+                            ? diagHistory.map(r => <DiagRunCard key={r.id} run={r} />)
+                            : manualHistory.map(r => <ManualRunCard key={r.id} run={r} />)
+                        }
+                    </div>
+                )}
             </div>
         </div>
     )

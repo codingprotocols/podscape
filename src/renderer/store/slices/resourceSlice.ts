@@ -7,7 +7,7 @@ import {
     KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
     KubeNode, KubeEvent, KubeCRD,
     NodeMetrics, PodMetrics, Plugin, ResourceKind, AnyKubeResource, PortForwardEntry,
-    HelmRelease
+    HelmRelease, DebugPodEntry
 } from '../../types'
 
 export interface ResourceSlice {
@@ -43,6 +43,10 @@ export interface ResourceSlice {
     plugins: Plugin[]
     portForwards: PortForwardEntry[]
     helmReleases: HelmRelease[]
+    debugPods: DebugPodEntry[]
+    addDebugPod: (pod: DebugPodEntry) => void
+    removeDebugPod: (name: string) => void
+    updateDebugPod: (name: string, updates: Partial<DebugPodEntry>) => void
     selectedResource: AnyKubeResource | null
     loadingResources: boolean
     error: string | null
@@ -89,6 +93,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     plugins: [],
     portForwards: [],
     helmReleases: [],
+    debugPods: [],
     selectedResource: null,
     loadingResources: false,
     error: null,
@@ -98,6 +103,9 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     clearError: () => set({ error: null }),
     openExec: (target) => set({ execTarget: target }),
     closeExec: () => set({ execTarget: null }),
+    addDebugPod: (pod) => set(s => ({ debugPods: [pod, ...s.debugPods] })),
+    removeDebugPod: (name) => set(s => ({ debugPods: s.debugPods.filter(p => p.name !== name) })),
+    updateDebugPod: (name, updates) => set(s => ({ debugPods: s.debugPods.map(p => p.name === name ? { ...p, ...updates } : p) })),
 
     loadSection: async (section) => {
         const { selectedContext: ctx, selectedNamespace: ns } = get()
@@ -110,7 +118,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
 
         const nsArg = ns === '_all' ? null : ns
 
-        if (['terminal', 'extensions', 'metrics', 'network', 'portforwards', 'helm', 'settings'].includes(section)) {
+        if (['terminal', 'extensions', 'metrics', 'network', 'portforwards', 'helm', 'settings', 'connectivity', 'debugpod'].includes(section)) {
             if (section === 'metrics' && ctx) {
                 set({ loadingResources: true })
                 try {

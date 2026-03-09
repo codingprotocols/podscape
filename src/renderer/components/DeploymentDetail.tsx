@@ -154,9 +154,9 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
             <div className="grid grid-cols-4 gap-3">
               {[
                 { label: 'Desired', value: desired, color: 'text-slate-700 dark:text-slate-200' },
-                { label: 'Ready', value: ready, color: ready >= desired ? 'text-green-500 shadow-[0_0_12px_rgba(34,197,94,0.3)]' : 'text-yellow-400' },
+                { label: 'Ready', value: ready, color: ready >= desired ? 'text-green-500' : 'text-yellow-400' },
                 { label: 'Available', value: available, color: 'text-slate-600 dark:text-slate-300' },
-                { label: 'Updated', value: updated, color: 'text-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.3)]' }
+                { label: 'Updated', value: updated, color: 'text-blue-500' }
               ].map(({ label, value, color }) => (
                 <div key={label} className="text-center bg-white/[0.03] rounded-2xl p-3 border border-slate-100 dark:border-white/5">
                   <p className={`text-xl font-black ${color}`}>{value}</p>

@@ -604,6 +604,18 @@ export interface Plugin {
 }
 
 
+// ─── Debug Pod ────────────────────────────────────────────────────────────────
+
+export interface DebugPodEntry {
+  name: string
+  namespace: string
+  image: string
+  imageLabel: string
+  launchedAt: Date
+  status: 'creating' | 'running' | 'error'
+  error?: string
+}
+
 // ─── Navigation ───────────────────────────────────────────────────────────────
 
 export type ResourceKind =
@@ -644,6 +656,7 @@ export type ResourceKind =
   | 'settings'
   | 'network'
   | 'connectivity'
+  | 'debugpod'
   | 'helm'
 
 export type AnyKubeResource =

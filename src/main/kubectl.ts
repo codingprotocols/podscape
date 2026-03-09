@@ -23,7 +23,7 @@ export function findKubectl(): string {
   return 'kubectl'
 }
 
-const EXEC_ALLOWED_COMMANDS = new Set(['curl', 'nc', 'ping'])
+const EXEC_ALLOWED_COMMANDS = new Set(['curl', 'nc', 'ping', 'nslookup'])
 
 /**
  * Maps raw kubectl stderr / Node.js child-process errors to short, user-friendly messages.
@@ -165,6 +165,26 @@ export class KubectlProvider implements KubeProvider {
     } catch { return [] }
   }
 
+  async createDebugPod(context: string, namespace: string, image: string, name: string): Promise<void> {
+    await this.spawnKubectl([
+      'run', name,
+      '--image', image,
+      '--restart=Never',
+      '--namespace', namespace,
+      '--context', context,
+      '--labels', 'created-by=podscape',
+      '--', 'sleep', 'infinity',
+    ], 30000)
+    // Wait until pod is Ready (up to 90s)
+    await this.spawnKubectl([
+      'wait', `pod/${name}`,
+      '--for=condition=Ready',
+      '--namespace', namespace,
+      '--context', context,
+      '--timeout=90s',
+    ], 100000)
+  }
+
   async getSecretValue(context: string, namespace: string, name: string, key: string): Promise<string> {
     const output = await this.spawnKubectl(['get', 'secret', name, '--context', context, '--namespace', namespace, '-o', 'json'])
     const secret = JSON.parse(output) as { data?: Record<string, string> }
@@ -290,8 +310,11 @@ export function registerKubectlHandlers(): void {
   ipcMain.handle('kubectl:getNodes', (_e, ctx) => provider.getResources(ctx, undefined, 'nodes'))
   ipcMain.handle('kubectl:getCRDs', (_e, ctx) => provider.getResources(ctx, undefined, 'customresourcedefinitions'))
   ipcMain.handle('kubectl:getEvents', (_e, ctx, ns) => provider.getResources(ctx, ns, 'events'))
+  // Generic handler for CRD instances (e.g. IngressRoute, VirtualService, HTTPProxy)
+  ipcMain.handle('kubectl:getCustomResource', (_e, ctx, ns, crdName: string) => provider.getResources(ctx, ns, crdName))
   ipcMain.handle('kubectl:getPodMetrics', (_e, ctx, ns) => provider.getPodMetrics(ctx, ns))
   ipcMain.handle('kubectl:getNodeMetrics', (_e, ctx) => provider.getNodeMetrics(ctx))
+  ipcMain.handle('kubectl:createDebugPod', (_e, ctx, ns, image, name) => provider.createDebugPod(ctx, ns, image, name))
   ipcMain.handle('kubectl:scale', (_e, ctx, ns, name, replicas) => provider.scaleResource(ctx, ns, 'deployment', name, replicas))
   ipcMain.handle('kubectl:scaleResource', (_e, ctx, ns, kind, name, replicas) => provider.scaleResource(ctx, ns, kind, name, replicas))
   ipcMain.handle('kubectl:rolloutHistory', (_e, ctx, ns, kind, name) => provider.rolloutHistory(ctx, ns, kind, name))
