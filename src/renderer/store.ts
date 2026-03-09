@@ -410,7 +410,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const nsArg = ns === '_all' ? null : ns
 
     // These sections don't need resource loading
-    if (['terminal', 'grafana', 'extensions', 'metrics', 'network', 'portforwards', 'helm', 'settings'].includes(section)) {
+    if (['terminal', 'extensions', 'metrics', 'network', 'portforwards', 'helm', 'settings'].includes(section)) {
       if (section === 'metrics' && ctx) {
         set({ loadingResources: true })
         try {
