@@ -129,200 +129,192 @@ export default function MetricsView(): JSX.Element {
       </div>
 
       <div className="flex-1 px-8 py-8 space-y-10">
-        {/* Aggregate Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <ClusterStat
-            label="Total CPU Load"
-            used={clusterTotals.cpu.used}
-            total={clusterTotals.cpu.total}
-            pct={clusterTotals.cpu.pct}
-            icon={<Cpu className="w-4 h-4" />}
-            fmt={fmtCpu}
-          />
-          <ClusterStat
-            label="Total Memory Load"
-            used={clusterTotals.mem.used}
-            total={clusterTotals.mem.total}
-            pct={clusterTotals.mem.pct}
-            icon={<Database className="w-4 h-4" />}
-            fmt={fmtMem}
-          />
-        </div>
-        {/* Node metrics */}
-        {nodeMetrics.length > 0 && (
-          <section>
-            <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] mb-5 flex items-center gap-2">
-              <span className="w-4 h-px bg-slate-200 dark:bg-slate-800" />
-              Cluster Nodes
-            </h3>
-            <div className="grid gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {nodeMetrics.map(nm => {
-                const node = nodes.find(n => n.metadata.name === nm.metadata.name)
-                const cpuCapM = parseCpuMillicores(node?.status.allocatable?.cpu ?? node?.status.capacity?.cpu ?? '0')
-                const memCapMiB = parseMemoryMiB(node?.status.allocatable?.memory ?? node?.status.capacity?.memory ?? '0Ki')
-                const cpuUsedM = parseCpuMillicores(nm.usage.cpu)
-                const memUsedMiB = parseMemoryMiB(nm.usage.memory)
-
-                const cpuPct = cpuCapM > 0 ? (cpuUsedM / cpuCapM) * 100 : 0
-                const memPct = memCapMiB > 0 ? (memUsedMiB / memCapMiB) * 100 : 0
-
-                const overcommittedCpu = pods.reduce((total, p) => {
-                  if (p.spec.nodeName !== nm.metadata.name) return total
-                  return total + p.spec.containers.reduce((ct, c) => ct + (c.resources?.limits?.cpu ? parseCpuMillicores(c.resources.limits.cpu) : 0), 0)
-                }, 0)
-
-                return (
-                  <div key={nm.metadata.name} className="glass-card glass-light p-6 space-y-6 hover:scale-[1.02] transition-all group border-white/5">
-                    <div className="flex items-center justify-between min-w-0">
-                      <p className="text-[14px] font-black text-white font-mono truncate tracking-tight">{nm.metadata.name}</p>
-                      {overcommittedCpu > cpuCapM && (
-                        <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-500 text-[8px] font-black uppercase tracking-widest animate-pulse">
-                          Overcommitted
-                        </span>
-                      )}
-                    </div>
-                    <div className="space-y-4">
-                      <MetricBar label="Physical CPU" value={`${Math.round(cpuUsedM)}m / ${fmtCpu(cpuCapM)}`} pct={cpuPct} />
-                      <MetricBar label="Physical Memory" value={`${fmtMem(memUsedMiB)} / ${fmtMem(memCapMiB)}`} pct={memPct} />
-                    </div>
-                  </div>
-                )
-              })}
+        {nodeMetrics.length > 0 ? (
+          <>
+            {/* Aggregate Summary */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <ClusterStat
+                label="Total CPU Load"
+                used={clusterTotals.cpu.used}
+                total={clusterTotals.cpu.total}
+                pct={clusterTotals.cpu.pct}
+                icon={<Cpu className="w-4 h-4" />}
+                fmt={fmtCpu}
+              />
+              <ClusterStat
+                label="Total Memory Load"
+                used={clusterTotals.mem.used}
+                total={clusterTotals.mem.total}
+                pct={clusterTotals.mem.pct}
+                icon={<Database className="w-4 h-4" />}
+                fmt={fmtMem}
+              />
             </div>
-          </section>
-        )}
 
-        {/* Pod metrics */}
-        <section className="space-y-5">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] flex items-center gap-2">
-              <span className="w-4 h-px bg-slate-200 dark:bg-slate-800" />
-              Pod Performance — {selectedNamespace === '_all' ? 'All Namespaces' : selectedNamespace}
-            </h3>
+            {/* Node metrics */}
+            <section>
+              <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] mb-5 flex items-center gap-2">
+                <span className="w-4 h-px bg-slate-200 dark:bg-slate-800" />
+                Cluster Nodes
+              </h3>
+              <div className="grid gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {nodeMetrics.map(nm => {
+                  const node = nodes.find(n => n.metadata.name === nm.metadata.name)
+                  const cpuCapM = parseCpuMillicores(node?.status.allocatable?.cpu ?? node?.status.capacity?.cpu ?? '0')
+                  const memCapMiB = parseMemoryMiB(node?.status.allocatable?.memory ?? node?.status.capacity?.memory ?? '0Ki')
+                  const cpuUsedM = parseCpuMillicores(nm.usage.cpu)
+                  const memUsedMiB = parseMemoryMiB(nm.usage.memory)
 
-            <div className="flex items-center gap-3">
-              <div className="relative group">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
-                <input
-                  type="text"
-                  placeholder="Search pods..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  className="pl-9 pr-4 py-2 text-[11px] font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl
-                             focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all w-48 lg:w-64"
-                />
+                  const cpuPct = cpuCapM > 0 ? (cpuUsedM / cpuCapM) * 100 : 0
+                  const memPct = memCapMiB > 0 ? (memUsedMiB / memCapMiB) * 100 : 0
+
+                  const overcommittedCpu = pods.reduce((total, p) => {
+                    if (p.spec.nodeName !== nm.metadata.name) return total
+                    return total + p.spec.containers.reduce((ct, c) => ct + (c.resources?.limits?.cpu ? parseCpuMillicores(c.resources.limits.cpu) : 0), 0)
+                  }, 0)
+
+                  return (
+                    <div key={nm.metadata.name} className="glass-card glass-light p-6 space-y-6 hover:scale-[1.02] transition-all group border-white/5">
+                      <div className="flex items-center justify-between min-w-0">
+                        <p className="text-[14px] font-black text-white font-mono truncate tracking-tight">{nm.metadata.name}</p>
+                        {overcommittedCpu > cpuCapM && (
+                          <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-500 text-[8px] font-black uppercase tracking-widest animate-pulse">
+                            Overcommitted
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-y-4">
+                        <MetricBar label="Physical CPU" value={`${Math.round(cpuUsedM)}m / ${fmtCpu(cpuCapM)}`} pct={cpuPct} />
+                        <MetricBar label="Physical Memory" value={`${fmtMem(memUsedMiB)} / ${fmtMem(memCapMiB)}`} pct={memPct} />
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-            </div>
-          </div>
+            </section>
 
-          <div className="glass-card overflow-hidden border-slate-200 dark:border-white/5">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-100/50 dark:bg-white/5 border-b border-slate-200 dark:border-white/5">
-                    <SortHeader field="name" label="Pod / Container" current={sortField} order={sortOrder} onSort={(f) => {
-                      if (sortField === f) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
-                      else { setSortField(f); setSortOrder('desc') }
-                    }} />
-                    <SortHeader field="cpu" label="CPU" current={sortField} order={sortOrder} onSort={(f) => {
-                      if (sortField === f) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
-                      else { setSortField(f); setSortOrder('desc') }
-                    }} className="text-right" />
-                    <SortHeader field="memory" label="Memory" current={sortField} order={sortOrder} onSort={(f) => {
-                      if (sortField === f) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
-                      else { setSortField(f); setSortOrder('desc') }
-                    }} className="text-right" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                  {processedPods.map(({ pm, c, cpu, mem, reqCpu, limCpu, reqMem, limMem, cpuEff, memEff, hpa }) => (
-                    <tr key={`${pm.metadata.name}-${c.name}`} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-all group">
-                      <td className="px-6 py-5">
-                        <div className="flex flex-col min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-[12px] font-black text-slate-800 dark:text-white font-mono truncate">{pm.metadata.name}</span>
-                            {hpa && (
-                              <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-blue-500/10 text-blue-500 dark:text-blue-400 text-[8px] font-black uppercase tracking-widest border border-blue-500/20">
-                                HPA
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[10px] font-bold text-slate-400 group-hover:text-blue-500 dark:group-hover:text-blue-500/70 transition-colors uppercase tracking-tight">{c.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5">
-                        <div className="flex flex-col gap-2">
-                          <div className="flex justify-between items-baseline">
-                            <span className={`text-[11px] font-black font-mono ${cpu > limCpu && limCpu > 0 ? 'text-red-500' : 'text-slate-700 dark:text-slate-300'}`}>
-                              {Math.round(cpu)}m
-                            </span>
-                            <div className="flex gap-2">
-                              <span className="text-[8px] font-bold text-slate-400 dark:text-slate-600 uppercase">Req: {reqCpu > 0 ? `${reqCpu}m` : '0'}</span>
-                              <span className="text-[8px] font-bold text-slate-500 dark:text-slate-400 uppercase font-black">Lim: {limCpu > 0 ? `${limCpu}m` : '∞'}</span>
+            {/* Pod metrics */}
+            <section className="space-y-5">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] flex items-center gap-2">
+                  <span className="w-4 h-px bg-slate-200 dark:bg-slate-800" />
+                  Pod Performance — {selectedNamespace === '_all' ? 'All Namespaces' : selectedNamespace}
+                </h3>
+
+                <div className="flex items-center gap-3">
+                  <div className="relative group">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+                    <input
+                      type="text"
+                      placeholder="Search pods..."
+                      value={searchTerm}
+                      onChange={e => setSearchTerm(e.target.value)}
+                      className="pl-9 pr-4 py-2 text-[11px] font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl
+                                 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all w-48 lg:w-64"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="glass-card overflow-hidden border-slate-200 dark:border-white/5">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100/50 dark:bg-white/5 border-b border-slate-200 dark:border-white/5">
+                        <SortHeader field="name" label="Pod / Container" current={sortField} order={sortOrder} onSort={(f) => {
+                          if (sortField === f) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+                          else { setSortField(f); setSortOrder('desc') }
+                        }} />
+                        <SortHeader field="cpu" label="CPU" current={sortField} order={sortOrder} onSort={(f) => {
+                          if (sortField === f) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+                          else { setSortField(f); setSortOrder('desc') }
+                        }} className="text-right" />
+                        <SortHeader field="memory" label="Memory" current={sortField} order={sortOrder} onSort={(f) => {
+                          if (sortField === f) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+                          else { setSortField(f); setSortOrder('desc') }
+                        }} className="text-right" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                      {processedPods.map(({ pm, c, cpu, mem, reqCpu, limCpu, reqMem, limMem, cpuEff, memEff, hpa }) => (
+                        <tr key={`${pm.metadata.name}-${c.name}`} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-all group">
+                          <td className="px-6 py-5">
+                            <div className="flex flex-col min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-[12px] font-black text-slate-800 dark:text-white font-mono truncate">{pm.metadata.name}</span>
+                                {hpa && (
+                                  <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-blue-500/10 text-blue-500 dark:text-blue-400 text-[8px] font-black uppercase tracking-widest border border-blue-500/20">
+                                    HPA
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] font-bold text-slate-400 group-hover:text-blue-500 dark:group-hover:text-blue-500/70 transition-colors uppercase tracking-tight">{c.name}</span>
                             </div>
-                          </div>
-                          <div className="h-1 rounded-full bg-slate-100 dark:bg-white/5 overflow-hidden">
-                            <div
-                              className={`h-full transition-all duration-700 ${cpuEff !== null && cpuEff > 100 ? 'bg-red-500 shadow-[0_0_8px_#ef4444]' : 'bg-blue-500'}`}
-                              style={{ width: `${Math.min(100, limCpu > 0 ? (cpu / limCpu) * 100 : cpu / 10)}%` }}
-                            />
-                          </div>
-                          {cpuEff !== null && (
-                            <span className={`text-[8px] font-black uppercase tracking-widest ${cpuEff < 20 ? 'text-amber-500' : 'text-slate-400 dark:text-slate-600'}`}>
-                              Efficiency: {Math.round(cpuEff)}% of Req
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-5">
-                        <div className="flex flex-col gap-2">
-                          <div className="flex justify-between items-baseline">
-                            <span className={`text-[11px] font-black font-mono ${mem > limMem && limMem > 0 ? 'text-red-500' : 'text-slate-700 dark:text-slate-300'}`}>
-                              {mem >= 1024 ? `${(mem / 1024).toFixed(1)}Gi` : `${Math.round(mem)}Mi`}
-                            </span>
-                            <div className="flex gap-2">
-                              <span className="text-[8px] font-bold text-slate-400 dark:text-slate-600 uppercase">Req: {reqMem > 0 ? `${reqMem}Mi` : '0'}</span>
-                              <span className="text-[8px] font-bold text-slate-500 dark:text-slate-400 uppercase font-black">Lim: {limMem > 0 ? `${limMem}Mi` : '∞'}</span>
+                          </td>
+                          <td className="px-6 py-5">
+                            <div className="flex flex-col gap-2">
+                              <div className="flex justify-between items-baseline">
+                                <span className={`text-[11px] font-black font-mono ${cpu > limCpu && limCpu > 0 ? 'text-red-500' : 'text-slate-700 dark:text-slate-300'}`}>
+                                  {Math.round(cpu)}m
+                                </span>
+                                <div className="flex gap-2">
+                                  <span className="text-[8px] font-bold text-slate-400 dark:text-slate-600 uppercase">Req: {reqCpu > 0 ? `${reqCpu}m` : '0'}</span>
+                                  <span className="text-[8px] font-bold text-slate-500 dark:text-slate-400 uppercase font-black">Lim: {limCpu > 0 ? `${limCpu}m` : '∞'}</span>
+                                </div>
+                              </div>
+                              <div className="h-1 rounded-full bg-slate-100 dark:bg-white/5 overflow-hidden">
+                                <div
+                                  className={`h-full transition-all duration-700 ${cpuEff !== null && cpuEff > 100 ? 'bg-red-500 shadow-[0_0_8px_#ef4444]' : 'bg-blue-500'}`}
+                                  style={{ width: `${Math.min(100, limCpu > 0 ? (cpu / limCpu) * 100 : cpu / 10)}%` }}
+                                />
+                              </div>
+                              {cpuEff !== null && (
+                                <span className={`text-[8px] font-black uppercase tracking-widest ${cpuEff < 20 ? 'text-amber-500' : 'text-slate-400 dark:text-slate-600'}`}>
+                                  Efficiency: {Math.round(cpuEff)}% of Req
+                                </span>
+                              )}
                             </div>
-                          </div>
-                          <div className="h-1 rounded-full bg-slate-100 dark:bg-white/5 overflow-hidden">
-                            <div
-                              className={`h-full transition-all duration-700 ${memEff !== null && memEff > 100 ? 'bg-red-500 shadow-[0_0_8px_#ef4444]' : 'bg-purple-500'}`}
-                              style={{ width: `${Math.min(100, limMem > 0 ? (mem / limMem) * 100 : mem / 50)}%` }}
-                            />
-                          </div>
-                          {memEff !== null && (
-                            <span className={`text-[8px] font-black uppercase tracking-widest ${memEff < 20 ? 'text-amber-500' : 'text-slate-400 dark:text-slate-600'}`}>
-                              Efficiency: {Math.round(memEff)}% of Req
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {processedPods.length === 0 && !loadingResources && (
-                    <tr>
-                      <td colSpan={3} className="px-6 py-12 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">
-                        No pods matching "{searchTerm}"
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        {/* Sync state */}
-        {loadingResources && (
-          <div className="flex flex-col items-center justify-center py-12 gap-4">
-            <RefreshCw className="w-6 h-6 text-blue-500 animate-spin" />
-            <span className="text-[10px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em]">Synchronizing Metrics…</span>
-          </div>
-        )}
-
-        {/* Error / Install Metrics-Server */}
-        {!loadingResources && nodeMetrics.length === 0 && (
+                          </td>
+                          <td className="px-6 py-5">
+                            <div className="flex flex-col gap-2">
+                              <div className="flex justify-between items-baseline">
+                                <span className={`text-[11px] font-black font-mono ${mem > limMem && limMem > 0 ? 'text-red-500' : 'text-slate-700 dark:text-slate-300'}`}>
+                                  {mem >= 1024 ? `${(mem / 1024).toFixed(1)}Gi` : `${Math.round(mem)}Mi`}
+                                </span>
+                                <div className="flex gap-2">
+                                  <span className="text-[8px] font-bold text-slate-400 dark:text-slate-600 uppercase">Req: {reqMem > 0 ? `${reqMem}Mi` : '0'}</span>
+                                  <span className="text-[8px] font-bold text-slate-500 dark:text-slate-400 uppercase font-black">Lim: {limMem > 0 ? `${limMem}Mi` : '∞'}</span>
+                                </div>
+                              </div>
+                              <div className="h-1 rounded-full bg-slate-100 dark:bg-white/5 overflow-hidden">
+                                <div
+                                  className={`h-full transition-all duration-700 ${memEff !== null && memEff > 100 ? 'bg-red-500 shadow-[0_0_8px_#ef4444]' : 'bg-purple-500'}`}
+                                  style={{ width: `${Math.min(100, limMem > 0 ? (mem / limMem) * 100 : mem / 50)}%` }}
+                                />
+                              </div>
+                              {memEff !== null && (
+                                <span className={`text-[8px] font-black uppercase tracking-widest ${memEff < 20 ? 'text-amber-500' : 'text-slate-400 dark:text-slate-600'}`}>
+                                  Efficiency: {Math.round(memEff)}% of Req
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {processedPods.length === 0 && !loadingResources && (
+                        <tr>
+                          <td colSpan={3} className="px-6 py-12 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">
+                            No pods matching "{searchTerm}"
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          </>
+        ) : !loadingResources ? (
           <div className="glass-panel p-12 flex flex-col items-center text-center gap-6 border-dashed border-2">
             <div className="w-16 h-16 rounded-3xl bg-slate-50 dark:bg-slate-900 flex items-center justify-center text-slate-300 dark:text-slate-700 shadow-inner">
               <Cpu className="w-8 h-8" />
@@ -338,6 +330,14 @@ export default function MetricsView(): JSX.Element {
                 </code>
               </div>
             </div>
+          </div>
+        ) : null}
+
+        {/* Sync state */}
+        {loadingResources && (
+          <div className="flex flex-col items-center justify-center py-12 gap-4">
+            <RefreshCw className="w-6 h-6 text-blue-500 animate-spin" />
+            <span className="text-[10px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em]">Synchronizing Metrics…</span>
           </div>
         )}
       </div>
