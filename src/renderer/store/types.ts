@@ -60,6 +60,8 @@ declare global {
             getSecretValue: (context: string, namespace: string, name: string, key: string) => Promise<string>
             execCommand: (context: string, namespace: string, pod: string, container: string, command: string[]) => Promise<{ stdout: string; exitCode: number }>
             applyYAML: (context: string, yaml: string) => Promise<string>
+            copyToContainer: (context: string, namespace: string, pod: string, container: string, localPath: string, remotePath: string) => Promise<void>
+            copyFromContainer: (context: string, namespace: string, pod: string, container: string, remotePath: string, localPath: string) => Promise<void>
             streamLogs: (
                 context: string, namespace: string, pod: string, container: string | undefined,
                 onChunk: (chunk: string) => void, onEnd: () => void
@@ -109,6 +111,10 @@ declare global {
             reveal: () => Promise<void>
             selectPath: () => Promise<string | null>
             clearPath: () => Promise<void>
+        }
+        dialog: {
+            showOpenFile: () => Promise<string | null>
+            showSaveFile: (defaultName: string) => Promise<string | null>
         }
     }
 }

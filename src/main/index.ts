@@ -5,6 +5,7 @@ import { registerKubectlHandlers } from './kubectl'
 import { registerTerminalHandlers } from './terminal'
 import { registerSettingsHandlers } from './settings'
 import { registerHelmHandlers } from './helm'
+import { registerDialogHandlers } from './dialog'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -57,6 +58,7 @@ app.whenReady().then(() => {
   registerKubectlHandlers()
   registerTerminalHandlers()
   registerHelmHandlers()
+  registerDialogHandlers()
   createWindow()
 
   app.on('activate', function () {

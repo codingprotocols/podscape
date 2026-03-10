@@ -58,6 +58,10 @@ function humanizeKubectlError(stderr: string, raw: Error & { code?: unknown; kil
   if (text.includes('no server found for cluster') || text.includes('no such host'))
     return new Error('Cluster host not found. The server address in your kubeconfig may be incorrect.')
 
+  // kubectl cp: tar missing in container (distroless / scratch / minimal images)
+  if (text.includes('"tar": executable file not found') || text.includes("exec: \"tar\""))
+    return new Error('tar not found in container. kubectl cp requires tar to be installed inside the container. For distroless or minimal images, copy tar in first via a debug container, or switch to an image that includes tar (e.g. busybox).')
+
   // Resource type unsupported (e.g. CRD not installed)
   if (text.includes("server doesn't have a resource type") || text.includes('no matches for kind'))
     return new Error('This resource type is not available in the cluster. The required API or CRD may not be installed.')
@@ -268,6 +272,28 @@ export class KubectlProvider implements KubeProvider {
       'exec', pod, '--context', context, '--namespace', namespace, '--container', container, '--', ...command
     ])
   }
+
+  /** Upload a local file into a running container via `kubectl cp`. */
+  async copyToContainer(
+    context: string, namespace: string, pod: string, container: string,
+    localPath: string, remotePath: string
+  ): Promise<void> {
+    await this.spawnKubectl([
+      'cp', localPath, `${namespace}/${pod}:${remotePath}`,
+      '--context', context, '-c', container
+    ], 300_000) // 5-minute ceiling for large files
+  }
+
+  /** Download a file from a running container to local disk via `kubectl cp`. */
+  async copyFromContainer(
+    context: string, namespace: string, pod: string, container: string,
+    remotePath: string, localPath: string
+  ): Promise<void> {
+    await this.spawnKubectl([
+      'cp', `${namespace}/${pod}:${remotePath}`, localPath,
+      '--context', context, '-c', container
+    ], 300_000)
+  }
 }
 
 const activeStreams = new Map<string, ReturnType<typeof spawn>>()
@@ -326,6 +352,14 @@ export function registerKubectlHandlers(): void {
   ipcMain.handle('kubectl:getSecretValue', (_e, ctx, ns, name, key) => provider.getSecretValue(ctx, ns, name, key))
   ipcMain.handle('kubectl:execCommand', (_e, ctx, ns, pod, container, cmd) => provider.execCommand(ctx, ns, pod, container, cmd))
   ipcMain.handle('kubectl:applyYAML', (_e, ctx, yaml) => provider.applyYAML(ctx, yaml))
+
+  ipcMain.handle('kubectl:copyToContainer',
+    (_e, ctx: string, ns: string, pod: string, container: string, localPath: string, remotePath: string) =>
+      provider.copyToContainer(ctx, ns, pod, container, localPath, remotePath))
+
+  ipcMain.handle('kubectl:copyFromContainer',
+    (_e, ctx: string, ns: string, pod: string, container: string, remotePath: string, localPath: string) =>
+      provider.copyFromContainer(ctx, ns, pod, container, remotePath, localPath))
 
   ipcMain.handle('kubectl:streamLogs', async (event, ctx, ns, pod, container) => {
     const streamId = `${ctx}/${ns}/${pod}${container ? '/' + container : ''}`

@@ -172,7 +172,32 @@ const kubectl = {
     ipcRenderer.on('kubectl:logEnd', endHandler)
     return ipcRenderer.invoke('kubectl:streamLogs', context, namespace, pod, container)
   },
-  stopLogs: (streamId: string) => ipcRenderer.invoke('kubectl:stopLogs', streamId)
+  stopLogs: (streamId: string) => ipcRenderer.invoke('kubectl:stopLogs', streamId),
+
+  // File transfer (kubectl cp)
+  copyToContainer: (
+    context: string, namespace: string, pod: string, container: string,
+    localPath: string, remotePath: string
+  ): Promise<void> =>
+    ipcRenderer.invoke('kubectl:copyToContainer', context, namespace, pod, container, localPath, remotePath),
+
+  copyFromContainer: (
+    context: string, namespace: string, pod: string, container: string,
+    remotePath: string, localPath: string
+  ): Promise<void> =>
+    ipcRenderer.invoke('kubectl:copyFromContainer', context, namespace, pod, container, remotePath, localPath),
+}
+
+// ─── dialog API ───────────────────────────────────────────────────────────────
+
+const dialog = {
+  /** Open a native file picker. Returns the chosen path, or null if cancelled. */
+  showOpenFile: (): Promise<string | null> =>
+    ipcRenderer.invoke('dialog:showOpenFile'),
+
+  /** Open a native save dialog. Returns the chosen path, or null if cancelled. */
+  showSaveFile: (defaultName: string): Promise<string | null> =>
+    ipcRenderer.invoke('dialog:showSaveFile', defaultName),
 }
 
 // ─── terminal API ─────────────────────────────────────────────────────────────
@@ -290,6 +315,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('plugins', plugins)
     contextBridge.exposeInMainWorld('settings', settings)
     contextBridge.exposeInMainWorld('kubeconfig', kubeconfig)
+    contextBridge.exposeInMainWorld('dialog', dialog)
   } catch (error) {
     console.error(error)
   }
@@ -310,4 +336,6 @@ if (process.contextIsolated) {
   window.settings = settings
   // @ts-ignore
   window.kubeconfig = kubeconfig
+  // @ts-ignore
+  window.dialog = dialog
 }
