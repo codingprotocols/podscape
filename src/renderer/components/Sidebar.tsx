@@ -148,7 +148,7 @@ function RailBtn({
 
 export default function Sidebar(): JSX.Element {
   const {
-    contexts, selectedContext, starredContext, setStarredContext,
+    contexts, selectedContext, hotbarContexts, toggleHotbarContext,
     namespaces, selectedNamespace,
     loadingContexts, loadingNamespaces,
     selectContext, selectNamespace, error, clearError,
@@ -226,9 +226,9 @@ export default function Sidebar(): JSX.Element {
                   key={ctx.name}
                   name={ctx.name}
                   active={selectedContext === ctx.name}
-                  starred={starredContext === ctx.name}
+                  starred={hotbarContexts.includes(ctx.name)}
                   onClick={() => selectContext(ctx.name)}
-                  onToggleStar={() => setStarredContext(starredContext === ctx.name ? null : ctx.name)}
+                  onToggleStar={() => toggleHotbarContext(ctx.name)}
                 />
               ))}
             </>

@@ -135,6 +135,8 @@ export interface AppStore extends AnalysisSlice {
     selectedContext: string | null
     starredContext: string | null
     setStarredContext: (name: string | null) => void
+    hotbarContexts: string[]
+    toggleHotbarContext: (name: string) => void
     namespaces: KubeNamespace[]
     selectedNamespace: string | null
     selectedResource: AnyKubeResource | null
