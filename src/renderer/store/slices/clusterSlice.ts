@@ -39,12 +39,19 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
         } catch { return [] }
     })(),
     toggleHotbarContext: (contextName) => {
-        const { hotbarContexts } = get()
-        const next = hotbarContexts.includes(contextName)
+        const { hotbarContexts, selectedContext, selectContext } = get()
+        const isRemoving = hotbarContexts.includes(contextName)
+        const next = isRemoving
             ? hotbarContexts.filter(c => c !== contextName)
             : [...hotbarContexts, contextName].slice(-10)
+
         set({ hotbarContexts: next })
         localStorage.setItem('podscape:hotbar', JSON.stringify(next))
+
+        // Autoswitch: if we just unpinned the currently active cluster, switch to the first available in hotbar
+        if (isRemoving && contextName === selectedContext && next.length > 0) {
+            selectContext(next[0])
+        }
     },
     namespaces: [],
     selectedNamespace: null,
