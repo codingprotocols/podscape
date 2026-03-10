@@ -57,6 +57,7 @@ export interface ResourceSlice {
     loadSection: (section: ResourceKind) => Promise<void>
     loadDashboard: () => Promise<void>
     refresh: () => Promise<void>
+    preloadSearchResources: () => Promise<void>
 }
 
 export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
@@ -222,4 +223,29 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     },
 
     refresh: () => get().loadSection(get().section),
+
+    preloadSearchResources: async () => {
+        const { selectedContext: ctx } = get()
+        if (!ctx) return
+        
+        // Fetch essential resources for search across all namespaces
+        try {
+            const [pds, depls, svcs, cms, secs] = await Promise.all([
+                window.kubectl.getPods(ctx, null),
+                window.kubectl.getDeployments(ctx, null),
+                window.kubectl.getServices(ctx, null),
+                window.kubectl.getConfigMaps(ctx, null),
+                window.kubectl.getSecrets(ctx, null)
+            ])
+            set({
+                pods: pds as KubePod[],
+                deployments: depls as KubeDeployment[],
+                services: svcs as KubeService[],
+                configmaps: cms as KubeConfigMap[],
+                secrets: secs as KubeSecret[]
+            })
+        } catch (e) {
+            console.error('[preload] Failed to preload search resources:', e)
+        }
+    },
 })

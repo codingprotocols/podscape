@@ -125,14 +125,16 @@ export interface AppStore extends AnalysisSlice {
     theme: 'light' | 'dark'
     setTheme: (theme: 'light' | 'dark') => void
     toggleTheme: () => void
+    searchQuery: string
+    setSearchQuery: (q: string) => void
+    isSearchOpen: boolean
+    setSearchOpen: (open: boolean) => void
 
     // Cluster selection
     contexts: KubeContextEntry[]
     selectedContext: string | null
     starredContext: string | null
     setStarredContext: (name: string | null) => void
-    hotbarContexts: string[]
-    toggleHotbarContext: (contextName: string) => void
     namespaces: KubeNamespace[]
     selectedNamespace: string | null
     selectedResource: AnyKubeResource | null
@@ -197,6 +199,7 @@ export interface AppStore extends AnalysisSlice {
     loadSection: (section: ResourceKind) => Promise<void>
     loadDashboard: () => Promise<void>
     refresh: () => Promise<void>
+    preloadSearchResources: () => Promise<void>
 
     // Operations
     scaleDeployment: (name: string, replicas: number, namespace?: string) => Promise<void>

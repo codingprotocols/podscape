@@ -50,29 +50,16 @@ export const useAppStore = create<AppStore>()((...a) => ({
             }
 
             const ctxNames = new Set(ctxList.map(c => c.name))
-            const active = (currentCtx && ctxNames.has(currentCtx))
-                ? currentCtx
-                : (get().starredContext && ctxNames.has(get().starredContext!))
-                    ? get().starredContext!
+            const active = (get().starredContext && ctxNames.has(get().starredContext!))
+                ? get().starredContext!
+                : (currentCtx && ctxNames.has(currentCtx))
+                    ? currentCtx
                     : ctxList[0]?.name ?? null
 
-            // If new user (no hotbar), load all available contexts into it.
-            let hotbarPruned = get().hotbarContexts
-            if (!localStorage.getItem('podscape:hotbar') && ctxList.length > 0) {
-                hotbarPruned = ctxList.map(c => c.name)
-                localStorage.setItem('podscape:hotbar', JSON.stringify(hotbarPruned))
-            } else if (ctxList.length > 0) {
-                // Prune non-existent contexts from hotbar
-                hotbarPruned = hotbarPruned.filter(name => ctxNames.has(name))
-                if (hotbarPruned.length !== get().hotbarContexts.length) {
-                    localStorage.setItem('podscape:hotbar', JSON.stringify(hotbarPruned))
-                }
-            }
 
             set({
                 contexts: ctxList,
                 selectedContext: active,
-                hotbarContexts: hotbarPruned,
                 loadingContexts: false
             })
 

@@ -6,8 +6,6 @@ export interface ClusterSlice {
     selectedContext: string | null
     starredContext: string | null
     setStarredContext: (name: string | null) => void
-    hotbarContexts: string[]
-    toggleHotbarContext: (contextName: string) => void
     namespaces: KubeNamespace[]
     selectedNamespace: string | null
     loadingContexts: boolean
@@ -29,29 +27,6 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
         set({ starredContext: name })
         if (name) localStorage.setItem('podscape:starred', name)
         else localStorage.removeItem('podscape:starred')
-    },
-    hotbarContexts: (() => {
-        try {
-            const raw = localStorage.getItem('podscape:hotbar')
-            if (!raw) return []
-            const parsed = JSON.parse(raw) as unknown
-            return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : []
-        } catch { return [] }
-    })(),
-    toggleHotbarContext: (contextName) => {
-        const { hotbarContexts, selectedContext, selectContext } = get()
-        const isRemoving = hotbarContexts.includes(contextName)
-        const next = isRemoving
-            ? hotbarContexts.filter(c => c !== contextName)
-            : [...hotbarContexts, contextName].slice(-10)
-
-        set({ hotbarContexts: next })
-        localStorage.setItem('podscape:hotbar', JSON.stringify(next))
-
-        // Autoswitch: if we just unpinned the currently active cluster, switch to the first available in hotbar
-        if (isRemoving && contextName === selectedContext && next.length > 0) {
-            selectContext(next[0])
-        }
     },
     namespaces: [],
     selectedNamespace: null,
@@ -82,7 +57,8 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             const chosen = nsList.length > 0 ? '_all' : null
             set({ namespaces: nsList, selectedNamespace: chosen, loadingNamespaces: false })
             if (chosen) {
-                get().loadSection(get().section) // intentionally not awaited — context switch returns immediately
+                get().loadSection(get().section) 
+                get().preloadSearchResources() // Start background preloading for search
             }
         } catch (err) {
             if (mySeq !== contextSwitchSeq) return
