@@ -6,6 +6,8 @@ export interface ClusterSlice {
     selectedContext: string | null
     starredContext: string | null
     setStarredContext: (name: string | null) => void
+    hotbarContexts: string[]
+    toggleHotbarContext: (name: string) => void
     namespaces: KubeNamespace[]
     selectedNamespace: string | null
     loadingContexts: boolean
@@ -27,6 +29,20 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
         set({ starredContext: name })
         if (name) localStorage.setItem('podscape:starred', name)
         else localStorage.removeItem('podscape:starred')
+    },
+    hotbarContexts: (() => {
+        try {
+            const saved = localStorage.getItem('podscape:hotbar')
+            return saved ? JSON.parse(saved) : []
+        } catch { return [] }
+    })(),
+    toggleHotbarContext: (name) => {
+        const { hotbarContexts } = get()
+        const next = hotbarContexts.includes(name)
+            ? hotbarContexts.filter(c => c !== name)
+            : [...hotbarContexts, name]
+        set({ hotbarContexts: next })
+        localStorage.setItem('podscape:hotbar', JSON.stringify(next))
     },
     namespaces: [],
     selectedNamespace: null,
