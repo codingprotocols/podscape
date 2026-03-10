@@ -80,8 +80,6 @@ export const useAppStore = create<AppStore>()((...a) => ({
                 await get().selectContext(active)
             }
 
-            const pluginList = await window.plugins.list().catch(() => [])
-            set({ plugins: pluginList })
         } catch (err) {
             set({ error: (err as Error).message, loadingContexts: false })
         }

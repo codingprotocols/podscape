@@ -6,7 +6,7 @@ import {
     KubeConfigMap, KubeSecret, KubePVC, KubePV, KubeStorageClass,
     KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
     KubeNode, KubeEvent, KubeCRD,
-    NodeMetrics, PodMetrics, Plugin, ResourceKind, AnyKubeResource, PortForwardEntry,
+    NodeMetrics, PodMetrics, ResourceKind, AnyKubeResource, PortForwardEntry,
     HelmRelease, DebugPodEntry
 } from '../../types'
 
@@ -40,7 +40,6 @@ export interface ResourceSlice {
     crds: KubeCRD[]
     podMetrics: PodMetrics[]
     nodeMetrics: NodeMetrics[]
-    plugins: Plugin[]
     portForwards: PortForwardEntry[]
     helmReleases: HelmRelease[]
     debugPods: DebugPodEntry[]
@@ -90,7 +89,6 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     crds: [],
     podMetrics: [],
     nodeMetrics: [],
-    plugins: [],
     portForwards: [],
     helmReleases: [],
     debugPods: [],
@@ -118,7 +116,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
 
         const nsArg = ns === '_all' ? null : ns
 
-        if (['terminal', 'extensions', 'metrics', 'network', 'portforwards', 'helm', 'settings', 'connectivity', 'debugpod'].includes(section)) {
+        if (['metrics', 'network', 'portforwards', 'helm', 'settings', 'connectivity', 'debugpod'].includes(section)) {
             if (section === 'metrics' && ctx) {
                 set({ loadingResources: true })
                 try {

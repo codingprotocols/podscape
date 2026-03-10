@@ -606,23 +606,6 @@ export interface HelmHistoryEntry {
   description: string
 }
 
-// ─── Extensions / Plugins ─────────────────────────────────────────────────────
-
-export interface PluginPanel {
-  id: string
-  title: string
-  url?: string
-  html?: string
-}
-
-export interface Plugin {
-  id: string
-  name: string
-  version: string
-  description?: string
-  author?: string
-  panels: PluginPanel[]
-}
 
 
 // ─── Debug Pod ────────────────────────────────────────────────────────────────
@@ -672,8 +655,6 @@ export type ResourceKind =
   | 'events'
   | 'crds'
   | 'metrics'
-  | 'terminal'
-  | 'extensions'
   | 'settings'
   | 'network'
   | 'connectivity'

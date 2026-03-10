@@ -6,7 +6,7 @@ import {
     KubeConfigMap, KubeSecret, KubePVC, KubePV, KubeStorageClass,
     KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
     KubeNode, KubeEvent, KubeCRD,
-    NodeMetrics, PodMetrics, Plugin, ResourceKind, AnyKubeResource, PortForwardEntry,
+    NodeMetrics, PodMetrics, ResourceKind, AnyKubeResource, PortForwardEntry,
     HelmRelease, DebugPodEntry
 } from '../types'
 import { AnalysisSlice } from './slices/analysisSlice'
@@ -81,14 +81,6 @@ declare global {
             rollback: (context: string, namespace: string, release: string, revision: number) => Promise<string>
             uninstall: (context: string, namespace: string, release: string) => Promise<string>
         }
-        terminal: {
-            create: (context?: string, namespace?: string) => Promise<string>
-            write: (id: string, data: string) => Promise<void>
-            resize: (id: string, cols: number, rows: number) => Promise<void>
-            kill: (id: string) => Promise<void>
-            onData: (id: string, cb: (data: string) => void) => () => void
-            onExit: (id: string, cb: () => void) => () => void
-        }
         exec: {
             start: (context: string, namespace: string, pod: string, container: string) => Promise<string>
             write: (id: string, data: string) => Promise<void>
@@ -96,9 +88,6 @@ declare global {
             kill: (id: string) => Promise<void>
             onData: (id: string, cb: (data: string) => void) => () => void
             onExit: (id: string, cb: () => void) => () => void
-        }
-        plugins: {
-            list: () => Promise<Plugin[]>
         }
         settings: {
             get: () => Promise<{ kubectlPath: string; shellPath: string; helmPath: string; theme: string; kubeconfigPath: string }>
@@ -181,7 +170,6 @@ export interface AppStore extends AnalysisSlice {
     crds: KubeCRD[]
     podMetrics: PodMetrics[]
     nodeMetrics: NodeMetrics[]
-    plugins: Plugin[]
     portForwards: PortForwardEntry[]
     helmReleases: HelmRelease[]
     debugPods: DebugPodEntry[]

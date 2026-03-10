@@ -84,6 +84,8 @@ function humanizeKubectlError(stderr: string, raw: Error & { code?: unknown; kil
 }
 
 export class KubectlProvider implements KubeProvider {
+  private missingResources = new Map<string, Set<string>>()
+
   private spawnKubectl(args: string[], timeoutMs = 10000): Promise<string> {
     return new Promise((resolve, reject) => {
       const binary = findKubectl()
@@ -135,7 +137,10 @@ export class KubectlProvider implements KubeProvider {
     return this.getResources(context, undefined, 'namespaces', 25000)
   }
 
-  async getResources(context: string, namespace: string | null | undefined, kind: string, timeoutMs?: number): Promise<unknown[]> {
+  async getResources(context: string, namespace: string | null | undefined, kind: string, timeoutMs?: number, silent?: boolean): Promise<unknown[]> {
+    // Check cache
+    if (this.missingResources.get(context)?.has(kind)) return []
+
     const args = ['get', kind]
     if (context) args.push('--context', context)
     if (typeof namespace === 'string') {
@@ -151,22 +156,28 @@ export class KubectlProvider implements KubeProvider {
       const output = await this.spawnKubectl(args, timeoutMs)
       try { return (JSON.parse(output).items ?? []) as unknown[] } catch { return [] }
     } catch (err) {
-      console.error(`[kubectl] getResources ${kind} failed:`, (err as Error).message)
-      throw err
+      const msg = (err as Error).message
+      const isMissing = msg.includes('resource type is not available') || msg.includes('no matches for kind')
+
+      if (isMissing) {
+        if (!this.missingResources.has(context)) this.missingResources.set(context, new Set())
+        this.missingResources.get(context)!.add(kind)
+      }
+
+      if (!silent) {
+        console.error(`[kubectl] getResources ${kind} failed:`, msg)
+      }
+      return []
     }
   }
 
   async getPodMetrics(context: string, namespace: string | null): Promise<unknown[]> {
-    try {
-      return await this.getResources(context, namespace, 'podmetrics.metrics.k8s.io')
-    } catch { return [] }
+    return await this.getResources(context, namespace, 'podmetrics.metrics.k8s.io', undefined, true)
   }
 
   async getNodeMetrics(context: string): Promise<unknown[]> {
-    try {
-      // Node metrics are cluster-scoped
-      return await this.getResources(context, undefined, 'nodemetrics.metrics.k8s.io')
-    } catch { return [] }
+    // Node metrics are cluster-scoped
+    return await this.getResources(context, undefined, 'nodemetrics.metrics.k8s.io', undefined, true)
   }
 
   async createDebugPod(context: string, namespace: string, image: string, name: string): Promise<void> {
@@ -383,36 +394,10 @@ export function registerKubectlHandlers(): void {
     child.stdout.on('data', (chunk: Buffer) => { if (!event.sender.isDestroyed()) event.sender.send('portforward:ready', id, chunk.toString()) })
     child.stderr.on('data', (chunk: Buffer) => { if (!event.sender.isDestroyed()) event.sender.send('portforward:error', id, chunk.toString()) })
     child.on('close', () => { activeForwards.delete(id); if (!event.sender.isDestroyed()) event.sender.send('portforward:exit', id) })
-    return id
   })
 
   ipcMain.handle('kubectl:stopPortForward', async (_e, id) => {
     activeForwards.get(id)?.kill()
     activeForwards.delete(id)
-  })
-
-  ipcMain.handle('plugins:list', async () => {
-    const { homedir } = await import('os')
-    const { readdirSync, existsSync: fsExists, readFileSync } = await import('fs')
-    const pluginsDir = join(homedir(), '.podscape', 'plugins')
-    if (!fsExists(pluginsDir)) return []
-    const plugins: unknown[] = []
-    for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue
-      const manifestPath = join(pluginsDir, entry.name, 'package.json')
-      if (!fsExists(manifestPath)) continue
-      try {
-        const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
-        plugins.push({
-          id: entry.name,
-          name: manifest.name ?? entry.name,
-          version: manifest.version ?? '0.0.0',
-          description: manifest.description ?? '',
-          author: manifest.author ?? '',
-          panels: manifest.podscape?.panels ?? []
-        })
-      } catch { /* skip */ }
-    }
-    return plugins
   })
 }
