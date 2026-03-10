@@ -39,6 +39,7 @@ import ConnectivityTester from './components/ConnectivityTester'
 import DebugPodLauncher from './components/DebugPodLauncher'
 import YAMLViewer from './components/YAMLViewer'
 import KubeConfigOnboarding from './components/KubeConfigOnboarding'
+import CommandPalette from './components/CommandPalette'
 import type {
   KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet, KubeJob, KubeCronJob,
   KubeService, KubeIngress, KubeNode, KubeCRD,
@@ -305,7 +306,7 @@ export default function App(): JSX.Element {
   const {
     init, loadingContexts, section, setSection,
     selectedResource, execTarget, closeExec, refresh, error, clearError,
-    kubectlOk, kubeconfigOk
+    kubectlOk, kubeconfigOk, isSearchOpen, setSearchOpen
   } = useAppStore()
 
   useEffect(() => { init() }, [])
@@ -316,10 +317,14 @@ export default function App(): JSX.Element {
         e.preventDefault()
         refresh()
       }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSearchOpen(!isSearchOpen)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [refresh, setSection])
+  }, [refresh, setSection, isSearchOpen, setSearchOpen])
 
 
   return (
@@ -392,6 +397,9 @@ export default function App(): JSX.Element {
           </div>
         </div>
       )}
+
+      {/* Command Palette Overlay */}
+      <CommandPalette />
     </div>
   )
 }

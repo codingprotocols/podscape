@@ -11,6 +11,10 @@ export interface NavigationSlice {
     theme: 'light' | 'dark'
     setTheme: (theme: 'light' | 'dark') => void
     toggleTheme: () => void
+    searchQuery: string
+    setSearchQuery: (q: string) => void
+    isSearchOpen: boolean
+    setSearchOpen: (open: boolean) => void
 }
 
 export const createNavigationSlice: StoreSlice<NavigationSlice> = (set, get) => ({
@@ -43,4 +47,8 @@ export const createNavigationSlice: StoreSlice<NavigationSlice> = (set, get) => 
         const next = get().theme === 'dark' ? 'light' : 'dark'
         get().setTheme(next)
     },
+    searchQuery: '',
+    setSearchQuery: (searchQuery) => set({ searchQuery }),
+    isSearchOpen: false,
+    setSearchOpen: (isSearchOpen) => set({ isSearchOpen }),
 })
