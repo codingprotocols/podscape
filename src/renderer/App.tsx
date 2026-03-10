@@ -32,8 +32,6 @@ import HelmPanel from './components/HelmPanel'
 import PortForwardPanel from './components/PortForwardPanel'
 import EventsView from './components/EventsView'
 import MetricsView from './components/MetricsView'
-import Terminal from './components/Terminal'
-import ExtensionsPanel from './components/ExtensionsPanel'
 import SettingsPanel from './components/SettingsPanel'
 import NetworkPanel from './components/NetworkPanel'
 import ExecPanel from './components/ExecPanel'
@@ -318,10 +316,6 @@ export default function App(): JSX.Element {
         e.preventDefault()
         refresh()
       }
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'T') {
-        e.preventDefault()
-        setSection('terminal')
-      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -343,14 +337,10 @@ export default function App(): JSX.Element {
           <KubeConfigOnboarding />
         ) : section === 'dashboard' ? (
           <Dashboard />
-        ) : section === 'terminal' ? (
-          <Terminal />
         ) : section === 'events' ? (
           <EventsView />
         ) : section === 'metrics' ? (
           <MetricsView />
-        ) : section === 'extensions' ? (
-          <ExtensionsPanel />
         ) : section === 'settings' ? (
           <SettingsPanel />
         ) : section === 'network' ? (

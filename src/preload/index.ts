@@ -200,32 +200,6 @@ const dialog = {
     ipcRenderer.invoke('dialog:showSaveFile', defaultName),
 }
 
-// ─── terminal API ─────────────────────────────────────────────────────────────
-
-const terminal = {
-  create: (context?: string, namespace?: string): Promise<string> =>
-    ipcRenderer.invoke('terminal:create', context, namespace),
-  write: (id: string, data: string): Promise<void> =>
-    ipcRenderer.invoke('terminal:write', id, data),
-  resize: (id: string, cols: number, rows: number): Promise<void> =>
-    ipcRenderer.invoke('terminal:resize', id, cols, rows),
-  kill: (id: string): Promise<void> =>
-    ipcRenderer.invoke('terminal:kill', id),
-  onData: (id: string, cb: (data: string) => void): (() => void) => {
-    const handler = (_e: Electron.IpcRendererEvent, ptId: string, data: string): void => {
-      if (ptId === id) cb(data)
-    }
-    ipcRenderer.on('terminal:data', handler)
-    return () => ipcRenderer.off('terminal:data', handler)
-  },
-  onExit: (id: string, cb: () => void): (() => void) => {
-    const handler = (_e: Electron.IpcRendererEvent, ptId: string): void => {
-      if (ptId === id) cb()
-    }
-    ipcRenderer.on('terminal:exit', handler)
-    return () => ipcRenderer.off('terminal:exit', handler)
-  }
-}
 
 // ─── exec API ─────────────────────────────────────────────────────────────────
 
@@ -254,11 +228,6 @@ const exec = {
   }
 }
 
-// ─── plugins API ──────────────────────────────────────────────────────────────
-
-const plugins = {
-  list: () => ipcRenderer.invoke('plugins:list')
-}
 
 // ─── helm API ─────────────────────────────────────────────────────────────────
 
@@ -310,9 +279,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('kubectl', kubectl)
     contextBridge.exposeInMainWorld('helm', helm)
-    contextBridge.exposeInMainWorld('terminal', terminal)
     contextBridge.exposeInMainWorld('exec', exec)
-    contextBridge.exposeInMainWorld('plugins', plugins)
     contextBridge.exposeInMainWorld('settings', settings)
     contextBridge.exposeInMainWorld('kubeconfig', kubeconfig)
     contextBridge.exposeInMainWorld('dialog', dialog)
@@ -327,11 +294,7 @@ if (process.contextIsolated) {
   // @ts-ignore
   window.helm = helm
   // @ts-ignore
-  window.terminal = terminal
-  // @ts-ignore
   window.exec = exec
-  // @ts-ignore
-  window.plugins = plugins
   // @ts-ignore
   window.settings = settings
   // @ts-ignore
