@@ -159,4 +159,13 @@ describe('KubectlProvider error humanization', () => {
         expect(e.message).not.toContain('/opt/homebrew/bin/kubectl')
         expect(e.message).not.toContain('secret-arn')
     })
+
+    it('formats missing tar error (distroless containers) with actionable guidance', async () => {
+        const stderr = `error: Internal error occurred: error executing command in container: failed to exec in container: failed to start exec "abc123": OCI runtime exec failed: exec failed: unable to start container process: exec: "tar": executable file not found in $PATH: unknown`
+        const err = Object.assign(new Error('Command failed'), { code: 1, killed: false })
+        execFileMock.mockImplementation((_bin: string, _args: string[], _opts: object, cb: Function) => {
+            cb(err, '', stderr)
+        })
+        await expect(provider.getContexts()).rejects.toThrow('tar not found in container')
+    })
 })

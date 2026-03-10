@@ -60,23 +60,25 @@ export default function Terminal(): JSX.Element {
   }, [])
 
   return (
-    <div className="flex flex-col flex-1 bg-white dark:bg-[hsl(var(--bg-dark))] h-full overflow-hidden transition-colors duration-200">
+    <div className="flex flex-col flex-1 h-full overflow-hidden bg-[#0d1117] dark:bg-[#0d1117] light:bg-white transition-colors duration-200">
       {/* Tab bar */}
-      <div className="flex items-center bg-white dark:bg-white/5 backdrop-blur-xl border-b border-slate-200 dark:border-white/5 shrink-0 px-4 h-12 gap-1.5 overflow-x-auto no-scrollbar">
+      <div className="flex items-center shrink-0 h-11 px-3 gap-1 overflow-x-auto no-scrollbar
+        bg-[#161b22] dark:bg-[#161b22] border-b border-[#30363d] dark:border-[#30363d]
+        light:bg-slate-50 light:border-slate-200">
         {sessions.map((s, i) => (
           <div
             key={s.id}
-            className={`flex items-center gap-2.5 px-4 h-9 text-[10px] font-bold cursor-pointer rounded-t-xl border-x border-t transition-all select-none
+            className={`group relative flex items-center gap-2 px-3.5 h-8 text-[10px] font-bold cursor-pointer rounded-lg transition-all select-none
               ${i === activeIdx
-                ? 'bg-white dark:bg-white/10 text-blue-600 dark:text-blue-400 border-slate-200 dark:border-white/10 shadow-[0_-2px_8px_rgba(0,0,0,0.05)]'
-                : 'bg-transparent text-slate-400 dark:text-slate-600 border-transparent hover:text-slate-600 dark:hover:text-slate-400'}`}
+                ? 'bg-[#0d1117] text-[#e6edf3] shadow-sm ring-1 ring-[#30363d]'
+                : 'text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#21262d]'}`}
             onClick={() => setActiveIdx(i)}
             onDoubleClick={e => startRename(i, s.title, e)}
             title="Double-click to rename"
           >
-            <span className="w-2.5 h-2.5 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-[8px] font-black">
-              {i + 1}
-            </span>
+            {/* Active indicator dot */}
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${i === activeIdx ? 'bg-emerald-400' : 'bg-[#30363d] group-hover:bg-[#484f58]'}`} />
+
             {editingIdx === i ? (
               <input
                 ref={editInputRef}
@@ -85,39 +87,46 @@ export default function Terminal(): JSX.Element {
                 onBlur={commitRename}
                 onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setEditingIdx(null) }}
                 onClick={e => e.stopPropagation()}
-                className="w-20 bg-transparent border-b border-blue-400 outline-none text-[10px] font-bold text-blue-400"
+                className="w-20 bg-transparent border-b border-[#58a6ff] outline-none text-[10px] font-bold text-[#58a6ff]"
               />
             ) : (
-              <span className="uppercase tracking-widest">{s.title}</span>
+              <span className="font-mono tracking-wide">{s.title}</span>
             )}
+
             {sessions.length > 1 && (
               <button
                 onClick={e => { e.stopPropagation(); removeSession(i) }}
-                className="ml-1 p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors text-slate-300 dark:text-slate-700 hover:text-red-500"
+                className="opacity-0 group-hover:opacity-100 -mr-1 p-0.5 rounded transition-all text-[#8b949e] hover:text-[#f85149] hover:bg-[#30363d]"
               >
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
               </button>
             )}
           </div>
         ))}
+
         <button
           onClick={addSession}
-          className="w-8 h-8 flex items-center justify-center text-slate-400 dark:text-slate-600 hover:text-blue-500 hover:bg-white dark:hover:bg-slate-900 rounded-lg transition-all ml-1 border border-transparent hover:border-slate-200 dark:hover:border-slate-800"
-          title="New terminal tab"
+          className="w-7 h-7 ml-1 flex items-center justify-center rounded-lg text-[#8b949e] hover:text-[#58a6ff] hover:bg-[#21262d] transition-all border border-transparent hover:border-[#30363d]"
+          title="New terminal tab  (opens a new shell)"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12h14" /></svg>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12h14" /></svg>
         </button>
+
         <div className="flex-1" />
-        <div className="hidden md:flex items-center gap-3 px-2">
-          <span className="text-[10px] font-bold text-slate-300 dark:text-slate-700 font-mono uppercase tracking-widest">
-            {selectedContext}
-          </span>
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-        </div>
+
+        {/* Context indicator */}
+        {selectedContext && (
+          <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mr-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[10px] font-bold text-emerald-400/80 font-mono truncate max-w-[160px]">
+              {selectedContext}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Terminal panes */}
-      <div className="flex-1 min-h-0 relative bg-white dark:bg-[hsl(var(--bg-dark))]">
+      <div className="flex-1 min-h-0 relative bg-[#0d1117]">
         {sessions.map((session, i) => (
           <div
             key={session.id}
@@ -137,13 +146,13 @@ export default function Terminal(): JSX.Element {
         ))}
         {sessions.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-5">
-            <div className="w-16 h-16 rounded-3xl bg-slate-50 dark:bg-slate-900/50 flex items-center justify-center text-slate-200 dark:text-slate-800">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 17l6-6-6-6M12 19h8" /></svg>
+            <div className="w-16 h-16 rounded-3xl bg-[#161b22] border border-[#30363d] flex items-center justify-center text-[#484f58]">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 17l6-6-6-6M12 19h8" /></svg>
             </div>
-            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">No active shell sessions</p>
+            <p className="text-[11px] font-bold text-[#8b949e] uppercase tracking-widest">No active shell sessions</p>
             <button
               onClick={addSession}
-              className="px-6 py-2.5 text-xs font-black text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-lg shadow-blue-500/20 transition-all active:scale-95 uppercase tracking-widest"
+              className="px-5 py-2 text-xs font-black text-white bg-[#238636] hover:bg-[#2ea043] rounded-xl shadow-lg shadow-green-900/30 transition-all active:scale-95 uppercase tracking-widest border border-[#2ea043]/50"
             >
               Open New Terminal
             </button>
@@ -181,12 +190,14 @@ function TermPane({ sessionId, context, namespace, theme, onPtyReady }: TermPane
     const term = new XTerm({
       theme: getTerminalTheme(theme === 'dark'),
       fontFamily: TERM_FONT,
-      fontSize: 12,
-      lineHeight: 1.5,
+      fontSize: 13,
+      lineHeight: 1.6,
+      letterSpacing: 0.3,
       cursorBlink: true,
       cursorStyle: 'bar',
       scrollback: 10000,
-      allowTransparency: true
+      allowTransparency: false,
+      drawBoldTextInBrightColors: true,
     })
 
     const fit = new FitAddon()
@@ -240,14 +251,14 @@ function TermPane({ sessionId, context, namespace, theme, onPtyReady }: TermPane
   }, [theme])
 
   return (
-    <div className="relative w-full h-full">
+    <div className="relative w-full h-full bg-[#0d1117]">
       {!ptyReady && (
-        <div className="absolute inset-0 flex items-center justify-center gap-3 bg-[hsl(var(--bg-dark))] z-10 transition-colors">
-          <div className="w-4 h-4 border-2 border-slate-100 dark:border-white/10 border-t-blue-500 rounded-full animate-spin" />
-          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Initializing terminal…</span>
+        <div className="absolute inset-0 flex items-center justify-center gap-3 bg-[#0d1117] z-10">
+          <div className="w-4 h-4 border-2 border-[#30363d] border-t-[#58a6ff] rounded-full animate-spin" />
+          <span className="text-[10px] font-bold text-[#8b949e] font-mono uppercase tracking-widest">Initializing shell…</span>
         </div>
       )}
-      <div ref={containerRef} className="w-full h-full p-4" />
+      <div ref={containerRef} className="w-full h-full p-5" />
     </div>
   )
 }

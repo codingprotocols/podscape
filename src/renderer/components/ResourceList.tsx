@@ -12,7 +12,6 @@ import { podPhaseBg, totalRestarts, formatAge, getNodeReady } from '../types'
 import ScaleDialog from './ScaleDialog'
 import DeleteConfirm from './DeleteConfirm'
 import YAMLViewer from './YAMLViewer'
-import { Shield } from 'lucide-react'
 
 // ─── Section → resource selector ─────────────────────────────────────────────
 
@@ -66,22 +65,12 @@ const SECTION_LABELS: Record<string, string> = {
 // ─── Row renderers ────────────────────────────────────────────────────────────
 
 function PodRow({ pod }: { pod: KubePod }) {
-  const { scanResults } = useAppStore()
-  const scan = scanResults[pod.metadata.uid]
   const phase = pod.status.phase ?? 'Unknown'
   const restarts = totalRestarts(pod)
   return (
     <>
       <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">
-        <div className="flex items-center gap-2">
-          {pod.metadata.name}
-          {scan && scan.summary.errors > 0 && (
-            <Shield size={12} className="text-red-500 fill-red-500/10" />
-          )}
-          {scan && scan.summary.errors === 0 && scan.summary.warnings > 0 && (
-            <Shield size={12} className="text-amber-500 fill-amber-500/10" />
-          )}
-        </div>
+        {pod.metadata.name}
       </td>
       <td className="px-6 py-3">
         <Badge text={phase} cls={podPhaseBg(phase)} />
