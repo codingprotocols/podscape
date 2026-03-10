@@ -236,7 +236,7 @@ export default function Sidebar(): JSX.Element {
   // entries rather than filtering against an empty set and showing nothing.
   const hotbarValid = loadingContexts || contexts.length === 0
     ? hotbarContexts
-    : hotbarContexts.filter(c => contextNames.has(c))
+    : hotbarContexts.filter(c => contextNames.has(c) || c === selectedContext)
   // Contexts not already visible in the rail (not hotbarred and not the current active)
   const otherContexts = contexts.filter(c =>
     !hotbarContexts.includes(c.name) && c.name !== selectedContext
@@ -306,12 +306,7 @@ export default function Sidebar(): JSX.Element {
                 <AddClusterButton
                   contexts={otherContexts}
                   onSelect={name => {
-                    // Keep the current context pinned so it doesn't disappear
-                    if (selectedContext && !hotbarContexts.includes(selectedContext)) {
-                      toggleHotbarContext(selectedContext)
-                    }
-                    toggleHotbarContext(name)  // pin the new one
-                    selectContext(name)        // switch to it
+                    selectContext(name)
                   }}
                 />
               )}
