@@ -242,6 +242,16 @@ export default function Sidebar(): JSX.Element {
         >
           <div className="w-8 h-[1px] bg-white/5 mb-3" />
 
+          <RailBtn 
+            icon={ICONS.feedback} 
+            label="Feedback" 
+            onClick={() => window.open('https://github.com/codingprotocols/podscape-community/issues/new', '_blank')} 
+          />
+          <RailBtn 
+            icon={ICONS.help} 
+            label="Ask a Question" 
+            onClick={() => window.open('https://github.com/codingprotocols/podscape-community/discussions/new', '_blank')} 
+          />
           <RailBtn icon={ICONS.settings} label="Settings" active={section === 'settings'} onClick={() => setSection('settings')} />
         </div>
       </div>
