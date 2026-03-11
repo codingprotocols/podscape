@@ -321,6 +321,12 @@ export default function Sidebar(): JSX.Element {
                 <NavItem label="Dashboard" section="dashboard" icon={ICONS.dashboard} />
               </div>
 
+              <NavGroup title="Cluster">
+                <NavItem label="Nodes" section="nodes" icon={ICONS.node} />
+                <NavItem label="Namespaces" section="namespaces" icon={ICONS.namespace} />
+                <NavItem label="CRDs" section="crds" icon={ICONS.crd} />
+              </NavGroup>
+
               <NavGroup title="Workloads">
                 <NavItem label="Pods" section="pods" icon={ICONS.pod} badge={pods.length || undefined} />
                 <NavItem label="Deployments" section="deployments" icon={ICONS.deploy} badge={deployments.length || undefined} />
@@ -365,12 +371,6 @@ export default function Sidebar(): JSX.Element {
                 <NavItem label="Cluster Roles" section="clusterroles" icon={ICONS.clusterrole} />
                 <NavItem label="Role Bindings" section="rolebindings" icon={ICONS.rolebinding} />
                 <NavItem label="Cluster Role Bindings" section="clusterrolebindings" icon={ICONS.rolebinding} />
-              </NavGroup>
-
-              <NavGroup title="Cluster">
-                <NavItem label="Nodes" section="nodes" icon={ICONS.node} />
-                <NavItem label="Namespaces" section="namespaces" icon={ICONS.namespace} />
-                <NavItem label="CRDs" section="crds" icon={ICONS.crd} />
               </NavGroup>
 
               <NavGroup title="Observe">
