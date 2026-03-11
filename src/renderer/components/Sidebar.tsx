@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store'
 import { ICONS, Icon } from './Icons'
-import type { ResourceKind, AnyKubeResource } from '../types'
+import { Heart } from 'lucide-react'
+import type { ResourceKind } from '../types'
 
 // ─── SVG Icon ─────────────────────────────────────────────────────────────────
 
@@ -114,8 +115,8 @@ function NavItem({
 // ─── Rail icon button ─────────────────────────────────────────────────────────
 
 function RailBtn({
-  icon, label, active = false, onClick
-}: { icon: string; label: string; active?: boolean; onClick?: () => void }) {
+  icon, label, active = false, onClick, className = ''
+}: { icon: string; label: string; active?: boolean; onClick?: () => void; className?: string }) {
   return (
     <div className="relative group">
       <button
@@ -124,7 +125,7 @@ function RailBtn({
         className={`w-11 h-11 flex items-center justify-center rounded-2xl transition-all duration-300
           ${active
             ? 'bg-blue-600/20 text-blue-400 active-glow'
-            : 'text-slate-500 hover:text-slate-200 hover:bg-white/[0.07]'
+            : className || 'text-slate-500 hover:text-slate-200 hover:bg-white/[0.07]'
           }`}
       >
         <Icon path={icon} size={18} />
@@ -235,12 +236,12 @@ export default function Sidebar(): JSX.Element {
           )}
         </div>
 
-        {/* Bottom pinned nav icons */}
         <div
           className="flex flex-col items-center gap-3 pb-6 shrink-0 w-full px-2"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <div className="w-8 h-[1px] bg-white/5 mb-3" />
+
           <RailBtn icon={ICONS.settings} label="Settings" active={section === 'settings'} onClick={() => setSection('settings')} />
         </div>
       </div>
@@ -317,70 +318,70 @@ export default function Sidebar(): JSX.Element {
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           {/* Dashboard */}
-              <div className="mb-1 px-1">
-                <NavItem label="Dashboard" section="dashboard" icon={ICONS.dashboard} />
-              </div>
+          <div className="mb-1 px-1">
+            <NavItem label="Dashboard" section="dashboard" icon={ICONS.dashboard} />
+          </div>
 
-              <NavGroup title="Cluster">
-                <NavItem label="Nodes" section="nodes" icon={ICONS.node} />
-                <NavItem label="Namespaces" section="namespaces" icon={ICONS.namespace} />
-                <NavItem label="CRDs" section="crds" icon={ICONS.crd} />
-              </NavGroup>
+          <NavGroup title="Cluster">
+            <NavItem label="Nodes" section="nodes" icon={ICONS.node} />
+            <NavItem label="Namespaces" section="namespaces" icon={ICONS.namespace} />
+            <NavItem label="CRDs" section="crds" icon={ICONS.crd} />
+          </NavGroup>
 
-              <NavGroup title="Workloads">
-                <NavItem label="Pods" section="pods" icon={ICONS.pod} badge={pods.length || undefined} />
-                <NavItem label="Deployments" section="deployments" icon={ICONS.deploy} badge={deployments.length || undefined} />
-                <NavItem label="DaemonSets" section="daemonsets" icon={ICONS.daemonset} />
-                <NavItem label="StatefulSets" section="statefulsets" icon={ICONS.sts} />
-                <NavItem label="ReplicaSets" section="replicasets" icon={ICONS.rs} />
-                <NavItem label="Jobs" section="jobs" icon={ICONS.job} />
-                <NavItem label="CronJobs" section="cronjobs" icon={ICONS.cron} />
-              </NavGroup>
+          <NavGroup title="Workloads">
+            <NavItem label="Pods" section="pods" icon={ICONS.pod} badge={pods.length || undefined} />
+            <NavItem label="Deployments" section="deployments" icon={ICONS.deploy} badge={deployments.length || undefined} />
+            <NavItem label="DaemonSets" section="daemonsets" icon={ICONS.daemonset} />
+            <NavItem label="StatefulSets" section="statefulsets" icon={ICONS.sts} />
+            <NavItem label="ReplicaSets" section="replicasets" icon={ICONS.rs} />
+            <NavItem label="Jobs" section="jobs" icon={ICONS.job} />
+            <NavItem label="CronJobs" section="cronjobs" icon={ICONS.cron} />
+          </NavGroup>
 
-              <NavGroup title="Autoscaling">
-                <NavItem label="HPA" section="hpas" icon={ICONS.hpa} />
-                <NavItem label="Pod Disruption Budgets" section="pdbs" icon={ICONS.pdb} />
-              </NavGroup>
+          <NavGroup title="Autoscaling">
+            <NavItem label="HPA" section="hpas" icon={ICONS.hpa} />
+            <NavItem label="Pod Disruption Budgets" section="pdbs" icon={ICONS.pdb} />
+          </NavGroup>
 
-              <NavGroup title="Network">
-                <NavItem label="Services" section="services" icon={ICONS.service} />
-                <NavItem label="Ingresses" section="ingresses" icon={ICONS.ingress} />
-                <NavItem label="Ingress Classes" section="ingressclasses" icon={ICONS.ingressclass} />
-                <NavItem label="Network Policies" section="networkpolicies" icon={ICONS.netpol} />
-                <NavItem label="Endpoints" section="endpoints" icon={ICONS.endpoints} />
-                <NavItem label="Port Forwards" section="portforwards" icon={ICONS.portforward} />
-                <NavItem label="Network Map" section="network" icon={ICONS.network} />
-                <NavItem label="Connectivity" section="connectivity" icon={ICONS.connectivity} />
-                <NavItem label="Debug Pods" section="debugpod" icon={ICONS.debugpod} />
-              </NavGroup>
+          <NavGroup title="Network">
+            <NavItem label="Services" section="services" icon={ICONS.service} />
+            <NavItem label="Ingresses" section="ingresses" icon={ICONS.ingress} />
+            <NavItem label="Ingress Classes" section="ingressclasses" icon={ICONS.ingressclass} />
+            <NavItem label="Network Policies" section="networkpolicies" icon={ICONS.netpol} />
+            <NavItem label="Endpoints" section="endpoints" icon={ICONS.endpoints} />
+            <NavItem label="Port Forwards" section="portforwards" icon={ICONS.portforward} />
+            <NavItem label="Network Map" section="network" icon={ICONS.network} />
+            <NavItem label="Connectivity" section="connectivity" icon={ICONS.connectivity} />
+            <NavItem label="Debug Pods" section="debugpod" icon={ICONS.debugpod} />
+          </NavGroup>
 
-              <NavGroup title="Config">
-                <NavItem label="ConfigMaps" section="configmaps" icon={ICONS.configmap} />
-                <NavItem label="Secrets" section="secrets" icon={ICONS.secret} />
-              </NavGroup>
+          <NavGroup title="Config">
+            <NavItem label="ConfigMaps" section="configmaps" icon={ICONS.configmap} />
+            <NavItem label="Secrets" section="secrets" icon={ICONS.secret} />
+          </NavGroup>
 
-              <NavGroup title="Storage">
-                <NavItem label="PVCs" section="pvcs" icon={ICONS.pvc} />
-                <NavItem label="PVs" section="pvs" icon={ICONS.pv} />
-                <NavItem label="Storage Classes" section="storageclasses" icon={ICONS.storageclass} />
-              </NavGroup>
+          <NavGroup title="Storage">
+            <NavItem label="PVCs" section="pvcs" icon={ICONS.pvc} />
+            <NavItem label="PVs" section="pvs" icon={ICONS.pv} />
+            <NavItem label="Storage Classes" section="storageclasses" icon={ICONS.storageclass} />
+          </NavGroup>
 
-              <NavGroup title="RBAC">
-                <NavItem label="Service Accounts" section="serviceaccounts" icon={ICONS.sa} />
-                <NavItem label="Roles" section="roles" icon={ICONS.role} />
-                <NavItem label="Cluster Roles" section="clusterroles" icon={ICONS.clusterrole} />
-                <NavItem label="Role Bindings" section="rolebindings" icon={ICONS.rolebinding} />
-                <NavItem label="Cluster Role Bindings" section="clusterrolebindings" icon={ICONS.rolebinding} />
-              </NavGroup>
+          <NavGroup title="RBAC">
+            <NavItem label="Service Accounts" section="serviceaccounts" icon={ICONS.sa} />
+            <NavItem label="Roles" section="roles" icon={ICONS.role} />
+            <NavItem label="Cluster Roles" section="clusterroles" icon={ICONS.clusterrole} />
+            <NavItem label="Role Bindings" section="rolebindings" icon={ICONS.rolebinding} />
+            <NavItem label="Cluster Role Bindings" section="clusterrolebindings" icon={ICONS.rolebinding} />
+          </NavGroup>
 
-              <NavGroup title="Observe">
-                <NavItem label="Events" section="events" icon={ICONS.event} badge={events.filter(e => e.type === 'Warning').length || undefined} />
-                <NavItem label="Metrics" section="metrics" icon={ICONS.metrics} />
-              </NavGroup>
+          <NavGroup title="Observe">
+            <NavItem label="Events" section="events" icon={ICONS.event} badge={events.filter(e => e.type === 'Warning').length || undefined} />
+            <NavItem label="Metrics" section="metrics" icon={ICONS.metrics} />
+          </NavGroup>
 
-              <NavGroup title="Tools">
-                <NavItem label="Helm Charts" section="helm" icon={ICONS.helm} />
-              </NavGroup>
+          <NavGroup title="Tools">
+            <NavItem label="Helm Charts" section="helm" icon={ICONS.helm} />
+          </NavGroup>
         </nav>
 
         {/* Error banner */}
@@ -393,6 +394,23 @@ export default function Sidebar(): JSX.Element {
             </div>
           </div>
         )}
+
+        {/* Branding & Sponsor Footer */}
+        <div className="mt-auto p-4 border-t border-white/5 bg-white/[0.02] shrink-0">
+          <div className="flex flex-col gap-3">
+
+
+            <button
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl
+                         bg-rose-500/10 hover:bg-rose-500/20 text-rose-400
+                         border border-rose-500/20 transition-all active:scale-[0.98] group"
+              onClick={() => window.open('https://github.com/sponsors/codingprotocols', '_blank')}
+            >
+              <Heart size={12} className="fill-rose-400 group-hover:scale-110 transition-transform" />
+              <span className="text-[10px] font-black uppercase tracking-widest">Support Our Work</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )
