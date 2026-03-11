@@ -98,9 +98,9 @@ export default function NodeDetail({ node }: Props): JSX.Element {
 
       {/* System info */}
       {ni && (
-        <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-          <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">System</h4>
-          <dl className="space-y-1.5">
+        <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
+          <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">System</h4>
+          <dl className="space-y-1.5 px-1">
             <Row label="OS" value={ni.osImage} />
             <Row label="Kernel" value={ni.kernelVersion} mono />
             <Row label="Arch" value={ni.architecture} />
@@ -112,12 +112,12 @@ export default function NodeDetail({ node }: Props): JSX.Element {
 
       {/* Taints */}
       {node.spec.taints && node.spec.taints.length > 0 && (
-        <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-          <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Taints</h4>
-          <div className="space-y-1">
+        <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
+          <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Taints</h4>
+          <div className="flex flex-wrap gap-1 px-1">
             {node.spec.taints.map((t, i) => (
               <div key={i} className="flex items-center gap-2">
-                <span className="text-xs bg-orange-500/10 text-orange-300 border border-orange-500/20 px-2 py-0.5 rounded font-mono">
+                <span className="text-[10px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-0.5 rounded-lg font-mono">
                   {t.key}{t.value ? `=${t.value}` : ''}:{t.effect}
                 </span>
               </div>
@@ -126,10 +126,35 @@ export default function NodeDetail({ node }: Props): JSX.Element {
         </div>
       )}
 
+      {/* Labels */}
+      <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
+        <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Labels</h4>
+        <LabelGroup kv={node.metadata.labels} />
+      </div>
+
+      {/* Annotations */}
+      <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
+        <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Annotations</h4>
+        <LabelGroup kv={node.metadata.annotations} />
+      </div>
+
+      {/* Status Values */}
+      <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
+        <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Status Values</h4>
+        <dl className="space-y-1.5 px-1">
+          <Row label="Unschedulable" value={node.spec.unschedulable ? 'Yes' : 'No'} />
+          <Row label="Phase" value={node.status.nodeInfo?.operatingSystem ?? '—'} />
+          <Row label="Host IP" value={(node.status.addresses ?? []).find(a => a.type === 'Hostname')?.address ?? '—'} />
+          {node.spec.podCIDRs && node.spec.podCIDRs.length > 0 && (
+            <Row label="Pod CIDRs" value={node.spec.podCIDRs.join(', ')} mono />
+          )}
+        </dl>
+      </div>
+
       {/* Conditions */}
       {node.status.conditions && (
-        <div className="px-4 py-3">
-          <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Conditions</h4>
+        <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
+          <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Conditions</h4>
           <div className="space-y-1">
             {node.status.conditions.map(c => (
               <div key={c.type} className="flex items-center gap-2">
@@ -177,8 +202,22 @@ export default function NodeDetail({ node }: Props): JSX.Element {
 function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-baseline gap-2">
-      <dt className="text-xs text-slate-500 dark:text-slate-400 w-24 shrink-0">{label}</dt>
-      <dd className={`text-xs text-slate-700 dark:text-slate-200 truncate ${mono ? 'font-mono' : ''}`}>{value}</dd>
+      <dt className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 w-28 shrink-0">{label}</dt>
+      <dd className={`text-[11px] text-slate-700 dark:text-slate-200 truncate ${mono ? 'font-mono' : 'font-medium'}`}>{value}</dd>
+    </div>
+  )
+}
+
+function LabelGroup({ kv }: { kv?: Record<string, string> }) {
+  if (!kv || Object.keys(kv).length === 0) return <p className="text-[11px] text-slate-500 italic px-1">None</p>
+  return (
+    <div className="flex flex-wrap gap-1.5 px-1">
+      {Object.entries(kv).map(([k, v]) => (
+        <div key={k} className="flex items-center text-[10px] leading-none rounded-lg overflow-hidden border border-slate-200 dark:border-white/10 shadow-sm transition-all hover:border-blue-500/30">
+          <span className="px-2 py-1 bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-slate-400 border-r border-slate-200 dark:border-white/10 font-bold">{k}</span>
+          <span className="px-2 py-1 bg-white dark:bg-transparent text-slate-700 dark:text-slate-300 font-mono">{v}</span>
+        </div>
+      ))}
     </div>
   )
 }
