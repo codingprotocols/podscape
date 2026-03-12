@@ -1,0 +1,6 @@
+<svg width="1024" height="1024" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Rounded blue background matching the premium feel -->
+  <rect width="24" height="24" rx="4.8" fill="#3b82f6"/>
+  <!-- White icon stroke -->
+  <path d="M12 5L6 8l6 3 6-3-6-3M6 14l6 3 6-3M6 11l6 3 6-3" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

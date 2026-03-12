@@ -3,7 +3,7 @@
   "version": "1.1.0",
   "description": "Kubernetes management desktop app — Electron + React + TypeScript",
   "main": "./out/main/index.js",
-  "author": "Coding Protocols Private Limited",
+  "author": "Coding Protocols Private Limited <support@codingprotocols.com>",
   "homepage": ".",
   "scripts": {
     "start": "electron-vite preview",
@@ -16,7 +16,9 @@
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
     "build:linux": "npm run build && electron-builder --linux",
-    "release": "npm run build && electron-builder --publish always"
+    "release": "npm run build && electron-builder --publish always",
+    "icon:icns": "./scripts/generate-icns.sh resources/icon.png resources/icon.icns",
+    "icon:ico": "./scripts/generate-ico.sh resources/icon.png resources/icon.ico"
   },
   "build": {
     "appId": "com.codingprotocols.podscape",
@@ -36,7 +38,7 @@
       ]
     },
     "win": {
-      "icon": "resources/icon.png",
+      "icon": "resources/icon.ico",
       "target": [
         { "target": "nsis", "arch": ["x64"] }
       ]
