@@ -93,7 +93,7 @@ export default function PVCDetail({ pvc }: Props): JSX.Element {
               </h4>
               <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-2xl p-5 space-y-4 shadow-inner">
                 <InfoRow label="Access Modes" value={accessModes} />
-                <InfoRow label="Volume Name" value={pvc.spec.volumeName} mono />
+                <InfoRow label="Volume Name" value={pvc.spec.volumeName ?? '—'} mono />
                 <InfoRow label="Storage Class" value={pvc.spec.storageClassName ?? '—'} />
                 <InfoRow label="Volume Mode" value={pvc.spec.volumeMode ?? 'Filesystem'} />
               </div>
