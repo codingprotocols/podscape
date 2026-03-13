@@ -1,84 +1,59 @@
-import { execFile } from 'child_process'
-import { promisify } from 'util'
-import { existsSync } from 'fs'
 import { ipcMain } from 'electron'
-import { getAugmentedEnv } from './env'
-import { getSettings } from './settings_storage'
-
-const execFileAsync = promisify(execFile)
-
-const HELM_PATHS = [
-  '/opt/homebrew/bin/helm',
-  '/usr/local/bin/helm',
-  '/usr/bin/helm',
-  '/snap/bin/helm',
-]
-
-export function findHelm(): string {
-  const settings = getSettings()
-  if (settings.helmPath && existsSync(settings.helmPath)) return settings.helmPath
-  for (const p of HELM_PATHS) {
-    if (existsSync(p)) return p
-  }
-  return 'helm'
-}
-
-async function spawnHelm(args: string[]): Promise<string> {
-  const helm = findHelm()
-  const env = getAugmentedEnv()
-  const { stdout } = await execFileAsync(helm, args, {
-    maxBuffer: 20 * 1024 * 1024,
-    env
-  })
-  return stdout
-}
+import { checkedSidecarFetch } from './api'
 
 export function registerHelmHandlers(): void {
+  const transformRelease = (r: any) => {
+    const info = r.info || r.Info || {}
+    const chart = r.chart || r.Chart || {}
+    const metadata = chart.metadata || chart.Metadata || {}
+    
+    return {
+      name: r.name || r.Name || '',
+      namespace: r.namespace || r.Namespace || '',
+      revision: String(r.version || r.Version || '0'),
+      updated: info.last_deployed || info.LastDeployed || '',
+      status: String(info.status || info.Status || 'unknown'),
+      chart: metadata.name ? `${metadata.name}-${metadata.version || ''}` : 'unknown',
+      app_version: metadata.appVersion || metadata.AppVersion || '',
+      description: info.description || info.Description || ''
+    }
+  }
+
   // List all releases across namespaces
   ipcMain.handle('helm:list', async (_event, context: string) => {
-    try {
-      const output = await spawnHelm(['--kube-context', context, 'list', '--all-namespaces', '--output', 'json'])
-      return JSON.parse(output) as unknown[]
-    } catch {
-      return []
-    }
+    const res = await checkedSidecarFetch(`/helm/list?context=${encodeURIComponent(context)}`)
+    const raw = await res.json() as any[]
+    return (Array.isArray(raw) ? raw : []).map(transformRelease)
   })
 
   // Get release status (detailed info)
-  ipcMain.handle('helm:status', async (_event, context: string, namespace: string, release: string) => {
-    try {
-      return await spawnHelm(['--kube-context', context, '--namespace', namespace, 'status', release, '--output', 'json'])
-    } catch (e) {
-      throw e
-    }
+  ipcMain.handle('helm:status', async (_event, _context: string, namespace: string, release: string) => {
+    const res = await checkedSidecarFetch(`/helm/status?namespace=${encodeURIComponent(namespace)}&release=${encodeURIComponent(release)}`)
+    return await res.json()
   })
 
   // Get release values (YAML format, including all computed values)
-  ipcMain.handle('helm:values', async (_event, context: string, namespace: string, release: string) => {
-    try {
-      return await spawnHelm(['--kube-context', context, '--namespace', namespace, 'get', 'values', release, '--all', '--output', 'yaml'])
-    } catch {
-      return '# No values available'
-    }
+  ipcMain.handle('helm:values', async (_event, _context: string, namespace: string, release: string) => {
+    const res = await checkedSidecarFetch(`/helm/values?namespace=${encodeURIComponent(namespace)}&release=${encodeURIComponent(release)}&all=true`)
+    return await res.text()
   })
 
   // Get release history
-  ipcMain.handle('helm:history', async (_event, context: string, namespace: string, release: string) => {
-    try {
-      const output = await spawnHelm(['--kube-context', context, '--namespace', namespace, 'history', release, '--output', 'json'])
-      return JSON.parse(output) as unknown[]
-    } catch {
-      return []
-    }
+  ipcMain.handle('helm:history', async (_event, _context: string, namespace: string, release: string) => {
+    const res = await checkedSidecarFetch(`/helm/history?namespace=${encodeURIComponent(namespace)}&release=${encodeURIComponent(release)}`)
+    const raw = await res.json() as any[]
+    return (Array.isArray(raw) ? raw : []).map(transformRelease)
   })
 
   // Rollback to revision
-  ipcMain.handle('helm:rollback', async (_event, context: string, namespace: string, release: string, revision: number) => {
-    return spawnHelm(['--kube-context', context, '--namespace', namespace, 'rollback', release, String(revision)])
+  ipcMain.handle('helm:rollback', async (_event, _context: string, namespace: string, release: string, revision: number) => {
+    await checkedSidecarFetch(`/helm/rollback?namespace=${encodeURIComponent(namespace)}&release=${encodeURIComponent(release)}&revision=${revision}`)
+    return 'Rollback successful'
   })
 
   // Uninstall release
-  ipcMain.handle('helm:uninstall', async (_event, context: string, namespace: string, release: string) => {
-    return spawnHelm(['--kube-context', context, '--namespace', namespace, 'uninstall', release])
+  ipcMain.handle('helm:uninstall', async (_event, _context: string, namespace: string, release: string) => {
+    await checkedSidecarFetch(`/helm/uninstall?namespace=${encodeURIComponent(namespace)}&release=${encodeURIComponent(release)}`)
+    return 'Uninstall successful'
   })
 }

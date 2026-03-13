@@ -25,11 +25,14 @@ export default function MetricsView(): JSX.Element {
     let totalCpuM = 0; let usedCpuM = 0
     let totalMemMiB = 0; let usedMemMiB = 0
 
-    nodes.forEach(n => {
+    const safeNodes = Array.isArray(nodes) ? nodes : []
+    safeNodes.forEach(n => {
       totalCpuM += parseCpuMillicores(n.status.allocatable?.cpu ?? n.status.capacity?.cpu ?? '0')
       totalMemMiB += parseMemoryMiB(n.status.allocatable?.memory ?? n.status.capacity?.memory ?? '0Ki')
     })
-    nodeMetrics.forEach(nm => {
+
+    const safeNodeMetrics = Array.isArray(nodeMetrics) ? nodeMetrics : []
+    safeNodeMetrics.forEach(nm => {
       usedCpuM += parseCpuMillicores(nm.usage.cpu)
       usedMemMiB += parseMemoryMiB(nm.usage.memory)
     })
@@ -45,8 +48,12 @@ export default function MetricsView(): JSX.Element {
 
   // Filtering and Sorting
   const processedPods = useMemo(() => {
-    const list = podMetrics.flatMap(pm => {
-      const podObj = pods.find(p => p.metadata.name === pm.metadata.name && p.metadata.namespace === pm.metadata.namespace)
+    const safePodMetrics = Array.isArray(podMetrics) ? podMetrics : []
+    const safePods = Array.isArray(pods) ? pods : []
+    const safeHPAs = Array.isArray(hpas) ? hpas : []
+
+    const list = safePodMetrics.flatMap(pm => {
+      const podObj = safePods.find(p => p.metadata.name === pm.metadata.name && p.metadata.namespace === pm.metadata.namespace)
 
       return (pm.containers ?? []).map(c => {
         const podContainer = podObj?.spec.containers.find(pc => pc.name === c.name)
@@ -62,7 +69,7 @@ export default function MetricsView(): JSX.Element {
         const curMem = parseMemoryMiB(c.usage.memory)
 
         // Find HPA
-        const hpa = hpas.find(h =>
+        const hpa = safeHPAs.find(h =>
           h.metadata.namespace === pm.metadata.namespace &&
           (h.spec.scaleTargetRef.name === pm.metadata.name || // Simple match
             podObj?.metadata.ownerReferences?.some(or => or.name === h.spec.scaleTargetRef.name))
@@ -158,8 +165,8 @@ export default function MetricsView(): JSX.Element {
                 Cluster Nodes
               </h3>
               <div className="grid gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {nodeMetrics.map(nm => {
-                  const node = nodes.find(n => n.metadata.name === nm.metadata.name)
+                {(Array.isArray(nodeMetrics) ? nodeMetrics : []).map(nm => {
+                  const node = (Array.isArray(nodes) ? nodes : []).find(n => n.metadata.name === nm.metadata.name)
                   const cpuCapM = parseCpuMillicores(node?.status.allocatable?.cpu ?? node?.status.capacity?.cpu ?? '0')
                   const memCapMiB = parseMemoryMiB(node?.status.allocatable?.memory ?? node?.status.capacity?.memory ?? '0Ki')
                   const cpuUsedM = parseCpuMillicores(nm.usage.cpu)

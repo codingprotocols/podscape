@@ -307,7 +307,7 @@ export default function App(): JSX.Element {
   const {
     init, loadingContexts, section, setSection,
     selectedResource, execTarget, closeExec, refresh, error, clearError,
-    kubectlOk, kubeconfigOk, isSearchOpen, setSearchOpen, isProduction
+    kubeconfigOk, isSearchOpen, setSearchOpen, isProduction
   } = useAppStore()
 
   useEffect(() => { init() }, [])
@@ -338,7 +338,7 @@ export default function App(): JSX.Element {
         </div>
       )}
       {/* Left nav sidebar */}
-      {!kubectlOk || !kubeconfigOk ? null : (
+      {!kubeconfigOk ? null : (
         <ErrorBoundary>
           <Sidebar />
         </ErrorBoundary>
@@ -346,38 +346,50 @@ export default function App(): JSX.Element {
 
       {/* Main content */}
       <div className="flex flex-1 min-w-0 min-h-0 bg-slate-50 dark:bg-[hsl(var(--bg-dark))]">
-        {!loadingContexts && (!kubectlOk || !kubeconfigOk) ? (
+        {loadingContexts ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-6">
+             <div className="w-12 h-12 border-4 border-slate-200 dark:border-slate-800 border-t-blue-500 rounded-full animate-spin" />
+             <div className="flex flex-col items-center gap-1">
+                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 animate-pulse">Initializing Go Core...</span>
+                <span className="text-[9px] font-bold text-slate-500/50 uppercase tracking-widest">Bridging Kubernetes Contexts</span>
+             </div>
+          </div>
+        ) : !kubeconfigOk ? (
           <KubeConfigOnboarding />
-        ) : section === 'dashboard' ? (
-          <Dashboard />
-        ) : section === 'events' ? (
-          <EventsView />
-        ) : section === 'metrics' ? (
-          <MetricsView />
-        ) : section === 'unifiedlogs' ? (
-          <UnifiedLogs />
-        ) : section === 'settings' ? (
-          <SettingsPanel />
-        ) : section === 'network' ? (
-          <NetworkPanel />
-        ) : section === 'portforwards' ? (
-          <PortForwardPanel />
-        ) : section === 'helm' ? (
-          <HelmPanel />
-        ) : section === 'connectivity' ? (
-          <ConnectivityTester />
-        ) : section === 'debugpod' ? (
-          <DebugPodLauncher />
-        ) : (LIST_SECTIONS as string[]).includes(section) ? (
-          <>
-            <ResourceList />
-            {selectedResource && (
-              <ErrorBoundary key={selectedResource.metadata.uid}>
-                <DetailPanel resource={selectedResource} section={section} />
-              </ErrorBoundary>
-            )}
-          </>
-        ) : null}
+        ) : (
+          <ErrorBoundary resetKey={section}>
+            {section === 'dashboard' ? (
+              <Dashboard />
+            ) : section === 'events' ? (
+              <EventsView />
+            ) : section === 'metrics' ? (
+              <MetricsView />
+            ) : section === 'unifiedlogs' ? (
+              <UnifiedLogs />
+            ) : section === 'settings' ? (
+              <SettingsPanel />
+            ) : section === 'network' ? (
+              <NetworkPanel />
+            ) : section === 'portforwards' ? (
+              <PortForwardPanel />
+            ) : section === 'helm' ? (
+              <HelmPanel />
+            ) : section === 'connectivity' ? (
+              <ConnectivityTester />
+            ) : section === 'debugpod' ? (
+              <DebugPodLauncher />
+            ) : (LIST_SECTIONS as string[]).includes(section) ? (
+              <>
+                <ResourceList />
+                {selectedResource && (
+                  <ErrorBoundary key={selectedResource.metadata.uid}>
+                    <DetailPanel resource={selectedResource} section={section} />
+                  </ErrorBoundary>
+                )}
+              </>
+            ) : null}
+          </ErrorBoundary>
+        )}
       </div>
 
       {/* Exec overlay */}

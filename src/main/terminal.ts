@@ -1,66 +1,59 @@
 import { ipcMain } from 'electron'
-import { homedir } from 'os'
-import { getAugmentedEnv } from './env'
-import { findKubectl } from './kubectl'
+import { SIDECAR_WS_URL } from '../common/constants'
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pty = require('node-pty') as typeof import('node-pty')
-
-type IPty = ReturnType<typeof pty.spawn>
-
-const activePTYs = new Map<string, IPty>()
+const activeStreams = new Map<string, any>()
 
 export function registerTerminalHandlers(): void {
   // ── Exec into container ───────────────────────────────────────────────────
 
   ipcMain.handle(
     'exec:start',
-    (event, context: string, namespace: string, pod: string, container: string) => {
+    (event, _context: string, namespace: string, pod: string, container: string) => {
       const id = `exec-${Date.now()}`
-      const kubectl = findKubectl()
-      const env = getAugmentedEnv({ TERM: 'xterm-256color', COLORTERM: 'truecolor' })
-
-      // Spawn kubectl directly with an argv array — no shell wrapper needed.
-      // buildEnv() provides augmented PATH (incl. Homebrew paths) so kubectl is found
-      // even if Electron's inherited PATH is minimal.
-      const argv: string[] = [
-        '--context', context,
-        '--namespace', namespace,
-        'exec', '-it', pod,
-        ...(container ? ['--container', container] : []),
-        '--', 'sh'
-      ]
-
-      const ptyProc = pty.spawn(
-        kubectl,
-        argv,
-        { name: 'xterm-256color', cols: 80, rows: 24, cwd: homedir(), env }
-      )
-
+      
+      const WebSocket = require('ws')
+      const ws = new WebSocket(`${SIDECAR_WS_URL}/exec?namespace=${namespace}&pod=${pod}&container=${container}&command=sh`)
+      
+      activeStreams.set(id, ws)
       const sender = event.sender
-      ptyProc.onData((data: string) => {
-        if (!sender.isDestroyed()) sender.send('exec:data', id, data)
+
+      ws.on('open', () => {
+        // Ready
       })
-      ptyProc.onExit(() => {
-        activePTYs.delete(id)
+
+      ws.on('message', (data: Buffer) => {
+        if (!sender.isDestroyed()) sender.send('exec:data', id, data.toString())
+      })
+
+      ws.on('error', (err: any) => {
+        console.error(`[Exec] WS error ${id}:`, err)
+      })
+
+      ws.on('close', () => {
+        activeStreams.delete(id)
         if (!sender.isDestroyed()) sender.send('exec:exit', id)
       })
 
-      activePTYs.set(id, ptyProc)
       return id
     }
   )
 
   ipcMain.handle('exec:write', (_event, id: string, data: string) => {
-    activePTYs.get(id)?.write(data)
+    const ws = activeStreams.get(id)
+    if (ws && ws.readyState === 1) { // OPEN
+      ws.send(data)
+    }
   })
 
-  ipcMain.handle('exec:resize', (_event, id: string, cols: number, rows: number) => {
-    activePTYs.get(id)?.resize(cols, rows)
+  ipcMain.handle('exec:resize', (_event, _id: string, _cols: number, _rows: number) => {
+    // TODO: Implement resizing in Go sidecar if needed
   })
 
   ipcMain.handle('exec:kill', (_event, id: string) => {
-    const p = activePTYs.get(id)
-    if (p) { p.kill(); activePTYs.delete(id) }
+    const ws = activeStreams.get(id)
+    if (ws) {
+      ws.close()
+      activeStreams.delete(id)
+    }
   })
 }

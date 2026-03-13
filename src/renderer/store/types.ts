@@ -92,7 +92,7 @@ declare global {
         settings: {
             get: () => Promise<{ kubectlPath: string; shellPath: string; helmPath: string; theme: string; kubeconfigPath: string; prodContexts: string[] }>
             set: (s: { kubectlPath: string; shellPath: string; helmPath: string; theme: string; kubeconfigPath: string; prodContexts: string[] }) => Promise<void>
-            checkTools: () => Promise<{ kubectlOk: boolean; helmOk: boolean; kubeconfigOk: boolean }>
+            checkTools: () => Promise<{ kubeconfigOk: boolean }>
         }
         kubeconfig: {
             get: () => Promise<{ path: string; content: string }>
@@ -140,8 +140,6 @@ export interface AppStore extends AnalysisSlice {
     namespaces: KubeNamespace[]
     selectedNamespace: string | null
     selectedResource: AnyKubeResource | null
-    kubectlOk: boolean
-    helmOk: boolean
     kubeconfigOk: boolean
     prodContexts: string[]
     setProdContexts: (contexts: string[]) => Promise<void>

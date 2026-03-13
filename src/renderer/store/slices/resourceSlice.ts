@@ -147,14 +147,14 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                         window.kubectl.getHPAs(ctx, nsArg)
                     ])
                     set({
-                        podMetrics: pm,
-                        nodeMetrics: nm,
-                        pods: pds as KubePod[],
-                        nodes: nds as KubeNode[],
-                        hpas: hpas as KubeHPA[],
+                        podMetrics: Array.isArray(pm) ? pm : [],
+                        nodeMetrics: Array.isArray(nm) ? nm : [],
+                        pods: (Array.isArray(pds) ? pds : []) as KubePod[],
+                        nodes: (Array.isArray(nds) ? nds : []) as KubeNode[],
+                        hpas: (Array.isArray(hpas) ? hpas : []) as KubeHPA[],
                         loadingResources: false
                     })
-                } catch { set({ loadingResources: false }) }
+                } catch { set({ loadingResources: false, podMetrics: [], nodeMetrics: [] }) }
             }
             if (section === 'network' && ctx) {
                 set({ loadingResources: true })

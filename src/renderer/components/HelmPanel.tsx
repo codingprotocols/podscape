@@ -2,14 +2,13 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { useAppStore } from '../store'
 import type { HelmRelease, HelmHistoryEntry } from '../types'
 import { formatAge } from '../types'
-import LoadingAnimation from './LoadingAnimation'
 import YAMLViewer from './YAMLViewer'
 import { FileCode, X, Activity, HardDrive, History, Trash2, Clock, Globe, Shield, RefreshCw } from 'lucide-react'
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
-  const s = status.toLowerCase()
+  const s = (status || '').toLowerCase()
   const cls =
     s === 'deployed' ? 'bg-emerald-500/10 text-emerald-500 outline-emerald-500/20 shadow-[0_0_8px_rgba(16,185,129,0.1)]' :
       s === 'failed' ? 'bg-red-500/10 text-red-500 outline-red-500/20' :
@@ -21,7 +20,7 @@ function StatusBadge({ status }: { status: string }) {
 
   return (
     <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider outline outline-1 outline-offset-[-1px] transition-all ${cls}`}>
-      {status}
+      {String(status || '')}
     </span>
   )
 }
@@ -155,7 +154,9 @@ function ReleaseDrawer({
                   <div className="flex items-center gap-3">
                     <span className="text-slate-500">{label}</span>
                   </div>
-                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 text-right truncate max-w-[240px] font-mono">{value}</span>
+                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 text-right truncate max-w-[240px] font-mono">
+                    {typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—')}
+                  </span>
                 </div>
               ))}
             </div>
@@ -336,10 +337,10 @@ export default function HelmPanel(): JSX.Element {
     }
   }
 
-  const filtered = releases.filter(r =>
-    r.name.toLowerCase().includes(filter.toLowerCase()) ||
-    r.namespace.toLowerCase().includes(filter.toLowerCase()) ||
-    r.chart.toLowerCase().includes(filter.toLowerCase())
+  const filtered = (Array.isArray(releases) ? releases : []).filter(r =>
+    (r.name || '').toLowerCase().includes(filter.toLowerCase()) ||
+    (r.namespace || '').toLowerCase().includes(filter.toLowerCase()) ||
+    (r.chart || '').toLowerCase().includes(filter.toLowerCase())
   )
 
   return (
@@ -446,10 +447,10 @@ export default function HelmPanel(): JSX.Element {
                         : 'hover:bg-slate-100/50 dark:hover:bg-white/5 border-l-[3px] border-transparent'
                         }`}
                     >
-                      <td className="px-8 py-4 font-mono text-xs font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">{r.name}</td>
-                      <td className="px-8 py-4 text-xs font-bold text-slate-500 dark:text-slate-500 font-mono tracking-tighter uppercase leading-none">{r.namespace}</td>
-                      <td className="px-8 py-4 text-xs text-slate-600 dark:text-slate-400 font-mono whitespace-nowrap">{r.chart}</td>
-                      <td className="px-8 py-4 text-xs text-slate-500 dark:text-slate-400 font-bold whitespace-nowrap">{r.app_version || '—'}</td>
+                      <td className="px-8 py-4 font-mono text-xs font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">{String(r.name || '')}</td>
+                      <td className="px-8 py-4 text-xs font-bold text-slate-500 dark:text-slate-500 font-mono tracking-tighter uppercase leading-none">{String(r.namespace || '')}</td>
+                      <td className="px-8 py-4 text-xs text-slate-600 dark:text-slate-400 font-mono whitespace-nowrap">{String(r.chart || '')}</td>
+                      <td className="px-8 py-4 text-xs text-slate-500 dark:text-slate-400 font-bold whitespace-nowrap">{String(r.app_version || '—')}</td>
                       <td className="px-8 py-4 whitespace-nowrap"><StatusBadge status={r.status} /></td>
                       <td className="px-8 py-4 text-xs text-slate-400 dark:text-slate-500 whitespace-nowrap">
                         {r.updated ? formatAge(r.updated) + ' ago' : '—'}
