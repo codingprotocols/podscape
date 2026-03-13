@@ -32,7 +32,7 @@ export const useAppStore = create<AppStore>()((...a) => ({
                 window.settings.checkTools(),
                 window.settings.get()
             ])
-            set({ ...toolsState, prodContexts: settings.prodContexts || [] })
+            set({ kubeconfigOk: toolsState.kubeconfigOk, prodContexts: settings.prodContexts || [] })
 
             // 2. Load contexts if config exists
             let ctxList: KubeContextEntry[] = []

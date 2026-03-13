@@ -12,8 +12,6 @@ export interface ClusterSlice {
     selectedNamespace: string | null
     loadingContexts: boolean
     loadingNamespaces: boolean
-    kubectlOk: boolean
-    helmOk: boolean
     kubeconfigOk: boolean
     prodContexts: string[]
     setProdContexts: (contexts: string[]) => Promise<void>
@@ -51,8 +49,6 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
     selectedNamespace: null,
     loadingContexts: false,
     loadingNamespaces: false,
-    kubectlOk: true, // Default to true so we don't flash onboarding
-    helmOk: true,
     kubeconfigOk: true,
     prodContexts: [],
     setProdContexts: async (contexts) => {

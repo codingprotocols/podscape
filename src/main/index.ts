@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow } from 'electron'
+import { app, shell, BrowserWindow, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerKubectlHandlers } from './kubectl'
@@ -6,6 +6,7 @@ import { registerTerminalHandlers } from './terminal'
 import { registerSettingsHandlers } from './settings'
 import { registerHelmHandlers } from './helm'
 import { registerDialogHandlers } from './dialog'
+import { startSidecar, stopSidecar } from './sidecar'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -48,7 +49,7 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.podscape')
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -59,7 +60,18 @@ app.whenReady().then(() => {
   registerTerminalHandlers()
   registerHelmHandlers()
   registerDialogHandlers()
-  createWindow()
+  
+  try {
+    await startSidecar()
+    createWindow()
+  } catch (err: any) {
+    console.error('[Main] Failed to start sidecar:', err)
+    dialog.showErrorBox(
+      'Sidecar Connection Failed',
+      `The Podscape backend (Go sidecar) failed to start.\n\nError: ${err.message}\n\nPlease ensure your kubeconfig is valid and port 5050 is not in use.`
+    )
+    app.quit()
+  }
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -68,4 +80,8 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('will-quit', async () => {
+  await stopSidecar()
 })

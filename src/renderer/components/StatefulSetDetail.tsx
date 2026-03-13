@@ -202,21 +202,30 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
 
         {tab === 'events' && (
           <div className="space-y-3">
-            {events.map((e, i) => (
-              <div key={e.metadata.uid || i} className={`p-4 rounded-2xl border transition-all ${e.type === 'Warning' ? 'bg-amber-500/5 border-amber-500/10' : 'bg-slate-50 dark:bg-white/[0.02] border-slate-100 dark:border-white/5'}`}>
-                <div className="flex items-center justify-between gap-4 mb-2">
-                  <span className={`text-[10px] font-black uppercase tracking-widest ${e.type === 'Warning' ? 'text-amber-400' : 'text-blue-400'}`}>{e.reason}</span>
-                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">{formatAge(e.lastTimestamp || e.metadata.creationTimestamp)} ago</span>
-                </div>
-                <p className="text-xs text-slate-400 leading-relaxed font-medium">{e.message}</p>
-                {e.count && e.count > 1 && <span className="inline-block mt-2 px-1.5 py-0.5 rounded bg-white/5 text-[9px] font-bold text-slate-500 uppercase tracking-widest">Seen {e.count} times</span>}
+            {eventsLoading ? (
+              <div className="flex items-center gap-2 py-20 justify-center">
+                <div className="w-4 h-4 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+                <span className="text-[10px] font-bold text-slate-400 animate-pulse">Fetching events…</span>
               </div>
-            ))}
-            {events.length === 0 && (
-              <div className="text-center py-20 bg-slate-50 dark:bg-white/[0.01] rounded-3xl border border-dashed border-slate-200 dark:border-white/10 mt-4">
-                <Activity size={32} className="mx-auto text-slate-700 mb-4 opacity-20" />
-                <p className="text-sm text-slate-500 font-medium">No recent events found</p>
-              </div>
+            ) : (
+              <>
+                {events.map((e, i) => (
+                  <div key={e.metadata.uid || i} className={`p-4 rounded-2xl border transition-all ${e.type === 'Warning' ? 'bg-amber-500/5 border-amber-500/10' : 'bg-slate-50 dark:bg-white/[0.02] border-slate-100 dark:border-white/5'}`}>
+                    <div className="flex items-center justify-between gap-4 mb-2">
+                      <span className={`text-[10px] font-black uppercase tracking-widest ${e.type === 'Warning' ? 'text-amber-400' : 'text-blue-400'}`}>{e.reason}</span>
+                      <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">{formatAge(e.lastTimestamp || e.metadata.creationTimestamp)} ago</span>
+                    </div>
+                    <p className="text-xs text-slate-400 leading-relaxed font-medium">{e.message}</p>
+                    {e.count && e.count > 1 && <span className="inline-block mt-2 px-1.5 py-0.5 rounded bg-white/5 text-[9px] font-bold text-slate-500 uppercase tracking-widest">Seen {e.count} times</span>}
+                  </div>
+                ))}
+                {events.length === 0 && (
+                  <div className="text-center py-20 bg-slate-50 dark:bg-white/[0.01] rounded-3xl border border-dashed border-slate-200 dark:border-white/10 mt-4">
+                    <Activity size={32} className="mx-auto text-slate-700 mb-4 opacity-20" />
+                    <p className="text-sm text-slate-500 font-medium">No recent events found</p>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

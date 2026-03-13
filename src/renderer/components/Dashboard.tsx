@@ -292,10 +292,12 @@ export default function Dashboard(): JSX.Element {
     ).length
 
     // Map metrics for O(1) lookup
-    const metricsById = new Map(nodeMetrics.map(m => [m.metadata.name, m]))
+    const safeNodeMetrics = Array.isArray(nodeMetrics) ? nodeMetrics : []
+    const metricsById = new Map(safeNodeMetrics.map(m => [m.metadata.name, m]))
 
     // Sorted and pre-parsed events
-    const processedEvents = events.map(e => ({
+    const safeEvents = Array.isArray(events) ? events : []
+    const processedEvents = safeEvents.map(e => ({
       ...e,
       _ts: new Date(e.lastTimestamp ?? e.firstTimestamp ?? e.eventTime ?? 0).getTime()
     }))

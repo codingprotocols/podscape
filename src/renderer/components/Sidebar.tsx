@@ -152,7 +152,7 @@ export default function Sidebar(): JSX.Element {
     loadingContexts, loadingNamespaces,
     selectContext, selectNamespace, error, clearError,
     section, setSection,
-    pods, deployments, events, apps, selectResource,
+    pods, deployments, events,
     navWidth, setNavWidth,
     prodContexts, setProdContexts
   } = useAppStore()
@@ -344,28 +344,7 @@ export default function Sidebar(): JSX.Element {
             <NavItem label="Dashboard" section="dashboard" icon={ICONS.dashboard} />
           </div>
 
-          <NavGroup title="Applications">
-            {apps.length === 0 ? (
-              <p className="px-4 py-2 text-[10px] text-slate-600 italic font-bold">No apps detected</p>
-            ) : (
-              apps.map(app => (
-                <button
-                  key={`${app.namespace}:${app.name}`}
-                  onClick={() => {
-                    // For now, selecting an app could just filter or we can define a new view
-                    // Let's set a temporary filter state or just select the first resource
-                    if (app.resources[0]) selectResource(app.resources[0])
-                  }}
-                  className="relative flex items-center gap-2.5 w-full px-2.5 py-2 text-[11px] font-bold
-                            text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] rounded-xl group"
-                >
-                  <div className="w-2 h-2 rounded-full bg-blue-500/40 group-hover:bg-blue-500 transition-colors" />
-                  <span className="flex-1 text-left truncate leading-none">{app.name}</span>
-                  <span className="text-[9px] text-slate-600 group-hover:text-slate-400">{app.resources.length}</span>
-                </button>
-              ))
-            )}
-          </NavGroup>
+
 
           <NavGroup title="Cluster">
             <NavItem label="Nodes" section="nodes" icon={ICONS.node} />
