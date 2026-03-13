@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import Editor from '@monaco-editor/react'
+import Editor, { DiffEditor } from '@monaco-editor/react'
 import { useAppStore } from '../store'
 
 interface Props {
@@ -9,8 +9,10 @@ interface Props {
 }
 
 export default function YAMLViewer({ content, editable = false, onSave }: Props): JSX.Element {
-  const { theme } = useAppStore()
+  const { theme, isProduction } = useAppStore()
   const [value, setValue] = useState(content)
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [showDiff, setShowDiff] = useState(false)
 
   // Sync editor content when the prop changes (e.g. switching resources or ConfigMap keys)
   useEffect(() => {
@@ -38,7 +40,12 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
 
   const handleSave = async () => {
     if (!onSave) return
+    if (isProduction && !showConfirm) {
+      setShowConfirm(true)
+      return
+    }
     setSaving(true)
+    setShowConfirm(false)
     try {
       await onSave(value)
       setSaveMsg('Applied!')
@@ -59,6 +66,17 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
           <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">YAML SOURCE</span>
         </div>
         <div className="flex items-center gap-3">
+          {editable && onSave && (
+            <button
+              onClick={() => setShowDiff(!showDiff)}
+              className={`flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold transition-colors uppercase tracking-wider rounded-lg border ${
+                showDiff ? 'bg-amber-500/10 border-amber-500 text-amber-500' : 'text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-800 dark:hover:text-slate-100'
+              }`}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M4 4l5 5" /></svg>
+              {showDiff ? 'Exit Diff' : 'Diff'}
+            </button>
+          )}
           {saveMsg && <span className={`text-[10px] font-bold ${saveMsg.startsWith('Error') ? 'text-red-500' : 'text-emerald-500'}`}>{saveMsg.toUpperCase()}</span>}
           {copyMsg && <span className="text-[10px] font-bold text-blue-500">COPIED!</span>}
           <button
@@ -76,45 +94,71 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
             Copy
           </button>
           {editable && onSave && (
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-4 py-1 text-[10px] font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm
-                         transition-colors disabled:opacity-50 uppercase tracking-widest"
-            >
-              {saving ? 'Applying…' : 'Apply'}
-            </button>
+            <div className="flex items-center gap-2">
+              {showConfirm && (
+                <span className="text-[10px] font-black text-red-500 animate-pulse uppercase tracking-widest mr-1">Are you sure?</span>
+              )}
+              <button
+                onClick={handleSave}
+                onMouseLeave={() => setShowConfirm(false)}
+                disabled={saving}
+                className={`px-4 py-1 text-[10px] font-bold text-white rounded-lg shadow-sm
+                           transition-all disabled:opacity-50 uppercase tracking-widest
+                           ${showConfirm ? 'bg-red-600 hover:bg-red-700 ring-4 ring-red-500/20 scale-105' : 'bg-blue-600 hover:bg-blue-700'}`}
+              >
+                {saving ? 'Applying…' : showConfirm ? 'Yes, Apply' : 'Apply'}
+              </button>
+            </div>
           )}
         </div>
       </div>
 
       <div className="flex-1 relative bg-white dark:bg-[hsl(var(--bg-dark))]">
-        <Editor
-          height="100%"
-          language="yaml"
-          value={value}
-          loading={<div className="flex items-center justify-center h-full text-slate-400 text-xs font-bold uppercase tracking-widest">Initializing Editor...</div>}
-          onChange={v => editable && setValue(v ?? '')}
-          theme={theme === 'dark' ? 'vs-dark' : 'light'}
-          options={{
-            readOnly: !editable,
-            minimap: { enabled: false },
-            scrollBeyondLastLine: false,
-            fontSize: 12,
-            lineNumbers: 'on',
-            renderWhitespace: 'none',
-            wordWrap: 'on',
-            padding: { top: 12, bottom: 12 },
-            overviewRulerLanes: 0,
-            hideCursorInOverviewRuler: true,
-            scrollbar: { vertical: 'auto', horizontal: 'auto' },
-            folding: true,
-            glyphMargin: false,
-            lineDecorationsWidth: 4,
-            lineNumbersMinChars: 3,
-            fontFamily: "'JetBrains Mono', 'Fira Code', 'Menlo', monospace",
-          }}
-        />
+        {showDiff ? (
+          <DiffEditor
+            height="100%"
+            language="yaml"
+            original={content}
+            modified={value}
+            theme={theme === 'dark' ? 'vs-dark' : 'light'}
+            options={{
+              readOnly: false,
+              renderSideBySide: true,
+              minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              fontSize: 12,
+              lineNumbers: 'on',
+              fontFamily: "'JetBrains Mono', 'Fira Code', 'Menlo', monospace",
+            }}
+          />
+        ) : (
+          <Editor
+            height="100%"
+            language="yaml"
+            value={value}
+            loading={<div className="flex items-center justify-center h-full text-slate-400 text-xs font-bold uppercase tracking-widest">Initializing Editor...</div>}
+            onChange={v => editable && setValue(v ?? '')}
+            theme={theme === 'dark' ? 'vs-dark' : 'light'}
+            options={{
+              readOnly: !editable,
+              minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              fontSize: 12,
+              lineNumbers: 'on',
+              renderWhitespace: 'none',
+              wordWrap: 'on',
+              padding: { top: 12, bottom: 12 },
+              overviewRulerLanes: 0,
+              hideCursorInOverviewRuler: true,
+              scrollbar: { vertical: 'auto', horizontal: 'auto' },
+              folding: true,
+              glyphMargin: false,
+              lineDecorationsWidth: 4,
+              lineNumbersMinChars: 3,
+              fontFamily: "'JetBrains Mono', 'Fira Code', 'Menlo', monospace",
+            }}
+          />
+        )}
       </div>
     </div>
   )
@@ -123,13 +167,19 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
 // ─── Apply YAML panel (full editor for applying new manifests) ────────────────
 
 export function ApplyYAMLPanel(): JSX.Element {
-  const { applyYAML, theme, selectedContext } = useAppStore()
+  const { applyYAML, theme, selectedContext, isProduction } = useAppStore()
   const [content, setContent] = useState('# Paste your YAML manifest here\n')
   const [result, setResult] = useState('')
   const [applying, setApplying] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
 
   const handleApply = async () => {
+    if (isProduction && !showConfirm) {
+      setShowConfirm(true)
+      return
+    }
     setApplying(true)
+    setShowConfirm(false)
     setResult('')
     try {
       const out = await applyYAML(content)
@@ -150,14 +200,20 @@ export function ApplyYAMLPanel(): JSX.Element {
             {selectedContext ? `Target: ${selectedContext}` : 'Select a cluster'}
           </p>
         </div>
-        <button
-          onClick={handleApply}
-          disabled={applying}
-          className="px-6 py-2 text-xs font-black text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-lg shadow-blue-500/20
-                     transition-all active:scale-95 disabled:opacity-50 uppercase tracking-widest"
-        >
-          {applying ? 'Applying…' : 'KUBECTL APPLY'}
-        </button>
+        <div className="flex items-center gap-3">
+          {showConfirm && (
+            <span className="text-[10px] font-black text-red-500 animate-pulse tracking-widest">PRODUCTION OVERRIDE?</span>
+          )}
+          <button
+            onClick={handleApply}
+            onMouseLeave={() => setShowConfirm(false)}
+            disabled={applying}
+            className={`px-6 py-2 text-xs font-black text-white rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-50 uppercase tracking-widest
+                       ${showConfirm ? 'bg-red-600 hover:bg-red-700 shadow-red-500/30 scale-105' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'}`}
+          >
+            {applying ? 'Applying…' : showConfirm ? 'Confirm Apply' : 'KUBECTL APPLY'}
+          </button>
+        </div>
       </div>
       <div className="flex-1 min-h-0">
         <Editor

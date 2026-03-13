@@ -269,9 +269,17 @@ export default function MetricsView(): JSX.Element {
                                 />
                               </div>
                               {cpuEff !== null && (
-                                <span className={`text-[8px] font-black uppercase tracking-widest ${cpuEff < 20 ? 'text-amber-500' : 'text-slate-400 dark:text-slate-600'}`}>
-                                  Efficiency: {Math.round(cpuEff)}% of Req
-                                </span>
+                                <div className="flex flex-col gap-1">
+                                  <span className={`text-[8px] font-black uppercase tracking-widest ${cpuEff < 10 ? 'text-amber-500 animate-pulse' : 'text-slate-400 dark:text-slate-600'}`}>
+                                    Efficiency: {Math.round(cpuEff)}% of Req
+                                  </span>
+                                  {cpuEff < 10 && reqCpu > 0 && (
+                                    <span className="text-[7px] text-amber-500/80 font-bold italic">Recommendation: Reduce Request to {Math.max(10, Math.round(cpu * 1.5))}m</span>
+                                  )}
+                                  {cpu > limCpu * 0.95 && limCpu > 0 && (
+                                    <span className="text-[7px] text-red-500 font-bold italic">Warning: Throttling likely. Increase Limit.</span>
+                                  )}
+                                </div>
                               )}
                             </div>
                           </td>
@@ -293,9 +301,17 @@ export default function MetricsView(): JSX.Element {
                                 />
                               </div>
                               {memEff !== null && (
-                                <span className={`text-[8px] font-black uppercase tracking-widest ${memEff < 20 ? 'text-amber-500' : 'text-slate-400 dark:text-slate-600'}`}>
-                                  Efficiency: {Math.round(memEff)}% of Req
-                                </span>
+                                <div className="flex flex-col gap-1">
+                                  <span className={`text-[8px] font-black uppercase tracking-widest ${memEff < 15 ? 'text-amber-500 animate-pulse' : 'text-slate-400 dark:text-slate-600'}`}>
+                                    Efficiency: {Math.round(memEff)}% of Req
+                                  </span>
+                                  {memEff < 15 && reqMem > 0 && (
+                                    <span className="text-[7px] text-amber-500/80 font-bold italic">Recommendation: Reduce Request to {Math.max(16, Math.round(mem * 1.2))}Mi</span>
+                                  )}
+                                  {mem > limMem * 0.95 && limMem > 0 && (
+                                    <span className="text-[7px] text-red-500 font-bold italic">Warning: Near OOM. Increase Limit.</span>
+                                  )}
+                                </div>
                               )}
                             </div>
                           </td>

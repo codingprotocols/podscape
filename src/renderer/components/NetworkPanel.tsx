@@ -1022,6 +1022,12 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
                     <animate attributeName="stroke-dashoffset" from="16" to="0" dur={dur} repeatCount="indefinite" />
                   </path>
                 )}
+                {animate && isConnected && (
+                  <circle r="2" fill={color} filter="url(#glow)">
+                    {/* @ts-ignore */}
+                    <animateMotion dur={dur} repeatCount="indefinite" path={path} />
+                  </circle>
+                )}
                 {edge.label && <EdgeLabel x={lx} y={ly - 8} label={edge.label} color={color} />}
               </g>
             )

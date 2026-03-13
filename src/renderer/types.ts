@@ -1,5 +1,11 @@
 // ─── Common ───────────────────────────────────────────────────────────────────
 
+export interface KubeResource {
+  apiVersion?: string
+  kind?: string
+  metadata: ObjectMeta
+}
+
 export interface ObjectMeta {
   name: string
   namespace?: string
@@ -30,8 +36,7 @@ export interface KubeContextEntry {
 
 // ─── Namespace ────────────────────────────────────────────────────────────────
 
-export interface KubeNamespace {
-  metadata: ObjectMeta
+export interface KubeNamespace extends KubeResource {
   status: { phase: string }
 }
 
@@ -101,15 +106,14 @@ export interface PodSpec {
   volumes?: Array<{ name: string;[key: string]: unknown }>
 }
 
-export interface KubePod {
-  metadata: ObjectMeta
+export interface KubePod extends KubeResource {
   spec: PodSpec
   status: PodStatus
 }
 
 // ─── Deployment ───────────────────────────────────────────────────────────────
 
-export interface KubeDeployment {
+export interface KubeDeployment extends KubeResource {
   metadata: ObjectMeta
   spec: {
     replicas?: number
@@ -132,7 +136,7 @@ export interface KubeDeployment {
 
 // ─── StatefulSet ──────────────────────────────────────────────────────────────
 
-export interface KubeStatefulSet {
+export interface KubeStatefulSet extends KubeResource {
   metadata: ObjectMeta
   spec: {
     replicas?: number
@@ -153,7 +157,7 @@ export interface KubeStatefulSet {
 
 // ─── ReplicaSet ───────────────────────────────────────────────────────────────
 
-export interface KubeReplicaSet {
+export interface KubeReplicaSet extends KubeResource {
   metadata: ObjectMeta
   spec: { replicas?: number; selector: { matchLabels?: Record<string, string> } }
   status: {
@@ -166,7 +170,7 @@ export interface KubeReplicaSet {
 
 // ─── Job ──────────────────────────────────────────────────────────────────────
 
-export interface KubeJob {
+export interface KubeJob extends KubeResource {
   metadata: ObjectMeta
   spec: {
     completions?: number
@@ -186,7 +190,7 @@ export interface KubeJob {
 
 // ─── CronJob ──────────────────────────────────────────────────────────────────
 
-export interface KubeCronJob {
+export interface KubeCronJob extends KubeResource {
   metadata: ObjectMeta
   spec: {
     schedule: string
@@ -213,7 +217,7 @@ export interface ServicePort {
   nodePort?: number
 }
 
-export interface KubeService {
+export interface KubeService extends KubeResource {
   metadata: ObjectMeta
   spec: {
     type?: string
@@ -233,7 +237,7 @@ export interface KubeService {
 
 // ─── Ingress ──────────────────────────────────────────────────────────────────
 
-export interface KubeIngress {
+export interface KubeIngress extends KubeResource {
   metadata: ObjectMeta
   spec: {
     ingressClassName?: string
@@ -258,7 +262,7 @@ export interface NodeCondition extends KubeCondition {
   lastHeartbeatTime?: string
 }
 
-export interface KubeNode {
+export interface KubeNode extends KubeResource {
   metadata: ObjectMeta
   spec: {
     podCIDR?: string
@@ -285,7 +289,7 @@ export interface KubeNode {
 
 // ─── ConfigMap ────────────────────────────────────────────────────────────────
 
-export interface KubeConfigMap {
+export interface KubeConfigMap extends KubeResource {
   metadata: ObjectMeta
   data?: Record<string, string>
   binaryData?: Record<string, string>
@@ -293,7 +297,7 @@ export interface KubeConfigMap {
 
 // ─── Secret ───────────────────────────────────────────────────────────────────
 
-export interface KubeSecret {
+export interface KubeSecret extends KubeResource {
   metadata: ObjectMeta
   type?: string
   data?: Record<string, string>
@@ -301,7 +305,7 @@ export interface KubeSecret {
 
 // ─── Event ────────────────────────────────────────────────────────────────────
 
-export interface KubeEvent {
+export interface KubeEvent extends KubeResource {
   metadata: ObjectMeta
   involvedObject: {
     kind: string
@@ -325,7 +329,7 @@ export interface KubeEvent {
 
 // ─── CRD ──────────────────────────────────────────────────────────────────────
 
-export interface KubeCRD {
+export interface KubeCRD extends KubeResource {
   metadata: ObjectMeta
   spec: {
     group: string
@@ -340,7 +344,7 @@ export interface KubeCRD {
 
 // ─── DaemonSet ────────────────────────────────────────────────────────────────
 
-export interface KubeDaemonSet {
+export interface KubeDaemonSet extends KubeResource {
   metadata: ObjectMeta
   spec: {
     selector: { matchLabels?: Record<string, string> }
@@ -360,7 +364,7 @@ export interface KubeDaemonSet {
 
 // ─── HorizontalPodAutoscaler ──────────────────────────────────────────────────
 
-export interface KubeHPA {
+export interface KubeHPA extends KubeResource {
   metadata: ObjectMeta
   spec: {
     scaleTargetRef: { apiVersion?: string; kind: string; name: string }
@@ -379,7 +383,7 @@ export interface KubeHPA {
 
 // ─── PodDisruptionBudget ──────────────────────────────────────────────────────
 
-export interface KubePDB {
+export interface KubePDB extends KubeResource {
   metadata: ObjectMeta
   spec: {
     minAvailable?: number | string
@@ -397,7 +401,7 @@ export interface KubePDB {
 
 // ─── IngressClass ─────────────────────────────────────────────────────────────
 
-export interface KubeIngressClass {
+export interface KubeIngressClass extends KubeResource {
   metadata: ObjectMeta
   spec: {
     controller?: string
@@ -434,7 +438,7 @@ export interface NetworkPolicyEgressRule {
   ports?: NetworkPolicyPort[]
 }
 
-export interface KubeNetworkPolicy {
+export interface KubeNetworkPolicy extends KubeResource {
   metadata: ObjectMeta
   spec: {
     podSelector: { matchLabels?: Record<string, string> }
@@ -446,7 +450,7 @@ export interface KubeNetworkPolicy {
 
 // ─── Endpoints ────────────────────────────────────────────────────────────────
 
-export interface KubeEndpoints {
+export interface KubeEndpoints extends KubeResource {
   metadata: ObjectMeta
   subsets?: Array<{
     addresses?: Array<{ ip: string; nodeName?: string; targetRef?: { kind: string; name: string } }>
@@ -457,7 +461,7 @@ export interface KubeEndpoints {
 
 // ─── PersistentVolumeClaim ────────────────────────────────────────────────────
 
-export interface KubePVC {
+export interface KubePVC extends KubeResource {
   metadata: ObjectMeta
   spec: {
     accessModes?: string[]
@@ -476,7 +480,7 @@ export interface KubePVC {
 
 // ─── PersistentVolume ─────────────────────────────────────────────────────────
 
-export interface KubePV {
+export interface KubePV extends KubeResource {
   metadata: ObjectMeta
   spec: {
     capacity?: Record<string, string>
@@ -492,7 +496,7 @@ export interface KubePV {
 
 // ─── StorageClass ─────────────────────────────────────────────────────────────
 
-export interface KubeStorageClass {
+export interface KubeStorageClass extends KubeResource {
   metadata: ObjectMeta
   provisioner: string
   reclaimPolicy?: string
@@ -503,7 +507,7 @@ export interface KubeStorageClass {
 
 // ─── ServiceAccount ───────────────────────────────────────────────────────────
 
-export interface KubeServiceAccount {
+export interface KubeServiceAccount extends KubeResource {
   metadata: ObjectMeta
   secrets?: Array<{ name: string }>
   imagePullSecrets?: Array<{ name: string }>
@@ -520,12 +524,12 @@ export interface PolicyRule {
   nonResourceURLs?: string[]
 }
 
-export interface KubeRole {
+export interface KubeRole extends KubeResource {
   metadata: ObjectMeta
   rules?: PolicyRule[]
 }
 
-export interface KubeClusterRole {
+export interface KubeClusterRole extends KubeResource {
   metadata: ObjectMeta
   rules?: PolicyRule[]
   aggregationRule?: { clusterRoleSelectors?: Array<{ matchLabels?: Record<string, string> }> }
@@ -544,13 +548,13 @@ export interface Subject {
   apiGroup?: string
 }
 
-export interface KubeRoleBinding {
+export interface KubeRoleBinding extends KubeResource {
   metadata: ObjectMeta
   roleRef: RoleRef
   subjects?: Subject[]
 }
 
-export interface KubeClusterRoleBinding {
+export interface KubeClusterRoleBinding extends KubeResource {
   metadata: ObjectMeta
   roleRef: RoleRef
   subjects?: Subject[]
@@ -620,9 +624,17 @@ export interface DebugPodEntry {
   error?: string
 }
 
+export interface AppGroup {
+  name: string
+  namespace: string
+  resources: AnyKubeResource[]
+}
+
 // ─── Navigation ───────────────────────────────────────────────────────────────
 
 export type ResourceKind =
+  | 'unifiedlogs'
+  | 'apps'
   | 'dashboard'
   | 'helm'
   | 'pods'

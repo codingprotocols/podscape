@@ -8,11 +8,12 @@ interface SettingsForm {
   helmPath: string
   theme: string
   kubeconfigPath: string
+  prodContexts: string[]
 }
 
 export default function SettingsPanel(): JSX.Element {
-  const { theme, setTheme, init } = useAppStore()
-  const [form, setForm] = useState<SettingsForm>({ kubectlPath: '', shellPath: '', helmPath: '', theme, kubeconfigPath: '' })
+  const { theme, setTheme, init, prodContexts } = useAppStore()
+  const [form, setForm] = useState<SettingsForm>({ kubectlPath: '', shellPath: '', helmPath: '', theme, kubeconfigPath: '', prodContexts: [] })
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -26,7 +27,9 @@ export default function SettingsPanel(): JSX.Element {
   const [showEditor, setShowEditor] = useState(false)
 
   useEffect(() => {
-    window.settings.get().then(s => setForm({ ...s })).catch(() => { })
+    window.settings.get().then(s => setForm({ ...s, prodContexts: s.prodContexts ?? prodContexts })).catch(() => {
+      setForm(f => ({ ...f, prodContexts }))
+    })
     window.kubeconfig.get().then(({ path, content }) => {
       setKubeconfigPath(path)
       setKubeconfigContent(content)
@@ -341,6 +344,7 @@ export default function SettingsPanel(): JSX.Element {
               )}
             </div>
           </section>
+
 
           {/* ── Exec tip ────────────────────────────────────────────────────── */}
           <div className="p-5 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/30 rounded-2xl">

@@ -7,7 +7,7 @@ import {
     KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
     KubeNode, KubeEvent, KubeCRD,
     NodeMetrics, PodMetrics, ResourceKind, AnyKubeResource, PortForwardEntry,
-    HelmRelease, DebugPodEntry
+    HelmRelease, DebugPodEntry, AppGroup
 } from '../types'
 import { AnalysisSlice } from './slices/analysisSlice'
 
@@ -90,8 +90,8 @@ declare global {
             onExit: (id: string, cb: () => void) => () => void
         }
         settings: {
-            get: () => Promise<{ kubectlPath: string; shellPath: string; helmPath: string; theme: string; kubeconfigPath: string }>
-            set: (s: { kubectlPath: string; shellPath: string; helmPath: string; theme: string; kubeconfigPath: string }) => Promise<void>
+            get: () => Promise<{ kubectlPath: string; shellPath: string; helmPath: string; theme: string; kubeconfigPath: string; prodContexts: string[] }>
+            set: (s: { kubectlPath: string; shellPath: string; helmPath: string; theme: string; kubeconfigPath: string; prodContexts: string[] }) => Promise<void>
             checkTools: () => Promise<{ kubectlOk: boolean; helmOk: boolean; kubeconfigOk: boolean }>
         }
         kubeconfig: {
@@ -143,6 +143,11 @@ export interface AppStore extends AnalysisSlice {
     kubectlOk: boolean
     helmOk: boolean
     kubeconfigOk: boolean
+    prodContexts: string[]
+    setProdContexts: (contexts: string[]) => Promise<void>
+    isProduction: boolean
+    resourceHistory: AnyKubeResource[]
+    apps: AppGroup[]
 
     // Resources
     pods: KubePod[]

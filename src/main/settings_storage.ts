@@ -8,6 +8,7 @@ export interface PodscapeSettings {
     helmPath: string                // absolute path or '' for auto-detect
     theme: 'light' | 'dark' | ''   // '' means use last-used / OS preference
     kubeconfigPath: string         // absolute path or '' for default (~/.kube/config)
+    prodContexts: string[]         // List of contexts considered "Production"
 }
 
 const SETTINGS_DIR = join(homedir(), '.podscape')
@@ -18,7 +19,8 @@ const DEFAULTS: PodscapeSettings = {
     shellPath: '',
     helmPath: '',
     theme: 'dark',
-    kubeconfigPath: ''
+    kubeconfigPath: '',
+    prodContexts: []
 }
 
 export function getSettings(): PodscapeSettings {

@@ -7,11 +7,12 @@ import {
     KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
     KubeNode, KubeEvent, KubeCRD,
     NodeMetrics, PodMetrics, ResourceKind, AnyKubeResource, PortForwardEntry,
-    HelmRelease, DebugPodEntry
+    HelmRelease, DebugPodEntry, AppGroup
 } from '../../types'
 
 export interface ResourceSlice {
     pods: KubePod[]
+    apps: AppGroup[]
     deployments: KubeDeployment[]
     daemonsets: KubeDaemonSet[]
     statefulsets: KubeStatefulSet[]
@@ -62,6 +63,7 @@ export interface ResourceSlice {
 
 export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     pods: [],
+    apps: [],
     deployments: [],
     daemonsets: [],
     statefulsets: [],
@@ -98,7 +100,23 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     error: null,
     execTarget: null,
 
-    selectResource: (r) => set({ selectedResource: r }),
+    selectResource: (r) => {
+        if (r && !r.kind) {
+            const section = get().section
+            r.kind = kindLabel(section)
+        }
+        set({ selectedResource: r })
+        if (r) {
+            const { resourceHistory } = get()
+            const exists = resourceHistory.find(h => h.metadata.uid === r.metadata.uid)
+            if (exists) {
+                // Move to front
+                set({ resourceHistory: [r, ...resourceHistory.filter(h => h.metadata.uid !== r.metadata.uid)] })
+            } else {
+                set({ resourceHistory: [r, ...resourceHistory].slice(0, 5) })
+            }
+        }
+    },
     clearError: () => set({ error: null }),
     openExec: (target) => set({ execTarget: target }),
     closeExec: () => set({ execTarget: null }),
@@ -219,7 +237,41 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             window.kubectl.getDeployments(ctx, null).then(deployments => set({ deployments })).catch(() => { if (ns) window.kubectl.getDeployments(ctx, ns).then(deployments => set({ deployments })).catch(() => { }) }),
         ])
         if (firstError) set({ error: firstError })
-        set({ loadingResources: false })
+        
+        // Group resources into Apps
+        const allResources: AnyKubeResource[] = [
+            ...(get().deployments),
+            ...(get().statefulsets),
+            ...(get().daemonsets),
+            ...(get().services),
+            ...(get().configmaps),
+            ...(get().hpas)
+        ]
+        
+        const groups: Record<string, AppGroup> = {}
+        const APP_LABELS = ['app.kubernetes.io/name', 'app', 'run']
+        
+        allResources.forEach(r => {
+            const labels = r.metadata.labels || {}
+            let appName = ''
+            for (const key of APP_LABELS) {
+                if (labels[key]) {
+                    appName = labels[key]
+                    break
+                }
+            }
+            
+            if (appName) {
+                const ns = r.metadata.namespace || 'default'
+                const key = `${ns}:${appName}`
+                if (!groups[key]) {
+                    groups[key] = { name: appName, namespace: ns, resources: [] }
+                }
+                groups[key].resources.push(r)
+            }
+        })
+        
+        set({ apps: Object.values(groups).sort((a, b) => a.name.localeCompare(b.name)), loadingResources: false })
     },
 
     refresh: () => get().loadSection(get().section),
@@ -249,3 +301,19 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         }
     },
 })
+
+function kindLabel(section: string): string {
+    const map: Record<string, string> = {
+        pods: 'Pod', deployments: 'Deployment', daemonsets: 'DaemonSet',
+        statefulsets: 'StatefulSet', replicasets: 'ReplicaSet', jobs: 'Job', cronjobs: 'CronJob',
+        hpas: 'HorizontalPodAutoscaler', pdbs: 'PodDisruptionBudget',
+        services: 'Service', ingresses: 'Ingress', ingressclasses: 'IngressClass',
+        networkpolicies: 'NetworkPolicy', endpoints: 'Endpoints',
+        configmaps: 'ConfigMap', secrets: 'Secret',
+        pvcs: 'PersistentVolumeClaim', pvs: 'PersistentVolume', storageclasses: 'StorageClass',
+        serviceaccounts: 'ServiceAccount', roles: 'Role', clusterroles: 'ClusterRole',
+        rolebindings: 'RoleBinding', clusterrolebindings: 'ClusterRoleBinding',
+        nodes: 'Node', namespaces: 'Namespace', crds: 'CustomResourceDefinition'
+    }
+    return map[section] ?? section
+}
