@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import { useAppStore } from '../store'
 import type { KubeNode, KubeEvent, NodeMetrics } from '../types'
 import {
@@ -278,23 +278,41 @@ export default function Dashboard(): JSX.Element {
 
   useEffect(() => { loadDashboard() }, [selectedContext])
 
-  // Derived stats
-  const runningPods = pods.filter(p => p.status.phase === 'Running').length
-  const readyNodes = nodes.filter(getNodeReady).length
-  const warnEvents = events.filter(e => e.type === 'Warning').length
-  const readyDeploys = deployments.filter(
-    d => (d.status.readyReplicas ?? 0) >= (d.spec.replicas ?? 0) && (d.spec.replicas ?? 0) > 0
-  ).length
+  // Pre-calculate timestamps and derive stats memoized
+  const { 
+    runningPods, readyNodes, warnEvents, readyDeploys, 
+    recentEvents, processedEvents, metricsById 
+  } = useMemo(() => {
+    // Stats calculation
+    const runningPods = pods.filter(p => p.status.phase === 'Running').length
+    const readyNodes = nodes.filter(getNodeReady).length
+    const warnEvents = events.filter(e => e.type === 'Warning').length
+    const readyDeploys = deployments.filter(
+      d => (d.status.readyReplicas ?? 0) >= (d.spec.replicas ?? 0) && (d.spec.replicas ?? 0) > 0
+    ).length
 
-  const metricsById = new Map(nodeMetrics.map(m => [m.metadata.name, m]))
+    // Map metrics for O(1) lookup
+    const metricsById = new Map(nodeMetrics.map(m => [m.metadata.name, m]))
 
-  const recentEvents = [...events]
-    .sort((a, b) => {
-      const ta = new Date(a.lastTimestamp ?? a.firstTimestamp ?? a.eventTime ?? 0).getTime()
-      const tb = new Date(b.lastTimestamp ?? b.firstTimestamp ?? b.eventTime ?? 0).getTime()
-      return tb - ta
+    // Sorted and pre-parsed events
+    const processedEvents = events.map(e => ({
+      ...e,
+      _ts: new Date(e.lastTimestamp ?? e.firstTimestamp ?? e.eventTime ?? 0).getTime()
+    }))
+
+    const recentEvents = [...processedEvents]
+      .sort((a, b) => b._ts - a._ts)
+      .slice(0, 15)
+
+    // Secondary sort for UI: Warnings first
+    const sortedEvents = [...recentEvents].sort((a, b) => {
+      if (a.type === 'Warning' && b.type !== 'Warning') return -1
+      if (a.type !== 'Warning' && b.type === 'Warning') return 1
+      return 0
     })
-    .slice(0, 15)
+
+    return { runningPods, readyNodes, warnEvents, readyDeploys, recentEvents: sortedEvents, processedEvents, metricsById }
+  }, [pods, deployments, nodes, events, nodeMetrics])
 
   return (
     <div className="flex flex-col flex-1 h-full overflow-auto bg-slate-50 dark:bg-[hsl(var(--bg-dark))] transition-colors duration-200">
@@ -411,18 +429,15 @@ export default function Dashboard(): JSX.Element {
                 </div>
               </div>
 
+              <div className="mb-6">
+                <EventTimeline events={processedEvents} />
+              </div>
+
               {recentEvents.length === 0 && !loadingResources ? (
                 <EmptySection message="No recent events" />
               ) : (
                 <div className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 shadow-sm rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800/50">
-                  {/* Warnings first */}
-                  {recentEvents
-                    .sort((a, b) => {
-                      if (a.type === 'Warning' && b.type !== 'Warning') return -1
-                      if (a.type !== 'Warning' && b.type === 'Warning') return 1
-                      return 0
-                    })
-                    .map(event => (
+                  {recentEvents.map(event => (
                       <EventRow key={event.metadata.uid} event={event} />
                     ))
                   }
@@ -431,6 +446,65 @@ export default function Dashboard(): JSX.Element {
             </section>
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+function EventTimeline({ events }: { events: (KubeEvent & { _ts: number })[] }) {
+  const buckets = useMemo(() => {
+    const now = Date.now()
+    const buckets = Array(60).fill(0).map((_, i) => ({
+      timestamp: now - (59 - i) * 60000,
+      count: 0,
+      warnings: 0
+    }))
+
+    // Iterate through pre-parsed events
+    events.forEach(e => {
+      const diffMins = Math.floor((now - e._ts) / 60000)
+      if (diffMins >= 0 && diffMins < 60) {
+        const idx = 59 - diffMins
+        buckets[idx].count++
+        if (e.type === 'Warning') buckets[idx].warnings++
+      }
+    })
+    return buckets
+  }, [events])
+
+  return (
+    <div className="glass-card glass-light p-4">
+      <div className="flex items-center justify-between mb-3 px-1">
+        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Event Density (Last 60m)</span>
+        <div className="flex gap-4">
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+            <span className="text-[8px] font-bold text-slate-400 uppercase">Normal</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+            <span className="text-[8px] font-bold text-slate-400 uppercase">Warning</span>
+          </div>
+        </div>
+      </div>
+      <div className="flex gap-[2px] h-10 items-end">
+        {buckets.map((b, i) => {
+          const total = b.count
+          const height = total === 0 ? '2px' : `${Math.min(100, (total / 5) * 100)}%`
+          const color = b.warnings > 0 ? 'bg-rose-500' : total > 0 ? 'bg-blue-500' : 'bg-slate-200 dark:bg-white/5'
+          return (
+            <div
+              key={i}
+              className={`flex-1 rounded-t-[1px] transition-all duration-500 ${color}`}
+              style={{ height }}
+              title={`${total} events (${b.warnings} warnings) at ${new Date(b.timestamp).toLocaleTimeString()}`}
+            />
+          )
+        })}
+      </div>
+      <div className="flex justify-between mt-2 px-1 text-[8px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-tighter">
+        <span>60m ago</span>
+        <span>Now</span>
       </div>
     </div>
   )

@@ -15,6 +15,9 @@ export interface ClusterSlice {
     kubectlOk: boolean
     helmOk: boolean
     kubeconfigOk: boolean
+    prodContexts: string[]
+    setProdContexts: (contexts: string[]) => Promise<void>
+    isProduction: boolean
     selectContext: (name: string) => Promise<void>
     selectNamespace: (name: string) => void
 }
@@ -51,11 +54,21 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
     kubectlOk: true, // Default to true so we don't flash onboarding
     helmOk: true,
     kubeconfigOk: true,
+    prodContexts: [],
+    setProdContexts: async (contexts) => {
+        set({ prodContexts: contexts })
+        const { selectedContext, prodContexts } = get()
+        set({ isProduction: !!selectedContext && prodContexts.includes(selectedContext) })
+        const s = await window.settings.get()
+        await window.settings.set({ ...s, prodContexts: contexts })
+    },
+    isProduction: false,
 
     selectContext: async (name) => {
         const mySeq = ++contextSwitchSeq
+        const isProd = get().prodContexts.includes(name)
         set({
-            selectedContext: name, loadingNamespaces: true,
+            selectedContext: name, isProduction: isProd, loadingNamespaces: true,
             namespaces: [], selectedNamespace: null, selectedResource: null, error: null,
             pods: [], deployments: [], daemonsets: [], statefulsets: [], replicasets: [],
             jobs: [], cronjobs: [], hpas: [], pdbs: [],

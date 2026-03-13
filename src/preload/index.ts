@@ -249,9 +249,9 @@ const helm = {
 // ─── settings API ─────────────────────────────────────────────────────────────
 
 const settings = {
-  get: (): Promise<{ kubectlPath: string; shellPath: string; helmPath: string; theme: string }> =>
+  get: (): Promise<{ kubectlPath: string; shellPath: string; helmPath: string; theme: string; kubeconfigPath: string; prodContexts: string[] }> =>
     ipcRenderer.invoke('settings:get'),
-  set: (s: { kubectlPath: string; shellPath: string; helmPath: string; theme: string }): Promise<void> =>
+  set: (s: { kubectlPath: string; shellPath: string; helmPath: string; theme: string; kubeconfigPath: string; prodContexts: string[] }): Promise<void> =>
     ipcRenderer.invoke('settings:set', s),
   checkTools: (): Promise<{ kubectlOk: boolean; helmOk: boolean; kubeconfigOk: boolean }> =>
     ipcRenderer.invoke('settings:checkTools')

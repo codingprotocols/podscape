@@ -27,9 +27,12 @@ export const useAppStore = create<AppStore>()((...a) => ({
 
         set({ loadingContexts: true, error: null })
         try {
-            // 1. Check tools
-            const toolsState = await window.settings.checkTools()
-            set({ ...toolsState })
+            // 1. Check tools & Load settings
+            const [toolsState, settings] = await Promise.all([
+                window.settings.checkTools(),
+                window.settings.get()
+            ])
+            set({ ...toolsState, prodContexts: settings.prodContexts || [] })
 
             // 2. Load contexts if config exists
             let ctxList: KubeContextEntry[] = []

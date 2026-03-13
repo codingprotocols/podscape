@@ -33,6 +33,7 @@ import PortForwardPanel from './components/PortForwardPanel'
 import EventsView from './components/EventsView'
 import MetricsView from './components/MetricsView'
 import SettingsPanel from './components/SettingsPanel'
+import UnifiedLogs from './components/UnifiedLogs'
 import NetworkPanel from './components/NetworkPanel'
 import ExecPanel from './components/ExecPanel'
 import ConnectivityTester from './components/ConnectivityTester'
@@ -306,7 +307,7 @@ export default function App(): JSX.Element {
   const {
     init, loadingContexts, section, setSection,
     selectedResource, execTarget, closeExec, refresh, error, clearError,
-    kubectlOk, kubeconfigOk, isSearchOpen, setSearchOpen
+    kubectlOk, kubeconfigOk, isSearchOpen, setSearchOpen, isProduction
   } = useAppStore()
 
   useEffect(() => { init() }, [])
@@ -328,7 +329,14 @@ export default function App(): JSX.Element {
 
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white dark:bg-[hsl(var(--bg-dark))] text-slate-900 dark:text-slate-100 transition-colors duration-200">
+    <div className={`flex h-screen overflow-hidden bg-white dark:bg-[hsl(var(--bg-dark))] text-slate-900 dark:text-slate-100 transition-all duration-300 ${isProduction ? 'ring-inset ring-4 ring-red-500/50' : ''}`}>
+      {isProduction && (
+        <div className="fixed top-0 left-1/2 -translate-x-1/2 z-[10000] pointer-events-none">
+          <div className="bg-red-600 text-[10px] font-black tracking-[0.2em] text-white px-6 py-1 rounded-b-xl shadow-2xl border-x border-b border-red-500/50 animate-in slide-in-from-top duration-500">
+            PRODUCTION CONTEXT ACTIVE
+          </div>
+        </div>
+      )}
       {/* Left nav sidebar */}
       {!kubectlOk || !kubeconfigOk ? null : (
         <ErrorBoundary>
@@ -346,6 +354,8 @@ export default function App(): JSX.Element {
           <EventsView />
         ) : section === 'metrics' ? (
           <MetricsView />
+        ) : section === 'unifiedlogs' ? (
+          <UnifiedLogs />
         ) : section === 'settings' ? (
           <SettingsPanel />
         ) : section === 'network' ? (

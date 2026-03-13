@@ -1,5 +1,5 @@
 import { StoreSlice } from '../types'
-import { ResourceKind } from '../../types'
+import { ResourceKind, AnyKubeResource } from '../../types'
 
 export interface NavigationSlice {
     section: ResourceKind
@@ -15,6 +15,7 @@ export interface NavigationSlice {
     setSearchQuery: (q: string) => void
     isSearchOpen: boolean
     setSearchOpen: (open: boolean) => void
+    resourceHistory: AnyKubeResource[]
 }
 
 export const createNavigationSlice: StoreSlice<NavigationSlice> = (set, get) => ({
@@ -51,4 +52,5 @@ export const createNavigationSlice: StoreSlice<NavigationSlice> = (set, get) => 
     setSearchQuery: (searchQuery) => set({ searchQuery }),
     isSearchOpen: false,
     setSearchOpen: (isSearchOpen) => set({ isSearchOpen }),
+    resourceHistory: [],
 })
