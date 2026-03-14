@@ -63,8 +63,8 @@ export async function startSidecar(): Promise<void> {
   // Wait for sidecar to be ready
   return new Promise((resolve, reject) => {
     let attempts = 0
-    const maxAttempts = 30
-    const interval = 300
+    const maxAttempts = 180  // 180 × 500 ms = 90 s — covers large cluster cache sync
+    const interval = 500
 
     const errorHandler = (err: Error) => {
       reject(new Error(`Sidecar failed to start: ${err.message}`))
@@ -95,7 +95,7 @@ export async function startSidecar(): Promise<void> {
       if (attempts >= maxAttempts) {
         child.removeListener('error', errorHandler)
         child.removeListener('exit', exitHandler)
-        reject(new Error(`Sidecar failed to start after ${maxAttempts} attempts`))
+        reject(new Error(`Sidecar failed to become ready after ${maxAttempts * interval / 1000}s — check kubeconfig and cluster connectivity`))
         return
       }
 

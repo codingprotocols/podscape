@@ -20,6 +20,9 @@ type ForwardRequest struct {
 	RemotePort int
 	StopCh     chan struct{}
 	ReadyCh    chan struct{}
+	// restConfig is snapshotted from the manager at StartForward time so this
+	// tunnel keeps working even after the active context is switched.
+	restConfig *rest.Config
 }
 
 type PortForwardManager struct {
@@ -54,6 +57,7 @@ func (m *PortForwardManager) StartForward(id, namespace, podName string, localPo
 		RemotePort: remotePort,
 		StopCh:     stopCh,
 		ReadyCh:    readyCh,
+		restConfig: m.Config, // snapshot current context's config at creation time
 	}
 	m.Forwards[id] = req
 	m.Unlock()
@@ -80,16 +84,35 @@ func (m *PortForwardManager) StopForward(id string) {
 	}
 }
 
+// StopAll terminates every active port-forward. Call this before switching contexts.
+func (m *PortForwardManager) StopAll() {
+	m.Lock()
+	defer m.Unlock()
+	for id, req := range m.Forwards {
+		close(req.StopCh)
+		delete(m.Forwards, id)
+	}
+}
+
+// UpdateClients swaps the clientset and REST config used for new port-forwards.
+// Existing forwards have already been stopped via StopAll before this is called.
+func (m *PortForwardManager) UpdateClients(clientset *kubernetes.Clientset, config *rest.Config) {
+	m.Lock()
+	defer m.Unlock()
+	m.Clientset = clientset
+	m.Config = config
+}
+
 func (m *PortForwardManager) runForward(req *ForwardRequest) error {
 	path := fmt.Sprintf("/api/v1/namespaces/%s/pods/%s/portforward", req.Namespace, req.PodName)
-	hostIP := m.Config.Host
+	hostIP := req.restConfig.Host
 	u, err := url.Parse(hostIP)
 	if err != nil {
 		return err
 	}
 	u.Path = path
 
-	transport, upgrader, err := spdy.RoundTripperFor(m.Config)
+	transport, upgrader, err := spdy.RoundTripperFor(req.restConfig)
 	if err != nil {
 		return err
 	}

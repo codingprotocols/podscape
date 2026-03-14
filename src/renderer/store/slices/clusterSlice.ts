@@ -47,7 +47,7 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
     },
     namespaces: [],
     selectedNamespace: null,
-    loadingContexts: false,
+    loadingContexts: true,  // true until init() finishes — prevents blank flash on first render
     loadingNamespaces: false,
     kubeconfigOk: true,
     prodContexts: [],
@@ -77,14 +77,21 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             const timeout = new Promise<never>((_, reject) =>
                 setTimeout(() => reject(new Error(`Cannot reach cluster "${name}" — timed out after 30s`)), 30000)
             )
+            // Tell the sidecar to switch its clientset + informer cache to the new
+            // context BEFORE fetching any data. Without this the sidecar keeps
+            // serving the previous context's cache.
+            await Promise.race([window.kubectl.switchContext(name), timeout])
+            if (mySeq !== contextSwitchSeq) return
+
             const nsList = await Promise.race([window.kubectl.getNamespaces(name), timeout])
             if (mySeq !== contextSwitchSeq) return
             const chosen = nsList.length > 0 ? '_all' : null
-            set({ namespaces: nsList, selectedNamespace: chosen, loadingNamespaces: false })
+            set({ namespaces: nsList, selectedNamespace: chosen })
             if (chosen) {
-                get().loadSection(get().section) 
-                get().preloadSearchResources() // Start background preloading for search
+                await get().loadSection(get().section)
+                get().preloadSearchResources() // background, fire-and-forget
             }
+            set({ loadingNamespaces: false })
         } catch (err) {
             if (mySeq !== contextSwitchSeq) return
             set({ error: (err as Error).message, loadingNamespaces: false })

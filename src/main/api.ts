@@ -2,7 +2,7 @@ import { SIDECAR_BASE_URL } from '../common/constants'
 
 export async function sidecarFetch(path: string, options?: RequestInit) {
   const url = `${SIDECAR_BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`
-  
+
   const maxRetries = 20
   const delay = 500
 
@@ -27,9 +27,10 @@ export async function sidecarFetch(path: string, options?: RequestInit) {
  * Helper that throws if the response is not OK.
  */
 export async function checkedSidecarFetch(path: string, options?: RequestInit) {
-    const res = await sidecarFetch(path, options)
-    if (!res.ok) {
-        throw new Error(`Go sidecar returned ${res.status} for ${path}`)
-    }
-    return res
+  const res = await sidecarFetch(path, options)
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Go sidecar returned ${res.status} for ${path}: ${text}`)
+  }
+  return res
 }

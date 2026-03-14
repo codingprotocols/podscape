@@ -63,12 +63,13 @@ export const useAppStore = create<AppStore>()((...a) => ({
             set({
                 contexts: ctxList,
                 selectedContext: active,
-                loadingContexts: false
             })
 
             if (active) {
                 await get().selectContext(active)
             }
+
+            set({ loadingContexts: false })
 
         } catch (err) {
             set({ error: (err as Error).message, loadingContexts: false })
