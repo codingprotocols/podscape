@@ -305,7 +305,7 @@ function kindForSection(section: string): string {
 
 export default function App(): JSX.Element {
   const {
-    init, loadingContexts, section, setSection,
+    init, loadingContexts, loadingNamespaces, section, setSection,
     selectedResource, execTarget, closeExec, refresh, error, clearError,
     kubeconfigOk, isSearchOpen, setSearchOpen, isProduction
   } = useAppStore()
@@ -346,7 +346,7 @@ export default function App(): JSX.Element {
 
       {/* Main content */}
       <div className="flex flex-1 min-w-0 min-h-0 bg-slate-50 dark:bg-[hsl(var(--bg-dark))]">
-        {loadingContexts ? (
+        {loadingContexts || loadingNamespaces ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-6">
              <div className="w-12 h-12 border-4 border-slate-200 dark:border-slate-800 border-t-blue-500 rounded-full animate-spin" />
              <div className="flex flex-col items-center gap-1">

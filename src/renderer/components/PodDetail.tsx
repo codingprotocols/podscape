@@ -26,7 +26,10 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const [logError, setLogError] = useState<string | null>(null)
   const [autoScroll, setAutoScroll] = useState(true)
   const [copyMsg, setCopyMsg] = useState('')
-  const [selectedContainer, setSelectedContainer] = useState(pod.spec.containers[0]?.name ?? '')
+  const isDebugPod = pod.metadata.name.startsWith('podscape-debug-')
+  const [selectedContainer, setSelectedContainer] = useState(
+    isDebugPod ? 'debug' : (pod.spec.containers[0]?.name ?? '')
+  )
   const [search, setSearch] = useState('')
   const [logFullscreen, setLogFullscreen] = useState(false)
   const [wrapLogs, setWrapLogs] = useState(false)

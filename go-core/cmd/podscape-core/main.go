@@ -30,6 +30,11 @@ func main() {
 		log.Fatalf("Error building kubeconfig: %s", err.Error())
 	}
 
+	// Raise the default QPS (5) and Burst (10) so informer LIST calls during
+	// cache sync are not throttled. Lens and kubectl use similar higher limits.
+	config.QPS = 50
+	config.Burst = 100
+
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		log.Fatalf("Error creating kubernetes client: %v", err)
@@ -41,12 +46,10 @@ func main() {
 	portforward.Init(clientset, config)
 
 	stopCh := make(chan struct{})
-	defer close(stopCh)
+	store.Store.InformerStopCh = stopCh
 
-	informers.InitInformers(clientset, stopCh)
-
-	fmt.Printf("Go sidecar started on port %s using kubeconfig: %s\n", *port, *kubeconfig)
-
+	// Register all routes before starting the server.
+	http.HandleFunc("/health", handlers.HandleHealth)
 	http.HandleFunc("/nodes", handlers.HandleNodes)
 	http.HandleFunc("/namespaces", handlers.HandleNamespaces)
 	http.HandleFunc("/pods", handlers.HandlePods)
@@ -107,7 +110,24 @@ func main() {
 	http.HandleFunc("/metrics/nodes", handlers.HandleGetNodeMetrics)
 	http.HandleFunc("/debugpod/create", handlers.HandleCreateDebugPod)
 	http.HandleFunc("/topology", handlers.HandleTopology)
-	http.HandleFunc("/health", handlers.HandleHealth)
 
-	log.Fatal(http.ListenAndServe("127.0.0.1:"+*port, nil))
+	// Start the HTTP server in a goroutine immediately so health checks can
+	// land while the informer cache is still warming up.
+	go func() {
+		fmt.Printf("Go sidecar listening on port %s\n", *port)
+		log.Fatal(http.ListenAndServe("127.0.0.1:"+*port, nil))
+	}()
+
+	// Block until the informer cache is fully synced, then mark the sidecar ready.
+	// /health returns 503 until this completes, so startSidecar() keeps polling.
+	informers.InitInformers(clientset, stopCh)
+
+	store.Store.Lock()
+	store.Store.CacheReady = true
+	store.Store.Unlock()
+
+	fmt.Printf("Go sidecar ready on port %s (kubeconfig: %s)\n", *port, *kubeconfig)
+
+	// Block the main goroutine — process lifetime is managed by Electron (SIGTERM).
+	select {}
 }

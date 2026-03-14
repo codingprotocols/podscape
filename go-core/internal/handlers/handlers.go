@@ -12,15 +12,19 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/podscape/go-core/internal/exec"
 	"github.com/podscape/go-core/internal/helm"
+	"github.com/podscape/go-core/internal/informers"
 	"github.com/podscape/go-core/internal/logs"
 	"github.com/podscape/go-core/internal/portforward"
 	"github.com/podscape/go-core/internal/store"
 	"github.com/podscape/go-core/internal/topology"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
 	corev1 "k8s.io/api/core/v1"
@@ -66,8 +70,16 @@ func MakeHandler(targetMap func() map[string]interface{}) http.HandlerFunc {
 }
 
 func HandleHealth(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	store.Store.RLock()
+	ready := store.Store.CacheReady
+	store.Store.RUnlock()
+	if ready {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	} else {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte("starting"))
+	}
 }
 
 // Specific handlers for common resources
@@ -319,21 +331,57 @@ func HandleDelete(w http.ResponseWriter, r *http.Request) {
 		err = store.Store.Clientset.AppsV1().StatefulSets(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
 	case "daemonset":
 		err = store.Store.Clientset.AppsV1().DaemonSets(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
+	case "replicaset":
+		err = store.Store.Clientset.AppsV1().ReplicaSets(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
 	case "job":
 		err = store.Store.Clientset.BatchV1().Jobs(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
 	case "cronjob":
 		err = store.Store.Clientset.BatchV1().CronJobs(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
+	case "horizontalpodautoscaler":
+		err = store.Store.Clientset.AutoscalingV1().HorizontalPodAutoscalers(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
+	case "poddisruptionbudget":
+		err = store.Store.Clientset.PolicyV1().PodDisruptionBudgets(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
+	case "ingressclass":
+		err = store.Store.Clientset.NetworkingV1().IngressClasses().Delete(r.Context(), name, metav1.DeleteOptions{})
+	case "networkpolicy":
+		err = store.Store.Clientset.NetworkingV1().NetworkPolicies(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
+	case "endpoints":
+		err = store.Store.Clientset.CoreV1().Endpoints(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
 	case "pvc":
 		err = store.Store.Clientset.CoreV1().PersistentVolumeClaims(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
 	case "pv":
 		err = store.Store.Clientset.CoreV1().PersistentVolumes().Delete(r.Context(), name, metav1.DeleteOptions{})
+	case "storageclass":
+		err = store.Store.Clientset.StorageV1().StorageClasses().Delete(r.Context(), name, metav1.DeleteOptions{})
+	case "serviceaccount":
+		err = store.Store.Clientset.CoreV1().ServiceAccounts(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
+	case "role":
+		err = store.Store.Clientset.RbacV1().Roles(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
+	case "clusterrole":
+		err = store.Store.Clientset.RbacV1().ClusterRoles().Delete(r.Context(), name, metav1.DeleteOptions{})
+	case "rolebinding":
+		err = store.Store.Clientset.RbacV1().RoleBindings(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
+	case "clusterrolebinding":
+		err = store.Store.Clientset.RbacV1().ClusterRoleBindings().Delete(r.Context(), name, metav1.DeleteOptions{})
 	case "node":
 		err = store.Store.Clientset.CoreV1().Nodes().Delete(r.Context(), name, metav1.DeleteOptions{})
+	case "crd":
+		dynClient, dynErr := dynamic.NewForConfig(store.Store.Config)
+		if dynErr != nil {
+			err = fmt.Errorf("failed to create dynamic client: %v", dynErr)
+		} else {
+			gvr := schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}
+			err = dynClient.Resource(gvr).Delete(r.Context(), name, metav1.DeleteOptions{})
+		}
 	default:
 		err = fmt.Errorf("unsupported kind for delete: %s", kind)
 	}
 
 	if err != nil {
+		if errors.IsNotFound(err) {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -643,24 +691,59 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	config, err := clientcmd.LoadFromFile(store.Store.Kubeconfig)
+	// 1. Load kubeconfig, validate context, write new current-context to disk.
+	kubeconfigFile, err := clientcmd.LoadFromFile(store.Store.Kubeconfig)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	if _, ok := config.Contexts[contextName]; !ok {
+	if _, ok := kubeconfigFile.Contexts[contextName]; !ok {
 		http.Error(w, "context not found", http.StatusNotFound)
 		return
 	}
-
-	config.CurrentContext = contextName
-	err = clientcmd.WriteToFile(*config, store.Store.Kubeconfig)
-	if err != nil {
+	kubeconfigFile.CurrentContext = contextName
+	if err = clientcmd.WriteToFile(*kubeconfigFile, store.Store.Kubeconfig); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	// 2. Build a new REST config and clientset for the target context.
+	clientConfig := clientcmd.NewNonInteractiveClientConfig(
+		*kubeconfigFile, contextName, &clientcmd.ConfigOverrides{}, nil,
+	)
+	restConfig, err := clientConfig.ClientConfig()
+	if err != nil {
+		http.Error(w, "failed to build REST config for context: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	clientset, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		http.Error(w, "failed to create clientset: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// 3. Stop old informers, clear all cached resource maps, swap in new clients.
+	store.Store.Lock()
+	if store.Store.InformerStopCh != nil {
+		close(store.Store.InformerStopCh)
+	}
+	newStopCh := make(chan struct{})
+	store.Store.InformerStopCh = newStopCh
+	store.Store.Config = restConfig
+	store.Store.Clientset = clientset
+	store.Store.ClearMaps()
+	store.Store.Unlock()
+
+	// 4. Update port-forward manager so new forwards created after this switch
+	//    use the new context's credentials. Existing forwards keep their own
+	//    snapshotted restConfig and continue running uninterrupted.
+	portforward.Manager.UpdateClients(clientset, restConfig)
+
+	// 5. Start fresh informers and block until the cache is warm (or 20s timeout).
+	//    This ensures the 200 response is only sent once the UI will have data to show.
+	informers.SyncInformers(clientset, newStopCh, 20*time.Second)
+
+	log.Printf("[SwitchContext] switched to %q — cache synced", contextName)
 	w.WriteHeader(http.StatusOK)
 }
 

@@ -8,7 +8,7 @@
   "scripts": {
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "cd go-core && go build ./cmd/podscape-core/ && cd .. && electron-vite build",
     "test": "vitest run",
     "test:watch": "vitest",
     "postinstall": "electron-builder install-app-deps",
