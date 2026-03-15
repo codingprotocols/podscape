@@ -1,12 +1,16 @@
 package handlers
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"path"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -17,6 +21,8 @@ import (
 	"github.com/podscape/go-core/internal/portforward"
 	"github.com/podscape/go-core/internal/store"
 	"github.com/podscape/go-core/internal/topology"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -27,52 +33,164 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/yaml"
 )
+
+// syncInformersFunc is the function used to warm the informer cache after a
+// context switch. It is a variable so tests can substitute a no-op without
+// needing a live Kubernetes cluster.
+var syncInformersFunc = informers.SyncInformers
+
+// connectivityCheckFunc verifies that the target cluster API server is
+// reachable before committing to the context switch.  Extracted as a variable
+// so tests can inject a stub without needing a real server.
+var connectivityCheckFunc = func(cs kubernetes.Interface, ctx context.Context) error {
+	_, err := cs.CoreV1().Namespaces().List(ctx, metav1.ListOptions{Limit: 1})
+	return err
+}
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// Generic handler factory with optional namespace filtering
-func MakeHandler(targetMap func() map[string]interface{}) http.HandlerFunc {
+// kindGVR maps the lowercase kind name used in API query params to its
+// Kubernetes GroupVersionResource. Used by HandleDelete and HandleGetYAML
+// to avoid duplicating a 25-case switch.
+var kindGVR = map[string]schema.GroupVersionResource{
+	"pod":                     {Group: "", Version: "v1", Resource: "pods"},
+	"deployment":              {Group: "apps", Version: "v1", Resource: "deployments"},
+	"service":                 {Group: "", Version: "v1", Resource: "services"},
+	"configmap":               {Group: "", Version: "v1", Resource: "configmaps"},
+	"secret":                  {Group: "", Version: "v1", Resource: "secrets"},
+	"ingress":                 {Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"},
+	"statefulset":             {Group: "apps", Version: "v1", Resource: "statefulsets"},
+	"daemonset":               {Group: "apps", Version: "v1", Resource: "daemonsets"},
+	"replicaset":              {Group: "apps", Version: "v1", Resource: "replicasets"},
+	"job":                     {Group: "batch", Version: "v1", Resource: "jobs"},
+	"cronjob":                 {Group: "batch", Version: "v1", Resource: "cronjobs"},
+	"horizontalpodautoscaler": {Group: "autoscaling", Version: "v1", Resource: "horizontalpodautoscalers"},
+	"poddisruptionbudget":     {Group: "policy", Version: "v1", Resource: "poddisruptionbudgets"},
+	"ingressclass":            {Group: "networking.k8s.io", Version: "v1", Resource: "ingressclasses"},
+	"networkpolicy":           {Group: "networking.k8s.io", Version: "v1", Resource: "networkpolicies"},
+	"endpoints":               {Group: "", Version: "v1", Resource: "endpoints"},
+	"pvc":                     {Group: "", Version: "v1", Resource: "persistentvolumeclaims"},
+	"pv":                      {Group: "", Version: "v1", Resource: "persistentvolumes"},
+	"storageclass":            {Group: "storage.k8s.io", Version: "v1", Resource: "storageclasses"},
+	"serviceaccount":          {Group: "", Version: "v1", Resource: "serviceaccounts"},
+	"role":                    {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "roles"},
+	"clusterrole":             {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterroles"},
+	"rolebinding":             {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "rolebindings"},
+	"clusterrolebinding":      {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterrolebindings"},
+	"node":                    {Group: "", Version: "v1", Resource: "nodes"},
+	"namespace":               {Group: "", Version: "v1", Resource: "namespaces"},
+	"crd":                     {Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"},
+}
+
+// clusterScopedKinds are not namespace-scoped; calls must omit the namespace.
+var clusterScopedKinds = map[string]bool{
+	"pv": true, "storageclass": true, "ingressclass": true,
+	"clusterrole": true, "clusterrolebinding": true,
+	"node": true, "namespace": true, "crd": true,
+}
+
+// listToIface converts a typed k8s list items slice into []interface{} for JSON
+// encoding. Used by the direct-API fallback functions in MakeHandler.
+func listToIface[T any](items []T) []interface{} {
+	result := make([]interface{}, len(items))
+	for i := range items {
+		result[i] = &items[i]
+	}
+	return result
+}
+
+// MakeHandler creates an HTTP handler that serves resources from the per-context
+// informer cache. An optional listFn provides a direct k8s API fallback used
+// when HasData is false, giving kubectl-like cold-start speed while informers
+// warm up in the background.
+func MakeHandler(
+	mapFn func(c *store.ContextCache) map[string]interface{},
+	listFn ...func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error),
+) http.HandlerFunc {
+	var fallback func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error)
+	if len(listFn) > 0 {
+		fallback = listFn[0]
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		ns := r.URL.Query().Get("namespace")
+
 		store.Store.RLock()
-		data := targetMap()
-		items := make([]interface{}, 0, len(data))
+		ac := store.Store.ActiveCache
+		store.Store.RUnlock()
+
+		if ac == nil {
+			http.Error(w, "no active context", http.StatusServiceUnavailable)
+			return
+		}
+
+		// Cold path: direct API call when the informer cache has never been populated.
+		if fallback != nil {
+			ac.RLock()
+			hasData := ac.HasData
+			cs := ac.Clientset
+			ac.RUnlock()
+			if !hasData && cs != nil {
+				items, err := fallback(r.Context(), cs, ns)
+				if err == nil {
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(items)
+					return
+				}
+				log.Printf("[Handler] direct fallback failed, serving cache: %v", err)
+			}
+		}
+
+		// Hot path: serve from informer cache.
+		ac.RLock()
+		data := mapFn(ac)
+		snapshot := make([]interface{}, 0, len(data))
 		for _, v := range data {
-			if ns != "" {
-				// Try to use metav1.Object interface (works for pointers to K8s structs)
+			snapshot = append(snapshot, v)
+		}
+		ac.RUnlock()
+
+		// Filter outside the lock.
+		items := snapshot
+		if ns != "" {
+			items = snapshot[:0]
+			for _, v := range snapshot {
 				if obj, ok := v.(metav1.Object); ok {
 					if obj.GetNamespace() != "" && obj.GetNamespace() != ns {
 						continue
 					}
 				} else if m, ok := v.(map[string]interface{}); ok {
-					// Fallback for map-based objects
 					if meta, ok := m["metadata"].(map[string]interface{}); ok {
 						if mns, ok := meta["namespace"].(string); ok && mns != "" && mns != ns {
 							continue
 						}
 					}
 				}
+				items = append(items, v)
 			}
-			items = append(items, v)
 		}
-		store.Store.RUnlock()
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
 		json.NewEncoder(w).Encode(items)
 	}
 }
 
 func HandleHealth(w http.ResponseWriter, r *http.Request) {
 	store.Store.RLock()
-	ready := store.Store.CacheReady
+	ac := store.Store.ActiveCache
 	store.Store.RUnlock()
+
+	var ready bool
+	if ac != nil {
+		ac.RLock()
+		ready = ac.CacheReady
+		ac.RUnlock()
+	}
+
 	if ready {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
@@ -82,44 +200,237 @@ func HandleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Specific handlers for common resources
+// Specific handlers for common resources.
+// Each handler registers a direct k8s API fallback used when the informer
+// cache is cold (HasData=false), providing kubectl-like cold-start speed.
+// CRDs are omitted from the fallback — they require the apiextensions client
+// which is not stored in the ContextCache Clientset.
 var (
-	HandleNodes       = MakeHandler(func() map[string]interface{} { return store.Store.Nodes })
-	HandlePods        = MakeHandler(func() map[string]interface{} { return store.Store.Pods })
-	HandleDeployments = MakeHandler(func() map[string]interface{} { return store.Store.Deployments })
+	HandleNodes = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Nodes },
+		func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
+			list, err := cs.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandlePods = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Pods },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandleDeployments = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Deployments },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.AppsV1().Deployments(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
 
 	// Workloads
-	HandleDaemonSets   = MakeHandler(func() map[string]interface{} { return store.Store.DaemonSets })
-	HandleStatefulSets = MakeHandler(func() map[string]interface{} { return store.Store.StatefulSets })
-	HandleReplicaSets  = MakeHandler(func() map[string]interface{} { return store.Store.ReplicaSets })
-	HandleJobs         = MakeHandler(func() map[string]interface{} { return store.Store.Jobs })
-	HandleCronJobs     = MakeHandler(func() map[string]interface{} { return store.Store.CronJobs })
-	HandleHPAs         = MakeHandler(func() map[string]interface{} { return store.Store.HPAs })
-	HandlePDBs         = MakeHandler(func() map[string]interface{} { return store.Store.PDBs })
+	HandleDaemonSets = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.DaemonSets },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.AppsV1().DaemonSets(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandleStatefulSets = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.StatefulSets },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.AppsV1().StatefulSets(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandleReplicaSets = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.ReplicaSets },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.AppsV1().ReplicaSets(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandleJobs = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Jobs },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.BatchV1().Jobs(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandleCronJobs = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.CronJobs },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.BatchV1().CronJobs(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandleHPAs = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.HPAs },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.AutoscalingV1().HorizontalPodAutoscalers(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandlePDBs = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.PDBs },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.PolicyV1().PodDisruptionBudgets(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
 
 	// Networking
-	HandleServices        = MakeHandler(func() map[string]interface{} { return store.Store.Services })
-	HandleIngresses       = MakeHandler(func() map[string]interface{} { return store.Store.Ingresses })
-	HandleIngressClasses  = MakeHandler(func() map[string]interface{} { return store.Store.IngressClasses })
-	HandleNetworkPolicies = MakeHandler(func() map[string]interface{} { return store.Store.NetworkPolicies })
-	HandleEndpoints       = MakeHandler(func() map[string]interface{} { return store.Store.Endpoints })
+	HandleServices = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Services },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.CoreV1().Services(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandleIngresses = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Ingresses },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.NetworkingV1().Ingresses(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandleIngressClasses = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.IngressClasses },
+		func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
+			list, err := cs.NetworkingV1().IngressClasses().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandleNetworkPolicies = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.NetworkPolicies },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.NetworkingV1().NetworkPolicies(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandleEndpoints = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Endpoints },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.CoreV1().Endpoints(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
 
 	// Config & Storage
-	HandleConfigMaps     = MakeHandler(func() map[string]interface{} { return store.Store.ConfigMaps })
-	HandleSecrets        = MakeHandler(func() map[string]interface{} { return store.Store.Secrets })
-	HandlePVCs           = MakeHandler(func() map[string]interface{} { return store.Store.PVCs })
-	HandlePVs            = MakeHandler(func() map[string]interface{} { return store.Store.PVs })
-	HandleStorageClasses = MakeHandler(func() map[string]interface{} { return store.Store.StorageClasses })
+	HandleConfigMaps = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.ConfigMaps },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.CoreV1().ConfigMaps(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandleSecrets = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Secrets },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.CoreV1().Secrets(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandlePVCs = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.PVCs },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.CoreV1().PersistentVolumeClaims(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandlePVs = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.PVs },
+		func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
+			list, err := cs.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandleStorageClasses = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.StorageClasses },
+		func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
+			list, err := cs.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
 
 	// Cluster & RBAC
-	HandleNamespaces          = MakeHandler(func() map[string]interface{} { return store.Store.Namespaces })
-	HandleCRDs                = MakeHandler(func() map[string]interface{} { return store.Store.CRDs })
-	HandleServiceAccounts     = MakeHandler(func() map[string]interface{} { return store.Store.ServiceAccounts })
-	HandleRoles               = MakeHandler(func() map[string]interface{} { return store.Store.Roles })
-	HandleClusterRoles        = MakeHandler(func() map[string]interface{} { return store.Store.ClusterRoles })
-	HandleRoleBindings        = MakeHandler(func() map[string]interface{} { return store.Store.RoleBindings })
-	HandleClusterRoleBindings = MakeHandler(func() map[string]interface{} { return store.Store.ClusterRoleBindings })
-	HandleEvents              = MakeHandler(func() map[string]interface{} { return store.Store.Events })
+	HandleNamespaces = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Namespaces },
+		func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
+			list, err := cs.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandleCRDs             = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.CRDs })
+	HandleServiceAccounts = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.ServiceAccounts },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.CoreV1().ServiceAccounts(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandleRoles = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Roles },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.RbacV1().Roles(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandleClusterRoles = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.ClusterRoles },
+		func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
+			list, err := cs.RbacV1().ClusterRoles().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandleRoleBindings = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.RoleBindings },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.RbacV1().RoleBindings(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandleClusterRoleBindings = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.ClusterRoleBindings },
+		func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
+			list, err := cs.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
+	HandleEvents = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Events },
+		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.CoreV1().Events(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		})
 )
 
 func HandleHelmList(w http.ResponseWriter, r *http.Request) {
@@ -134,7 +445,6 @@ func HandleHelmList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(releases)
 }
 
@@ -149,7 +459,6 @@ func HandleHelmStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Write([]byte(status))
 }
 
@@ -165,7 +474,6 @@ func HandleHelmValues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/yaml")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Write([]byte(values))
 }
 
@@ -180,7 +488,6 @@ func HandleHelmHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(history)
 }
 
@@ -208,8 +515,17 @@ func HandleLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stream, err := logs.StreamLogs(store.Store.Clientset, r.Context(), namespace, pod, container, tail, true)
+	log.Printf("[HandleLogs] Starting stream for %s/%s/%s", namespace, pod, container)
+
+	cs, _ := store.Store.ActiveClientset()
+	if cs == nil {
+		conn.WriteMessage(websocket.TextMessage, []byte("Error: no active context"))
+		return
+	}
+
+	stream, err := logs.StreamLogs(cs, r.Context(), namespace, pod, container, tail, true)
 	if err != nil {
+		log.Printf("[HandleLogs] Failed to start log stream for %s/%s: %v", namespace, pod, err)
 		conn.WriteMessage(websocket.TextMessage, []byte("Error: "+err.Error()))
 		return
 	}
@@ -219,7 +535,9 @@ func HandleLogs(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
-		log.Printf("Log streaming ended with error: %v", err)
+		log.Printf("[HandleLogs] Log streaming ended with error for %s/%s: %v", namespace, pod, err)
+	} else {
+		log.Printf("[HandleLogs] Log streaming ended normally for %s/%s", namespace, pod)
 	}
 }
 
@@ -230,16 +548,23 @@ func HandlePortForward(w http.ResponseWriter, r *http.Request) {
 	localPortStr := r.URL.Query().Get("localPort")
 	remotePortStr := r.URL.Query().Get("remotePort")
 
-	localPort, _ := strconv.Atoi(localPortStr)
-	remotePort, _ := strconv.Atoi(remotePortStr)
+	localPort, err := strconv.Atoi(localPortStr)
+	if err != nil || localPort <= 0 {
+		http.Error(w, "invalid localPort: must be a positive integer", http.StatusBadRequest)
+		return
+	}
+	remotePort, err := strconv.Atoi(remotePortStr)
+	if err != nil || remotePort <= 0 {
+		http.Error(w, "invalid remotePort: must be a positive integer", http.StatusBadRequest)
+		return
+	}
 
-	if id == "" || namespace == "" || pod == "" || localPort == 0 || remotePort == 0 {
+	if id == "" || namespace == "" || pod == "" {
 		http.Error(w, "missing required parameters", http.StatusBadRequest)
 		return
 	}
 
-	err := portforward.Manager.StartForward(id, namespace, pod, localPort, remotePort)
-	if err != nil {
+	if err = portforward.Manager.StartForward(id, namespace, pod, localPort, remotePort); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -263,32 +588,42 @@ func HandleScale(w http.ResponseWriter, r *http.Request) {
 	kind := r.URL.Query().Get("kind") // deployment, statefulset
 	name := r.URL.Query().Get("name")
 	replicasStr := r.URL.Query().Get("replicas")
-	replicas, _ := strconv.Atoi(replicasStr)
+	replicas, err := strconv.Atoi(replicasStr)
+	if err != nil || replicasStr == "" || replicas < 0 {
+		http.Error(w, "invalid replicas: must be a non-negative integer", http.StatusBadRequest)
+		return
+	}
 
 	if namespace == "" || name == "" || kind == "" {
 		http.Error(w, "missing required parameters", http.StatusBadRequest)
 		return
 	}
 
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	cs, _ := store.Store.ActiveClientset()
+	if cs == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		switch kind {
 		case "deployment":
-			deploy, err := store.Store.Clientset.AppsV1().Deployments(namespace).Get(r.Context(), name, metav1.GetOptions{})
+			deploy, err := cs.AppsV1().Deployments(namespace).Get(r.Context(), name, metav1.GetOptions{})
 			if err != nil {
 				return err
 			}
 			rep := int32(replicas)
 			deploy.Spec.Replicas = &rep
-			_, err = store.Store.Clientset.AppsV1().Deployments(namespace).Update(r.Context(), deploy, metav1.UpdateOptions{})
+			_, err = cs.AppsV1().Deployments(namespace).Update(r.Context(), deploy, metav1.UpdateOptions{})
 			return err
 		case "statefulset":
-			sts, err := store.Store.Clientset.AppsV1().StatefulSets(namespace).Get(r.Context(), name, metav1.GetOptions{})
+			sts, err := cs.AppsV1().StatefulSets(namespace).Get(r.Context(), name, metav1.GetOptions{})
 			if err != nil {
 				return err
 			}
 			rep := int32(replicas)
 			sts.Spec.Replicas = &rep
-			_, err = store.Store.Clientset.AppsV1().StatefulSets(namespace).Update(r.Context(), sts, metav1.UpdateOptions{})
+			_, err = cs.AppsV1().StatefulSets(namespace).Update(r.Context(), sts, metav1.UpdateOptions{})
 			return err
 		default:
 			return fmt.Errorf("unsupported kind for scale: %s", kind)
@@ -313,68 +648,28 @@ func HandleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var err error
-	switch kind {
-	case "pod":
-		err = store.Store.Clientset.CoreV1().Pods(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "deployment":
-		err = store.Store.Clientset.AppsV1().Deployments(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "service":
-		err = store.Store.Clientset.CoreV1().Services(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "configmap":
-		err = store.Store.Clientset.CoreV1().ConfigMaps(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "secret":
-		err = store.Store.Clientset.CoreV1().Secrets(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "ingress":
-		err = store.Store.Clientset.NetworkingV1().Ingresses(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "statefulset":
-		err = store.Store.Clientset.AppsV1().StatefulSets(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "daemonset":
-		err = store.Store.Clientset.AppsV1().DaemonSets(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "replicaset":
-		err = store.Store.Clientset.AppsV1().ReplicaSets(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "job":
-		err = store.Store.Clientset.BatchV1().Jobs(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "cronjob":
-		err = store.Store.Clientset.BatchV1().CronJobs(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "horizontalpodautoscaler":
-		err = store.Store.Clientset.AutoscalingV1().HorizontalPodAutoscalers(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "poddisruptionbudget":
-		err = store.Store.Clientset.PolicyV1().PodDisruptionBudgets(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "ingressclass":
-		err = store.Store.Clientset.NetworkingV1().IngressClasses().Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "networkpolicy":
-		err = store.Store.Clientset.NetworkingV1().NetworkPolicies(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "endpoints":
-		err = store.Store.Clientset.CoreV1().Endpoints(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "pvc":
-		err = store.Store.Clientset.CoreV1().PersistentVolumeClaims(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "pv":
-		err = store.Store.Clientset.CoreV1().PersistentVolumes().Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "storageclass":
-		err = store.Store.Clientset.StorageV1().StorageClasses().Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "serviceaccount":
-		err = store.Store.Clientset.CoreV1().ServiceAccounts(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "role":
-		err = store.Store.Clientset.RbacV1().Roles(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "clusterrole":
-		err = store.Store.Clientset.RbacV1().ClusterRoles().Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "rolebinding":
-		err = store.Store.Clientset.RbacV1().RoleBindings(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "clusterrolebinding":
-		err = store.Store.Clientset.RbacV1().ClusterRoleBindings().Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "node":
-		err = store.Store.Clientset.CoreV1().Nodes().Delete(r.Context(), name, metav1.DeleteOptions{})
-	case "crd":
-		dynClient, dynErr := dynamic.NewForConfig(store.Store.Config)
-		if dynErr != nil {
-			err = fmt.Errorf("failed to create dynamic client: %v", dynErr)
-		} else {
-			gvr := schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}
-			err = dynClient.Resource(gvr).Delete(r.Context(), name, metav1.DeleteOptions{})
-		}
-	default:
-		err = fmt.Errorf("unsupported kind for delete: %s", kind)
+	gvr, ok := kindGVR[kind]
+	if !ok {
+		http.Error(w, fmt.Sprintf("unsupported kind: %s", kind), http.StatusBadRequest)
+		return
+	}
+
+	_, cfg := store.Store.ActiveClientset()
+	if cfg == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
+	dynClient, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if clusterScopedKinds[kind] {
+		err = dynClient.Resource(gvr).Delete(r.Context(), name, metav1.DeleteOptions{})
+	} else {
+		err = dynClient.Resource(gvr).Namespace(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
 	}
 
 	if err != nil {
@@ -399,15 +694,21 @@ func HandleRolloutRestart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cs, _ := store.Store.ActiveClientset()
+	if cs == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
 	data := fmt.Sprintf(`{"spec": {"template": {"metadata": {"annotations": {"kubectl.kubernetes.io/restartedAt": "%s"}}}}}`, time.Now().Format(time.RFC3339))
 	var err error
 	switch kind {
 	case "deployment":
-		_, err = store.Store.Clientset.AppsV1().Deployments(namespace).Patch(r.Context(), name, types.StrategicMergePatchType, []byte(data), metav1.PatchOptions{})
+		_, err = cs.AppsV1().Deployments(namespace).Patch(r.Context(), name, types.StrategicMergePatchType, []byte(data), metav1.PatchOptions{})
 	case "daemonset":
-		_, err = store.Store.Clientset.AppsV1().DaemonSets(namespace).Patch(r.Context(), name, types.StrategicMergePatchType, []byte(data), metav1.PatchOptions{})
+		_, err = cs.AppsV1().DaemonSets(namespace).Patch(r.Context(), name, types.StrategicMergePatchType, []byte(data), metav1.PatchOptions{})
 	case "statefulset":
-		_, err = store.Store.Clientset.AppsV1().StatefulSets(namespace).Patch(r.Context(), name, types.StrategicMergePatchType, []byte(data), metav1.PatchOptions{})
+		_, err = cs.AppsV1().StatefulSets(namespace).Patch(r.Context(), name, types.StrategicMergePatchType, []byte(data), metav1.PatchOptions{})
 	default:
 		err = fmt.Errorf("unsupported kind for rollout restart: %s", kind)
 	}
@@ -429,40 +730,42 @@ func HandleGetYAML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var obj interface{}
-	var err error
-	switch kind {
-	case "pod":
-		obj, err = store.Store.Clientset.CoreV1().Pods(namespace).Get(r.Context(), name, metav1.GetOptions{})
-	case "deployment":
-		obj, err = store.Store.Clientset.AppsV1().Deployments(namespace).Get(r.Context(), name, metav1.GetOptions{})
-	case "service":
-		obj, err = store.Store.Clientset.CoreV1().Services(namespace).Get(r.Context(), name, metav1.GetOptions{})
-	case "configmap":
-		obj, err = store.Store.Clientset.CoreV1().ConfigMaps(namespace).Get(r.Context(), name, metav1.GetOptions{})
-	case "secret":
-		obj, err = store.Store.Clientset.CoreV1().Secrets(namespace).Get(r.Context(), name, metav1.GetOptions{})
-	case "ingress":
-		obj, err = store.Store.Clientset.NetworkingV1().Ingresses(namespace).Get(r.Context(), name, metav1.GetOptions{})
-	case "node":
-		obj, err = store.Store.Clientset.CoreV1().Nodes().Get(r.Context(), name, metav1.GetOptions{})
-	default:
-		err = fmt.Errorf("unsupported kind for get yaml: %s", kind)
+	gvr, ok := kindGVR[kind]
+	if !ok {
+		http.Error(w, fmt.Sprintf("unsupported kind: %s", kind), http.StatusBadRequest)
+		return
 	}
 
+	_, cfg := store.Store.ActiveClientset()
+	if cfg == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
+	dynClient, err := dynamic.NewForConfig(cfg)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	y, err := yaml.Marshal(obj)
+	var obj *unstructured.Unstructured
+	if clusterScopedKinds[kind] {
+		obj, err = dynClient.Resource(gvr).Get(r.Context(), name, metav1.GetOptions{})
+	} else {
+		obj, err = dynClient.Resource(gvr).Namespace(namespace).Get(r.Context(), name, metav1.GetOptions{})
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	y, err := yaml.Marshal(obj.Object)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/yaml")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Write(y)
 }
 
@@ -472,9 +775,10 @@ func HandleApplyYAML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10 MB limit
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "request body too large or unreadable", http.StatusRequestEntityTooLarge)
 		return
 	}
 
@@ -485,13 +789,19 @@ func HandleApplyYAML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, cfg := store.Store.ActiveClientset()
+	if cfg == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
 	// 2. Setup dynamic and discovery clients
-	dc, err := discovery.NewDiscoveryClientForConfig(store.Store.Config)
+	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	dyn, err := dynamic.NewForConfig(store.Store.Config)
+	dyn, err := dynamic.NewForConfig(cfg)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -511,8 +821,7 @@ func HandleApplyYAML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. Apply (use Server-Side Apply if supported, otherwise just Create/Update)
-	// For simplicity, we'll use Patch with ApplyPatchType
+	// 4. Apply using Server-Side Apply
 	namespace := obj.GetNamespace()
 	name := obj.GetName()
 
@@ -545,7 +854,13 @@ func HandleGetSecretValue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	secret, err := store.Store.Clientset.CoreV1().Secrets(namespace).Get(r.Context(), name, metav1.GetOptions{})
+	cs, _ := store.Store.ActiveClientset()
+	if cs == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
+	secret, err := cs.CoreV1().Secrets(namespace).Get(r.Context(), name, metav1.GetOptions{})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -557,7 +872,6 @@ func HandleGetSecretValue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Write(val)
 }
 
@@ -572,12 +886,18 @@ func HandleExecOneShot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cs, cfg := store.Store.ActiveClientset()
+	if cs == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
 	// Capture output
 	out := &captureWriter{}
 	errOut := &captureWriter{}
 
-	err := exec.Exec(store.Store.Clientset, store.Store.Config, namespace, pod, container, command, nil, out, errOut, false)
-	
+	err := exec.Exec(r.Context(), cs, cfg, namespace, pod, container, command, nil, out, errOut, false)
+
 	resp := map[string]interface{}{
 		"stdout": out.String(),
 		"stderr": errOut.String(),
@@ -587,7 +907,6 @@ func HandleExecOneShot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(resp)
 }
 
@@ -612,10 +931,21 @@ func HandleExec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("[HandleExec] Starting interactive session for %s/%s/%s", namespace, pod, container)
+
+	cs, cfg := store.Store.ActiveClientset()
+	if cs == nil {
+		conn.WriteMessage(websocket.TextMessage, []byte("Error: no active context"))
+		return
+	}
+
 	stream := &wsStream{conn: conn}
-	err = exec.Exec(store.Store.Clientset, store.Store.Config, namespace, pod, container, command, stream, stream, stream, true)
+	err = exec.Exec(r.Context(), cs, cfg, namespace, pod, container, command, stream, stream, stream, true)
 	if err != nil {
+		log.Printf("[HandleExec] Session ended with error for %s/%s: %v", namespace, pod, err)
 		conn.WriteMessage(websocket.TextMessage, []byte("\r\nExec failed: "+err.Error()))
+	} else {
+		log.Printf("[HandleExec] Session ended normally for %s/%s", namespace, pod)
 	}
 }
 
@@ -630,14 +960,26 @@ func HandleCPFrom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/x-tar")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	command := []string{"tar", "cf", "-", srcPath}
-	err := exec.Exec(store.Store.Clientset, store.Store.Config, namespace, pod, container, command, nil, w, w, false)
-	if err != nil {
-		log.Printf("CP FROM failed: %v", err)
+	cs, cfg := store.Store.ActiveClientset()
+	if cs == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
 	}
+
+	// Stream raw file bytes from the container using cat.
+	// The client writes them directly to disk — no tar needed for download.
+	content := &bytes.Buffer{}
+	stderrBuf := &captureWriter{}
+	catErr := exec.Exec(r.Context(), cs, cfg, namespace, pod, container,
+		[]string{"cat", srcPath}, nil, content, stderrBuf, false)
+	if catErr != nil {
+		http.Error(w, "failed to read file from container: "+catErr.Error(), http.StatusInternalServerError)
+		log.Printf("CP FROM cat failed for %s/%s %s: %v (stderr: %s)", namespace, pod, srcPath, catErr, stderrBuf.String())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Write(content.Bytes())
 }
 
 func HandleCPTo(w http.ResponseWriter, r *http.Request) {
@@ -651,13 +993,23 @@ func HandleCPTo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	command := []string{"tar", "xf", "-", "-C", destPath}
-	err := exec.Exec(store.Store.Clientset, store.Store.Config, namespace, pod, container, command, r.Body, w, w, false)
+	cs, cfg := store.Store.ActiveClientset()
+	if cs == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
+	// The client packs the file as a tar with just the basename as the entry name.
+	// Extract to the parent directory of destPath so the file lands at destPath.
+	// stdout/stderr go to a buffer — writing them to w would trigger "superfluous WriteHeader".
+	destDir := path.Dir(destPath)
+	outBuf := &captureWriter{}
+	command := []string{"tar", "xf", "-", "-C", destDir}
+	err := exec.Exec(r.Context(), cs, cfg, namespace, pod, container, command, r.Body, outBuf, outBuf, false)
 	if err != nil {
 		http.Error(w, "CP TO failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -669,7 +1021,6 @@ func HandleGetContexts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(config.Contexts)
 }
 
@@ -680,7 +1031,6 @@ func HandleGetCurrentContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Write([]byte(config.CurrentContext))
 }
 
@@ -691,7 +1041,7 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Load kubeconfig, validate context, write new current-context to disk.
+	// 1. Load kubeconfig and validate the context exists (in-app switch only — never writes to disk).
 	kubeconfigFile, err := clientcmd.LoadFromFile(store.Store.Kubeconfig)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -699,11 +1049,6 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, ok := kubeconfigFile.Contexts[contextName]; !ok {
 		http.Error(w, "context not found", http.StatusNotFound)
-		return
-	}
-	kubeconfigFile.CurrentContext = contextName
-	if err = clientcmd.WriteToFile(*kubeconfigFile, store.Store.Kubeconfig); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -716,34 +1061,87 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to build REST config for context: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	restConfig.QPS = 50
+	restConfig.Burst = 100
 	clientset, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		http.Error(w, "failed to create clientset: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// 3. Stop old informers, clear all cached resource maps, swap in new clients.
-	store.Store.Lock()
-	if store.Store.InformerStopCh != nil {
-		close(store.Store.InformerStopCh)
+	// 3. Get or create the cache for this context.
+	newCache, isNew := store.Store.GetOrCreateCache(contextName, clientset, restConfig)
+
+	// 4. Snapshot old active cache and stop its informers.
+	store.Store.RLock()
+	oldCache := store.Store.ActiveCache
+	store.Store.RUnlock()
+
+	if oldCache != nil && oldCache != newCache {
+		oldCache.Lock()
+		if oldCache.StopCh != nil {
+			close(oldCache.StopCh)
+			oldCache.StopCh = nil
+		}
+		oldCache.Unlock()
 	}
-	newStopCh := make(chan struct{})
-	store.Store.InformerStopCh = newStopCh
-	store.Store.Config = restConfig
-	store.Store.Clientset = clientset
-	store.Store.ClearMaps()
+
+	// 5. Quick connectivity check (5s).
+	checkCtx, checkCancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer checkCancel()
+	if err := connectivityCheckFunc(clientset, checkCtx); err != nil {
+		log.Printf("[SwitchContext] cluster %q unreachable (%v) — rolling back", contextName, err)
+
+		// Rollback: restore old active cache and restart its informers.
+		store.Store.Lock()
+		store.Store.ActiveCache = oldCache
+		store.Store.Unlock()
+
+		if oldCache != nil {
+			portforward.Manager.UpdateClients(oldCache.Clientset, oldCache.Config)
+			go informers.RestartInformers(oldCache)
+		}
+		http.Error(w, fmt.Sprintf("cluster %q unreachable — reverted to previous context", contextName), http.StatusServiceUnavailable)
+		return
+	}
+
+	// 6a. If we have cached data for this context, instant switch.
+	newCache.RLock()
+	hasData := newCache.HasData
+	newCache.RUnlock()
+
+	store.Store.Lock()
+	store.Store.ActiveCache = newCache
 	store.Store.Unlock()
 
-	// 4. Update port-forward manager so new forwards created after this switch
-	//    use the new context's credentials. Existing forwards keep their own
-	//    snapshotted restConfig and continue running uninterrupted.
 	portforward.Manager.UpdateClients(clientset, restConfig)
 
-	// 5. Start fresh informers and block until the cache is warm (or 20s timeout).
-	//    This ensures the 200 response is only sent once the UI will have data to show.
-	informers.SyncInformers(clientset, newStopCh, 20*time.Second)
+	if !isNew && hasData {
+		// Known context: serve stale cache immediately, refresh in background.
+		log.Printf("[SwitchContext] instant switch to %q (cached) — refreshing informers in background", contextName)
+		go func() {
+			informers.RestartInformers(newCache)
+			newCache.Lock()
+			newCache.CacheReady = true
+			newCache.Unlock()
+			log.Printf("[SwitchContext] informer refresh complete for %q", contextName)
+		}()
+	} else {
+		// 6b. New context or cache has no data yet: warm informers in background.
+		newStopCh := make(chan struct{})
+		newCache.Lock()
+		newCache.StopCh = newStopCh
+		newCache.Unlock()
+		go func() {
+			syncInformersFunc(newCache, newStopCh, 60*time.Second)
+			newCache.Lock()
+			newCache.CacheReady = true
+			newCache.Unlock()
+			log.Printf("[SwitchContext] cache sync complete for %q", contextName)
+		}()
+	}
 
-	log.Printf("[SwitchContext] switched to %q — cache synced", contextName)
+	log.Printf("[SwitchContext] switched to %q", contextName)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -751,15 +1149,13 @@ func HandleHelmRollback(w http.ResponseWriter, r *http.Request) {
 	namespace := r.URL.Query().Get("namespace")
 	releaseName := r.URL.Query().Get("release")
 	revisionStr := r.URL.Query().Get("revision")
-	revision, _ := strconv.Atoi(revisionStr)
-
-	if namespace == "" || releaseName == "" || revision == 0 {
-		http.Error(w, "missing required parameters", http.StatusBadRequest)
+	revision, err := strconv.Atoi(revisionStr)
+	if err != nil || revisionStr == "" || revision <= 0 {
+		http.Error(w, "invalid revision: must be a positive integer", http.StatusBadRequest)
 		return
 	}
 
-	err := helm.RollbackRelease(namespace, releaseName, revision)
-	if err != nil {
+	if err = helm.RollbackRelease(namespace, releaseName, revision); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -767,12 +1163,22 @@ func HandleHelmRollback(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleGetPodMetrics(w http.ResponseWriter, r *http.Request) {
+	cs, _ := store.Store.ActiveClientset()
+	if cs == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+	concreteCS, ok := cs.(*kubernetes.Clientset)
+	if !ok {
+		http.Error(w, "metrics unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	ns := r.URL.Query().Get("namespace")
 	path := "/apis/metrics.k8s.io/v1beta1/pods"
 	if ns != "" {
 		path = "/apis/metrics.k8s.io/v1beta1/namespaces/" + ns + "/pods"
 	}
-	data, err := store.Store.Clientset.RESTClient().Get().AbsPath(path).DoRaw(r.Context())
+	data, err := concreteCS.RESTClient().Get().AbsPath(path).DoRaw(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -782,7 +1188,17 @@ func HandleGetPodMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleGetNodeMetrics(w http.ResponseWriter, r *http.Request) {
-	data, err := store.Store.Clientset.RESTClient().Get().AbsPath("/apis/metrics.k8s.io/v1beta1/nodes").DoRaw(r.Context())
+	cs, _ := store.Store.ActiveClientset()
+	if cs == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+	concreteCS, ok := cs.(*kubernetes.Clientset)
+	if !ok {
+		http.Error(w, "metrics unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	data, err := concreteCS.RESTClient().Get().AbsPath("/apis/metrics.k8s.io/v1beta1/nodes").DoRaw(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -798,6 +1214,12 @@ func HandleCreateDebugPod(w http.ResponseWriter, r *http.Request) {
 
 	if ns == "" || image == "" || name == "" {
 		http.Error(w, "namespace, image, and name are required", http.StatusBadRequest)
+		return
+	}
+
+	cs, _ := store.Store.ActiveClientset()
+	if cs == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -819,7 +1241,7 @@ func HandleCreateDebugPod(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	_, err := store.Store.Clientset.CoreV1().Pods(ns).Create(r.Context(), pod, metav1.CreateOptions{})
+	_, err := cs.CoreV1().Pods(ns).Create(r.Context(), pod, metav1.CreateOptions{})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -855,18 +1277,24 @@ func HandleRolloutHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cs, _ := store.Store.ActiveClientset()
+	if cs == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
 	// Basic implementation: List ReplicaSets for Deployments or ControllerRevisions for StatefulSets
 	var history interface{}
 	var err error
 	switch kind {
 	case "deployment":
-		list, e := store.Store.Clientset.AppsV1().ReplicaSets(namespace).List(r.Context(), metav1.ListOptions{
+		list, e := cs.AppsV1().ReplicaSets(namespace).List(r.Context(), metav1.ListOptions{
 			LabelSelector: fmt.Sprintf("app=%s", name), // This is a simplification
 		})
 		history = list
 		err = e
 	case "statefulset":
-		list, e := store.Store.Clientset.AppsV1().ControllerRevisions(namespace).List(r.Context(), metav1.ListOptions{
+		list, e := cs.AppsV1().ControllerRevisions(namespace).List(r.Context(), metav1.ListOptions{
 			LabelSelector: fmt.Sprintf("app=%s", name), // Simplification
 		})
 		history = list
@@ -881,7 +1309,6 @@ func HandleRolloutHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(history)
 }
 
@@ -890,27 +1317,127 @@ func HandleRolloutUndo(w http.ResponseWriter, r *http.Request) {
 	kind := r.URL.Query().Get("kind")
 	name := r.URL.Query().Get("name")
 	revisionStr := r.URL.Query().Get("revision")
-	revision, _ := strconv.Atoi(revisionStr)
+	var targetRevision int64
+	if revisionStr != "" {
+		var parseErr error
+		targetRevision, parseErr = strconv.ParseInt(revisionStr, 10, 64)
+		if parseErr != nil || targetRevision < 0 {
+			http.Error(w, "invalid revision: must be a non-negative integer", http.StatusBadRequest)
+			return
+		}
+	}
 
 	if namespace == "" || name == "" || kind == "" {
 		http.Error(w, "missing required parameters", http.StatusBadRequest)
 		return
 	}
 
-	// Implementation using rollback logic
-	// For simplicity, we'll use the k8s logic for rollout undo
-	// This usually involves finding the target revision and patching the resource
-	// I'll implement a basic version that sets the revision annotation if provided,
-	// or triggers a standard rollback.
-	
-	// Since full undo logic is complex to re-implement without kubectl codebase,
-	// we'll return a 501 if we can't find a clean way, or try to use SSA.
-	// Actually, let's just return success for the API for now or implement a basic patch.
-	log.Printf("[Rollout] Undo requested for %s/%s in %s (rev: %d)", kind, name, namespace, revision)
-	
-	// TODO: Full implementation of Rollout Undo logic.
-	// For now, let's at least acknowledge and log it.
-	http.Error(w, "Rollout undo logic is pending full implementation", http.StatusNotImplemented)
+	var err error
+	switch kind {
+	case "deployment":
+		err = undoDeploymentRollout(r.Context(), namespace, name, targetRevision)
+	default:
+		http.Error(w, fmt.Sprintf("rollout undo not supported for kind: %s", kind), http.StatusBadRequest)
+		return
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// parseRevision reads the "deployment.kubernetes.io/revision" annotation and
+// returns (revision, true) on success, or (0, false) if the annotation is
+// absent or non-numeric. Centralises the repeated strconv.ParseInt call so
+// callers can distinguish a missing annotation from an explicit revision 0.
+func parseRevision(ann map[string]string) (int64, bool) {
+	s, ok := ann["deployment.kubernetes.io/revision"]
+	if !ok || s == "" {
+		return 0, false
+	}
+	v, err := strconv.ParseInt(s, 10, 64)
+	return v, err == nil
+}
+
+// undoDeploymentRollout reverts a Deployment to a previous revision by finding
+// the matching ReplicaSet and patching the Deployment's pod template to match.
+// If targetRevision is 0, it uses the second-most-recent revision (standard "undo").
+func undoDeploymentRollout(ctx context.Context, namespace, name string, targetRevision int64) error {
+	clientset, _ := store.Store.ActiveClientset()
+	if clientset == nil {
+		return fmt.Errorf("no active context")
+	}
+
+	deploy, err := clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get deployment: %w", err)
+	}
+	currentRevision, hasRevision := parseRevision(deploy.Annotations)
+	if !hasRevision {
+		return fmt.Errorf("deployment %s has no revision annotation; rollout history not available", name)
+	}
+
+	// List ReplicaSets matching this deployment's selector.
+	selector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
+	if err != nil {
+		return fmt.Errorf("failed to build label selector: %w", err)
+	}
+	rsList, err := clientset.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: selector.String(),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list replicasets: %w", err)
+	}
+
+	// Keep only ReplicaSets owned by this deployment.
+	owned := make([]appsv1.ReplicaSet, 0, len(rsList.Items))
+	for _, rs := range rsList.Items {
+		for _, ref := range rs.OwnerReferences {
+			if ref.Kind == "Deployment" && ref.Name == name {
+				owned = append(owned, rs)
+				break
+			}
+		}
+	}
+	if len(owned) == 0 {
+		return fmt.Errorf("no replicasets found for deployment %s", name)
+	}
+
+	// Find the target ReplicaSet by revision annotation.
+	var targetRS *appsv1.ReplicaSet
+	if targetRevision == 0 {
+		// Find the highest revision that is NOT the current one.
+		var bestRev int64
+		for i := range owned {
+			if rev, ok := parseRevision(owned[i].Annotations); ok && rev != currentRevision && rev > bestRev {
+				bestRev = rev
+				targetRS = &owned[i]
+			}
+		}
+	} else {
+		for i := range owned {
+			if rev, ok := parseRevision(owned[i].Annotations); ok && rev == targetRevision {
+				targetRS = &owned[i]
+				break
+			}
+		}
+	}
+	if targetRS == nil {
+		return fmt.Errorf("target revision not found (requested %d, current %d)", targetRevision, currentRevision)
+	}
+
+	// Patch the deployment's pod template to match the target ReplicaSet.
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		current, err := clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		current.Spec.Template = targetRS.Spec.Template
+		_, err = clientset.AppsV1().Deployments(namespace).Update(ctx, current, metav1.UpdateOptions{})
+		return err
+	})
 }
 
 type wsStream struct {
@@ -947,11 +1474,54 @@ func (w *captureWriter) String() string {
 	return string(w.data)
 }
 
+// topologyCache holds a short-lived cached result per namespace key so that
+// rapid successive requests (e.g. the network panel re-mounting) don't trigger
+// a full store scan on every call.
+var topoCache struct {
+	sync.Mutex
+	entries map[string]topoCacheEntry
+}
+
+func init() {
+	topoCache.entries = make(map[string]topoCacheEntry)
+}
+
+type topoCacheEntry struct {
+	topo    *topology.Topology
+	builtAt time.Time
+}
+
+const topoCacheTTL = 5 * time.Second
+
 func HandleTopology(w http.ResponseWriter, r *http.Request) {
 	ns := r.URL.Query().Get("namespace")
-	topo := topology.BuildTopology(ns)
+
+	store.Store.RLock()
+	ac := store.Store.ActiveCache
+	store.Store.RUnlock()
+
+	if ac == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
+	topoCache.Lock()
+	entry, ok := topoCache.entries[ns]
+	if ok && time.Since(entry.builtAt) < topoCacheTTL {
+		topo := entry.topo
+		topoCache.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(topo)
+		return
+	}
+	topoCache.Unlock()
+
+	topo := topology.BuildTopology(ns, ac)
+
+	topoCache.Lock()
+	topoCache.entries[ns] = topoCacheEntry{topo: topo, builtAt: time.Now()}
+	topoCache.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(topo)
 }

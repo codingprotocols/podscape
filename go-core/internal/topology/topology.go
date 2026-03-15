@@ -2,6 +2,7 @@ package topology
 
 import (
 	"fmt"
+
 	"github.com/podscape/go-core/internal/store"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -61,15 +62,18 @@ type Topology struct {
 	Namespaces []string       `json:"namespaces"`
 }
 
-func BuildTopology(nsFilter string) *Topology {
+// BuildTopology builds the network topology graph for the given namespace filter
+// from the provided context cache. Caller must NOT hold c's lock; this function
+// acquires c.RLock() internally for the duration of the build.
+func BuildTopology(nsFilter string, c *store.ContextCache) *Topology {
 	topo := &Topology{
 		Nodes:      []TopologyNode{},
 		Edges:      []TopologyEdge{},
 		Namespaces: []string{},
 	}
 
-	store.Store.RLock()
-	defer store.Store.RUnlock()
+	c.RLock()
+	defer c.RUnlock()
 
 	edgeMap := make(map[string]bool)
 	nsMap := make(map[string]bool)
@@ -89,7 +93,7 @@ func BuildTopology(nsFilter string) *Topology {
 	}
 
 	// 1. Process Nodes (Cluster Level)
-	for _, nObj := range store.Store.Nodes {
+	for _, nObj := range c.Nodes {
 		node := nObj.(*corev1.Node)
 		topo.Nodes = append(topo.Nodes, TopologyNode{
 			ID:   fmt.Sprintf("node:%s", node.Name),
@@ -99,7 +103,7 @@ func BuildTopology(nsFilter string) *Topology {
 	}
 
 	// 2. Process Ingresses
-	for _, iObj := range store.Store.Ingresses {
+	for _, iObj := range c.Ingresses {
 		ing := iObj.(*networkingv1.Ingress)
 		if nsFilter != "" && ing.Namespace != nsFilter {
 			continue
@@ -133,7 +137,7 @@ func BuildTopology(nsFilter string) *Topology {
 	}
 
 	// 3. Process Services
-	for _, sObj := range store.Store.Services {
+	for _, sObj := range c.Services {
 		svc := sObj.(*corev1.Service)
 		if nsFilter != "" && svc.Namespace != nsFilter {
 			continue
@@ -157,7 +161,7 @@ func BuildTopology(nsFilter string) *Topology {
 	}
 
 	// 4. Process Pods
-	for _, pObj := range store.Store.Pods {
+	for _, pObj := range c.Pods {
 		pod := pObj.(*corev1.Pod)
 		if nsFilter != "" && pod.Namespace != nsFilter {
 			continue
@@ -194,7 +198,7 @@ func BuildTopology(nsFilter string) *Topology {
 		}
 
 		// Service -> Pod matching
-		for _, sObj := range store.Store.Services {
+		for _, sObj := range c.Services {
 			svc := sObj.(*corev1.Service)
 			if svc.Namespace != pod.Namespace {
 				continue
@@ -236,33 +240,33 @@ func BuildTopology(nsFilter string) *Topology {
 		}
 	}
 
-	for _, dObj := range store.Store.Deployments {
+	for _, dObj := range c.Deployments {
 		d := dObj.(*appsv1.Deployment)
 		processWorkload("Deployment", d.Name, d.Namespace, d.OwnerReferences)
 	}
-	for _, rsObj := range store.Store.ReplicaSets {
+	for _, rsObj := range c.ReplicaSets {
 		rs := rsObj.(*appsv1.ReplicaSet)
 		processWorkload("ReplicaSet", rs.Name, rs.Namespace, rs.OwnerReferences)
 	}
-	for _, dsObj := range store.Store.DaemonSets {
+	for _, dsObj := range c.DaemonSets {
 		ds := dsObj.(*appsv1.DaemonSet)
 		processWorkload("DaemonSet", ds.Name, ds.Namespace, ds.OwnerReferences)
 	}
-	for _, stsObj := range store.Store.StatefulSets {
+	for _, stsObj := range c.StatefulSets {
 		sts := stsObj.(*appsv1.StatefulSet)
 		processWorkload("StatefulSet", sts.Name, sts.Namespace, sts.OwnerReferences)
 	}
-	for _, jObj := range store.Store.Jobs {
+	for _, jObj := range c.Jobs {
 		j := jObj.(*batchv1.Job)
 		processWorkload("Job", j.Name, j.Namespace, j.OwnerReferences)
 	}
-	for _, cjObj := range store.Store.CronJobs {
+	for _, cjObj := range c.CronJobs {
 		cj := cjObj.(*batchv1.CronJob)
 		processWorkload("CronJob", cj.Name, cj.Namespace, cj.OwnerReferences)
 	}
 
 	// 6. Process PVCs
-	for _, pvcObj := range store.Store.PVCs {
+	for _, pvcObj := range c.PVCs {
 		pvc := pvcObj.(*corev1.PersistentVolumeClaim)
 		if nsFilter != "" && pvc.Namespace != nsFilter {
 			continue
@@ -279,7 +283,7 @@ func BuildTopology(nsFilter string) *Topology {
 	}
 
 	// 7. Process Network Policies
-	for _, polObj := range store.Store.NetworkPolicies {
+	for _, polObj := range c.NetworkPolicies {
 		pol := polObj.(*networkingv1.NetworkPolicy)
 		if nsFilter != "" && pol.Namespace != nsFilter {
 			continue
@@ -294,7 +298,7 @@ func BuildTopology(nsFilter string) *Topology {
 		})
 
 		// Policy -> Pods (Target)
-		for _, pObj := range store.Store.Pods {
+		for _, pObj := range c.Pods {
 			pod := pObj.(*corev1.Pod)
 			if pod.Namespace != pol.Namespace {
 				continue

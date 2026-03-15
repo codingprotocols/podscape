@@ -11,7 +11,7 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 )
 
-func Exec(clientset *kubernetes.Clientset, config *rest.Config, ns, pod, container string, command []string, stdin io.Reader, stdout, stderr io.Writer, tty bool) error {
+func Exec(ctx context.Context, clientset kubernetes.Interface, config *rest.Config, ns, pod, container string, command []string, stdin io.Reader, stdout, stderr io.Writer, tty bool) error {
 	req := clientset.CoreV1().RESTClient().Post().
 		Resource("pods").
 		Name(pod).
@@ -29,12 +29,12 @@ func Exec(clientset *kubernetes.Clientset, config *rest.Config, ns, pod, contain
 
 	req.VersionedParams(option, scheme.ParameterCodec)
 
-	exec, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
+	executor, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
 	if err != nil {
 		return err
 	}
 
-	return exec.StreamWithContext(context.Background(), remotecommand.StreamOptions{
+	return executor.StreamWithContext(ctx, remotecommand.StreamOptions{
 		Stdin:  stdin,
 		Stdout: stdout,
 		Stderr: stderr,

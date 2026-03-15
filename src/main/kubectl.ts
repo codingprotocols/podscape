@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import { checkedSidecarFetch, sidecarFetch } from './api'
-import { SIDECAR_WS_URL } from '../common/constants'
+import { activeSidecarPort } from './runtime'
+import { sidecarToken } from './auth'
 
 export class KubectlProvider {
   async getContexts(): Promise<unknown[]> {
@@ -177,16 +178,18 @@ export class KubectlProvider {
     _context: string, namespace: string, pod: string, container: string,
     remotePath: string, localPath: string
   ): Promise<void> {
-    const { pipeline } = require('stream/promises')
-    const tar = require('tar')
-    const { dirname } = require('path')
+    const { writeFile } = require('fs/promises')
     const url = `/cp/from?namespace=${namespace}&pod=${pod}&container=${container}&path=${encodeURIComponent(remotePath)}`
     const res = await checkedSidecarFetch(url)
-    await pipeline(
-      res.body as any,
-      tar.x({ C: dirname(localPath) })
-    )
+    const buffer = await res.arrayBuffer()
+    await writeFile(localPath, Buffer.from(buffer))
   }
+}
+
+async function getTopology(ns: string): Promise<any> {
+  const url = `/topology?namespace=${encodeURIComponent(ns)}`
+  const res = await checkedSidecarFetch(url)
+  return await res.json()
 }
 
 const activeStreams = new Map<string, any>()
@@ -254,7 +257,9 @@ export function registerKubectlHandlers(): void {
     }
 
     const WebSocket = require('ws')
-    const ws = new WebSocket(`${SIDECAR_WS_URL}/logs?pod=${pod}&namespace=${ns}&container=${container || ''}`)
+    const ws = new WebSocket(`ws://127.0.0.1:${activeSidecarPort}/logs?pod=${pod}&namespace=${ns}&container=${container || ''}`, {
+      headers: { 'X-Podscape-Token': sidecarToken }
+    })
     activeStreams.set(streamId, ws)
     const sender = event.sender
 
@@ -263,10 +268,12 @@ export function registerKubectlHandlers(): void {
     })
 
     ws.on('error', (err: any) => {
+      console.error(`[Logs] WS error for stream ${streamId}:`, err)
       if (!sender.isDestroyed()) sender.send('kubectl:logError', streamId, err.message)
     })
 
-    ws.on('close', () => {
+    ws.on('close', (code: number, reason: string) => {
+      console.log(`[Logs] WS closed for stream ${streamId}. Code: ${code}, Reason: ${reason || 'no reason'}`)
       activeStreams.delete(streamId)
       if (!sender.isDestroyed()) sender.send('kubectl:logEnd', streamId)
     })
@@ -280,6 +287,8 @@ export function registerKubectlHandlers(): void {
       activeStreams.delete(streamId)
     }
   })
+
+  ipcMain.handle('kubectl:getTopology', (_e, ns) => getTopology(ns))
 
   ipcMain.handle('kubectl:portForward', async (event, _ctx, ns, _type, name, localPort, remotePort, id) => {
     try {
@@ -300,6 +309,18 @@ export function registerKubectlHandlers(): void {
       await sidecarFetch(`/stopPortForward?id=${id}`)
     } catch (err) {
       console.error('Failed to stop port forward', err)
+    }
+  })
+
+  // Returns true when the sidecar's informer cache is fully synced.
+  // /health is token-exempt so no auth header is needed, but sidecarFetch
+  // adds it anyway — the sidecar ignores extra headers on that route.
+  ipcMain.handle('kubectl:isReady', async () => {
+    try {
+      const res = await sidecarFetch('/health')
+      return res.ok
+    } catch {
+      return false
     }
   })
 }
