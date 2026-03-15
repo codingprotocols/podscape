@@ -48,6 +48,64 @@ function KindIcon({ kind }: { kind: string }) {
 
 const WORKLOAD_KINDS = ['Pod', 'Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob'] as const
 
+// ── Download helpers ──────────────────────────────────────────────────────────
+
+function escapeCSV(v: unknown): string {
+    const s = v == null ? '' : String(v)
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? `"${s.replace(/"/g, '""')}"`
+        : s
+}
+
+function downloadResults(results: any[], format: 'csv' | 'json') {
+    let content: string
+    let mime: string
+    let ext: string
+
+    if (format === 'json') {
+        content = JSON.stringify(results, null, 2)
+        mime = 'application/json'
+        ext = 'json'
+    } else {
+        const rows: string[][] = [
+            ['Resource', 'Namespace', 'Kind', 'Finding Type', 'Severity', 'ID / Rule', 'Message', 'Fix / Description'],
+        ]
+        for (const r of results) {
+            for (const issue of r.issues ?? []) {
+                rows.push([
+                    r.name, r.namespace ?? '', r.kind ?? '',
+                    'Config',
+                    issue.level === 'error' ? 'Critical' : 'Warning',
+                    issue.rule ?? issue.source ?? '',
+                    issue.message ?? '',
+                    issue.suggestion ?? '',
+                ])
+            }
+            for (const v of r.vulnerabilities ?? []) {
+                rows.push([
+                    r.name, r.namespace ?? '', r.kind ?? '',
+                    'CVE',
+                    v.severity ?? '',
+                    v.id ?? '',
+                    v.title ?? '',
+                    v.fixedVersion ? `Fix: ${v.fixedVersion}` : '',
+                ])
+            }
+        }
+        content = rows.map(row => row.map(escapeCSV).join(',')).join('\n')
+        mime = 'text/csv'
+        ext = 'csv'
+    }
+
+    const blob = new Blob([content], { type: mime })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `podscape-security-${new Date().toISOString().slice(0, 10)}.${ext}`
+    a.click()
+    URL.revokeObjectURL(url)
+}
+
 const SYSTEM_NAMESPACES = ['kube-system', 'kube-node-lease', 'local-path-storage', 'kube-public']
 
 
@@ -390,6 +448,7 @@ export default function SecurityHub(): JSX.Element {
 
                 {/* View controls */}
                 <div className="flex items-center gap-2">
+                    <DownloadButton results={filteredResults} />
                     <NamespaceIgnorePicker
                         namespaces={availableNamespaces}
                         ignored={ignoredNamespaces}
@@ -422,48 +481,45 @@ export default function SecurityHub(): JSX.Element {
             </div>
 
             {/* ── Body ── */}
-            <div className="flex-1 overflow-y-auto scrollbar-hide p-8 space-y-3">
-                {/* Ignored namespace chips */}
-                {ignoredNamespaces.size > 0 && (
-                    <div className="flex items-center gap-2 flex-wrap pb-2">
-                        <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">Ignoring:</span>
-                        {Array.from(ignoredNamespaces).map(ns => (
-                            <button
-                                key={ns}
-                                onClick={() => toggleIgnoreNs(ns)}
-                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-500/10 border border-slate-500/20 text-[10px] font-bold text-slate-400 hover:bg-red-500/10 hover:border-red-500/20 hover:text-red-400 transition-colors"
-                            >
-                                <EyeOff className="w-2.5 h-2.5" />
-                                {ns}
-                                <X className="w-2.5 h-2.5" />
-                            </button>
-                        ))}
-                    </div>
-                )}
-
-                {/* Trivy not installed banner */}
-                {trivyAvailable === false && (
-                    <div className="p-4 rounded-xl bg-amber-500/[0.04] border border-amber-500/15 flex items-start gap-3 mb-2">
-                        <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0 mt-0.5">
-                            <Download className="w-3.5 h-3.5 text-amber-500" />
-                        </div>
-                        <div>
-                            <p className="text-[12px] font-bold text-amber-400 mb-0.5">Trivy not installed</p>
-                            <p className="text-[11px] text-slate-400 leading-relaxed">
-                                Image CVE scanning requires the trivy CLI.
-                                Install with{' '}
-                                <code className="px-1.5 py-0.5 rounded bg-white/5 text-slate-200 font-mono text-[10px]">brew install trivy</code>.
-                                {' '}Configuration analysis below works without it.
-                            </p>
-                        </div>
-                    </div>
-                )}
-
-                {/* Generic scan error */}
-                {error && (
-                    <div className="p-4 rounded-xl bg-red-500/8 border border-red-500/20 flex items-center gap-3 mb-2">
-                        <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                        <p className="text-[11px] font-semibold text-red-400">{error}</p>
+            <div className="flex-1 overflow-y-auto scrollbar-hide">
+                {/* Banners & chips */}
+                {(ignoredNamespaces.size > 0 || trivyAvailable === false || !!error) && (
+                    <div className="px-8 pt-4 space-y-2">
+                        {ignoredNamespaces.size > 0 && (
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">Ignoring:</span>
+                                {Array.from(ignoredNamespaces).map(ns => (
+                                    <button
+                                        key={ns}
+                                        onClick={() => toggleIgnoreNs(ns)}
+                                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-500/10 border border-slate-500/20 text-[10px] font-bold text-slate-400 hover:bg-red-500/10 hover:border-red-500/20 hover:text-red-400 transition-colors"
+                                    >
+                                        <EyeOff className="w-2.5 h-2.5" />{ns}<X className="w-2.5 h-2.5" />
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                        {trivyAvailable === false && (
+                            <div className="p-4 rounded-xl bg-amber-500/[0.04] border border-amber-500/15 flex items-start gap-3">
+                                <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                                    <Download className="w-3.5 h-3.5 text-amber-500" />
+                                </div>
+                                <div>
+                                    <p className="text-[12px] font-bold text-amber-400 mb-0.5">Trivy not installed</p>
+                                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                                        Image CVE scanning requires the trivy CLI. Install with{' '}
+                                        <code className="px-1.5 py-0.5 rounded bg-white/5 text-slate-200 font-mono text-[10px]">brew install trivy</code>.
+                                        {' '}Configuration analysis below works without it.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                        {error && (
+                            <div className="p-4 rounded-xl bg-red-500/8 border border-red-500/20 flex items-center gap-3">
+                                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                                <p className="text-[11px] font-semibold text-red-400">{error}</p>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -474,33 +530,8 @@ export default function SecurityHub(): JSX.Element {
                         totalWorkloads={allWorkloads.length}
                         hasAnyIssues={unifiedResults.length > 0}
                     />
-                ) : groupByNamespace ? (
-                    Object.entries(
-                        filteredResults.reduce((acc: Record<string, any[]>, res: any) => {
-                            const ns = res.namespace || 'cluster-scoped'
-                            if (!acc[ns]) acc[ns] = []
-                            acc[ns].push(res)
-                            return acc
-                        }, {})
-                    ).map(([ns, resources]) => (
-                        <div key={ns} className="space-y-2">
-                            <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/8 w-fit">
-                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.15em]">{ns}</span>
-                                <span className="text-[10px] text-slate-600">·</span>
-                                <span className="text-[10px] text-slate-500 font-semibold">{resources.length} workload{resources.length !== 1 ? 's' : ''}</span>
-                            </div>
-                            <div className="space-y-2 pl-4 border-l border-white/5">
-                                {resources.map((res, idx) => (
-                                    <ResourceCard key={idx} res={res} />
-                                ))}
-                            </div>
-                        </div>
-                    ))
                 ) : (
-                    filteredResults.map((res, idx) => (
-                        <ResourceCard key={idx} res={res} />
-                    ))
+                    <ResourceTable results={filteredResults} groupByNamespace={groupByNamespace} />
                 )}
             </div>
         </div>
@@ -660,48 +691,188 @@ function NamespaceIgnorePicker({ namespaces, ignored, onToggle, onClear }: {
     )
 }
 
-// ── ResourceCard ──────────────────────────────────────────────────────────────
+// ── Resource Table ────────────────────────────────────────────────────────────
 
-function ResourceCard({ res }: { res: any }) {
-    const [expanded, setExpanded] = useState(false)
+type SortCol = 'name' | 'namespace' | 'kind' | 'config' | 'cves' | 'score'
 
-    const criticalIssues = res.issues.filter((i: any) => i.level === 'error')
-    const warningIssues = res.issues.filter((i: any) => i.level === 'warning')
-    const criticalCVEs = res.vulnerabilities.filter((v: any) => ['CRITICAL', 'HIGH'].includes(v.severity))
-    const otherCVEs = res.vulnerabilities.filter((v: any) => !['CRITICAL', 'HIGH'].includes(v.severity))
-    const hasCritical = criticalIssues.length > 0 || criticalCVEs.length > 0
+function resourceScore(res: any): number {
+    const hasCritical = res.issues.some((i: any) => i.level === 'error') ||
+        res.vulnerabilities.some((v: any) => ['CRITICAL', 'HIGH'].includes(v.severity))
+    if (hasCritical) return 2
+    if (res.issues.length > 0) return 1
+    return 0
+}
+
+function ResourceTable({ results, groupByNamespace }: { results: any[]; groupByNamespace: boolean }) {
+    const [sortCol, setSortCol] = useState<SortCol>('score')
+    const [sortDir, setSortDir] = useState<1 | -1>(-1)
+
+    const sorted = useMemo(() => {
+        return [...results].sort((a, b) => {
+            let va: any, vb: any
+            switch (sortCol) {
+                case 'name':      va = a.name ?? '';      vb = b.name ?? '';      break
+                case 'namespace': va = a.namespace ?? ''; vb = b.namespace ?? ''; break
+                case 'kind':      va = a.kind ?? '';      vb = b.kind ?? '';      break
+                case 'config':
+                    va = a.issues.filter((i: any) => i.level === 'error').length
+                    vb = b.issues.filter((i: any) => i.level === 'error').length
+                    break
+                case 'cves':
+                    va = a.vulnerabilities.filter((v: any) => ['CRITICAL', 'HIGH'].includes(v.severity)).length
+                    vb = b.vulnerabilities.filter((v: any) => ['CRITICAL', 'HIGH'].includes(v.severity)).length
+                    break
+                default: va = resourceScore(a); vb = resourceScore(b)
+            }
+            if (typeof va === 'string') return va.localeCompare(vb) * sortDir
+            return (va - vb) * sortDir
+        })
+    }, [results, sortCol, sortDir])
+
+    const grouped = useMemo(() => {
+        if (!groupByNamespace) return null
+        const map = new Map<string, any[]>()
+        sorted.forEach(r => {
+            const ns = r.namespace || 'cluster-scoped'
+            if (!map.has(ns)) map.set(ns, [])
+            map.get(ns)!.push(r)
+        })
+        return Array.from(map.entries())
+    }, [sorted, groupByNamespace])
+
+    const toggleSort = (col: SortCol) => {
+        if (sortCol === col) setSortDir(d => (d === -1 ? 1 : -1))
+        else { setSortCol(col); setSortDir(-1) }
+    }
+
+    const HeaderCell = ({ col, label, className }: { col: SortCol; label: string; className?: string }) => (
+        <button
+            onClick={() => toggleSort(col)}
+            className={`flex items-center gap-1 text-[9px] font-black uppercase tracking-[0.15em] transition-colors select-none ${
+                sortCol === col ? 'text-slate-300' : 'text-slate-600 hover:text-slate-400'
+            } ${className ?? ''}`}
+        >
+            {label}
+            <ChevronDown className={`w-2.5 h-2.5 transition-all ${
+                sortCol === col ? 'opacity-100' : 'opacity-0'
+            } ${sortDir === 1 ? 'rotate-180' : ''}`} />
+        </button>
+    )
+
+    const rows = (list: any[]) => list.map((res, idx) => (
+        <TableRow key={`${res.namespace}/${res.name}/${res.kind}`} res={res} isLast={idx === list.length - 1} />
+    ))
 
     return (
-        <div className={`rounded-xl border overflow-hidden transition-colors ${
-            hasCritical ? 'border-red-500/10 bg-red-500/[0.02]' : 'border-white/[0.06] bg-white/[0.015]'
-        } hover:bg-white/[0.03]`}>
+        <div className="px-8 pt-3 pb-8">
+            {/* Column headers */}
+            <div className="flex items-center px-4 py-2 border-b border-white/[0.06]">
+                <div className="flex-1 min-w-0 pl-[2.375rem]">
+                    <HeaderCell col="name" label="Resource" />
+                </div>
+                <HeaderCell col="namespace" label="Namespace" className="w-32 shrink-0" />
+                <HeaderCell col="kind"      label="Kind"      className="w-24 shrink-0" />
+                <HeaderCell col="config"    label="Config"    className="w-28 shrink-0" />
+                <HeaderCell col="cves"      label="CVEs"      className="w-28 shrink-0" />
+                <HeaderCell col="score"     label=""          className="w-8  shrink-0 justify-end" />
+            </div>
+
+            {grouped ? (
+                <div className="space-y-4 mt-2">
+                    {grouped.map(([ns, resources]) => (
+                        <div key={ns}>
+                            <div className="flex items-center gap-2 px-4 py-1.5">
+                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500/60" />
+                                <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.15em]">{ns}</span>
+                                <span className="text-[9px] text-slate-700">·</span>
+                                <span className="text-[9px] text-slate-600">{resources.length} resource{resources.length !== 1 ? 's' : ''}</span>
+                            </div>
+                            {rows(resources)}
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div>{rows(sorted)}</div>
+            )}
+        </div>
+    )
+}
+
+function TableRow({ res, isLast }: { res: any; isLast: boolean }) {
+    const [expanded, setExpanded] = useState(false)
+    const [showAllVulns, setShowAllVulns] = useState(false)
+
+    const criticalIssues = res.issues.filter((i: any) => i.level === 'error')
+    const warningIssues  = res.issues.filter((i: any) => i.level === 'warning')
+    const criticalCVEs   = res.vulnerabilities.filter((v: any) => ['CRITICAL', 'HIGH'].includes(v.severity))
+    const otherCVEs      = res.vulnerabilities.filter((v: any) => !['CRITICAL', 'HIGH'].includes(v.severity))
+    const score = resourceScore(res)
+
+    return (
+        <div className={`transition-colors ${
+            expanded ? 'bg-white/[0.025]' : 'hover:bg-white/[0.02]'
+        } ${!isLast ? 'border-b border-white/[0.04]' : ''}`}>
             <button
                 onClick={() => setExpanded(e => !e)}
-                className="w-full px-5 py-3.5 flex items-center justify-between text-left"
+                className="w-full flex items-center px-4 py-2.5 text-left group"
             >
-                <div className="flex items-center gap-3 min-w-0">
+                {/* Chevron + icon + name */}
+                <div className="flex-1 min-w-0 flex items-center gap-2.5">
+                    <ChevronDown className={`w-3 h-3 text-slate-700 group-hover:text-slate-500 shrink-0 transition-transform duration-150 ${expanded ? 'rotate-180' : ''}`} />
                     <KindIcon kind={res.kind ?? ''} />
-                    <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-bold text-white truncate">{res.name}</span>
-                            <span className="px-1.5 py-0.5 rounded bg-white/5 text-[9px] font-black text-slate-500 uppercase tracking-widest shrink-0">
-                                {res.kind}
-                            </span>
-                        </div>
-                        <p className="text-[10px] text-slate-500 mt-0.5 font-medium">{res.namespace}</p>
-                    </div>
+                    <span className="text-[12px] font-semibold text-slate-200 truncate">{res.name}</span>
                 </div>
-                <div className="flex items-center gap-2 shrink-0 ml-4">
-                    {criticalIssues.length > 0 && <SeverityPill color="red" icon={<AlertCircle className="w-2.5 h-2.5" />} label={`${criticalIssues.length} critical`} />}
-                    {warningIssues.length > 0 && <SeverityPill color="amber" icon={<AlertTriangle className="w-2.5 h-2.5" />} label={`${warningIssues.length} warning`} />}
-                    {criticalCVEs.length > 0 && <SeverityPill color="orange" icon={<Zap className="w-2.5 h-2.5" />} label={`${criticalCVEs.length} CVE`} />}
-                    {otherCVEs.length > 0 && <SeverityPill color="slate" icon={<Zap className="w-2.5 h-2.5" />} label={`${otherCVEs.length} low CVE`} />}
-                    <ChevronDown className={`w-3.5 h-3.5 text-slate-600 transition-transform duration-200 ml-1 ${expanded ? 'rotate-180' : ''}`} />
+                {/* Namespace */}
+                <div className="w-32 shrink-0">
+                    <span className="text-[11px] text-slate-500 truncate block">{res.namespace || '—'}</span>
+                </div>
+                {/* Kind badge */}
+                <div className="w-24 shrink-0">
+                    <span className="px-1.5 py-0.5 rounded bg-white/5 text-[9px] font-black text-slate-600 uppercase tracking-widest">{res.kind}</span>
+                </div>
+                {/* Config counts */}
+                <div className="w-28 shrink-0 flex items-center gap-2">
+                    {criticalIssues.length > 0 && (
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-red-400">
+                            <AlertCircle className="w-3 h-3" />{criticalIssues.length}
+                        </span>
+                    )}
+                    {warningIssues.length > 0 && (
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-amber-400">
+                            <AlertTriangle className="w-3 h-3" />{warningIssues.length}
+                        </span>
+                    )}
+                    {criticalIssues.length === 0 && warningIssues.length === 0 && (
+                        <span className="text-[10px] text-slate-700">—</span>
+                    )}
+                </div>
+                {/* CVE counts */}
+                <div className="w-28 shrink-0 flex items-center gap-2">
+                    {criticalCVEs.length > 0 && (
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-orange-400">
+                            <Zap className="w-3 h-3" />{criticalCVEs.length}
+                        </span>
+                    )}
+                    {otherCVEs.length > 0 && (
+                        <span className="text-[10px] text-slate-600 font-medium">+{otherCVEs.length} low</span>
+                    )}
+                    {res.vulnerabilities.length === 0 && (
+                        <span className="text-[10px] text-slate-700">—</span>
+                    )}
+                </div>
+                {/* Score dot */}
+                <div className="w-8 shrink-0 flex justify-end">
+                    <div className={`w-2 h-2 rounded-full ${
+                        score === 2 ? 'bg-red-500 shadow-sm shadow-red-500/50' :
+                        score === 1 ? 'bg-amber-400' :
+                        'bg-slate-600'
+                    }`} />
                 </div>
             </button>
 
+            {/* Expanded detail */}
             {expanded && (
-                <div className="border-t border-white/5 px-5 py-4 grid grid-cols-1 xl:grid-cols-2 gap-6">
+                <div className="border-t border-white/[0.06] px-4 pb-4 pt-3 ml-[2.375rem] grid grid-cols-1 xl:grid-cols-2 gap-6">
                     {res.issues.length > 0 && (
                         <div>
                             <p className="text-[9px] font-black text-slate-600 uppercase tracking-[0.2em] mb-3">Configuration Issues</p>
@@ -716,13 +887,18 @@ function ResourceCard({ res }: { res: any }) {
                         <div>
                             <p className="text-[9px] font-black text-slate-600 uppercase tracking-[0.2em] mb-3">Image Vulnerabilities</p>
                             <div className="space-y-2">
-                                {res.vulnerabilities.slice(0, 8).map((v: any, vi: number) => (
+                                {(showAllVulns ? res.vulnerabilities : res.vulnerabilities.slice(0, 8)).map((v: any, vi: number) => (
                                     <VulnRow key={vi} v={v} />
                                 ))}
                                 {res.vulnerabilities.length > 8 && (
-                                    <p className="text-[10px] text-slate-600 font-semibold text-center pt-1">
-                                        + {res.vulnerabilities.length - 8} more
-                                    </p>
+                                    <button
+                                        onClick={() => setShowAllVulns(s => !s)}
+                                        className="w-full text-[10px] text-blue-500 hover:text-blue-400 font-semibold text-center pt-1 transition-colors"
+                                    >
+                                        {showAllVulns
+                                            ? 'Show less'
+                                            : `+${res.vulnerabilities.length - 8} more`}
+                                    </button>
                                 )}
                             </div>
                         </div>
@@ -774,17 +950,66 @@ function VulnRow({ v }: { v: any }) {
     )
 }
 
-function SeverityPill({ color, icon, label }: { color: string; icon: React.ReactNode; label: string }) {
-    const colors: Record<string, string> = {
-        red: 'bg-red-500/10 border-red-500/20 text-red-400',
-        amber: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
-        orange: 'bg-orange-500/10 border-orange-500/20 text-orange-400',
-        slate: 'bg-slate-500/10 border-slate-500/20 text-slate-400',
+
+// ── Download Button ───────────────────────────────────────────────────────────
+
+function DownloadButton({ results }: { results: any[] }) {
+    const [open, setOpen] = useState(false)
+    const ref = useRef<HTMLDivElement>(null)
+
+    useEffect(() => {
+        function handle(e: MouseEvent) {
+            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+        }
+        if (open) document.addEventListener('mousedown', handle)
+        return () => document.removeEventListener('mousedown', handle)
+    }, [open])
+
+    const trigger = (format: 'csv' | 'json') => {
+        downloadResults(results, format)
+        setOpen(false)
     }
+
     return (
-        <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider ${colors[color] ?? colors.slate}`}>
-            {icon}{label}
-        </span>
+        <div className="relative" ref={ref}>
+            <button
+                onClick={() => setOpen(o => !o)}
+                disabled={results.length === 0}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-widest ${
+                    results.length === 0
+                        ? 'opacity-30 cursor-not-allowed bg-white/[0.03] border-white/8 text-slate-500'
+                        : 'bg-white/[0.03] border-white/8 text-slate-500 hover:text-slate-300 hover:bg-white/[0.06]'
+                }`}
+            >
+                <Download className="w-3 h-3" />
+                Export
+                <ChevronDown className={`w-2.5 h-2.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+            </button>
+
+            {open && (
+                <div className="absolute right-0 top-full mt-2 w-40 rounded-xl bg-[#0d1525] border border-white/10 shadow-2xl shadow-black/50 z-50 overflow-hidden py-1">
+                    <button
+                        onClick={() => trigger('csv')}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[11px] font-semibold text-slate-300 hover:bg-white/5 transition-colors"
+                    >
+                        <Download className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                        CSV (flat)
+                        <span className="ml-auto text-[9px] text-slate-600">Excel</span>
+                    </button>
+                    <button
+                        onClick={() => trigger('json')}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[11px] font-semibold text-slate-300 hover:bg-white/5 transition-colors"
+                    >
+                        <Download className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                        JSON
+                        <span className="ml-auto text-[9px] text-slate-600">Raw</span>
+                    </button>
+                    <div className="mx-3 mt-1 pt-1 border-t border-white/5">
+                        <p className="text-[9px] text-slate-600 pb-1">{results.length} resource{results.length !== 1 ? 's' : ''} · current filters</p>
+                    </div>
+                </div>
+            )}
+        </div>
     )
 }
 
