@@ -122,6 +122,13 @@ const kubectl = {
   getClusterRoleBindings: (context: string) =>
     ipcRenderer.invoke('kubectl:getClusterRoleBindings', context),
 
+  // Cache readiness — true once the sidecar informer cache has fully synced
+  isReady: (): Promise<boolean> =>
+    ipcRenderer.invoke('kubectl:isReady'),
+
+  getTopology: (namespace: string) =>
+    ipcRenderer.invoke('kubectl:getTopology', namespace),
+
   // Port Forwarding
   portForward: (context: string, namespace: string, type: string, name: string, localPort: number, remotePort: number, id: string) =>
     ipcRenderer.invoke('kubectl:portForward', context, namespace, type, name, localPort, remotePort, id),
@@ -272,6 +279,17 @@ const kubeconfig = {
     ipcRenderer.invoke('kubeconfig:clearPath')
 }
 
+// ─── sidecar API ──────────────────────────────────────────────────────────────
+
+const sidecar = {
+  onCrashed: (cb: (info: { code: number | null; signal: string | null }) => void): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, info: { code: number | null; signal: string | null }): void => cb(info)
+    ipcRenderer.on('sidecar:crashed', handler)
+    return () => ipcRenderer.off('sidecar:crashed', handler)
+  },
+  restart: (): Promise<void> => ipcRenderer.invoke('sidecar:restart'),
+}
+
 // ─── Expose ───────────────────────────────────────────────────────────────────
 
 if (process.contextIsolated) {
@@ -283,6 +301,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('settings', settings)
     contextBridge.exposeInMainWorld('kubeconfig', kubeconfig)
     contextBridge.exposeInMainWorld('dialog', dialog)
+    contextBridge.exposeInMainWorld('sidecar', sidecar)
   } catch (error) {
     console.error(error)
   }
@@ -301,4 +320,6 @@ if (process.contextIsolated) {
   window.kubeconfig = kubeconfig
   // @ts-ignore
   window.dialog = dialog
+  // @ts-ignore
+  window.sidecar = sidecar
 }

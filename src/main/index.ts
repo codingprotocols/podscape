@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, dialog } from 'electron'
+import { app, shell, BrowserWindow, dialog, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerKubectlHandlers } from './kubectl'
@@ -60,6 +60,10 @@ app.whenReady().then(async () => {
   registerTerminalHandlers()
   registerHelmHandlers()
   registerDialogHandlers()
+
+  ipcMain.handle('sidecar:restart', async () => {
+    await startSidecar()
+  })
   
   try {
     await startSidecar()
@@ -82,6 +86,18 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('will-quit', async () => {
-  await stopSidecar()
+let isQuitting = false
+
+app.on('before-quit', async (event) => {
+  if (!isQuitting) {
+    event.preventDefault()
+    isQuitting = true
+    console.log('[Main] Stopping sidecar before quit...')
+    try {
+      await stopSidecar()
+    } catch (err) {
+      console.error('[Main] Error stopping sidecar during quit:', err)
+    }
+    app.quit()
+  }
 })

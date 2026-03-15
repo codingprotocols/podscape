@@ -28,11 +28,11 @@ type ForwardRequest struct {
 type PortForwardManager struct {
 	sync.Mutex
 	Forwards map[string]*ForwardRequest
-	Clientset *kubernetes.Clientset
+	Clientset kubernetes.Interface
 	Config    *rest.Config
 }
 
-func NewManager(clientset *kubernetes.Clientset, config *rest.Config) *PortForwardManager {
+func NewManager(clientset kubernetes.Interface, config *rest.Config) *PortForwardManager {
 	return &PortForwardManager{
 		Forwards:  make(map[string]*ForwardRequest),
 		Clientset: clientset,
@@ -96,7 +96,7 @@ func (m *PortForwardManager) StopAll() {
 
 // UpdateClients swaps the clientset and REST config used for new port-forwards.
 // Existing forwards have already been stopped via StopAll before this is called.
-func (m *PortForwardManager) UpdateClients(clientset *kubernetes.Clientset, config *rest.Config) {
+func (m *PortForwardManager) UpdateClients(clientset kubernetes.Interface, config *rest.Config) {
 	m.Lock()
 	defer m.Unlock()
 	m.Clientset = clientset
@@ -131,6 +131,6 @@ func (m *PortForwardManager) runForward(req *ForwardRequest) error {
 
 var Manager *PortForwardManager
 
-func Init(clientset *kubernetes.Clientset, config *rest.Config) {
+func Init(clientset kubernetes.Interface, config *rest.Config) {
 	Manager = NewManager(clientset, config)
 }

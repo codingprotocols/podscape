@@ -15,6 +15,7 @@ describe('clusterSlice', () => {
             selectedContext: null,
             loadSection: vi.fn(),
             hotbarContexts: [],
+            prodContexts: [],
         }
         set = vi.fn((update: any) => {
             if (typeof update === 'function') {
@@ -56,11 +57,14 @@ describe('clusterSlice', () => {
 
     it('selectContext updates state and fetches namespaces', async () => {
         const namespaces = [{ name: 'ns1' }]
+        windowMock.kubectl.switchContext.mockResolvedValue(undefined)
         windowMock.kubectl.getNamespaces.mockResolvedValue(namespaces)
+        state.preloadSearchResources = vi.fn()
 
         const slice = createClusterSlice(set, get, {} as any)
         const promise = slice.selectContext('my-ctx')
 
+        // First set call clears state and sets loadingNamespaces: true
         expect(set).toHaveBeenCalledWith(expect.objectContaining({
             selectedContext: 'my-ctx',
             loadingNamespaces: true,
@@ -68,9 +72,13 @@ describe('clusterSlice', () => {
 
         await promise
 
+        // Namespaces arrive in a second set call
         expect(set).toHaveBeenCalledWith(expect.objectContaining({
             namespaces,
             selectedNamespace: '_all',
+        }))
+        // Loading clears in a third set call
+        expect(set).toHaveBeenCalledWith(expect.objectContaining({
             loadingNamespaces: false,
         }))
         expect(state.loadSection).toHaveBeenCalledWith('pods')
@@ -97,5 +105,35 @@ describe('clusterSlice', () => {
 
         expect(set).toHaveBeenCalledWith({ selectedNamespace: 'myns', selectedResource: null })
         expect(state.loadSection).toHaveBeenCalledWith('pods')
+    })
+
+    // ── Race condition test (Issue 11A) ────────────────────────────────────────
+
+    it('concurrent selectContext: stale first call is discarded when second wins', async () => {
+        // First call's switchContext hangs; second call completes immediately.
+        // When the first call is unblocked it should bail out via the seq guard.
+        let releaseFirstSwitch!: () => void
+        windowMock.kubectl.switchContext
+            .mockImplementationOnce(() => new Promise<void>(r => { releaseFirstSwitch = r }))
+            .mockResolvedValueOnce(undefined)
+
+        const nsB = [{ name: 'ns-b' }]
+        windowMock.kubectl.getNamespaces.mockResolvedValue(nsB)
+        state.preloadSearchResources = vi.fn()
+
+        const slice = createClusterSlice(set, get, {} as any)
+
+        const p1 = slice.selectContext('ctx-a')  // hangs at switchContext
+        const p2 = slice.selectContext('ctx-b')  // completes immediately
+
+        await p2  // second call fully completes
+
+        releaseFirstSwitch()  // unblock first call — seq guard should stop it
+        await p1
+
+        // Second call's namespace data wins; loadSection called exactly once
+        expect(state.namespaces).toEqual(nsB)
+        expect(state.loadSection).toHaveBeenCalledTimes(1)
+        expect(state.loadSection).toHaveBeenCalledWith(state.section)
     })
 })

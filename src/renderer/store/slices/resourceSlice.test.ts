@@ -16,6 +16,9 @@ describe('resourceSlice', () => {
             selectedNamespace: 'ns1',
             loadDashboard: vi.fn(),
             loadSection: vi.fn(), // Needed for refresh
+            // Required by loadDashboard's AppGroup computation
+            deployments: [], statefulsets: [], daemonsets: [],
+            services: [], configmaps: [], hpas: [],
         }
         set = vi.fn((update: any) => {
             if (typeof update === 'function') {
@@ -43,7 +46,8 @@ describe('resourceSlice', () => {
         await slice.loadSection('pods')
 
         expect(windowMock.kubectl.getPods).toHaveBeenCalledWith('ctx1', 'ns1')
-        expect(set).toHaveBeenCalledWith({ pods })
+        // loadSection now combines pods + loadingResources in one set call
+        expect(set).toHaveBeenCalledWith(expect.objectContaining({ pods }))
         expect(state.pods).toEqual(pods)
     })
 
@@ -53,7 +57,8 @@ describe('resourceSlice', () => {
         const slice = createResourceSlice(set, get, {} as any)
         await slice.loadSection('pods')
 
-        expect(set).toHaveBeenCalledWith({ error: 'Kube error' })
+        // loadSection now combines error + loadingResources in one set call
+        expect(set).toHaveBeenCalledWith(expect.objectContaining({ error: 'Kube error' }))
     })
 
     it('loadDashboard fetches multiple resources', async () => {
@@ -107,5 +112,41 @@ describe('resourceSlice', () => {
 
         expect(state.error).toBe('first error')
         expect(state.loadingResources).toBe(false)
+    })
+
+    // ── SECTION_CONFIG path tests (Issue 10A) ──────────────────────────────────
+
+    it('loadSection: cluster-scoped section (nodes) ignores namespace', async () => {
+        const nodes = [{ metadata: { name: 'node1' } }]
+        windowMock.kubectl.getNodes.mockResolvedValue(nodes)
+        state.selectedNamespace = 'some-ns' // should be ignored for cluster-scoped
+
+        const slice = createResourceSlice(set, get, {} as any)
+        await slice.loadSection('nodes')
+
+        // Cluster-scoped fetch receives only the context — no namespace argument
+        expect(windowMock.kubectl.getNodes).toHaveBeenCalledWith('ctx1')
+        expect(set).toHaveBeenCalledWith(expect.objectContaining({ nodes }))
+    })
+
+    it('loadSection: namespaced section with no namespace clears state without fetching', async () => {
+        state.selectedNamespace = null
+
+        const slice = createResourceSlice(set, get, {} as any)
+        await slice.loadSection('pods')
+
+        expect(windowMock.kubectl.getPods).not.toHaveBeenCalled()
+        expect(set).toHaveBeenCalledWith(expect.objectContaining({ pods: [] }))
+    })
+
+    it('loadSection: selectedNamespace="_all" passes null to fetch', async () => {
+        state.selectedNamespace = '_all'
+        windowMock.kubectl.getPods.mockResolvedValue([])
+
+        const slice = createResourceSlice(set, get, {} as any)
+        await slice.loadSection('pods')
+
+        // _all means "all namespaces" — translated to null before the API call
+        expect(windowMock.kubectl.getPods).toHaveBeenCalledWith('ctx1', null)
     })
 })

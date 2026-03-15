@@ -84,8 +84,12 @@ export default function PodDetail({ pod }: Props): JSX.Element {
           if (isMountedRef.current) setLogs(prev => [...prev, ...chunk.split('\n')].slice(-2000))
         },
         () => {
-          activeStreamIdRef.current = null
-          if (isMountedRef.current) setIsStreaming(false)
+          // Guard against a stale onEnd from a previous stream (e.g. when stopLogs
+          // triggers ws.close() asynchronously after the next stream has already started).
+          if (activeStreamIdRef.current === streamId) {
+            activeStreamIdRef.current = null
+            if (isMountedRef.current) setIsStreaming(false)
+          }
         }
       )
       activeStreamIdRef.current = streamId

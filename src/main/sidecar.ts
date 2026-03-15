@@ -2,12 +2,32 @@ import { ChildProcess, spawn } from 'child_process'
 import { join } from 'path'
 import { existsSync, chmodSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
-import { app } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { getAugmentedEnv } from './env'
 import { findKubeconfigPath } from './settings_storage'
-import { SIDECAR_PORT, SIDECAR_BASE_URL } from '../common/constants'
+import { SIDECAR_PORT } from '../common/constants'
+import { sidecarToken } from './auth'
+import { activeSidecarPort, setActiveSidecarPort } from './runtime'
 
 let sidecarProcess: ChildProcess | null = null
+let startupComplete = false
+
+async function findFreePort(preferred: number): Promise<number> {
+  return new Promise((resolve) => {
+    const net = require('net')
+    const server = net.createServer()
+    server.listen(preferred, '127.0.0.1', () => {
+      server.close(() => resolve(preferred))
+    })
+    server.on('error', () => {
+      const s2 = net.createServer()
+      s2.listen(0, '127.0.0.1', () => {
+        const port = (s2.address() as any).port
+        s2.close(() => resolve(port))
+      })
+    })
+  })
+}
 
 export async function startSidecar(): Promise<void> {
   if (sidecarProcess) {
@@ -40,7 +60,13 @@ export async function startSidecar(): Promise<void> {
   const kubeconfigPath = findKubeconfigPath()
   console.log(`[Sidecar] Using kubeconfig: ${kubeconfigPath}`)
 
-  const child = spawn(binaryPath, ['-port', String(SIDECAR_PORT), '-kubeconfig', kubeconfigPath], {
+  const port = await findFreePort(SIDECAR_PORT)
+  setActiveSidecarPort(port)
+  if (port !== SIDECAR_PORT) {
+    console.log(`[Sidecar] Port ${SIDECAR_PORT} in use — using port ${port}`)
+  }
+
+  const child = spawn(binaryPath, ['-port', String(port), '-kubeconfig', kubeconfigPath, '-token', sidecarToken], {
     stdio: is.dev ? 'inherit' : 'pipe',
     env: getAugmentedEnv(),
     windowsHide: true,
@@ -56,7 +82,11 @@ export async function startSidecar(): Promise<void> {
   child.on('exit', (code, signal) => {
     console.log(`[Sidecar] Process exited. Code: ${code}, Signal: ${signal}`)
     if (sidecarProcess === child) {
-        sidecarProcess = null
+      sidecarProcess = null
+      // Notify the renderer if the sidecar dies after startup (not during normal shutdown).
+      if (startupComplete) {
+        BrowserWindow.getAllWindows()[0]?.webContents.send('sidecar:crashed', { code, signal })
+      }
     }
   })
 
@@ -79,11 +109,12 @@ export async function startSidecar(): Promise<void> {
 
     const checkReady = async () => {
       try {
-        const response = await fetch(`${SIDECAR_BASE_URL}/health`)
+        const response = await fetch(`http://127.0.0.1:${activeSidecarPort}/health`)
         if (response.ok) {
           console.log('[Sidecar] Sidecar is ready')
           child.removeListener('error', errorHandler)
           child.removeListener('exit', exitHandler)
+          startupComplete = true
           resolve()
           return
         }
@@ -116,6 +147,7 @@ export async function stopSidecar(): Promise<void> {
   if (!proc) return
 
   return new Promise((resolve) => {
+    startupComplete = false  // suppress crash notification on intentional stop
     sidecarProcess = null
 
     console.log(`[Sidecar] Stopping sidecar (pid: ${proc.pid})...`)
@@ -131,6 +163,14 @@ export async function stopSidecar(): Promise<void> {
       resolve()
     })
 
+    // Try graceful shutdown with SIGTERM
     proc.kill('SIGTERM')
   })
 }
+
+// Fallback: Ensure sidecar is killed if main process exits unexpectedly
+process.on('exit', () => {
+  if (sidecarProcess) {
+    sidecarProcess.kill('SIGKILL')
+  }
+})

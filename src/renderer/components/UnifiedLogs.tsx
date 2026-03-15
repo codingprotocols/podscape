@@ -33,6 +33,8 @@ export default function UnifiedLogs(): JSX.Element {
   const [autoScroll, setAutoScroll] = useState(true)
   const streamIds = useRef<Record<string, string>>({})
   const scrollRef = useRef<HTMLDivElement>(null)
+  const podSearchRef = useRef<HTMLDivElement>(null)
+  const [showPodResults, setShowPodResults] = useState(false)
 
   const availablePods = pods.filter(p => p.status.phase === 'Running')
   
@@ -54,6 +56,38 @@ export default function UnifiedLogs(): JSX.Element {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [logs, autoScroll])
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (podSearchRef.current && !podSearchRef.current.contains(event.target as Node)) {
+        setShowPodResults(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
+
+  useEffect(() => {
+    const syncPods = async () => {
+      const existingPodNames = new Set(pods.map(p => p.metadata.name))
+      const removedPods = selectedPods.filter(name => !existingPodNames.has(name))
+      
+      if (removedPods.length > 0) {
+        setSelectedPods(prev => prev.filter(name => existingPodNames.has(name)))
+        
+        // Stop streams for removed pods
+        for (const name of removedPods) {
+          if (streamIds.current[name]) {
+            await window.kubectl.stopLogs(streamIds.current[name])
+            delete streamIds.current[name]
+          }
+        }
+      }
+    }
+    syncPods()
+  }, [pods])
 
   const stopAllStreams = async () => {
     for (const sid of Object.values(streamIds.current)) {
@@ -166,7 +200,7 @@ export default function UnifiedLogs(): JSX.Element {
           {/* Row 1: Searches */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Pod Selection Search */}
-            <div className="flex flex-col gap-2 min-w-0 relative">
+            <div className="flex flex-col gap-2 min-w-0 relative" ref={podSearchRef}>
               <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Find Pods</span>
               <div className="relative group">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 dark:text-slate-500" />
@@ -174,14 +208,18 @@ export default function UnifiedLogs(): JSX.Element {
                   type="text"
                   placeholder="Search pod name or namespace..."
                   value={podSearchTerm}
-                  onChange={e => setPodSearchTerm(e.target.value)}
+                  onChange={e => {
+                    setPodSearchTerm(e.target.value)
+                    setShowPodResults(true)
+                  }}
+                  onFocus={() => setShowPodResults(true)}
                   disabled={isStreaming}
                   className="w-full pl-8 pr-3 py-1.5 bg-slate-100 dark:bg-black/40 border border-slate-200 dark:border-white/10 rounded-lg text-[10px] font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500/40 transition-colors"
                 />
               </div>
 
               {/* Search Results (Floating) */}
-              {podSearchTerm.trim().length > 0 && (
+              {(showPodResults && podSearchTerm.trim().length > 0) && (
                 <div className="absolute top-full left-0 right-0 mt-2 max-h-[140px] overflow-y-auto p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-blue-500/20 shadow-2xl z-50 rounded-xl">
                   <div className="flex flex-col gap-1">
                     {filteredPods.map(p => {

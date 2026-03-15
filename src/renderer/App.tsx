@@ -305,12 +305,20 @@ function kindForSection(section: string): string {
 
 export default function App(): JSX.Element {
   const {
-    init, loadingContexts, loadingNamespaces, section, setSection,
+    init, section, setSection,
     selectedResource, execTarget, closeExec, refresh, error, clearError,
     kubeconfigOk, isSearchOpen, setSearchOpen, isProduction
   } = useAppStore()
 
+  const [sidecarCrashed, setSidecarCrashed] = React.useState(false)
+  const [sidecarRestarting, setSidecarRestarting] = React.useState(false)
+
   useEffect(() => { init() }, [])
+
+  useEffect(() => {
+    const unsub = (window as any).sidecar?.onCrashed(() => setSidecarCrashed(true))
+    return () => unsub?.()
+  }, [])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -328,8 +336,33 @@ export default function App(): JSX.Element {
   }, [refresh, setSection, isSearchOpen, setSearchOpen])
 
 
+  const handleSidecarRestart = async () => {
+    setSidecarRestarting(true)
+    try {
+      await (window as any).sidecar?.restart()
+      setSidecarCrashed(false)
+      init()
+    } catch {
+      // restart failed — banner stays visible
+    } finally {
+      setSidecarRestarting(false)
+    }
+  }
+
   return (
     <div className={`flex h-screen overflow-hidden bg-white dark:bg-[hsl(var(--bg-dark))] text-slate-900 dark:text-slate-100 transition-all duration-300 ${isProduction ? 'ring-inset ring-4 ring-red-500/50' : ''}`}>
+      {sidecarCrashed && (
+        <div className="fixed inset-x-0 top-0 z-[10001] flex items-center gap-3 px-4 py-2.5 bg-red-600 text-white text-xs font-medium shadow-lg">
+          <span className="flex-1">Connection to cluster lost — the backend process exited unexpectedly.</span>
+          <button
+            onClick={handleSidecarRestart}
+            disabled={sidecarRestarting}
+            className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded font-bold transition-colors disabled:opacity-50"
+          >
+            {sidecarRestarting ? 'Reconnecting…' : 'Reconnect'}
+          </button>
+        </div>
+      )}
       {isProduction && (
         <div className="fixed top-0 left-1/2 -translate-x-1/2 z-[10000] pointer-events-none">
           <div className="bg-red-600 text-[10px] font-black tracking-[0.2em] text-white px-6 py-1 rounded-b-xl shadow-2xl border-x border-b border-red-500/50 animate-in slide-in-from-top duration-500">
@@ -346,15 +379,7 @@ export default function App(): JSX.Element {
 
       {/* Main content */}
       <div className="flex flex-1 min-w-0 min-h-0 bg-slate-50 dark:bg-[hsl(var(--bg-dark))]">
-        {loadingContexts || loadingNamespaces ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-6">
-             <div className="w-12 h-12 border-4 border-slate-200 dark:border-slate-800 border-t-blue-500 rounded-full animate-spin" />
-             <div className="flex flex-col items-center gap-1">
-                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 animate-pulse">Initializing Go Core...</span>
-                <span className="text-[9px] font-bold text-slate-500/50 uppercase tracking-widest">Bridging Kubernetes Contexts</span>
-             </div>
-          </div>
-        ) : !kubeconfigOk ? (
+        {!kubeconfigOk ? (
           <KubeConfigOnboarding />
         ) : (
           <ErrorBoundary resetKey={section}>

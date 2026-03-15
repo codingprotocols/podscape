@@ -23,6 +23,7 @@ func main() {
 		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
 	}
 	port := flag.String("port", "5050", "port to listen on")
+	token := flag.String("token", "", "shared secret; requests without X-Podscape-Token matching this value are rejected")
 	flag.Parse()
 
 	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
@@ -40,13 +41,25 @@ func main() {
 		log.Fatalf("Error creating kubernetes client: %v", err)
 	}
 
-	store.Store.Clientset = clientset
-	store.Store.Config = config
-	store.Store.Kubeconfig = *kubeconfig
-	portforward.Init(clientset, config)
+	// Determine the active context name for the initial cache key.
+	kubeconfigData, err := clientcmd.LoadFromFile(*kubeconfig)
+	activeCtxName := ""
+	if err == nil {
+		activeCtxName = kubeconfigData.CurrentContext
+	}
+	if activeCtxName == "" {
+		activeCtxName = "__default__"
+	}
 
-	stopCh := make(chan struct{})
-	store.Store.InformerStopCh = stopCh
+	store.Store.Kubeconfig = *kubeconfig
+
+	// Bootstrap the initial context cache and set it as active.
+	initialCache, _ := store.Store.GetOrCreateCache(activeCtxName, clientset, config)
+	store.Store.Lock()
+	store.Store.ActiveCache = initialCache
+	store.Store.Unlock()
+
+	portforward.Init(clientset, config)
 
 	// Register all routes before starting the server.
 	http.HandleFunc("/health", handlers.HandleHealth)
@@ -111,20 +124,44 @@ func main() {
 	http.HandleFunc("/debugpod/create", handlers.HandleCreateDebugPod)
 	http.HandleFunc("/topology", handlers.HandleTopology)
 
+	// Build the middleware chain (innermost → outermost):
+	//   mux → [token auth] → CORS
+	// CORS is outermost so every response, including auth rejections, gets the header.
+	var handler http.Handler = http.DefaultServeMux
+	if *token != "" {
+		tok := *token
+		inner := handler
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// /health is exempt — sidecar.ts polls it without an auth header
+			// during startup before it knows the token.
+			if r.URL.Path != "/health" && r.Header.Get("X-Podscape-Token") != tok {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			inner.ServeHTTP(w, r)
+		})
+	}
+	withCORS := handler
+	handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		withCORS.ServeHTTP(w, r)
+	})
+
 	// Start the HTTP server in a goroutine immediately so health checks can
 	// land while the informer cache is still warming up.
 	go func() {
 		fmt.Printf("Go sidecar listening on port %s\n", *port)
-		log.Fatal(http.ListenAndServe("127.0.0.1:"+*port, nil))
+		log.Fatal(http.ListenAndServe("127.0.0.1:"+*port, handler))
 	}()
 
-	// Block until the informer cache is fully synced, then mark the sidecar ready.
+	// Block until the critical informers are synced, then mark the sidecar ready.
 	// /health returns 503 until this completes, so startSidecar() keeps polling.
-	informers.InitInformers(clientset, stopCh)
+	informers.InitInformers(initialCache, initialCache.StopCh)
 
-	store.Store.Lock()
-	store.Store.CacheReady = true
-	store.Store.Unlock()
+	initialCache.Lock()
+	initialCache.CacheReady = true
+	initialCache.HasData = true
+	initialCache.Unlock()
 
 	fmt.Printf("Go sidecar ready on port %s (kubeconfig: %s)\n", *port, *kubeconfig)
 

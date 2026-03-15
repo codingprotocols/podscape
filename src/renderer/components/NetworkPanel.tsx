@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '../store'
 import { Shield } from 'lucide-react'
 import type { ResourceKind } from '../types'
-import { SIDECAR_BASE_URL } from '../../common/constants'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1100,8 +1099,8 @@ export default function NetworkPanel(): JSX.Element {
     if (!selectedContext) return
     setLoading(true)
     const nsArg = ns === '_all' ? '' : ns
-    fetch(`${SIDECAR_BASE_URL}/topology?namespace=${nsArg}`)
-      .then(res => res.json())
+    // @ts-ignore
+    window.kubectl.getTopology(nsArg)
       .then((data: Graph) => {
         setRawGraph(data)
         setLoading(false)

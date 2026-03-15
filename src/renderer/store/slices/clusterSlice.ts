@@ -1,5 +1,6 @@
 import { StoreSlice } from '../types'
 import { KubeContextEntry, KubeNamespace } from '../../types'
+import { sectionClearState } from './resourceSlice'
 
 export interface ClusterSlice {
     contexts: KubeContextEntry[]
@@ -64,14 +65,9 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
         const mySeq = ++contextSwitchSeq
         const isProd = get().prodContexts.includes(name)
         set({
-            selectedContext: name, isProduction: isProd, loadingNamespaces: true,
+            selectedContext: name, isProduction: isProd, loadingNamespaces: true, loadingResources: true,
             namespaces: [], selectedNamespace: null, selectedResource: null, error: null,
-            pods: [], deployments: [], daemonsets: [], statefulsets: [], replicasets: [],
-            jobs: [], cronjobs: [], hpas: [], pdbs: [],
-            services: [], ingresses: [], ingressclasses: [], networkpolicies: [], endpoints: [],
-            configmaps: [], secrets: [], pvcs: [], pvs: [], storageclasses: [],
-            serviceaccounts: [], roles: [], clusterroles: [], rolebindings: [], clusterrolebindings: [],
-            nodes: [], events: [], crds: []
+            ...sectionClearState,
         })
         try {
             const timeout = new Promise<never>((_, reject) =>
@@ -83,6 +79,9 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             await Promise.race([window.kubectl.switchContext(name), timeout])
             if (mySeq !== contextSwitchSeq) return
 
+            // Sidecar handlers fall back to direct k8s API calls while informers
+            // warm up in the background, so data is available immediately — no
+            // need to poll /health before fetching.
             const nsList = await Promise.race([window.kubectl.getNamespaces(name), timeout])
             if (mySeq !== contextSwitchSeq) return
             const chosen = nsList.length > 0 ? '_all' : null

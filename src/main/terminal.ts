@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
-import { SIDECAR_WS_URL } from '../common/constants'
+import { activeSidecarPort } from './runtime'
+import { sidecarToken } from './auth'
 
 const activeStreams = new Map<string, any>()
 
@@ -12,7 +13,9 @@ export function registerTerminalHandlers(): void {
       const id = `exec-${Date.now()}`
       
       const WebSocket = require('ws')
-      const ws = new WebSocket(`${SIDECAR_WS_URL}/exec?namespace=${namespace}&pod=${pod}&container=${container}&command=sh`)
+      const ws = new WebSocket(`ws://127.0.0.1:${activeSidecarPort}/exec?namespace=${namespace}&pod=${pod}&container=${container}&command=sh`, {
+        headers: { 'X-Podscape-Token': sidecarToken }
+      })
       
       activeStreams.set(id, ws)
       const sender = event.sender
