@@ -3,10 +3,12 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -542,6 +544,148 @@ func TestHandleApplyYAML_BodyTooLarge(t *testing.T) {
 
 	if rr.Code != http.StatusRequestEntityTooLarge {
 		t.Errorf("expected 413 for oversized body, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+}
+
+// ── HandleHelmRollback input validation ───────────────────────────────────────
+
+// ── HandleSecurityScan trivy-not-found ────────────────────────────────────────
+
+func TestHandleSecurityScan_TrivyNotFound(t *testing.T) {
+	// Clear PATH so LookPath("trivy") fails, simulating a machine without trivy.
+	t.Setenv("PATH", "")
+
+	req := httptest.NewRequest(http.MethodGet, "/security/scan", nil)
+	rr := httptest.NewRecorder()
+	HandleSecurityScan(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("expected JSON body, got: %s", rr.Body.String())
+	}
+	if resp["error"] != "trivy_not_found" {
+		t.Errorf("expected error=trivy_not_found, got %q", resp["error"])
+	}
+	if resp["message"] == "" {
+		t.Error("expected non-empty message field")
+	}
+}
+
+// ── HandleKubesecBatch ────────────────────────────────────────────────────────
+
+func TestHandleKubesecBatch_MethodNotAllowed(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/security/kubesec/batch", nil)
+	rr := httptest.NewRecorder()
+	HandleKubesecBatch(rr, req)
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405, got %d", rr.Code)
+	}
+}
+
+func TestHandleKubesecBatch_InvalidJSON(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/security/kubesec/batch",
+		bytes.NewBufferString("not json"))
+	rr := httptest.NewRecorder()
+	HandleKubesecBatch(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rr.Code)
+	}
+}
+
+func TestHandleKubesecBatch_NotAnArray(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/security/kubesec/batch",
+		bytes.NewBufferString(`{"kind":"Pod"}`))
+	rr := httptest.NewRecorder()
+	HandleKubesecBatch(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for non-array JSON, got %d", rr.Code)
+	}
+}
+
+func TestHandleKubesecBatch_BatchTooLarge(t *testing.T) {
+	// Build an array with kubesecMaxBatchSize+1 elements.
+	items := make([]string, kubesecMaxBatchSize+1)
+	for i := range items {
+		items[i] = `{"kind":"Pod"}`
+	}
+	body := "[" + strings.Join(items, ",") + "]"
+	req := httptest.NewRequest(http.MethodPost, "/security/kubesec/batch",
+		bytes.NewBufferString(body))
+	rr := httptest.NewRecorder()
+	HandleKubesecBatch(rr, req)
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("expected 413, got %d", rr.Code)
+	}
+}
+
+func TestHandleKubesecBatch_EmptyBatch(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/security/kubesec/batch",
+		bytes.NewBufferString("[]"))
+	rr := httptest.NewRecorder()
+	HandleKubesecBatch(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	if strings.TrimSpace(rr.Body.String()) != "[]" {
+		t.Errorf("expected empty JSON array, got: %s", rr.Body.String())
+	}
+}
+
+func TestHandleKubesecBatch_ValidResource(t *testing.T) {
+	// A minimal Pod that kubesec can evaluate. Expect a 200 with one result element.
+	pod := `[{"apiVersion":"v1","kind":"Pod","metadata":{"name":"test","namespace":"default"},"spec":{"containers":[{"name":"c","image":"nginx:latest"}]}}]`
+	req := httptest.NewRequest(http.MethodPost, "/security/kubesec/batch",
+		bytes.NewBufferString(pod))
+	rr := httptest.NewRecorder()
+	HandleKubesecBatch(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+
+	var results []KubesecBatchItem
+	if err := json.Unmarshal(rr.Body.Bytes(), &results); err != nil {
+		t.Fatalf("expected JSON array of KubesecBatchItem, parse error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Error != "" {
+		t.Errorf("expected no error on valid resource, got: %s", results[0].Error)
+	}
+}
+
+func TestHandleKubesecBatch_PerResourceErrorIsolation(t *testing.T) {
+	// First item is deliberately invalid YAML-convertible JSON; second is a valid Pod.
+	// The response must contain 2 items: first with an error, second without.
+	body := `[
+		null,
+		{"apiVersion":"v1","kind":"Pod","metadata":{"name":"ok","namespace":"default"},"spec":{"containers":[{"name":"c","image":"nginx:1.25"}]}}
+	]`
+	req := httptest.NewRequest(http.MethodPost, "/security/kubesec/batch",
+		bytes.NewBufferString(body))
+	rr := httptest.NewRecorder()
+	HandleKubesecBatch(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+
+	var results []KubesecBatchItem
+	if err := json.Unmarshal(rr.Body.Bytes(), &results); err != nil {
+		t.Fatalf("JSON parse error: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("expected 2 results, got %d", len(results))
+		return
+	}
+	// Second result (valid Pod) must have no error.
+	if results[1].Error != "" {
+		t.Errorf("expected no error on valid resource at index 1, got: %s", results[1].Error)
 	}
 }
 

@@ -1,4 +1,5 @@
-import { StoreSlice, ExecTarget } from '../types'
+import { StoreSlice, ExecTarget, CustomScanOptions } from '../types'
+import { extractWorkloadImages } from '../../utils/security/extractImages'
 import {
     KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet,
     KubeReplicaSet, KubeJob, KubeCronJob, KubeHPA, KubePDB,
@@ -92,6 +93,7 @@ export interface ResourceSlice {
     portForwards: PortForwardEntry[]
     helmReleases: HelmRelease[]
     debugPods: DebugPodEntry[]
+    securityScanResults: any | null
     addDebugPod: (pod: DebugPodEntry) => void
     removeDebugPod: (name: string) => void
     updateDebugPod: (name: string, updates: Partial<DebugPodEntry>) => void
@@ -100,6 +102,7 @@ export interface ResourceSlice {
     error: string | null
     execTarget: ExecTarget | null
     selectResource: (r: AnyKubeResource | null) => void
+    setError: (err: string | null) => void
     clearError: () => void
     openExec: (target: ExecTarget) => void
     closeExec: () => void
@@ -107,6 +110,13 @@ export interface ResourceSlice {
     loadDashboard: () => Promise<void>
     refresh: () => Promise<void>
     preloadSearchResources: () => Promise<void>
+    scanSecurity: (options?: CustomScanOptions) => Promise<void>
+    securityScanning: boolean
+    securityScanProgressLines: string[]
+    kubesecBatchResults: Record<string, any> | null
+    trivyAvailable: boolean | null
+    lastPreloadedAt: number
+    lastDashboardLoadedAt: number
 }
 
 export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
@@ -143,6 +153,13 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     portForwards: [],
     helmReleases: [],
     debugPods: [],
+    securityScanResults: null,
+    securityScanning: false,
+    securityScanProgressLines: [],
+    kubesecBatchResults: null,
+    trivyAvailable: null,
+    lastPreloadedAt: 0,
+    lastDashboardLoadedAt: 0,
     selectedResource: null,
     loadingResources: false,
     error: null,
@@ -165,6 +182,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             }
         }
     },
+    setError: (err) => set({ error: err }),
     clearError: () => set({ error: null }),
     openExec: (target) => set({ execTarget: target }),
     closeExec: () => set({ execTarget: null }),
@@ -228,6 +246,30 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             return
         }
 
+        if (section === 'security') {
+            set({ loadingResources: true })
+            try {
+                const [pds, depls, dss, stss, js, cjs] = await Promise.all([
+                    window.kubectl.getPods(ctx, nsArg),
+                    window.kubectl.getDeployments(ctx, nsArg),
+                    window.kubectl.getDaemonSets(ctx, nsArg),
+                    window.kubectl.getStatefulSets(ctx, nsArg),
+                    window.kubectl.getJobs(ctx, nsArg),
+                    window.kubectl.getCronJobs(ctx, nsArg)
+                ])
+                set({
+                    pods: pds as KubePod[],
+                    deployments: depls as KubeDeployment[],
+                    daemonsets: dss as KubeDaemonSet[],
+                    statefulsets: stss as KubeStatefulSet[],
+                    jobs: js as KubeJob[],
+                    cronjobs: cjs as KubeCronJob[],
+                    loadingResources: false
+                })
+            } catch { set({ loadingResources: false }) }
+            return
+        }
+
         // View-only panels with no data loading
         if (!SECTION_CONFIG[section]) return
 
@@ -250,8 +292,11 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     },
 
     loadDashboard: async () => {
-        const { selectedContext: ctx } = get()
+        const { selectedContext: ctx, lastDashboardLoadedAt } = get()
         if (!ctx) return
+        // Skip re-fetch if dashboard data is < 30s old (navigation back to dashboard).
+        // The explicit refresh() action calls loadSection which bypasses this via direct call.
+        if (Date.now() - lastDashboardLoadedAt < 30_000) return
         set({ loadingResources: true, error: null })
         const ns = get().selectedNamespace === '_all' ? null : get().selectedNamespace
 
@@ -327,14 +372,17 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             }
         })
         
-        set({ apps: Object.values(groups).sort((a, b) => a.name.localeCompare(b.name)), loadingResources: false })
+        set({ apps: Object.values(groups).sort((a, b) => a.name.localeCompare(b.name)), loadingResources: false, lastDashboardLoadedAt: Date.now() })
     },
 
     refresh: () => get().loadSection(get().section),
 
     preloadSearchResources: async () => {
-        const { selectedContext: ctx } = get()
+        const { selectedContext: ctx, lastPreloadedAt } = get()
         if (!ctx) return
+        // Skip if data is fresh (< 60s old) to avoid redundant fetches on repeated search opens.
+        if (Date.now() - lastPreloadedAt < 60_000) return
+        set({ lastPreloadedAt: Date.now() })
 
         // Fetch essential resources for search across all namespaces.
         // Promise.allSettled so a permission-denied on one type (e.g. secrets in
@@ -357,7 +405,132 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         })
         if (Object.keys(updates).length > 0) set(updates as any)
     },
+
+    scanSecurity: async (options?: CustomScanOptions) => {
+        set({ securityScanning: true, error: null, securityScanProgressLines: [] })
+
+        // Synthetic milestone helper — prefixed with '› ' so the UI can style them distinctly.
+        const milestone = (msg: string) =>
+            set(s => ({ securityScanProgressLines: [...s.securityScanProgressLines.slice(-9), `› ${msg}`] }))
+
+        const { pods, deployments, statefulsets, daemonsets, jobs, cronjobs } = get()
+        let workloads = [...pods, ...deployments, ...statefulsets, ...daemonsets, ...jobs, ...cronjobs]
+
+        // Apply scope filters when a custom scan is requested.
+        if (options) {
+            if (options.namespaces.length > 0) {
+                const nsSet = new Set(options.namespaces)
+                workloads = workloads.filter(w => nsSet.has(w.metadata.namespace || ''))
+            }
+            if (options.kinds.length > 0) {
+                const kindSet = new Set(options.kinds.map(k => k.toLowerCase()))
+                workloads = workloads.filter(w => kindSet.has((w.kind || '').toLowerCase()))
+            }
+        }
+
+        const runTrivy = !options || options.runTrivy
+        const runKubesec = !options || options.runKubesec
+
+        milestone(`${workloads.length} workload${workloads.length !== 1 ? 's' : ''} in scope`)
+        if (runTrivy && runKubesec) milestone('Launching config analysis + image CVE scan')
+        else if (runTrivy) milestone('Launching image CVE scan')
+        else milestone('Launching config analysis')
+
+        // Strip the `TIMESTAMP\tLEVEL\t` prefix that trivy emits on every stderr line.
+        const TRIVY_PREFIX_RE = /^\S+\t(?:INFO|WARN|ERROR|FATAL)\t/
+        // Suppress trivy lines that are internal noise and not useful to the user.
+        const TRIVY_NOISE_RE = /Unable to parse (container|image)|unable to parse digest/i
+
+        // Wire up the progress relay before starting the scan so no lines are missed.
+        const unsubProgress = window.kubectl.onSecurityProgress((line: string) => {
+            const clean = line.replace(TRIVY_PREFIX_RE, '').trim()
+            if (!clean) return
+            // Suppress trivy internal noise that isn't actionable for the user.
+            if (TRIVY_NOISE_RE.test(clean)) return
+            // Keep only the last 10 lines to avoid unbounded growth.
+            set(s => ({ securityScanProgressLines: [...s.securityScanProgressLines.slice(-9), clean] }))
+        })
+
+        try {
+            const [trivyResult, kubesecResult] = await Promise.allSettled([
+                runTrivy
+                    ? (() => {
+                        if (options?.selectedImages !== undefined) {
+                            const entries = extractWorkloadImages(workloads)
+                                .filter(e => (options.selectedImages as string[]).includes(e.image))
+                            if (entries.length === 0) return Promise.resolve(null)
+                            return window.kubectl.scanTrivyImages(entries)
+                        }
+                        return window.kubectl.scanSecurity()
+                    })()
+                    : Promise.resolve(null),
+                runKubesec ? window.kubectl.scanKubesecBatch(workloads) : Promise.resolve(null),
+            ])
+
+            // --- trivy ---
+            let error: string | null = null
+            const stateUpdate: Record<string, any> = { securityScanning: false }
+
+            if (runTrivy) {
+                if (trivyResult.status === 'fulfilled') {
+                    let trivyData = trivyResult.value
+                    // Post-filter trivy Resources to match custom scope.
+                    if (trivyData && options) {
+                        trivyData = filterTrivyByScope(trivyData, options)
+                    }
+                    stateUpdate.securityScanResults = trivyData
+                    stateUpdate.trivyAvailable = true
+                } else {
+                    const msg: string = trivyResult.reason?.message ?? ''
+                    if (msg.includes('trivy_not_found') || msg.includes('trivy binary not found')) {
+                        stateUpdate.trivyAvailable = false
+                    } else {
+                        error = `Image scan failed: ${msg}`
+                        stateUpdate.trivyAvailable = null
+                    }
+                    stateUpdate.securityScanResults = null
+                }
+            } else {
+                // Config-only scan: clear stale trivy results so the UI matches the scan scope.
+                stateUpdate.securityScanResults = null
+            }
+
+            // --- kubesec batch ---
+            // Build a map of "namespace/name/kind" → batch result for O(1) lookup in the UI.
+            let kubesecBatchResults: Record<string, any> | null = null
+            if (runKubesec && kubesecResult.status === 'fulfilled' && kubesecResult.value !== null) {
+                const raw: any[] = kubesecResult.value
+                kubesecBatchResults = {}
+                workloads.forEach((w: any, i: number) => {
+                    const key = `${w.metadata?.namespace ?? ''}/${w.metadata?.name ?? ''}/${w.kind ?? ''}`
+                    kubesecBatchResults![key] = raw[i]
+                })
+            }
+            stateUpdate.kubesecBatchResults = kubesecBatchResults
+            stateUpdate.error = error
+
+            milestone('Processing results...')
+            set(stateUpdate)
+        } finally {
+            unsubProgress()
+        }
+    }
 })
+
+/** Post-filters trivy scan output to match the custom scan scope. */
+function filterTrivyByScope(data: any, options: CustomScanOptions): any {
+    if (!data?.Resources) return data
+    let resources = data.Resources
+    if (options.namespaces.length > 0) {
+        const nsSet = new Set(options.namespaces)
+        resources = resources.filter((r: any) => nsSet.has(r.Namespace))
+    }
+    if (options.kinds.length > 0) {
+        const kindSet = new Set(options.kinds)
+        resources = resources.filter((r: any) => kindSet.has(r.Kind))
+    }
+    return { ...data, Resources: resources }
+}
 
 export function kindLabel(section: string): string {
     const map: Record<string, string> = {

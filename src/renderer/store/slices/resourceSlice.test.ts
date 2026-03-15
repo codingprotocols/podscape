@@ -149,4 +149,86 @@ describe('resourceSlice', () => {
         // _all means "all namespaces" — translated to null before the API call
         expect(windowMock.kubectl.getPods).toHaveBeenCalledWith('ctx1', null)
     })
+
+    // ── scanSecurity ──────────────────────────────────────────────────────────
+
+    describe('scanSecurity', () => {
+        beforeEach(() => {
+            state.pods = []
+            state.deployments = []
+            state.statefulsets = []
+            state.daemonsets = []
+            state.jobs = []
+            state.cronjobs = []
+        })
+
+        it('sets trivyAvailable=false when trivy_not_found error, no error toast', async () => {
+            windowMock.kubectl.scanSecurity.mockRejectedValue(
+                new Error('503: {"error":"trivy_not_found","message":"trivy not found"}')
+            )
+            windowMock.kubectl.scanKubesecBatch.mockResolvedValue([])
+
+            const slice = createResourceSlice(set, get, {} as any)
+            await slice.scanSecurity()
+
+            expect(state.trivyAvailable).toBe(false)
+            expect(state.error).toBeNull()
+            expect(state.securityScanning).toBe(false)
+        })
+
+        it('sets trivyAvailable=true and stores results when trivy scan succeeds', async () => {
+            const fakeResults = { Resources: [{ Name: 'pod-a', Namespace: 'default', Kind: 'Pod', Results: [] }] }
+            windowMock.kubectl.scanSecurity.mockResolvedValue(fakeResults)
+            windowMock.kubectl.scanKubesecBatch.mockResolvedValue([])
+
+            const slice = createResourceSlice(set, get, {} as any)
+            await slice.scanSecurity()
+
+            expect(state.trivyAvailable).toBe(true)
+            expect(state.securityScanResults).toEqual(fakeResults)
+            expect(state.securityScanning).toBe(false)
+        })
+
+        it('sets error string when trivy fails with a non-trivy_not_found error', async () => {
+            windowMock.kubectl.scanSecurity.mockRejectedValue(new Error('network timeout'))
+            windowMock.kubectl.scanKubesecBatch.mockResolvedValue([])
+
+            const slice = createResourceSlice(set, get, {} as any)
+            await slice.scanSecurity()
+
+            expect(state.error).toContain('network timeout')
+            expect(state.trivyAvailable).toBeNull()
+        })
+
+        it('builds kubesecBatchResults map with "namespace/name/kind" keys matching SecurityHub lookup', async () => {
+            windowMock.kubectl.scanSecurity.mockResolvedValue({ Resources: [] })
+            const batchResults = [
+                { score: 5, issues: [{ id: 'A', reason: 'r', selector: 's', points: 3 }] },
+                { score: 2, issues: [] },
+            ]
+            windowMock.kubectl.scanKubesecBatch.mockResolvedValue(batchResults)
+
+            state.pods = [
+                { metadata: { name: 'pod-a', namespace: 'ns1', uid: '1', creationTimestamp: '', labels: {} }, kind: 'Pod', apiVersion: 'v1', spec: {}, status: {} },
+                { metadata: { name: 'pod-b', namespace: 'ns2', uid: '2', creationTimestamp: '', labels: {} }, kind: 'Pod', apiVersion: 'v1', spec: {}, status: {} },
+            ]
+
+            const slice = createResourceSlice(set, get, {} as any)
+            await slice.scanSecurity()
+
+            expect(state.kubesecBatchResults?.['ns1/pod-a/Pod']).toEqual(batchResults[0])
+            expect(state.kubesecBatchResults?.['ns2/pod-b/Pod']).toEqual(batchResults[1])
+        })
+
+        it('sets kubesecBatchResults=null and clears securityScanning when kubesec fails', async () => {
+            windowMock.kubectl.scanSecurity.mockResolvedValue({ Resources: [] })
+            windowMock.kubectl.scanKubesecBatch.mockRejectedValue(new Error('kubesec error'))
+
+            const slice = createResourceSlice(set, get, {} as any)
+            await slice.scanSecurity()
+
+            expect(state.kubesecBatchResults).toBeNull()
+            expect(state.securityScanning).toBe(false)
+        })
+    })
 })

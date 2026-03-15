@@ -34,6 +34,7 @@ import EventsView from './components/EventsView'
 import MetricsView from './components/MetricsView'
 import SettingsPanel from './components/SettingsPanel'
 import UnifiedLogs from './components/UnifiedLogs'
+import SecurityHub from './components/SecurityHub'
 import NetworkPanel from './components/NetworkPanel'
 import ExecPanel from './components/ExecPanel'
 import ConnectivityTester from './components/ConnectivityTester'
@@ -399,6 +400,8 @@ export default function App(): JSX.Element {
               <PortForwardPanel />
             ) : section === 'helm' ? (
               <HelmPanel />
+            ) : section === 'security' ? (
+              <SecurityHub />
             ) : section === 'connectivity' ? (
               <ConnectivityTester />
             ) : section === 'debugpod' ? (

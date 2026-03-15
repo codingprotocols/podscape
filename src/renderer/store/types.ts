@@ -72,6 +72,10 @@ declare global {
             onPortForwardReady: (id: string, cb: (msg: string) => void) => () => void
             onPortForwardError: (id: string, cb: (msg: string) => void) => () => void
             onPortForwardExit: (id: string, cb: () => void) => () => void
+            scanSecurity: () => Promise<any>
+            scanKubesecBatch: (resources: any[]) => Promise<any[]>
+            scanTrivyImages: (workloads: any[]) => Promise<any>
+            onSecurityProgress: (cb: (line: string) => void) => () => void
         }
         helm: {
             list: (context: string) => Promise<HelmRelease[]>
@@ -92,7 +96,7 @@ declare global {
         settings: {
             get: () => Promise<{ kubectlPath: string; shellPath: string; helmPath: string; theme: string; kubeconfigPath: string; prodContexts: string[] }>
             set: (s: { kubectlPath: string; shellPath: string; helmPath: string; theme: string; kubeconfigPath: string; prodContexts: string[] }) => Promise<void>
-            checkTools: () => Promise<{ kubeconfigOk: boolean }>
+            checkTools: () => Promise<{ kubeconfigOk: boolean; trivyOk: boolean }>
         }
         kubeconfig: {
             get: () => Promise<{ path: string; content: string }>
@@ -106,6 +110,17 @@ declare global {
             showSaveFile: (defaultName: string) => Promise<string | null>
         }
     }
+}
+
+export interface CustomScanOptions {
+    /** Namespaces to scan; empty array = all loaded namespaces */
+    namespaces: string[]
+    /** Resource kinds to include (e.g. "Pod", "Deployment"); empty = all */
+    kinds: string[]
+    runTrivy: boolean
+    runKubesec: boolean
+    /** Images selected in the pre-scan picker. Present when trivy runs per-image. */
+    selectedImages?: string[]
 }
 
 export interface ExecTarget {
@@ -180,6 +195,14 @@ export interface AppStore extends AnalysisSlice {
     portForwards: PortForwardEntry[]
     helmReleases: HelmRelease[]
     debugPods: DebugPodEntry[]
+    securityScanResults: any | null
+    securityScanning: boolean
+    securityScanProgressLines: string[]
+    // Map of "namespace/name/kind" → KubesecBatchItem from /security/kubesec/batch
+    kubesecBatchResults: Record<string, any> | null
+    trivyAvailable: boolean | null
+    lastPreloadedAt: number
+    lastDashboardLoadedAt: number
     addDebugPod: (pod: DebugPodEntry) => void
     removeDebugPod: (name: string) => void
     updateDebugPod: (name: string, updates: Partial<DebugPodEntry>) => void
@@ -194,6 +217,7 @@ export interface AppStore extends AnalysisSlice {
     loadingNamespaces: boolean
     loadingResources: boolean
     error: string | null
+    setError: (err: string | null) => void
     clearError: () => void
 
     // Actions
@@ -205,6 +229,7 @@ export interface AppStore extends AnalysisSlice {
     loadDashboard: () => Promise<void>
     refresh: () => Promise<void>
     preloadSearchResources: () => Promise<void>
+    scanSecurity: (options?: CustomScanOptions) => Promise<void>
 
     // Operations
     scaleDeployment: (name: string, replicas: number, namespace?: string) => Promise<void>

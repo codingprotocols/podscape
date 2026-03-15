@@ -72,6 +72,9 @@ export function registerSettingsHandlers(): void {
 
   ipcMain.handle('settings:checkTools', async () => {
     const kubeconfigOk = existsSync(findKubeconfigPath())
-    return { kubeconfigOk }
+    const { spawnSync } = await import('child_process')
+    const trivyCheck = spawnSync('trivy', ['--version'], { stdio: 'ignore' })
+    const trivyOk = trivyCheck.status === 0
+    return { kubeconfigOk, trivyOk }
   })
 }

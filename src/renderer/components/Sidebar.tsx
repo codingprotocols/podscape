@@ -402,6 +402,7 @@ export default function Sidebar(): JSX.Element {
             <NavItem label="Events" section="events" icon={ICONS.event} badge={events.filter(e => e.type === 'Warning').length || undefined} />
             <NavItem label="Metrics" section="metrics" icon={ICONS.metrics} />
             <NavItem label="Unified Logs" section="unifiedlogs" icon={ICONS.terminal} />
+            <NavItem label="Security Hub" section="security" icon={ICONS.secret} />
           </NavGroup>
 
           <NavGroup title="Tools">
