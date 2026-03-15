@@ -80,6 +80,10 @@ export const setupMocks = () => {
             onPortForwardError: vi.fn(() => vi.fn()),
             onPortForwardExit: vi.fn(() => vi.fn()),
             isReady: vi.fn().mockResolvedValue(true),
+            scanSecurity: vi.fn(),
+            scanKubesecBatch: vi.fn().mockResolvedValue([]),
+            scanTrivyImages: vi.fn().mockResolvedValue({ Resources: [] }),
+            onSecurityProgress: vi.fn(() => vi.fn()),
         },
         plugins: {
             list: vi.fn(),

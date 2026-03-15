@@ -7,6 +7,8 @@ function allContainers(podSpec: any): { c: any; prefix: string }[] {
     ]
 }
 
+const SENSITIVE_KEYWORDS = ['PASSWORD', 'TOKEN', 'SECRET', 'KEY', 'AUTH', 'API_KEY']
+
 export const bestPracticeRules: ScannerRule[] = [
     {
         id: 'no-resource-limits',
@@ -69,7 +71,6 @@ export const bestPracticeRules: ScannerRule[] = [
             const podSpec = (resource as any).spec?.template?.spec || (resource as any).spec
             if (!podSpec?.containers) return issues
 
-            // Probe checks only apply to app containers, not initContainers
             for (const c of podSpec.containers) {
                 if (!c.livenessProbe) {
                     issues.push({
@@ -108,5 +109,32 @@ export const bestPracticeRules: ScannerRule[] = [
             }
             return issues
         }
-    }
+    },
+    {
+        id: 'sensitive-env-var',
+        name: 'Sensitive Env Variable',
+        description: 'Secrets should not be stored as plain-text environment variable values.',
+        level: 'error',
+        category: 'best-practice',
+        validate: (resource) => {
+            const issues: ScanIssue[] = []
+            const podSpec = (resource as any).spec?.template?.spec || (resource as any).spec
+            if (!podSpec?.containers) return issues
+
+            for (const { c, prefix } of allContainers(podSpec)) {
+                for (const e of c.env ?? []) {
+                    if (e.value && SENSITIVE_KEYWORDS.some(k => e.name.toUpperCase().includes(k))) {
+                        issues.push({
+                            ruleId: 'sensitive-env-var',
+                            level: 'error',
+                            message: `Container ${c.name} has sensitive variable ${e.name} in plain text`,
+                            path: `spec.${prefix}[name=${c.name}].env[name=${e.name}].value`,
+                            suggestion: 'Use a secretKeyRef to inject sensitive values from a Secret.'
+                        })
+                    }
+                }
+            }
+            return issues
+        }
+    },
 ]

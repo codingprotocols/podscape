@@ -56,6 +56,7 @@ func main() {
 	// Bootstrap the initial context cache and set it as active.
 	initialCache, _ := store.Store.GetOrCreateCache(activeCtxName, clientset, config)
 	store.Store.Lock()
+	store.Store.ActiveContextName = activeCtxName
 	store.Store.ActiveCache = initialCache
 	store.Store.Unlock()
 
@@ -123,6 +124,10 @@ func main() {
 	http.HandleFunc("/metrics/nodes", handlers.HandleGetNodeMetrics)
 	http.HandleFunc("/debugpod/create", handlers.HandleCreateDebugPod)
 	http.HandleFunc("/topology", handlers.HandleTopology)
+	http.HandleFunc("/security/scan", handlers.HandleSecurityScan)
+	http.HandleFunc("/security/kubesec", handlers.HandleKubesec)
+	http.HandleFunc("/security/kubesec/batch", handlers.HandleKubesecBatch)
+	http.HandleFunc("/security/trivy/images", handlers.HandleTrivyImages)
 
 	// Build the middleware chain (innermost → outermost):
 	//   mux → [token auth] → CORS

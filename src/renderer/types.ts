@@ -671,6 +671,7 @@ export type ResourceKind =
   | 'network'
   | 'connectivity'
   | 'debugpod'
+  | 'security'
   | 'helm'
 
 export type AnyKubeResource =

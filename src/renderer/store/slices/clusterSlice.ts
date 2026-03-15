@@ -67,6 +67,10 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
         set({
             selectedContext: name, isProduction: isProd, loadingNamespaces: true, loadingResources: true,
             namespaces: [], selectedNamespace: null, selectedResource: null, error: null,
+            // Reset security scan state so stale results from the previous context are not shown.
+            securityScanResults: null, kubesecBatchResults: null, trivyAvailable: null,
+            // Reset freshness timestamps so next dashboard/preload fetch always runs.
+            lastPreloadedAt: 0, lastDashboardLoadedAt: 0,
             ...sectionClearState,
         })
         try {

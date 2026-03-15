@@ -62,7 +62,10 @@ describe('ScannerEngine integration', () => {
         expect(result.summary.infos).toBe(0)
     })
 
-    it('privileged container produces an error', () => {
+    it('sensitive environment variable produces an error', () => {
+        // sensitive-env-var fires as 'error' for plain-text secrets in env vars.
+        // Privileged container security checks (privileged: true) are now handled
+        // by the kubesec Go library, not the local engine.
         const engine = new ScannerEngine()
         const resource = makeResource({
             spec: {
@@ -72,9 +75,10 @@ describe('ScannerEngine integration', () => {
                             name: 'app',
                             image: 'my-app:1.0.0',
                             resources: { limits: { cpu: '100m', memory: '128Mi' } },
-                            securityContext: { privileged: true, runAsNonRoot: true },
-                            livenessProbe: {},
-                            readinessProbe: {},
+                            securityContext: { runAsNonRoot: true },
+                            livenessProbe: { httpGet: { path: '/healthz', port: 8080 } },
+                            readinessProbe: { httpGet: { path: '/ready', port: 8080 } },
+                            env: [{ name: 'DB_PASSWORD', value: 'supersecret' }],
                         }],
                         securityContext: { runAsNonRoot: true },
                     }
@@ -83,7 +87,7 @@ describe('ScannerEngine integration', () => {
         })
         const result = engine.scan(resource)
         expect(result.summary.errors).toBeGreaterThanOrEqual(1)
-        expect(result.issues.some(i => i.ruleId === 'privileged-container')).toBe(true)
+        expect(result.issues.some(i => i.ruleId === 'sensitive-env-var')).toBe(true)
     })
 
     it('missing resource limits produces a warning', () => {
@@ -181,6 +185,10 @@ describe('ScannerEngine integration', () => {
     })
 
     it('multiple bad containers accumulate all issues', () => {
+        // Local engine rules: no-resource-limits (warn), latest-image-tag (warn),
+        // missing-readiness-probe (warn), missing-liveness-probe (info).
+        // No local engine error rules fire here — privileged container checks
+        // are handled by kubesec, not the local engine.
         const engine = new ScannerEngine()
         const resource = makeResource({
             spec: {
@@ -208,7 +216,6 @@ describe('ScannerEngine integration', () => {
             }
         })
         const result = engine.scan(resource)
-        expect(result.summary.errors).toBeGreaterThanOrEqual(1)
         expect(result.summary.warnings).toBeGreaterThanOrEqual(2)
         expect(result.issues.length).toBeGreaterThan(4)
     })

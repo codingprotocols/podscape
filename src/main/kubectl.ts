@@ -1,3 +1,4 @@
+import http from 'http'
 import { ipcMain } from 'electron'
 import { checkedSidecarFetch, sidecarFetch } from './api'
 import { activeSidecarPort } from './runtime'
@@ -184,6 +185,29 @@ export class KubectlProvider {
     const buffer = await res.arrayBuffer()
     await writeFile(localPath, Buffer.from(buffer))
   }
+
+  async scanSecurity(): Promise<any> {
+    const res = await checkedSidecarFetch('/security/scan')
+    return await res.json()
+  }
+
+  async scanKubesec(yaml: string): Promise<any> {
+    const res = await checkedSidecarFetch('/security/kubesec', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/yaml' },
+      body: yaml
+    })
+    return await res.json()
+  }
+
+  async scanKubesecBatch(resources: any[]): Promise<any[]> {
+    const res = await checkedSidecarFetch('/security/kubesec/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(resources),
+    })
+    return await res.json()
+  }
 }
 
 async function getTopology(ns: string): Promise<any> {
@@ -323,4 +347,127 @@ export function registerKubectlHandlers(): void {
       return false
     }
   })
+
+  // scanSecurity consumes an SSE stream from the sidecar via http.get (not fetch),
+  // avoiding undici's 5-minute bodyTimeout which terminates long-running trivy scans.
+  ipcMain.handle('kubectl:scanSecurity', (event) => {
+    return new Promise<any>((resolve, reject) => {
+      const req = http.get(
+        { hostname: '127.0.0.1', port: activeSidecarPort, path: '/security/scan',
+          headers: { 'X-Podscape-Token': sidecarToken } },
+        (res) => {
+          const contentType = res.headers['content-type'] ?? ''
+
+          // Non-SSE: trivy_not_found 503 or unexpected status.
+          if (!contentType.includes('text/event-stream')) {
+            let body = ''
+            res.on('data', (chunk: Buffer) => { body += chunk.toString() })
+            res.on('end', () => {
+              if (res.statusCode !== 200) {
+                reject(new Error(`Go sidecar returned ${res.statusCode} for /security/scan: ${body}`))
+              } else {
+                try { resolve(JSON.parse(body)) } catch { resolve(null) }
+              }
+            })
+            return
+          }
+
+          // SSE stream: parse event blocks and relay progress to the renderer.
+          let buffer = ''
+          res.on('data', (chunk: Buffer) => {
+            buffer += chunk.toString()
+            const blocks = buffer.split('\n\n')
+            buffer = blocks.pop() ?? ''
+
+            for (const block of blocks) {
+              let eventType = 'message'
+              let data = ''
+              for (const line of block.split('\n')) {
+                if (line.startsWith('event: ')) eventType = line.slice(7).trim()
+                else if (line.startsWith('data: ')) data = line.slice(6)
+              }
+
+              if (eventType === 'progress' && data) {
+                if (!event.sender.isDestroyed()) event.sender.send('security:progress', data)
+              } else if (eventType === 'result') {
+                res.destroy()
+                try { resolve(JSON.parse(data)) } catch (e) { reject(e) }
+                return
+              } else if (eventType === 'error') {
+                res.destroy()
+                reject(new Error(`trivy scan failed: ${data}`))
+                return
+              }
+            }
+          })
+
+          res.on('end', () => resolve(null))
+          res.on('error', reject)
+        }
+      )
+      req.on('error', reject)
+    })
+  })
+  ipcMain.handle('kubectl:scanTrivyImages', (event, workloads) => {
+    return new Promise<any>((resolve, reject) => {
+      const reqBody = JSON.stringify({ workloads })
+      const req = http.request(
+        {
+          hostname: '127.0.0.1', port: activeSidecarPort,
+          path: '/security/trivy/images', method: 'POST',
+          headers: {
+            'X-Podscape-Token': sidecarToken,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(reqBody),
+          },
+        },
+        (res) => {
+          const contentType = res.headers['content-type'] ?? ''
+          if (!contentType.includes('text/event-stream')) {
+            let body = ''
+            res.on('data', (chunk: Buffer) => { body += chunk.toString() })
+            res.on('end', () => {
+              if (res.statusCode !== 200) {
+                reject(new Error(`Go sidecar returned ${res.statusCode} for /security/trivy/images: ${body}`))
+              } else {
+                try { resolve(JSON.parse(body)) } catch { resolve(null) }
+              }
+            })
+            return
+          }
+          let buffer = ''
+          res.on('data', (chunk: Buffer) => {
+            buffer += chunk.toString()
+            const blocks = buffer.split('\n\n')
+            buffer = blocks.pop() ?? ''
+            for (const block of blocks) {
+              let eventType = 'message', data = ''
+              for (const line of block.split('\n')) {
+                if (line.startsWith('event: ')) eventType = line.slice(7).trim()
+                else if (line.startsWith('data: ')) data = line.slice(6)
+              }
+              if (eventType === 'progress' && data) {
+                if (!event.sender.isDestroyed()) event.sender.send('security:progress', data)
+              } else if (eventType === 'result') {
+                res.destroy()
+                try { resolve(JSON.parse(data)) } catch (e) { reject(e) }
+                return
+              } else if (eventType === 'error') {
+                res.destroy()
+                reject(new Error(`trivy scan failed: ${data}`))
+                return
+              }
+            }
+          })
+          res.on('end', () => resolve(null))
+          res.on('error', reject)
+        }
+      )
+      req.on('error', reject)
+      req.write(reqBody)
+      req.end()
+    })
+  })
+  ipcMain.handle('kubectl:scanKubesec', (_e, yaml) => provider.scanKubesec(yaml))
+  ipcMain.handle('kubectl:scanKubesecBatch', (_e, resources) => provider.scanKubesecBatch(resources))
 }

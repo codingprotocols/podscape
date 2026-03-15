@@ -177,9 +177,10 @@ func (c *ContextCache) ClearMaps() {
 // and tracks the currently active context.
 type ClusterStore struct {
 	sync.RWMutex                       // guards ActiveCache pointer and caches map only
-	Kubeconfig   string
-	ActiveCache  *ContextCache
-	caches       map[string]*ContextCache
+	Kubeconfig        string
+	ActiveContextName string
+	ActiveCache       *ContextCache
+	caches            map[string]*ContextCache
 }
 
 // GetOrCreateCache returns (existing cache, false) or (new cache, true).

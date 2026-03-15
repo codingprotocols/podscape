@@ -193,6 +193,15 @@ const kubectl = {
     remotePath: string, localPath: string
   ): Promise<void> =>
     ipcRenderer.invoke('kubectl:copyFromContainer', context, namespace, pod, container, remotePath, localPath),
+
+  scanSecurity: () => ipcRenderer.invoke('kubectl:scanSecurity'),
+  scanKubesecBatch: (resources: any[]) => ipcRenderer.invoke('kubectl:scanKubesecBatch', resources),
+  scanTrivyImages: (workloads: any[]) => ipcRenderer.invoke('kubectl:scanTrivyImages', workloads),
+  onSecurityProgress: (cb: (line: string) => void): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, line: string): void => cb(line)
+    ipcRenderer.on('security:progress', handler)
+    return () => ipcRenderer.off('security:progress', handler)
+  },
 }
 
 // ─── dialog API ───────────────────────────────────────────────────────────────
