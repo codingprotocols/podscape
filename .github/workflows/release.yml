@@ -6,20 +6,8 @@ on:
       - 'v*'
 
 jobs:
-  # ── macOS ────────────────────────────────────────────────────────────────────
-  # Use a native runner per arch so CGO (go-sqlite3, Helm dep) compiles without
-  # cross-compilation toolchain gymnastics.
   release-mac:
-    strategy:
-      matrix:
-        include:
-          - runner: macos-latest   # arm64 — Apple Silicon (M1/M2/M3)
-            goarch: arm64
-            electron_arch: arm64
-          - runner: macos-14       # x86_64 — Intel (Now using macos-14 for stability)
-            goarch: amd64
-            electron_arch: x64
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -43,26 +31,11 @@ jobs:
         run: |
           cd go-core
           CGO_ENABLED=1 GOARCH=${{ matrix.goarch }} go build -o podscape-core ./cmd/podscape-core/
-
-      - name: Build Electron (renderer + main + preload)
-        run: npx electron-vite build
-
       - name: Package & publish macOS (${{ matrix.electron_arch }})
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: npx electron-builder --mac --arch ${{ matrix.electron_arch }} --publish always
+        run: npm run build:mac -- --publish always
 
-      - name: Generate SHA256 checksums
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          CHECKSUM_FILE="checksums-mac-${{ matrix.electron_arch }}.txt"
-          cd dist
-          shasum -a 256 *.dmg *.zip 2>/dev/null | tee "../${CHECKSUM_FILE}"
-          cd ..
-          gh release upload ${{ github.ref_name }} "${CHECKSUM_FILE}" --clobber
-
-  # ── Windows ──────────────────────────────────────────────────────────────────
   release-win:
     runs-on: windows-latest
     steps:
@@ -98,28 +71,12 @@ jobs:
           go build -o podscape-core.exe ./cmd/podscape-core/
         env:
           CGO_ENABLED: '1'
-
-      - name: Build Electron (renderer + main + preload)
-        run: npx electron-vite build
-
+          
       - name: Package & publish Windows
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: npx electron-builder --win --publish always
+        run: npm run build:win -- --publish always
 
-      - name: Generate SHA256 checksums
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          $files = Get-ChildItem dist\*.exe -ErrorAction SilentlyContinue
-          $lines = $files | ForEach-Object {
-            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
-            "$hash  $($_.Name)"
-          }
-          $lines | Out-File -FilePath checksums-win.txt -Encoding utf8
-          gh release upload ${{ github.ref_name }} checksums-win.txt --clobber
-
-  # ── Linux ────────────────────────────────────────────────────────────────────
   release-linux:
     runs-on: ubuntu-latest
     steps:
@@ -155,19 +112,7 @@ jobs:
           cd go-core
           CGO_ENABLED=1 go build -o podscape-core ./cmd/podscape-core/
 
-      - name: Build Electron (renderer + main + preload)
-        run: npx electron-vite build
-
       - name: Package & publish Linux
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: npx electron-builder --linux --publish always
-
-      - name: Generate SHA256 checksums
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          cd dist
-          sha256sum *.AppImage *.deb 2>/dev/null | tee ../checksums-linux.txt
-          cd ..
-          gh release upload ${{ github.ref_name }} checksums-linux.txt --clobber
+        run: npm run build:linux -- --publish always
