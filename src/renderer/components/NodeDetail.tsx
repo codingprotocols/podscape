@@ -3,14 +3,19 @@ import type { KubeNode } from '../types'
 import { formatAge, getNodeReady, parseMemoryMiB, parseCpuMillicores } from '../types'
 import { useAppStore } from '../store'
 import YAMLViewer from './YAMLViewer'
+import TimeSeriesChart, { PrometheusTimeRangeBar } from './TimeSeriesChart'
+import { nodeCpuQuery, nodeMemoryQuery } from '../utils/prometheusQueries'
 
 interface Props { node: KubeNode }
 
 export default function NodeDetail({ node }: Props): JSX.Element {
-  const { getYAML } = useAppStore()
+  const { getYAML, pods, nodeMetrics, selectResource, prometheusAvailable } = useAppStore()
   const [yaml, setYaml] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
   const [yamlError, setYamlError] = useState<string | null>(null)
+
+  const nodePods = pods.filter(p => p.spec.nodeName === node.metadata.name)
+  const metrics = nodeMetrics.find(m => m.metadata.name === node.metadata.name)
 
   const ready = getNodeReady(node)
   const internalIP = (node.status.addresses ?? []).find(a => a.type === 'InternalIP')?.address ?? '—'
@@ -63,6 +68,20 @@ export default function NodeDetail({ node }: Props): JSX.Element {
           </button>
         </div>
       </div>
+
+      {/* Prometheus metrics */}
+      {prometheusAvailable && (
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Metrics</span>
+            <PrometheusTimeRangeBar />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <TimeSeriesChart queries={[nodeCpuQuery(node.metadata.name)]} title="CPU" unit="%" />
+            <TimeSeriesChart queries={[nodeMemoryQuery(node.metadata.name)]} title="Memory" unit="%" />
+          </div>
+        </div>
+      )}
 
       {/* Addresses */}
       <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
@@ -149,6 +168,63 @@ export default function NodeDetail({ node }: Props): JSX.Element {
             <Row label="Pod CIDRs" value={node.spec.podCIDRs.join(', ')} mono />
           )}
         </dl>
+      </div>
+
+      {/* Live Metrics */}
+      {metrics && (
+        <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-blue-500/5">
+          <h4 className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+            Live Usage Metrics
+          </h4>
+          <div className="space-y-4 px-1">
+            <ResourceBar
+              label="Actual CPU Usage"
+              used={parseCpuMillicores(metrics.usage.cpu)}
+              total={cpuCap}
+              format={v => `${Math.round(v)}m`}
+            />
+            <ResourceBar
+              label="Actual Memory Usage"
+              used={parseMemoryMiB(metrics.usage.memory)}
+              total={memCapMiB}
+              format={v => v >= 1024 ? `${(v / 1024).toFixed(1)}Gi` : `${Math.round(v)}Mi`}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Running Pods */}
+      <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Pods on Node</h4>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/5 text-slate-500">{nodePods.length}</span>
+        </div>
+        
+        {nodePods.length > 0 ? (
+          <div className="space-y-2 px-1">
+            {nodePods.map(pod => (
+              <div key={pod.metadata.uid} className="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer group"
+                onClick={() => selectResource(pod)}>
+                <div className="min-w-0 pr-2">
+                  <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate font-mono">{pod.metadata.name}</p>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{pod.metadata.namespace}</p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className={`text-[9px] font-black uppercase tracking-widest ${
+                    pod.status.phase === 'Running' ? 'text-emerald-500' : 
+                    pod.status.phase === 'Succeeded' ? 'text-blue-500' : 'text-amber-500'
+                  }`}>
+                    {pod.status.phase}
+                  </span>
+                  <span className="text-[10px] text-slate-400 group-hover:text-blue-500 transition-colors">→</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[11px] text-slate-500 italic px-1">No pods found on this node.</p>
+        )}
       </div>
 
       {/* Conditions */}

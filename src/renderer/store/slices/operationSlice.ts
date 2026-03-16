@@ -1,6 +1,10 @@
 import { AppStore, StoreSlice } from '../types'
 import { PortForwardEntry } from '../../types'
 
+// Keyed by port-forward ID; holds the three IPC unsubscribe functions so they
+// can be called when the forward is stopped or exits on its own.
+const pfUnsubs = new Map<string, [() => void, () => void, () => void]>()
+
 export interface OperationSlice {
     scaleDeployment: (name: string, replicas: number, namespace?: string) => Promise<void>
     scaleStatefulSet: (name: string, replicas: number, namespace?: string) => Promise<void>
@@ -69,11 +73,26 @@ export const createOperationSlice: StoreSlice<OperationSlice> = (set, get) => ({
         set(s => ({ portForwards: [...s.portForwards, entry] }))
         const ctx = get().selectedContext!
         window.kubectl.portForward(ctx, entry.namespace, entry.type, entry.name, entry.localPort, entry.remotePort, entry.id)
-        window.kubectl.onPortForwardReady(entry.id, () => set(s => ({ portForwards: s.portForwards.map(f => f.id === entry.id ? { ...f, status: 'active' } : f) })))
-        window.kubectl.onPortForwardError(entry.id, (msg) => set(s => ({ portForwards: s.portForwards.map(f => f.id === entry.id ? { ...f, status: 'error', error: msg } : f) })))
-        window.kubectl.onPortForwardExit(entry.id, () => set(s => ({ portForwards: s.portForwards.filter(f => f.id !== entry.id) })))
+
+        const unsubReady = window.kubectl.onPortForwardReady(entry.id, () =>
+            set(s => ({ portForwards: s.portForwards.map(f => f.id === entry.id ? { ...f, status: 'active' } : f) }))
+        )
+        const unsubError = window.kubectl.onPortForwardError(entry.id, (msg) =>
+            set(s => ({ portForwards: s.portForwards.map(f => f.id === entry.id ? { ...f, status: 'error', error: msg } : f) }))
+        )
+        const unsubExit = window.kubectl.onPortForwardExit(entry.id, () => {
+            pfUnsubs.delete(entry.id)
+            set(s => ({ portForwards: s.portForwards.filter(f => f.id !== entry.id) }))
+        })
+
+        pfUnsubs.set(entry.id, [unsubReady, unsubError, unsubExit])
     },
     stopPortForward: (id) => {
+        const unsubs = pfUnsubs.get(id)
+        if (unsubs) {
+            unsubs.forEach(fn => fn())
+            pfUnsubs.delete(id)
+        }
         window.kubectl.stopPortForward(id)
         set(s => ({ portForwards: s.portForwards.filter(f => f.id !== id) }))
     },

@@ -1,6 +1,6 @@
 {
   "name": "podscape-electron",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Kubernetes management desktop app — Electron + React + TypeScript",
   "main": "./out/main/index.js",
   "author": "Coding Protocols Private Limited <support@codingprotocols.com>",
@@ -8,10 +8,10 @@
   "scripts": {
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "cd go-core && go build ./cmd/podscape-core/ && cd .. && electron-vite build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "electron-builder install-app-deps && chmod +x node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper node_modules/node-pty/prebuilds/darwin-x64/spawn-helper 2>/dev/null || true",
+    "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
@@ -33,21 +33,48 @@
       "entitlements": "entitlements.mac.plist",
       "entitlementsInherit": "entitlements.mac.inherit.plist",
       "target": [
-        { "target": "dmg", "arch": ["arm64", "x64"] },
-        { "target": "zip", "arch": ["arm64", "x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ]
     },
     "win": {
       "icon": "resources/icon.ico",
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "linux": {
       "icon": "resources/icon.png",
       "target": [
-        { "target": "AppImage", "arch": ["x64"] },
-        { "target": "deb", "arch": ["x64"] }
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "nsis": {
@@ -60,15 +87,30 @@
       "owner": "codingprotocols",
       "repo": "podscape-community"
     },
-    "asarUnpack": [
-      "**/node_modules/node-pty/**"
-    ]
+    "extraResources": [
+      {
+        "from": "go-core",
+        "to": "bin",
+        "filter": [
+          "podscape-core*"
+        ]
+      },
+      {
+        "from": "resources/splash.html",
+        "to": "."
+      },
+      {
+        "from": "resources/icon.png",
+        "to": "."
+      }
+    ],
+    "asarUnpack": []
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
     "js-yaml": "^4.1.0",
-    "node-pty": "^1.0.0"
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^1.0.1",
@@ -90,6 +132,7 @@
     "postcss": "^8.4.39",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "recharts": "^2.15.4",
     "tailwindcss": "^3.4.6",
     "typescript": "^5.5.2",
     "vite": "^5.3.3",

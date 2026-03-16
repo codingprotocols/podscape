@@ -4,14 +4,15 @@ import { useAppStore } from '../store'
 export default function KubeConfigOnboarding(): JSX.Element {
     const { init } = useAppStore()
     const [loading, setLoading] = useState(false)
-    const [toolsState, setToolsState] = useState<{ kubectlOk: boolean; helmOk: boolean; kubeconfigOk: boolean } | null>(null)
 
     const checkTools = async () => {
         setLoading(true)
         try {
             const state = await window.settings.checkTools()
-            setToolsState(state)
-            if (state.kubectlOk && state.kubeconfigOk) {
+            if (state.kubeconfigOk) {
+                // Sidecar started in no-kubeconfig mode — restart it now so it
+                // loads the newly configured kubeconfig before init() runs.
+                await (window as any).sidecar?.restart()
                 await init()
             }
         } catch (e) {
@@ -22,7 +23,7 @@ export default function KubeConfigOnboarding(): JSX.Element {
     }
 
     useEffect(() => {
-        window.settings.checkTools().then(setToolsState).catch(console.error)
+        checkTools()
     }, [])
 
     const handleSelectFile = async () => {
@@ -44,154 +45,120 @@ export default function KubeConfigOnboarding(): JSX.Element {
                 <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-600/10 rounded-full blur-[120px]" />
             </div>
 
-            <div className="max-w-5xl w-full z-10">
-                {/* Header */}
-                <div className="text-center mb-16 animate-in fade-in slide-in-from-top-8 duration-700">
-                    <div className="inline-flex items-center justify-center w-24 h-24 rounded-[2rem] premium-gradient mb-8 shadow-[0_20px_50px_rgba(37,99,235,0.3)] rotate-[-4deg] hover:rotate-0 transition-transform duration-500">
-                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <div className="max-w-6xl w-full z-10 flex flex-col md:flex-row items-center gap-16">
+                
+                {/* Left side: branding and showcase */}
+                <div className="flex-1 space-y-10 animate-in fade-in slide-in-from-left-8 duration-700">
+                    <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl premium-gradient shadow-[0_20px_40px_rgba(37,99,235,0.2)] mb-2">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M12 2L2 7l10 5 10-5-10-5M2 17l10 5 10-5M2 12l10 5 10-5" />
                         </svg>
                     </div>
-                    <h1 className="text-5xl font-black text-white tracking-widest uppercase mb-6 drop-shadow-2xl">
-                        Welcome to Podscape
-                    </h1>
-                    <p className="text-slate-400 text-xl leading-relaxed max-w-2xl mx-auto font-medium">
-                        Setup your Kubernetes environment to begin managing clusters with precision and speed.
-                    </p>
+                    
+                    <div className="space-y-4">
+                        <h1 className="text-6xl font-black text-white tracking-tight leading-none">
+                            Precision <br />
+                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400">Kubernetes</span>
+                        </h1>
+                        <p className="text-slate-400 text-lg max-w-lg font-medium">
+                            Experience the next generation of cluster management. Podscape provides the speed and visibility you need to scale with confidence.
+                        </p>
+                    </div>
+
+                    {/* Features List */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <FeatureItem 
+                            icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" /><polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" y1="22.08" x2="12" y2="12" /></svg>}
+                            title="Resource Control"
+                            desc="Real-time workload management."
+                        />
+                        <FeatureItem 
+                            icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /><path d="M2 12h20" /></svg>}
+                            title="Network Probe"
+                            desc="Built-in DNS and TCP tester."
+                        />
+                         <FeatureItem 
+                            icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>}
+                            title="Unified Logs"
+                            desc="High-speed stream explorer."
+                        />
+                        <FeatureItem 
+                            icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m18 16 4-4-4-4" /><path d="m6 8-4 4 4 4" /><path d="m14.5 4-5 16" /></svg>}
+                            title="Go Core"
+                            desc="No local CLI tools required."
+                        />
+                    </div>
                 </div>
 
-                {/* Steps Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
-                    {/* Step 1: Install kubectl */}
-                    <div className="group relative bg-white/[0.03] backdrop-blur-2xl border border-white/10 rounded-[2.5rem] p-8 flex flex-col transition-all duration-500 hover:bg-white/[0.05] hover:border-white/20 hover:translate-y-[-8px] hover:shadow-2xl hover:shadow-blue-500/10 animate-in fade-in slide-in-from-bottom-8 delay-100 duration-700">
-                        <div className="absolute top-6 right-8 opacity-10 group-hover:opacity-20 transition-opacity">
-                            <span className="text-8xl font-black italic">1</span>
+                {/* Right side: onboarding action */}
+                <div className="w-full md:w-[400px] animate-in fade-in slide-in-from-right-8 duration-700 delay-200">
+                    <div className="bg-white/[0.03] backdrop-blur-3xl border border-white/10 rounded-[2.5rem] p-10 space-y-8 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -mr-16 -mt-16" />
+                        
+                        <div className="space-y-2">
+                            <h3 className="text-2xl font-black text-white">Get Started</h3>
+                            <p className="text-slate-400 text-sm font-medium leading-relaxed">
+                                Select your Kubernetes configuration file to connect to your clusters.
+                            </p>
                         </div>
 
-                        <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-blue-400 mb-6">Step 1</h2>
-                        <h3 className="text-2xl font-black text-white mb-4">Install kubectl</h3>
-                        <p className="text-slate-400 text-sm leading-relaxed mb-8 font-medium">
-                            The Kubernetes command-line tool allows you to run commands against clusters.
-                        </p>
-
-                        <div className="mt-auto space-y-4">
-                            {toolsState?.kubectlOk ? (
-                                <div className="flex items-center justify-center gap-2 py-3.5 px-6 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-black uppercase tracking-widest shadow-[0_0_20px_rgba(16,185,129,0.1)]">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg>
-                                    DETECTED
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-black uppercase tracking-widest">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                                            <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-                                        </svg>
-                                        NOT FOUND
-                                    </div>
-                                    <a
-                                        href="https://kubernetes.io/docs/tasks/tools/"
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="flex items-center justify-center gap-2 px-6 py-3.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl transition-all"
-                                    >
-                                        INSTALL GUIDE
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" /></svg>
-                                    </a>
-                                </>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Step 2: Install Helm */}
-                    <div className="group relative bg-white/[0.03] backdrop-blur-2xl border border-white/10 rounded-[2.5rem] p-8 flex flex-col transition-all duration-500 hover:bg-white/[0.05] hover:border-white/20 hover:translate-y-[-8px] hover:shadow-2xl hover:shadow-indigo-500/10 animate-in fade-in slide-in-from-bottom-8 delay-200 duration-700">
-                        <div className="absolute top-6 right-8 opacity-10 group-hover:opacity-20 transition-opacity">
-                            <span className="text-8xl font-black italic">2</span>
-                        </div>
-
-                        <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-blue-400 mb-6">Step 2</h2>
-                        <h3 className="text-2xl font-black text-white mb-4">Install Helm</h3>
-                        <p className="text-slate-400 text-sm leading-relaxed mb-8 font-medium">
-                            The package manager for Kubernetes. Required for managing charts and releases.
-                        </p>
-
-                        <div className="mt-auto space-y-4">
-                            {toolsState?.helmOk ? (
-                                <div className="flex items-center justify-center gap-2 py-3.5 px-6 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-black uppercase tracking-widest shadow-[0_0_20px_rgba(16,185,129,0.1)]">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg>
-                                    DETECTED
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-black uppercase tracking-widest">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                                            <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-                                        </svg>
-                                        NOT FOUND
-                                    </div>
-                                    <a
-                                        href="https://helm.sh/docs/intro/install/"
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="flex items-center justify-center gap-2 px-6 py-3.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl transition-all"
-                                    >
-                                        INSTALL GUIDE
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" /></svg>
-                                    </a>
-                                </>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Step 3: Configure Path */}
-                    <div className="group relative bg-white/[0.03] backdrop-blur-2xl border border-white/10 rounded-[2.5rem] p-8 flex flex-col transition-all duration-500 hover:bg-white/[0.05] hover:border-white/20 hover:translate-y-[-8px] hover:shadow-2xl hover:shadow-purple-500/10 animate-in fade-in slide-in-from-bottom-8 delay-300 duration-700">
-                        <div className="absolute top-6 right-8 opacity-10 group-hover:opacity-20 transition-opacity">
-                            <span className="text-8xl font-black italic">3</span>
-                        </div>
-
-                        <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-blue-400 mb-6">Step 3</h2>
-                        <h3 className="text-2xl font-black text-white mb-4">Configure Path</h3>
-                        <p className="text-slate-400 text-sm leading-relaxed mb-8 font-medium">
-                            By default, we look at <code className="text-blue-400/80 font-mono font-bold bg-blue-400/5 px-2 py-0.5 rounded">~/.kube/config</code>. If yours is elsewhere, select it.
-                        </p>
-
-                        <div className="mt-auto space-y-4">
+                        <div className="space-y-4 pt-4">
                             <button
                                 onClick={handleSelectFile}
-                                className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-[0_10px_30px_rgba(37,99,235,0.3)] transition-all active:scale-95"
+                                disabled={loading}
+                                className="w-full group relative flex flex-col items-center justify-center gap-2 p-6 rounded-3xl bg-blue-600 hover:bg-blue-500 text-white transition-all shadow-[0_20px_50px_rgba(37,99,235,0.3)] active:scale-95 disabled:opacity-50"
                             >
-                                SELECT CONFIG FILE
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="mb-1 group-hover:scale-110 transition-transform">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                    <polyline points="14 2 14 8 20 8" />
+                                    <line x1="12" y1="18" x2="12" y2="12" />
+                                    <line x1="9" y1="15" x2="15" y2="15" />
+                                </svg>
+                                <span className="font-black text-xs uppercase tracking-[0.2em]">Select Kubeconfig</span>
                             </button>
-                            {toolsState?.kubeconfigOk && (
-                                <div className="flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-widest font-mono">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg>
-                                    FOUND
-                                </div>
-                            )}
+
+                            <div className="flex items-center gap-3 px-6 py-4 rounded-2xl bg-white/[0.03] border border-white/5">
+                                <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Awaiting Configuration</span>
+                            </div>
+                        </div>
+
+                        <div className="pt-4 border-t border-white/5">
+                            <div className="flex items-center gap-3 text-slate-500">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></svg>
+                                <p className="text-[10px] font-medium leading-relaxed">
+                                    Usually located at <code className="text-blue-400 font-bold bg-blue-400/5 px-1.5 py-0.5 rounded">~/.kube/config</code>. We'll handle the rest.
+                                </p>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                {/* Footer Action */}
-                <div className="flex flex-col items-center gap-12 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-500">
-                    <button
-                        onClick={checkTools}
-                        disabled={loading}
-                        className="group flex items-center gap-4 px-10 py-5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-[2rem] transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
-                    >
-                        {loading ? (
-                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        ) : (
-                            <svg className="group-hover:rotate-180 transition-transform duration-700" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3" />
-                            </svg>
-                        )}
-                        <span className="font-black text-sm tracking-[0.2em] uppercase">Run Detection Again</span>
-                    </button>
-
-                    <p className="text-slate-600 text-[9px] font-black uppercase tracking-[0.5em]">
-                        Podscape Engine — v1.1.0
-                    </p>
+                    <div className="mt-8 flex flex-col items-center gap-6">
+                        <button
+                            onClick={checkTools}
+                            className="text-[10px] font-black text-slate-600 hover:text-slate-400 uppercase tracking-[0.3em] transition-colors"
+                        >
+                            Refresh Detection
+                        </button>
+                        <p className="text-[9px] font-black text-slate-700 uppercase tracking-[0.6em]">
+                            Podscape Engine v1.2.0
+                        </p>
+                    </div>
                 </div>
+            </div>
+        </div>
+    )
+}
+
+function FeatureItem({ icon, title, desc }: { icon: React.ReactNode, title: string, desc: string }) {
+    return (
+        <div className="flex gap-4 p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all group">
+            <div className="shrink-0 w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
+                {icon}
+            </div>
+            <div>
+                <h4 className="text-sm font-bold text-white mb-0.5">{title}</h4>
+                <p className="text-xs text-slate-500 font-medium">{desc}</p>
             </div>
         </div>
     )

@@ -114,3 +114,9 @@ dist-ssr
 # Podscape specific
 /out/
 *.tsbuildinfo
+
+# Go
+go-core/podscape-core
+go-core/vendor/
+go-core/*.exe
+go-core/*.test

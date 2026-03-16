@@ -1,5 +1,7 @@
 import { StoreSlice } from '../types'
-import { KubeContextEntry, KubeNamespace } from '../../types'
+import { KubeContextEntry, KubeNamespace, OwnerChainResponse } from '../../types'
+import { sectionClearState } from './resourceSlice'
+import { defaultTimeRange } from '../../utils/prometheusQueries'
 
 export interface ClusterSlice {
     contexts: KubeContextEntry[]
@@ -12,11 +14,20 @@ export interface ClusterSlice {
     selectedNamespace: string | null
     loadingContexts: boolean
     loadingNamespaces: boolean
-    kubectlOk: boolean
-    helmOk: boolean
     kubeconfigOk: boolean
+    prodContexts: string[]
+    setProdContexts: (contexts: string[]) => Promise<void>
+    isProduction: boolean
     selectContext: (name: string) => Promise<void>
     selectNamespace: (name: string) => void
+    prometheusAvailable: boolean | null
+    prometheusProbeError: string | null
+    prometheusTimeRange: { start: number; end: number }
+    prometheusActivePreset: '1h' | '6h' | '24h' | '7d'
+    setPrometheusTimeRange: (range: { start: number; end: number }, preset?: '1h' | '6h' | '24h' | '7d') => void
+    probePrometheus: () => Promise<void>
+    disconnectPrometheus: () => void
+    ownerChains: Record<string, OwnerChainResponse>
 }
 
 let contextSwitchSeq = 0
@@ -46,36 +57,100 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
     },
     namespaces: [],
     selectedNamespace: null,
-    loadingContexts: false,
+    loadingContexts: true,  // true until init() finishes — prevents blank flash on first render
     loadingNamespaces: false,
-    kubectlOk: true, // Default to true so we don't flash onboarding
-    helmOk: true,
     kubeconfigOk: true,
+    prodContexts: [],
+    setProdContexts: async (contexts) => {
+        set({ prodContexts: contexts })
+        const { selectedContext, prodContexts } = get()
+        set({ isProduction: !!selectedContext && prodContexts.includes(selectedContext) })
+        const s = await window.settings.get()
+        await window.settings.set({ ...s, prodContexts: contexts })
+    },
+    isProduction: false,
+    prometheusAvailable: null,
+    prometheusProbeError: null,
+    prometheusTimeRange: defaultTimeRange(),
+    prometheusActivePreset: '1h',
+    setPrometheusTimeRange: (range, preset) => set({ prometheusTimeRange: range, ...(preset ? { prometheusActivePreset: preset } : {}) }),
+    probePrometheus: async () => {
+        if (!window.kubectl.prometheusStatus) return
+        // Snapshot the context at call time — discard result if user switched away.
+        const probeCtx = get().selectedContext
+        try {
+            let prometheusUrl: string | undefined
+            try {
+                const s = await window.settings.get()
+                prometheusUrl = (s as any).prometheusUrls?.[probeCtx ?? ''] || undefined
+            } catch { /* ignore — fall back to auto-discovery */ }
+            const data = await window.kubectl.prometheusStatus(prometheusUrl)
+            if (get().selectedContext !== probeCtx) return // switched away, discard
+            set({
+                prometheusAvailable: !!(data as any).available,
+                prometheusProbeError: (data as any).error || null,
+            })
+        } catch {
+            if (get().selectedContext !== probeCtx) return
+            set({ prometheusAvailable: false, prometheusProbeError: null })
+        }
+    },
+    disconnectPrometheus: () => {
+        set({ prometheusAvailable: null, prometheusProbeError: null })
+        // Also clear the saved URL for this context so next probe starts fresh.
+        const ctx = get().selectedContext
+        if (ctx) {
+            window.settings.get().then(s => {
+                const urls = { ...((s as any).prometheusUrls ?? {}) }
+                delete urls[ctx]
+                window.settings.set({ ...s, prometheusUrls: urls } as any)
+            }).catch(() => {})
+        }
+    },
+    ownerChains: {},
 
     selectContext: async (name) => {
         const mySeq = ++contextSwitchSeq
+        const isProd = get().prodContexts.includes(name)
         set({
-            selectedContext: name, loadingNamespaces: true,
+            selectedContext: name, isProduction: isProd, loadingNamespaces: true, loadingResources: true,
             namespaces: [], selectedNamespace: null, selectedResource: null, error: null,
-            pods: [], deployments: [], daemonsets: [], statefulsets: [], replicasets: [],
-            jobs: [], cronjobs: [], hpas: [], pdbs: [],
-            services: [], ingresses: [], ingressclasses: [], networkpolicies: [], endpoints: [],
-            configmaps: [], secrets: [], pvcs: [], pvs: [], storageclasses: [],
-            serviceaccounts: [], roles: [], clusterroles: [], rolebindings: [], clusterrolebindings: [],
-            nodes: [], events: [], crds: []
+            // Reset security scan state so stale results from the previous context are not shown.
+            securityScanResults: null, kubesecBatchResults: null, trivyAvailable: null,
+            // Reset freshness timestamps so next dashboard/preload fetch always runs.
+            lastPreloadedAt: 0, lastDashboardLoadedAt: 0,
+            // Clear owner chains cached from previous context.
+            ownerChains: {},
+            helmReleases: [],
+            prometheusAvailable: null,
+            prometheusProbeError: null,
+            ...sectionClearState,
         })
         try {
             const timeout = new Promise<never>((_, reject) =>
                 setTimeout(() => reject(new Error(`Cannot reach cluster "${name}" — timed out after 30s`)), 30000)
             )
+            // Tell the sidecar to switch its clientset + informer cache to the new
+            // context BEFORE fetching any data. Without this the sidecar keeps
+            // serving the previous context's cache.
+            await Promise.race([window.kubectl.switchContext(name), timeout])
+            if (mySeq !== contextSwitchSeq) return
+
+            // Sidecar handlers fall back to direct k8s API calls while informers
+            // warm up in the background, so data is available immediately — no
+            // need to poll /health before fetching.
             const nsList = await Promise.race([window.kubectl.getNamespaces(name), timeout])
             if (mySeq !== contextSwitchSeq) return
             const chosen = nsList.length > 0 ? '_all' : null
-            set({ namespaces: nsList, selectedNamespace: chosen, loadingNamespaces: false })
+            set({ namespaces: nsList, selectedNamespace: chosen })
             if (chosen) {
-                get().loadSection(get().section) 
-                get().preloadSearchResources() // Start background preloading for search
+                await get().loadSection(get().section)
+                get().preloadSearchResources() // background, fire-and-forget
+                // Prometheus is opt-in — only probe when the user clicks
+                // "Detect Now" in Settings. Auto-probing on every context
+                // switch causes false positives or spurious error messages.
             }
+            set({ loadingNamespaces: false })
         } catch (err) {
             if (mySeq !== contextSwitchSeq) return
             set({ error: (err as Error).message, loadingNamespaces: false })

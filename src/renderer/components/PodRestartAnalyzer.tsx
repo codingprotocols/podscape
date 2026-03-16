@@ -74,7 +74,7 @@ export default function PodRestartAnalyzer({ pod }: Props): JSX.Element {
                 findings.push({
                     type: 'error',
                     title: 'CrashLoopBackOff',
-                    message: 'Pod is in a crash loop. Kubernetes is delaying restarts to avoid excessive нагрузка.',
+                    message: 'Pod is in a crash loop. Kubernetes is delaying restarts to avoid excessive load.',
                     icon: <ShieldAlert className="w-4 h-4 text-red-500" />
                 })
             }

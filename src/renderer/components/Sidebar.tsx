@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store'
 import { ICONS, Icon } from './Icons'
-import { Heart } from 'lucide-react'
 import type { ResourceKind } from '../types'
 
 // ─── SVG Icon ─────────────────────────────────────────────────────────────────
@@ -146,16 +145,16 @@ function RailBtn({
 }
 
 // ─── Main Sidebar ─────────────────────────────────────────────────────────────
-
 export default function Sidebar(): JSX.Element {
   const {
-    contexts, selectedContext, hotbarContexts, toggleHotbarContext,
+    contexts, selectedContext, starredContext, setStarredContext,
     namespaces, selectedNamespace,
     loadingContexts, loadingNamespaces,
     selectContext, selectNamespace, error, clearError,
     section, setSection,
     pods, deployments, events,
     navWidth, setNavWidth,
+    prodContexts, setProdContexts
   } = useAppStore()
 
   const [isResizing, setIsResizing] = useState(false)
@@ -166,7 +165,7 @@ export default function Sidebar(): JSX.Element {
     const onMouseMove = (e: MouseEvent) => {
       // The Sidebar is positioned at 0. Icon Rail is 72px.
       // So newWidth = e.clientX - 72
-      const newWidth = Math.max(160, Math.min(480, e.clientX - 72))
+      const newWidth = Math.max(180, Math.min(480, e.clientX - 72))
       setNavWidth(newWidth)
     }
 
@@ -227,9 +226,16 @@ export default function Sidebar(): JSX.Element {
                   key={ctx.name}
                   name={ctx.name}
                   active={selectedContext === ctx.name}
-                  starred={hotbarContexts.includes(ctx.name)}
+                  starred={starredContext === ctx.name}
+                  isProd={prodContexts.includes(ctx.name)}
                   onClick={() => selectContext(ctx.name)}
-                  onToggleStar={() => toggleHotbarContext(ctx.name)}
+                  onToggleStar={() => setStarredContext(starredContext === ctx.name ? null : ctx.name)}
+                  onToggleProd={() => {
+                    const next = prodContexts.includes(ctx.name)
+                      ? prodContexts.filter(c => c !== ctx.name)
+                      : [...prodContexts, ctx.name]
+                    setProdContexts(next)
+                  }}
                 />
               ))}
             </>
@@ -251,6 +257,12 @@ export default function Sidebar(): JSX.Element {
             icon={ICONS.help} 
             label="Ask a Question" 
             onClick={() => window.open('https://github.com/codingprotocols/podscape-community/discussions/new', '_blank')} 
+          />
+          <RailBtn 
+            icon={ICONS.heart} 
+            label="Support Our Work" 
+            className="text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
+            onClick={() => window.open('https://github.com/sponsors/codingprotocols', '_blank')} 
           />
           <RailBtn icon={ICONS.settings} label="Settings" active={section === 'settings'} onClick={() => setSection('settings')} />
         </div>
@@ -332,6 +344,8 @@ export default function Sidebar(): JSX.Element {
             <NavItem label="Dashboard" section="dashboard" icon={ICONS.dashboard} />
           </div>
 
+
+
           <NavGroup title="Cluster">
             <NavItem label="Nodes" section="nodes" icon={ICONS.node} />
             <NavItem label="Namespaces" section="namespaces" icon={ICONS.namespace} />
@@ -387,11 +401,14 @@ export default function Sidebar(): JSX.Element {
           <NavGroup title="Observe">
             <NavItem label="Events" section="events" icon={ICONS.event} badge={events.filter(e => e.type === 'Warning').length || undefined} />
             <NavItem label="Metrics" section="metrics" icon={ICONS.metrics} />
+            <NavItem label="Unified Logs" section="unifiedlogs" icon={ICONS.terminal} />
+            <NavItem label="Security Hub" section="security" icon={ICONS.secret} />
           </NavGroup>
 
           <NavGroup title="Tools">
             <NavItem label="Helm Charts" section="helm" icon={ICONS.helm} />
           </NavGroup>
+
         </nav>
 
         {/* Error banner */}
@@ -404,23 +421,6 @@ export default function Sidebar(): JSX.Element {
             </div>
           </div>
         )}
-
-        {/* Branding & Sponsor Footer */}
-        <div className="mt-auto p-4 border-t border-white/5 bg-white/[0.02] shrink-0">
-          <div className="flex flex-col gap-3">
-
-
-            <button
-              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl
-                         bg-rose-500/10 hover:bg-rose-500/20 text-rose-400
-                         border border-rose-500/20 transition-all active:scale-[0.98] group"
-              onClick={() => window.open('https://github.com/sponsors/codingprotocols', '_blank')}
-            >
-              <Heart size={12} className="fill-rose-400 group-hover:scale-110 transition-transform" />
-              <span className="text-[10px] font-black uppercase tracking-widest">Support Our Work</span>
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   )
@@ -429,13 +429,15 @@ export default function Sidebar(): JSX.Element {
 // ─── Cluster Avatar ───────────────────────────────────────────────────────────
 
 function ClusterAvatar({
-  name, active, starred, onClick, onToggleStar
+  name, active, starred, isProd, onClick, onToggleStar, onToggleProd
 }: {
   name: string
   active: boolean
   starred: boolean
+  isProd: boolean
   onClick: () => void
   onToggleStar: () => void
+  onToggleProd: () => void
 }) {
   const [menu, setMenu] = useState<{ top: number; left: number } | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
@@ -472,6 +474,11 @@ function ClusterAvatar({
         {starred && (
           <div className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-blue-500 border-2 border-[#020617] flex items-center justify-center shadow-lg z-10 animate-in fade-in scale-in duration-300">
             <svg width="7" height="7" viewBox="0 0 24 24" fill="white"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+          </div>
+        )}
+        {isProd && (
+          <div className="absolute -bottom-1 -left-1 w-4 h-4 rounded-full bg-rose-500 border-2 border-[#020617] flex items-center justify-center shadow-lg z-10 animate-in fade-in scale-in duration-300">
+            <svg width="8" height="8" viewBox="0 0 24 24" fill="white"><path d={ICONS.secret} /></svg>
           </div>
         )}
       </button>
@@ -522,6 +529,17 @@ function ClusterAvatar({
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
               </svg>
               {starred ? 'Remove Default' : 'Set as Default'}
+            </button>
+            <button
+              onClick={() => { onToggleProd(); setMenu(null) }}
+              className="flex items-center gap-3 w-full px-4 py-3 text-[12px] text-slate-300
+                         hover:bg-white/10 hover:text-white transition-all font-semibold"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill={isProd ? 'currentColor' : 'none'}
+                stroke="currentColor" strokeWidth="2.5" className={isProd ? 'text-rose-500' : 'text-slate-400'}>
+                <path d={ICONS.secret} />
+              </svg>
+              {isProd ? 'Unmark Production' : 'Mark as Production'}
             </button>
           </div>
         </>

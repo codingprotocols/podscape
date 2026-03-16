@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import { useAppStore } from '../store'
 import type { KubeNode, KubeEvent, NodeMetrics } from '../types'
 import {
@@ -6,6 +6,8 @@ import {
   parseCpuMillicores, parseMemoryMiB
 } from '../types'
 import LoadingAnimation from './LoadingAnimation'
+import TimeSeriesChart, { PrometheusTimeRangeBar } from './TimeSeriesChart'
+import { clusterCpuQuery, clusterMemoryQuery } from '../utils/prometheusQueries'
 
 // ─── Ring chart (SVG donut) ───────────────────────────────────────────────────
 
@@ -273,28 +275,51 @@ export default function Dashboard(): JSX.Element {
     loadDashboard, loadingResources, refresh,
     pods, deployments, namespaces,
     nodes, nodeMetrics, events,
-    selectedContext
+    selectedContext, prometheusAvailable,
   } = useAppStore()
 
-  useEffect(() => { loadDashboard() }, [selectedContext])
+  // Dashboard data is loaded by selectContext → loadSection and by setSection.
+  // A separate useEffect on selectedContext would race against the context switch
+  // (selectedContext is set before the sidecar switches) and overwrite fresh data
+  // with stale results from the previous context.
 
-  // Derived stats
-  const runningPods = pods.filter(p => p.status.phase === 'Running').length
-  const readyNodes = nodes.filter(getNodeReady).length
-  const warnEvents = events.filter(e => e.type === 'Warning').length
-  const readyDeploys = deployments.filter(
-    d => (d.status.readyReplicas ?? 0) >= (d.spec.replicas ?? 0) && (d.spec.replicas ?? 0) > 0
-  ).length
+  // Pre-calculate timestamps and derive stats memoized
+  const { 
+    runningPods, readyNodes, warnEvents, readyDeploys, 
+    recentEvents, processedEvents, metricsById 
+  } = useMemo(() => {
+    // Stats calculation
+    const runningPods = pods.filter(p => p.status.phase === 'Running').length
+    const readyNodes = nodes.filter(getNodeReady).length
+    const warnEvents = events.filter(e => e.type === 'Warning').length
+    const readyDeploys = deployments.filter(
+      d => (d.status.readyReplicas ?? 0) >= (d.spec.replicas ?? 0) && (d.spec.replicas ?? 0) > 0
+    ).length
 
-  const metricsById = new Map(nodeMetrics.map(m => [m.metadata.name, m]))
+    // Map metrics for O(1) lookup
+    const safeNodeMetrics = Array.isArray(nodeMetrics) ? nodeMetrics : []
+    const metricsById = new Map(safeNodeMetrics.map(m => [m.metadata.name, m]))
 
-  const recentEvents = [...events]
-    .sort((a, b) => {
-      const ta = new Date(a.lastTimestamp ?? a.firstTimestamp ?? a.eventTime ?? 0).getTime()
-      const tb = new Date(b.lastTimestamp ?? b.firstTimestamp ?? b.eventTime ?? 0).getTime()
-      return tb - ta
+    // Sorted and pre-parsed events
+    const safeEvents = Array.isArray(events) ? events : []
+    const processedEvents = safeEvents.map(e => ({
+      ...e,
+      _ts: new Date(e.lastTimestamp ?? e.firstTimestamp ?? e.eventTime ?? 0).getTime()
+    }))
+
+    const recentEvents = [...processedEvents]
+      .sort((a, b) => b._ts - a._ts)
+      .slice(0, 15)
+
+    // Secondary sort for UI: Warnings first
+    const sortedEvents = [...recentEvents].sort((a, b) => {
+      if (a.type === 'Warning' && b.type !== 'Warning') return -1
+      if (a.type !== 'Warning' && b.type === 'Warning') return 1
+      return 0
     })
-    .slice(0, 15)
+
+    return { runningPods, readyNodes, warnEvents, readyDeploys, recentEvents: sortedEvents, processedEvents, metricsById }
+  }, [pods, deployments, nodes, events, nodeMetrics])
 
   return (
     <div className="flex flex-col flex-1 h-full overflow-auto bg-slate-50 dark:bg-[hsl(var(--bg-dark))] transition-colors duration-200">
@@ -368,6 +393,22 @@ export default function Dashboard(): JSX.Element {
               </div>
             </section>
 
+            {/* ── Cluster utilisation charts (Prometheus) ─────────────────────── */}
+            {prometheusAvailable && (
+              <section>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em]">
+                    Cluster Utilisation
+                  </h2>
+                  <PrometheusTimeRangeBar />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <TimeSeriesChart queries={[clusterCpuQuery()]} title="CPU" unit="m" />
+                  <TimeSeriesChart queries={[clusterMemoryQuery()]} title="Memory" unit=" GiB" />
+                </div>
+              </section>
+            )}
+
             {/* ── Nodes ───────────────────────────────────────────────────────── */}
             <section>
               <div className="flex items-center justify-between mb-4">
@@ -411,18 +452,15 @@ export default function Dashboard(): JSX.Element {
                 </div>
               </div>
 
+              <div className="mb-6">
+                <EventTimeline events={processedEvents} />
+              </div>
+
               {recentEvents.length === 0 && !loadingResources ? (
                 <EmptySection message="No recent events" />
               ) : (
                 <div className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 shadow-sm rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800/50">
-                  {/* Warnings first */}
-                  {recentEvents
-                    .sort((a, b) => {
-                      if (a.type === 'Warning' && b.type !== 'Warning') return -1
-                      if (a.type !== 'Warning' && b.type === 'Warning') return 1
-                      return 0
-                    })
-                    .map(event => (
+                  {recentEvents.map(event => (
                       <EventRow key={event.metadata.uid} event={event} />
                     ))
                   }
@@ -431,6 +469,65 @@ export default function Dashboard(): JSX.Element {
             </section>
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+function EventTimeline({ events }: { events: (KubeEvent & { _ts: number })[] }) {
+  const buckets = useMemo(() => {
+    const now = Date.now()
+    const buckets = Array(60).fill(0).map((_, i) => ({
+      timestamp: now - (59 - i) * 60000,
+      count: 0,
+      warnings: 0
+    }))
+
+    // Iterate through pre-parsed events
+    events.forEach(e => {
+      const diffMins = Math.floor((now - e._ts) / 60000)
+      if (diffMins >= 0 && diffMins < 60) {
+        const idx = 59 - diffMins
+        buckets[idx].count++
+        if (e.type === 'Warning') buckets[idx].warnings++
+      }
+    })
+    return buckets
+  }, [events])
+
+  return (
+    <div className="glass-card glass-light p-4">
+      <div className="flex items-center justify-between mb-3 px-1">
+        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Event Density (Last 60m)</span>
+        <div className="flex gap-4">
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+            <span className="text-[8px] font-bold text-slate-400 uppercase">Normal</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+            <span className="text-[8px] font-bold text-slate-400 uppercase">Warning</span>
+          </div>
+        </div>
+      </div>
+      <div className="flex gap-[2px] h-10 items-end">
+        {buckets.map((b, i) => {
+          const total = b.count
+          const height = total === 0 ? '2px' : `${Math.min(100, (total / 5) * 100)}%`
+          const color = b.warnings > 0 ? 'bg-rose-500' : total > 0 ? 'bg-blue-500' : 'bg-slate-200 dark:bg-white/5'
+          return (
+            <div
+              key={i}
+              className={`flex-1 rounded-t-[1px] transition-all duration-500 ${color}`}
+              style={{ height }}
+              title={`${total} events (${b.warnings} warnings) at ${new Date(b.timestamp).toLocaleTimeString()}`}
+            />
+          )
+        })}
+      </div>
+      <div className="flex justify-between mt-2 px-1 text-[8px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-tighter">
+        <span>60m ago</span>
+        <span>Now</span>
       </div>
     </div>
   )

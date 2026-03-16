@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { useAppStore } from '../store'
 import type { DebugPodEntry } from '../types'
 
@@ -66,12 +66,17 @@ export default function DebugPodLauncher() {
     openExec, deleteResource,
   } = useAppStore()
 
-  const [selectedImage, setSelectedImage] = useState(DEBUG_IMAGES[0].name)
+  const [selectedImage, setSelectedImage] = useState<string>(DEBUG_IMAGES[0].name)
   const [customImage, setCustomImage] = useState('')
   const [useCustom, setUseCustom] = useState(false)
   const [targetNs, setTargetNs] = useState('')
   const [launching, setLaunching] = useState(false)
   const [launchError, setLaunchError] = useState<string | null>(null)
+  const isMountedRef = useRef(true)
+  React.useEffect(() => {
+    isMountedRef.current = true
+    return () => { isMountedRef.current = false }
+  }, [])
 
   const effectiveNs = targetNs || (selectedNamespace === '_all' ? 'default' : (selectedNamespace ?? 'default'))
   const effectiveImage = useCustom ? customImage : selectedImage
@@ -89,19 +94,47 @@ export default function DebugPodLauncher() {
     addDebugPod(entry)
     try {
       await window.kubectl.createDebugPod(selectedContext, effectiveNs, effectiveImage, name)
+      
+      // Wait for pod to be running — exponential backoff, 250 ms → ×1.5 → 5 s cap
+      let isReady = false
+      let backoff = 250
+      const maxBackoff = 5000
+      const maxAttempts = 40  // ~90 s worst-case at 5 s cap
+      for (let i = 0; i < maxAttempts; i++) {
+        await new Promise(r => setTimeout(r, backoff))
+        backoff = Math.min(backoff * 1.5, maxBackoff)
+
+        if (!isMountedRef.current) break  // component unmounted — stop polling
+
+        const pods = await window.kubectl.getPods(selectedContext, effectiveNs) as any[]
+        if (!isMountedRef.current) break
+        const p = pods.find(p => p.metadata?.name === name)
+        if (p?.status?.phase === 'Running') {
+          isReady = true
+          break
+        }
+      }
+
+      if (!isMountedRef.current) return
+
+      if (!isReady) {
+        throw new Error('Pod did not become ready in time')
+      }
+
       updateDebugPod(name, { status: 'running' })
       // Auto-open exec into the newly ready pod
-      openExec({ pod: name, container: name, namespace: effectiveNs })
+      openExec({ pod: name, container: 'debug', namespace: effectiveNs })
     } catch (err) {
+      if (!isMountedRef.current) return
       updateDebugPod(name, { status: 'error', error: (err as Error).message })
       setLaunchError((err as Error).message)
     } finally {
-      setLaunching(false)
+      if (isMountedRef.current) setLaunching(false)
     }
   }
 
   const connect = (pod: DebugPodEntry) => {
-    openExec({ pod: pod.name, container: pod.name, namespace: pod.namespace })
+    openExec({ pod: pod.name, container: 'debug', namespace: pod.namespace })
   }
 
   const stop = async (pod: DebugPodEntry) => {

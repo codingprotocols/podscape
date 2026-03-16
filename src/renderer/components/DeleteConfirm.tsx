@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useAppStore } from '../store'
 
 interface Props {
   name: string
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export default function DeleteConfirm({ name, kind, onConfirm, onCancel }: Props): JSX.Element {
+  const { isProduction } = useAppStore()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const [typed, setTyped] = useState('')
@@ -38,6 +40,13 @@ export default function DeleteConfirm({ name, kind, onConfirm, onCancel }: Props
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6" /></svg>
           </div>
           <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2 uppercase tracking-tight">Delete {kind}</h3>
+          
+          {isProduction && (
+            <div className="bg-red-600/10 border border-red-500/20 rounded-xl py-3 px-4 mb-6 animate-pulse">
+              <p className="text-[10px] font-black text-red-500 uppercase tracking-[0.2em]">⚠️ Critical Production Action</p>
+            </div>
+          )}
+
           <p className="text-sm font-bold text-slate-500 dark:text-slate-500 leading-relaxed uppercase tracking-widest mb-6">
             Type <span className="text-red-400 font-mono italic lowercase tracking-normal">{name}</span> to confirm.
           </p>
