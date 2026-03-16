@@ -129,6 +129,21 @@ func main() {
 	http.HandleFunc("/security/kubesec/batch", handlers.HandleKubesecBatch)
 	http.HandleFunc("/security/trivy/images", handlers.HandleTrivyImages)
 
+	// Prometheus
+	http.HandleFunc("/prometheus/status", handlers.HandlePrometheusStatus)
+	http.HandleFunc("/prometheus/query_range_batch", handlers.HandlePrometheusQueryBatch)
+
+	// Owner chain
+	http.HandleFunc("/owner-chain", handlers.HandleOwnerChain)
+
+	// Helm repo browser
+	http.HandleFunc("/helm/repos", handlers.HandleHelmRepoList)
+	http.HandleFunc("/helm/repos/search", handlers.HandleHelmRepoSearch)
+	http.HandleFunc("/helm/repos/versions", handlers.HandleHelmRepoVersions)
+	http.HandleFunc("/helm/repos/values", handlers.HandleHelmRepoValues)
+	http.HandleFunc("/helm/repos/refresh", handlers.HandleHelmRepoRefresh)
+	http.HandleFunc("/helm/install", handlers.HandleHelmInstall)
+
 	// Build the middleware chain (innermost → outermost):
 	//   mux → [token auth] → CORS
 	// CORS is outermost so every response, including auth rejections, gets the header.

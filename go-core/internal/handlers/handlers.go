@@ -20,7 +20,9 @@ import (
 	"github.com/podscape/go-core/internal/helm"
 	"github.com/podscape/go-core/internal/informers"
 	"github.com/podscape/go-core/internal/logs"
+	"github.com/podscape/go-core/internal/ownerchain"
 	"github.com/podscape/go-core/internal/portforward"
+	"github.com/podscape/go-core/internal/prometheus"
 	"github.com/podscape/go-core/internal/store"
 	"github.com/podscape/go-core/internal/topology"
 	appsv1 "k8s.io/api/apps/v1"
@@ -548,7 +550,12 @@ func HandleLogs(w http.ResponseWriter, r *http.Request) {
 func HandlePortForward(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	namespace := r.URL.Query().Get("namespace")
-	pod := r.URL.Query().Get("pod")
+	resourceType := r.URL.Query().Get("type") // "pod" or "service"
+	name := r.URL.Query().Get("name")
+	// Legacy: callers that still send ?pod= are also supported.
+	if name == "" {
+		name = r.URL.Query().Get("pod")
+	}
 	localPortStr := r.URL.Query().Get("localPort")
 	remotePortStr := r.URL.Query().Get("remotePort")
 
@@ -563,17 +570,100 @@ func HandlePortForward(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if id == "" || namespace == "" || pod == "" {
+	if id == "" || namespace == "" || name == "" {
 		http.Error(w, "missing required parameters", http.StatusBadRequest)
 		return
 	}
 
-	if err = portforward.Manager.StartForward(id, namespace, pod, localPort, remotePort); err != nil {
+	podName := name
+	if resourceType == "service" {
+		resolved, resolveErr := resolveServiceToPod(namespace, name)
+		if resolveErr != nil {
+			http.Error(w, resolveErr.Error(), http.StatusBadRequest)
+			return
+		}
+		podName = resolved
+	}
+
+	if err = portforward.Manager.StartForward(id, namespace, podName, localPort, remotePort); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+// resolveServiceToPod finds a ready pod that matches the given service's selector.
+func resolveServiceToPod(namespace, serviceName string) (string, error) {
+	c := store.Store.ActiveCache
+	if c == nil {
+		return "", fmt.Errorf("no active Kubernetes context")
+	}
+	c.RLock()
+	svcRaw, ok := c.Services[namespace+"/"+serviceName]
+	c.RUnlock()
+	if !ok {
+		return "", fmt.Errorf("service %s/%s not found in cache", namespace, serviceName)
+	}
+	svc, ok := svcRaw.(*corev1.Service)
+	if !ok {
+		return "", fmt.Errorf("unexpected type for service %s/%s", namespace, serviceName)
+	}
+	selector := svc.Spec.Selector
+	if len(selector) == 0 {
+		return "", fmt.Errorf("service %s/%s has no selector (headless or external)", namespace, serviceName)
+	}
+
+	c.RLock()
+	defer c.RUnlock()
+	for key, podRaw := range c.Pods {
+		pod, ok := podRaw.(*corev1.Pod)
+		if !ok {
+			continue
+		}
+		// Must be in the same namespace.
+		if pod.Namespace != namespace {
+			continue
+		}
+		_ = key
+		// Check all selector labels match.
+		match := true
+		for k, v := range selector {
+			if pod.Labels[k] != v {
+				match = false
+				break
+			}
+		}
+		if !match {
+			continue
+		}
+		// Prefer Running + Ready pods.
+		if pod.Status.Phase == corev1.PodRunning {
+			for _, cond := range pod.Status.Conditions {
+				if cond.Type == corev1.PodReady && cond.Status == corev1.ConditionTrue {
+					return pod.Name, nil
+				}
+			}
+		}
+	}
+	// Fall back to any pod matching the selector (may not be ready yet).
+	for _, podRaw := range c.Pods {
+		pod, ok := podRaw.(*corev1.Pod)
+		if !ok || pod.Namespace != namespace {
+			continue
+		}
+		match := true
+		for k, v := range selector {
+			if pod.Labels[k] != v {
+				match = false
+				break
+			}
+		}
+		if match {
+			return pod.Name, nil
+		}
+	}
+	return "", fmt.Errorf("no pods found for service %s/%s", namespace, serviceName)
 }
 
 func HandleStopPortForward(w http.ResponseWriter, r *http.Request) {
@@ -1125,7 +1215,14 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 	store.Store.ActiveCache = newCache
 	store.Store.Unlock()
 
+	// Stop all port-forwards from the previous context — their local port
+	// bindings (e.g. 127.0.0.1:9090) would otherwise keep responding and cause
+	// the Prometheus probe to return "Connected" for the wrong cluster.
+	portforward.Manager.StopAll()
 	portforward.Manager.UpdateClients(clientset, restConfig)
+	// Clear the Prometheus query cache so cluster A results are never served
+	// to cluster B even if the PromQL strings and time range happen to match.
+	prometheus.ClearCache()
 
 	if !isNew && hasData {
 		// Known context: serve stale cache immediately, refresh in background.
@@ -1913,4 +2010,188 @@ func HandleTrivyImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sseEvent(w, flusher, "result", string(resultJSON))
+}
+
+// ── Prometheus ──────────────────────────────────────────────────────────────
+
+func HandlePrometheusStatus(w http.ResponseWriter, r *http.Request) {
+	// If the renderer passes a manual URL override, apply it before probing.
+	if u := r.URL.Query().Get("url"); u != "" {
+		prometheus.SetManualURL(u)
+	} else {
+		// Explicitly clear any stale manual URL so auto-discovery takes over.
+		prometheus.SetManualURL("")
+	}
+	result := prometheus.ProbePrometheus()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+func HandlePrometheusQueryBatch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req prometheus.BatchQueryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	results := prometheus.QueryRangeBatch(req)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
+}
+
+// ── Owner Chain ─────────────────────────────────────────────────────────────
+
+func HandleOwnerChain(w http.ResponseWriter, r *http.Request) {
+	kind := r.URL.Query().Get("kind")
+	name := r.URL.Query().Get("name")
+	namespace := r.URL.Query().Get("namespace")
+
+	if kind == "" || name == "" {
+		http.Error(w, "kind and name are required", http.StatusBadRequest)
+		return
+	}
+
+	store.Store.RLock()
+	c := store.Store.ActiveCache
+	store.Store.RUnlock()
+	if c == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
+	chain := ownerchain.BuildOwnerChain(c, kind, namespace, name)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(chain)
+}
+
+// ── Helm Repo Browser ───────────────────────────────────────────────────────
+
+func HandleHelmRepoList(w http.ResponseWriter, r *http.Request) {
+	mgr := helm.GetRepoManager()
+	repos, err := mgr.ListRepos()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(repos)
+}
+
+func HandleHelmRepoSearch(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
+
+	limit := 30
+	offset := 0
+	if v, err := strconv.Atoi(limitStr); err == nil && v > 0 {
+		limit = v
+	}
+	if v, err := strconv.Atoi(offsetStr); err == nil && v >= 0 {
+		offset = v
+	}
+
+	mgr := helm.GetRepoManager()
+	result := mgr.Search(query, limit, offset)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+func HandleHelmRepoVersions(w http.ResponseWriter, r *http.Request) {
+	repoName := r.URL.Query().Get("repo")
+	chartName := r.URL.Query().Get("chart")
+	if repoName == "" || chartName == "" {
+		http.Error(w, "repo and chart are required", http.StatusBadRequest)
+		return
+	}
+
+	mgr := helm.GetRepoManager()
+	versions, err := mgr.GetVersions(repoName, chartName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(versions)
+}
+
+func HandleHelmRepoValues(w http.ResponseWriter, r *http.Request) {
+	repoName := r.URL.Query().Get("repo")
+	chartName := r.URL.Query().Get("chart")
+	version := r.URL.Query().Get("version")
+	if repoName == "" || chartName == "" || version == "" {
+		http.Error(w, "repo, chart, and version are required", http.StatusBadRequest)
+		return
+	}
+
+	mgr := helm.GetRepoManager()
+	values, err := mgr.GetValues(repoName, chartName, version)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte(values))
+}
+
+func HandleHelmRepoRefresh(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	mgr := helm.GetRepoManager()
+	err := mgr.Refresh(func(msg string) {
+		sseEvent(w, flusher, "progress", msg)
+	})
+	if err != nil {
+		sseEvent(w, flusher, "error", err.Error())
+		return
+	}
+	sseEvent(w, flusher, "result", "ok")
+}
+
+func HandleHelmInstall(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		sseEvent(w, flusher, "error", "failed to read request body")
+		return
+	}
+
+	err = helm.InstallFromJSON(body, func(msg string) {
+		sseEvent(w, flusher, "progress", msg)
+	})
+	if err != nil {
+		sseEvent(w, flusher, "error", err.Error())
+		return
+	}
+	sseEvent(w, flusher, "result", "ok")
 }

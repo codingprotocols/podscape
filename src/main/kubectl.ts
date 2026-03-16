@@ -3,6 +3,7 @@ import { ipcMain } from 'electron'
 import { checkedSidecarFetch, sidecarFetch } from './api'
 import { activeSidecarPort } from './runtime'
 import { sidecarToken } from './auth'
+import { SIDECAR_HOST } from '../common/constants'
 
 export class KubectlProvider {
   async getContexts(): Promise<unknown[]> {
@@ -281,7 +282,7 @@ export function registerKubectlHandlers(): void {
     }
 
     const WebSocket = require('ws')
-    const ws = new WebSocket(`ws://127.0.0.1:${activeSidecarPort}/logs?pod=${pod}&namespace=${ns}&container=${container || ''}`, {
+    const ws = new WebSocket(`ws://${SIDECAR_HOST}:${activeSidecarPort}/logs?pod=${pod}&namespace=${ns}&container=${container || ''}`, {
       headers: { 'X-Podscape-Token': sidecarToken }
     })
     activeStreams.set(streamId, ws)
@@ -314,9 +315,9 @@ export function registerKubectlHandlers(): void {
 
   ipcMain.handle('kubectl:getTopology', (_e, ns) => getTopology(ns))
 
-  ipcMain.handle('kubectl:portForward', async (event, _ctx, ns, _type, name, localPort, remotePort, id) => {
+  ipcMain.handle('kubectl:portForward', async (event, _ctx, ns, type, name, localPort, remotePort, id) => {
     try {
-      const url = `/portforward?id=${id}&namespace=${ns}&pod=${name}&localPort=${localPort}&remotePort=${remotePort}`
+      const url = `/portforward?id=${id}&namespace=${ns}&type=${type ?? 'pod'}&name=${name}&localPort=${localPort}&remotePort=${remotePort}`
       const res = await sidecarFetch(url)
       if (res.ok) {
         if (!event.sender.isDestroyed()) event.sender.send('portforward:ready', id, 'Forwarding started')
@@ -353,7 +354,7 @@ export function registerKubectlHandlers(): void {
   ipcMain.handle('kubectl:scanSecurity', (event) => {
     return new Promise<any>((resolve, reject) => {
       const req = http.get(
-        { hostname: '127.0.0.1', port: activeSidecarPort, path: '/security/scan',
+        { hostname: SIDECAR_HOST, port: activeSidecarPort, path: '/security/scan',
           headers: { 'X-Podscape-Token': sidecarToken } },
         (res) => {
           const contentType = res.headers['content-type'] ?? ''
@@ -413,7 +414,7 @@ export function registerKubectlHandlers(): void {
       const reqBody = JSON.stringify({ workloads })
       const req = http.request(
         {
-          hostname: '127.0.0.1', port: activeSidecarPort,
+          hostname: SIDECAR_HOST, port: activeSidecarPort,
           path: '/security/trivy/images', method: 'POST',
           headers: {
             'X-Podscape-Token': sidecarToken,
@@ -470,4 +471,25 @@ export function registerKubectlHandlers(): void {
   })
   ipcMain.handle('kubectl:scanKubesec', (_e, yaml) => provider.scanKubesec(yaml))
   ipcMain.handle('kubectl:scanKubesecBatch', (_e, resources) => provider.scanKubesecBatch(resources))
+
+  ipcMain.handle('kubectl:prometheusStatus', async (_e, url?: string) => {
+    const path = url ? `/prometheus/status?url=${encodeURIComponent(url)}` : '/prometheus/status'
+    const res = await checkedSidecarFetch(path)
+    return res.json()
+  })
+
+  ipcMain.handle('kubectl:prometheusQueryBatch', async (_e, queries, start, end) => {
+    const res = await checkedSidecarFetch('/prometheus/query_range_batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ queries, start, end }),
+    })
+    return res.json()
+  })
+
+  ipcMain.handle('kubectl:getOwnerChain', async (_e, kind, name, namespace) => {
+    const params = new URLSearchParams({ kind, name, namespace: namespace ?? '' })
+    const res = await checkedSidecarFetch(`/owner-chain?${params}`)
+    return res.json()
+  })
 }

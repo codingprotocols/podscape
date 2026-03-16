@@ -1,6 +1,7 @@
 import { StoreSlice } from '../types'
-import { KubeContextEntry, KubeNamespace } from '../../types'
+import { KubeContextEntry, KubeNamespace, OwnerChainResponse } from '../../types'
 import { sectionClearState } from './resourceSlice'
+import { defaultTimeRange } from '../../utils/prometheusQueries'
 
 export interface ClusterSlice {
     contexts: KubeContextEntry[]
@@ -19,6 +20,14 @@ export interface ClusterSlice {
     isProduction: boolean
     selectContext: (name: string) => Promise<void>
     selectNamespace: (name: string) => void
+    prometheusAvailable: boolean | null
+    prometheusProbeError: string | null
+    prometheusTimeRange: { start: number; end: number }
+    prometheusActivePreset: '1h' | '6h' | '24h' | '7d'
+    setPrometheusTimeRange: (range: { start: number; end: number }, preset?: '1h' | '6h' | '24h' | '7d') => void
+    probePrometheus: () => Promise<void>
+    disconnectPrometheus: () => void
+    ownerChains: Record<string, OwnerChainResponse>
 }
 
 let contextSwitchSeq = 0
@@ -60,6 +69,45 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
         await window.settings.set({ ...s, prodContexts: contexts })
     },
     isProduction: false,
+    prometheusAvailable: null,
+    prometheusProbeError: null,
+    prometheusTimeRange: defaultTimeRange(),
+    prometheusActivePreset: '1h',
+    setPrometheusTimeRange: (range, preset) => set({ prometheusTimeRange: range, ...(preset ? { prometheusActivePreset: preset } : {}) }),
+    probePrometheus: async () => {
+        if (!window.kubectl.prometheusStatus) return
+        // Snapshot the context at call time — discard result if user switched away.
+        const probeCtx = get().selectedContext
+        try {
+            let prometheusUrl: string | undefined
+            try {
+                const s = await window.settings.get()
+                prometheusUrl = (s as any).prometheusUrls?.[probeCtx ?? ''] || undefined
+            } catch { /* ignore — fall back to auto-discovery */ }
+            const data = await window.kubectl.prometheusStatus(prometheusUrl)
+            if (get().selectedContext !== probeCtx) return // switched away, discard
+            set({
+                prometheusAvailable: !!(data as any).available,
+                prometheusProbeError: (data as any).error || null,
+            })
+        } catch {
+            if (get().selectedContext !== probeCtx) return
+            set({ prometheusAvailable: false, prometheusProbeError: null })
+        }
+    },
+    disconnectPrometheus: () => {
+        set({ prometheusAvailable: null, prometheusProbeError: null })
+        // Also clear the saved URL for this context so next probe starts fresh.
+        const ctx = get().selectedContext
+        if (ctx) {
+            window.settings.get().then(s => {
+                const urls = { ...((s as any).prometheusUrls ?? {}) }
+                delete urls[ctx]
+                window.settings.set({ ...s, prometheusUrls: urls } as any)
+            }).catch(() => {})
+        }
+    },
+    ownerChains: {},
 
     selectContext: async (name) => {
         const mySeq = ++contextSwitchSeq
@@ -71,6 +119,11 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             securityScanResults: null, kubesecBatchResults: null, trivyAvailable: null,
             // Reset freshness timestamps so next dashboard/preload fetch always runs.
             lastPreloadedAt: 0, lastDashboardLoadedAt: 0,
+            // Clear owner chains cached from previous context.
+            ownerChains: {},
+            helmReleases: [],
+            prometheusAvailable: null,
+            prometheusProbeError: null,
             ...sectionClearState,
         })
         try {
@@ -93,6 +146,7 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             if (chosen) {
                 await get().loadSection(get().section)
                 get().preloadSearchResources() // background, fire-and-forget
+                get().probePrometheus()         // background, fire-and-forget
             }
             set({ loadingNamespaces: false })
         } catch (err) {

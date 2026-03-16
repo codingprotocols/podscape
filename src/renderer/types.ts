@@ -612,6 +612,21 @@ export interface HelmHistoryEntry {
 
 
 
+// ─── Owner Chain ──────────────────────────────────────────────────────────────
+
+export interface OwnerRef {
+  kind: string
+  name: string
+  namespace: string
+  uid: string
+  found: boolean
+}
+
+export interface OwnerChainResponse {
+  ancestors: OwnerRef[]
+  descendants: Record<string, OwnerRef[]>
+}
+
 // ─── Debug Pod ────────────────────────────────────────────────────────────────
 
 export interface DebugPodEntry {

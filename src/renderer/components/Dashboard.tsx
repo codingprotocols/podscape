@@ -6,6 +6,8 @@ import {
   parseCpuMillicores, parseMemoryMiB
 } from '../types'
 import LoadingAnimation from './LoadingAnimation'
+import TimeSeriesChart, { PrometheusTimeRangeBar } from './TimeSeriesChart'
+import { clusterCpuQuery, clusterMemoryQuery } from '../utils/prometheusQueries'
 
 // ─── Ring chart (SVG donut) ───────────────────────────────────────────────────
 
@@ -273,10 +275,13 @@ export default function Dashboard(): JSX.Element {
     loadDashboard, loadingResources, refresh,
     pods, deployments, namespaces,
     nodes, nodeMetrics, events,
-    selectedContext
+    selectedContext, prometheusAvailable,
   } = useAppStore()
 
-  useEffect(() => { loadDashboard() }, [selectedContext])
+  // Dashboard data is loaded by selectContext → loadSection and by setSection.
+  // A separate useEffect on selectedContext would race against the context switch
+  // (selectedContext is set before the sidecar switches) and overwrite fresh data
+  // with stale results from the previous context.
 
   // Pre-calculate timestamps and derive stats memoized
   const { 
@@ -387,6 +392,22 @@ export default function Dashboard(): JSX.Element {
                 />
               </div>
             </section>
+
+            {/* ── Cluster utilisation charts (Prometheus) ─────────────────────── */}
+            {prometheusAvailable && (
+              <section>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em]">
+                    Cluster Utilisation
+                  </h2>
+                  <PrometheusTimeRangeBar />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <TimeSeriesChart queries={[clusterCpuQuery()]} title="CPU" unit="m" />
+                  <TimeSeriesChart queries={[clusterMemoryQuery()]} title="Memory" unit=" GiB" />
+                </div>
+              </section>
+            )}
 
             {/* ── Nodes ───────────────────────────────────────────────────────── */}
             <section>

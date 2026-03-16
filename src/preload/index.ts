@@ -202,6 +202,15 @@ const kubectl = {
     ipcRenderer.on('security:progress', handler)
     return () => ipcRenderer.off('security:progress', handler)
   },
+
+  // Prometheus
+  prometheusStatus: (url?: string) => ipcRenderer.invoke('kubectl:prometheusStatus', url),
+  prometheusQueryBatch: (queries: any[], start: number, end: number) =>
+    ipcRenderer.invoke('kubectl:prometheusQueryBatch', queries, start, end),
+
+  // Owner chain
+  getOwnerChain: (kind: string, name: string, namespace: string) =>
+    ipcRenderer.invoke('kubectl:getOwnerChain', kind, name, namespace),
 }
 
 // ─── dialog API ───────────────────────────────────────────────────────────────
@@ -260,14 +269,36 @@ const helm = {
     ipcRenderer.invoke('helm:rollback', context, namespace, release, revision),
   uninstall: (context: string, namespace: string, release: string): Promise<string> =>
     ipcRenderer.invoke('helm:uninstall', context, namespace, release),
+
+  // Helm repo browser
+  repoList: () => ipcRenderer.invoke('helm:repoList'),
+  repoSearch: (query: string, limit: number, offset: number) =>
+    ipcRenderer.invoke('helm:repoSearch', query, limit, offset),
+  repoVersions: (repoName: string, chartName: string) =>
+    ipcRenderer.invoke('helm:repoVersions', repoName, chartName),
+  repoValues: (repoName: string, chartName: string, version: string) =>
+    ipcRenderer.invoke('helm:repoValues', repoName, chartName, version),
+  repoRefresh: () => ipcRenderer.invoke('helm:repoRefresh'),
+  install: (chart: string, version: string, releaseName: string, namespace: string, values: string, context: string) =>
+    ipcRenderer.invoke('helm:install', chart, version, releaseName, namespace, values, context),
+  onInstallProgress: (cb: (msg: string) => void): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, msg: string): void => cb(msg)
+    ipcRenderer.on('helm:installProgress', handler)
+    return () => ipcRenderer.off('helm:installProgress', handler)
+  },
+  onRefreshProgress: (cb: (msg: string) => void): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, msg: string): void => cb(msg)
+    ipcRenderer.on('helm:refreshProgress', handler)
+    return () => ipcRenderer.off('helm:refreshProgress', handler)
+  },
 }
 
 // ─── settings API ─────────────────────────────────────────────────────────────
 
 const settings = {
-  get: (): Promise<{ kubectlPath: string; shellPath: string; helmPath: string; theme: string; kubeconfigPath: string; prodContexts: string[] }> =>
+  get: (): Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string> }> =>
     ipcRenderer.invoke('settings:get'),
-  set: (s: { kubectlPath: string; shellPath: string; helmPath: string; theme: string; kubeconfigPath: string; prodContexts: string[] }): Promise<void> =>
+  set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string> }): Promise<void> =>
     ipcRenderer.invoke('settings:set', s),
   checkTools: (): Promise<{ kubectlOk: boolean; helmOk: boolean; kubeconfigOk: boolean }> =>
     ipcRenderer.invoke('settings:checkTools')

@@ -5,6 +5,7 @@ import { useAppStore } from '../store'
 import { FileCode, X, Activity, RefreshCw, Zap, Server } from 'lucide-react'
 import YAMLViewer from './YAMLViewer'
 import AnalysisView from './AnalysisView'
+import OwnerChain from './OwnerChain'
 
 interface Props { statefulSet: KubeStatefulSet }
 
@@ -139,6 +140,16 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
           </p>
         )}
       </div>
+
+      {/* Owner chain breadcrumb */}
+      {s.metadata.uid && (
+        <OwnerChain
+          uid={s.metadata.uid}
+          kind="StatefulSet"
+          name={s.metadata.name}
+          namespace={s.metadata.namespace ?? ''}
+        />
+      )}
 
       <div className="flex border-b border-slate-100 dark:border-slate-800 shrink-0 bg-white/[0.02]">
         {(['overview', 'events'] as Tab[]).map(t => (

@@ -1080,7 +1080,7 @@ const KIND_TO_SECTION: Record<NodeKind, ResourceKind> = {
 }
 
 export default function NetworkPanel(): JSX.Element {
-  const { selectedContext, namespaces, theme, setSection } = useAppStore()
+  const { selectedContext, loadingNamespaces, namespaces, theme, setSection } = useAppStore()
   const dark = theme === 'dark'
 
   const [panelNs, setPanelNs] = useState<string>('default')
@@ -1096,7 +1096,7 @@ export default function NetworkPanel(): JSX.Element {
   const [searchQuery, setSearchQuery] = useState('')
 
   const load = useCallback((ns: string) => {
-    if (!selectedContext) return
+    if (!selectedContext || loadingNamespaces) return
     setLoading(true)
     const nsArg = ns === '_all' ? '' : ns
     // @ts-ignore
@@ -1109,7 +1109,7 @@ export default function NetworkPanel(): JSX.Element {
         console.error('Failed to load topology:', err)
         setLoading(false)
       })
-  }, [selectedContext])
+  }, [selectedContext, loadingNamespaces])
 
   useEffect(() => { load(panelNs) }, [panelNs, load])
 

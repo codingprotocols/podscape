@@ -5,7 +5,7 @@ import { is } from '@electron-toolkit/utils'
 import { app, BrowserWindow } from 'electron'
 import { getAugmentedEnv } from './env'
 import { findKubeconfigPath } from './settings_storage'
-import { SIDECAR_PORT } from '../common/constants'
+import { SIDECAR_HOST, SIDECAR_PORT } from '../common/constants'
 import { sidecarToken } from './auth'
 import { activeSidecarPort, setActiveSidecarPort } from './runtime'
 
@@ -109,7 +109,7 @@ export async function startSidecar(): Promise<void> {
 
     const checkReady = async () => {
       try {
-        const response = await fetch(`http://127.0.0.1:${activeSidecarPort}/health`)
+        const response = await fetch(`http://${SIDECAR_HOST}:${activeSidecarPort}/health`)
         if (response.ok) {
           console.log('[Sidecar] Sidecar is ready')
           child.removeListener('error', errorHandler)

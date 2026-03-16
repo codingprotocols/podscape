@@ -3,11 +3,13 @@ import type { KubeNode } from '../types'
 import { formatAge, getNodeReady, parseMemoryMiB, parseCpuMillicores } from '../types'
 import { useAppStore } from '../store'
 import YAMLViewer from './YAMLViewer'
+import TimeSeriesChart, { PrometheusTimeRangeBar } from './TimeSeriesChart'
+import { nodeCpuQuery, nodeMemoryQuery } from '../utils/prometheusQueries'
 
 interface Props { node: KubeNode }
 
 export default function NodeDetail({ node }: Props): JSX.Element {
-  const { getYAML, pods, nodeMetrics, selectResource } = useAppStore()
+  const { getYAML, pods, nodeMetrics, selectResource, prometheusAvailable } = useAppStore()
   const [yaml, setYaml] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
   const [yamlError, setYamlError] = useState<string | null>(null)
@@ -66,6 +68,20 @@ export default function NodeDetail({ node }: Props): JSX.Element {
           </button>
         </div>
       </div>
+
+      {/* Prometheus metrics */}
+      {prometheusAvailable && (
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-white/5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Metrics</span>
+            <PrometheusTimeRangeBar />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <TimeSeriesChart queries={[nodeCpuQuery(node.metadata.name)]} title="CPU" unit="%" />
+            <TimeSeriesChart queries={[nodeMemoryQuery(node.metadata.name)]} title="Memory" unit="%" />
+          </div>
+        </div>
+      )}
 
       {/* Addresses */}
       <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
