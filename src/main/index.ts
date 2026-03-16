@@ -8,7 +8,37 @@ import { registerHelmHandlers } from './helm'
 import { registerDialogHandlers } from './dialog'
 import { startSidecar, stopSidecar } from './sidecar'
 
-function createWindow(): void {
+async function createSplashWindow(): Promise<BrowserWindow> {
+  const splash = new BrowserWindow({
+    width: 440,
+    height: 260,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    center: true,
+    skipTaskbar: true,
+    // macOS: blur-behind glass effect matching the main window
+    ...(process.platform === 'darwin' ? {
+      vibrancy: 'under-window',
+      visualEffectState: 'active',
+    } : {}),
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+    }
+  })
+
+  const splashPath = is.dev
+    ? join(app.getAppPath(), 'resources/splash.html')
+    : join(process.resourcesPath, 'splash.html')
+
+  await splash.loadFile(splashPath, { query: { v: app.getVersion() } })
+  splash.show()
+  return splash
+}
+
+function createWindow(onReady: () => void): void {
   const mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -35,6 +65,7 @@ function createWindow(): void {
   mainWindow.on('ready-to-show', () => {
     mainWindow.maximize()
     mainWindow.show()
+    onReady()
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -64,11 +95,14 @@ app.whenReady().then(async () => {
   ipcMain.handle('sidecar:restart', async () => {
     await startSidecar()
   })
-  
+
+  const splash = await createSplashWindow()
+
   try {
     await startSidecar()
-    createWindow()
+    createWindow(() => splash.destroy())
   } catch (err: any) {
+    splash.destroy()
     console.error('[Main] Failed to start sidecar:', err)
     dialog.showErrorBox(
       'Sidecar Connection Failed',
@@ -78,7 +112,7 @@ app.whenReady().then(async () => {
   }
 
   app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) createWindow(() => {})
   })
 })
 

@@ -51,8 +51,6 @@ export default function SettingsPanel(): JSX.Element {
       if (form.theme === 'light' || form.theme === 'dark') setTheme(form.theme)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
-      // Re-probe Prometheus with the potentially updated URL.
-      probePrometheus()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save')
     }
@@ -297,7 +295,17 @@ export default function SettingsPanel(): JSX.Element {
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full uppercase tracking-widest">Connected</span>
                     <button
-                      onClick={disconnectPrometheus}
+                      onClick={() => {
+                        disconnectPrometheus()
+                        // Also clear the URL from local form state so Save doesn't write it back.
+                        if (selectedContext) {
+                          setForm(f => {
+                            const urls = { ...f.prometheusUrls }
+                            delete urls[selectedContext]
+                            return { ...f, prometheusUrls: urls }
+                          })
+                        }
+                      }}
                       className="text-[10px] font-black text-slate-400 hover:text-red-400 bg-white/5 hover:bg-red-500/10 border border-white/10 hover:border-red-500/20 px-2.5 py-1 rounded-full uppercase tracking-widest transition-colors"
                     >
                       Disconnect
