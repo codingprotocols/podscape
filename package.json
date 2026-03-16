@@ -94,6 +94,14 @@
         "filter": [
           "podscape-core*"
         ]
+      },
+      {
+        "from": "resources/splash.html",
+        "to": "."
+      },
+      {
+        "from": "resources/icon.png",
+        "to": "."
       }
     ],
     "asarUnpack": []
