@@ -3,17 +3,17 @@ import Editor from '@monaco-editor/react'
 import { useAppStore } from '../store'
 
 interface SettingsForm {
-  kubectlPath: string
   shellPath: string
-  helmPath: string
   theme: string
   kubeconfigPath: string
   prodContexts: string[]
+  prometheusUrls: Record<string, string>
 }
 
 export default function SettingsPanel(): JSX.Element {
-  const { theme, setTheme, init, prodContexts } = useAppStore()
-  const [form, setForm] = useState<SettingsForm>({ kubectlPath: '', shellPath: '', helmPath: '', theme, kubeconfigPath: '', prodContexts: [] })
+  const { theme, setTheme, init, prodContexts, probePrometheus, disconnectPrometheus, prometheusAvailable, prometheusProbeError, selectedContext } = useAppStore()
+  const [form, setForm] = useState<SettingsForm>({ shellPath: '', theme, kubeconfigPath: '', prodContexts: [], prometheusUrls: {} })
+  const [probing, setProbing] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -27,7 +27,7 @@ export default function SettingsPanel(): JSX.Element {
   const [showEditor, setShowEditor] = useState(false)
 
   useEffect(() => {
-    window.settings.get().then(s => setForm({ ...s, prodContexts: s.prodContexts ?? prodContexts })).catch(() => {
+    window.settings.get().then(s => setForm({ ...s, prodContexts: s.prodContexts ?? prodContexts, prometheusUrls: (s as any).prometheusUrls ?? {} })).catch(() => {
       setForm(f => ({ ...f, prodContexts }))
     })
     window.kubeconfig.get().then(({ path, content }) => {
@@ -46,11 +46,13 @@ export default function SettingsPanel(): JSX.Element {
     setError(null)
     setSaved(false)
     try {
-      await window.settings.set(form)
+      await window.settings.set(form as any)
       // Apply theme change immediately
       if (form.theme === 'light' || form.theme === 'dark') setTheme(form.theme)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
+      // Re-probe Prometheus with the potentially updated URL.
+      probePrometheus()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save')
     }
@@ -137,97 +139,34 @@ export default function SettingsPanel(): JSX.Element {
             </div>
           </section>
 
-          {/* ── Binary Paths ────────────────────────────────────────────────── */}
-          <section className="bg-white/[0.03] dark:bg-white/[0.03] backdrop-blur-md rounded-3xl border border-slate-200 dark:border-white/5 overflow-hidden divide-y divide-slate-100 dark:divide-white/5 shadow-2xl">
-            <div className="px-8 py-5 bg-white/5">
-              <h2 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Binary Paths</h2>
+          {/* ── Shell Path ──────────────────────────────────────────────────── */}
+          <section className="bg-white/[0.03] dark:bg-white/[0.03] backdrop-blur-md rounded-3xl border border-slate-200 dark:border-white/5 overflow-hidden shadow-2xl">
+            <div className="px-8 py-5 border-b border-slate-100 dark:border-white/5 bg-white/5">
+              <h2 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Terminal</h2>
             </div>
-
-            {/* kubectl path */}
             <div className="p-8">
               <label className="block mb-1 text-[11px] font-black text-slate-700 dark:text-slate-200 uppercase tracking-wider">
-                kubectl path
-              </label>
-              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mb-4 uppercase tracking-tight">
-                Absolute path to kubectl.
-              </p>
-              <div className="flex gap-3">
-                <input
-                  type="text"
-                  value={form.kubectlPath}
-                  onChange={e => setForm(f => ({ ...f, kubectlPath: e.target.value }))}
-                  placeholder="/opt/homebrew/bin/kubectl"
-                  className="flex-1 text-sm bg-white/[0.05] border border-white/10
-                             text-slate-900 dark:text-slate-100 placeholder-slate-700
-                             rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono transition-all"
-                />
-                <button
-                  onClick={() => setForm(f => ({ ...f, kubectlPath: '' }))}
-                  className="px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white
-                             bg-white/[0.05] border border-white/10
-                             rounded-xl transition-all hover:bg-white/10"
-                >
-                  Reset
-                </button>
-              </div>
-            </div>
-
-            {/* Shell path */}
-            <div className="p-6">
-              <label className="block mb-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
                 Shell path
               </label>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">
-                Absolute path to the shell for terminals and exec sessions.
-                Defaults to your <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">$SHELL</code> environment variable.
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mb-4 uppercase tracking-tight">
+                Absolute path to the shell for PTY terminal sessions. Defaults to your{' '}
+                <code className="font-mono normal-case">$SHELL</code> environment variable.
               </p>
-              <div className="flex gap-2">
+              <div className="flex gap-3">
                 <input
                   type="text"
                   value={form.shellPath}
                   onChange={e => setForm(f => ({ ...f, shellPath: e.target.value }))}
                   placeholder="/bin/zsh"
-                  className="flex-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700
-                             text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600
-                             rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono"
+                  className="flex-1 text-sm bg-white/[0.05] border border-white/10
+                             text-slate-900 dark:text-slate-100 placeholder-slate-700
+                             rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono transition-all"
                 />
                 <button
                   onClick={() => setForm(f => ({ ...f, shellPath: '' }))}
-                  className="px-3 py-2 text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200
-                             bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700
-                             rounded-lg transition-colors"
-                >
-                  Reset
-                </button>
-              </div>
-            </div>
-
-            {/* Helm path */}
-            <div className="p-6">
-              <label className="block mb-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
-                Helm path
-              </label>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">
-                Absolute path to helm. Leave blank to auto-detect from{' '}
-                <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">/opt/homebrew/bin</code>,{' '}
-                <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">/usr/local/bin</code>.
-                Run <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">which helm</code> in your terminal to get the path.
-              </p>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={form.helmPath}
-                  onChange={e => setForm(f => ({ ...f, helmPath: e.target.value }))}
-                  placeholder="/opt/homebrew/bin/helm"
-                  className="flex-1 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700
-                             text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600
-                             rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono"
-                />
-                <button
-                  onClick={() => setForm(f => ({ ...f, helmPath: '' }))}
-                  className="px-3 py-2 text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200
-                             bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700
-                             rounded-lg transition-colors"
+                  className="px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white
+                             bg-white/[0.05] border border-white/10
+                             rounded-xl transition-all hover:bg-white/10"
                 >
                   Reset
                 </button>
@@ -346,26 +285,107 @@ export default function SettingsPanel(): JSX.Element {
           </section>
 
 
-          {/* ── Exec tip ────────────────────────────────────────────────────── */}
-          <div className="p-5 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/30 rounded-2xl">
-            <p className="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1.5 uppercase tracking-wide">
-              Exec into container not working?
-            </p>
-            <p className="text-xs text-amber-700/80 dark:text-amber-400/80 leading-relaxed">
-              Set <strong>kubectl path</strong> to the output of{' '}
-              <code className="bg-amber-100 dark:bg-amber-900/20 px-1 rounded">which kubectl</code>{' '}
-              in your terminal. Save, then fully quit and relaunch Podscape (Cmd+Q, not just close window).
-            </p>
-          </div>
+          {/* ── Prometheus ──────────────────────────────────────────────────── */}
+          <section className="bg-white/[0.03] dark:bg-white/[0.03] backdrop-blur-md rounded-3xl border border-slate-200 dark:border-white/5 overflow-hidden divide-y divide-slate-100 dark:divide-white/5 shadow-2xl">
+            <div className="px-8 py-5 bg-white/5 flex items-center justify-between">
+              <div>
+                <h2 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Prometheus</h2>
+                <p className="text-[10px] text-slate-500 mt-0.5">Used for CPU &amp; memory time-series charts in pod, node, and deployment details. URL is saved per cluster context.</p>
+              </div>
+              <div className="flex flex-col items-end gap-1.5">
+                {prometheusAvailable === true && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full uppercase tracking-widest">Connected</span>
+                    <button
+                      onClick={disconnectPrometheus}
+                      className="text-[10px] font-black text-slate-400 hover:text-red-400 bg-white/5 hover:bg-red-500/10 border border-white/10 hover:border-red-500/20 px-2.5 py-1 rounded-full uppercase tracking-widest transition-colors"
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                )}
+                {prometheusAvailable === false && (
+                  <>
+                    <span className="text-[10px] font-black text-red-400 bg-red-500/10 border border-red-500/20 px-2.5 py-1 rounded-full uppercase tracking-widest">Not Found</span>
+                    {prometheusProbeError && (
+                      <span className="text-[10px] text-red-400/70 font-mono max-w-[320px] text-right leading-relaxed break-all">{prometheusProbeError}</span>
+                    )}
+                  </>
+                )}
+                {prometheusAvailable === null && (
+                  <span className="text-[10px] font-black text-slate-500 bg-white/5 border border-white/10 px-2.5 py-1 rounded-full uppercase tracking-widest">Not Probed</span>
+                )}
+              </div>
+            </div>
+            <div className="p-8">
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-black text-slate-700 dark:text-slate-200 uppercase tracking-wider">
+                  Prometheus URL
+                </label>
+                {selectedContext && (
+                  <span className="text-[10px] font-mono text-slate-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-lg truncate max-w-[240px]" title={selectedContext}>
+                    {selectedContext}
+                  </span>
+                )}
+              </div>
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mb-3">
+                Leave blank to auto-discover via Kubernetes service proxy (checks common namespaces: <code className="font-mono">monitoring</code>, <code className="font-mono">prometheus</code>).
+                Set a direct URL (e.g. <code className="font-mono">http://127.0.0.1:9090</code>) if auto-discovery fails.
+              </p>
+              {/* Port-forward guide */}
+              <div className="mb-4 rounded-2xl border border-blue-500/20 bg-blue-500/5 px-5 py-4">
+                <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-2">Recommended setup (EKS / GKE / AKS)</p>
+                <p className="text-[10px] text-slate-400 mb-3">
+                  Cloud clusters restrict direct access to in-cluster services. Use Podscape's built-in port-forwarding — once active, Prometheus is detected automatically with no URL needed.
+                </p>
+                <p className="text-[10px] font-black text-slate-300 mb-1.5">1. Open <span className="text-blue-300">Port Forwards</span> in the sidebar → <span className="text-blue-300">New Forward</span></p>
+                <p className="text-[10px] text-slate-500 mb-3">
+                  Select your Prometheus service (e.g. <code className="font-mono">prometheus-operated</code> or <code className="font-mono">kube-prometheus-stack-prometheus</code>, namespace <code className="font-mono">monitoring</code>), local port <code className="font-mono">9090</code>.
+                </p>
+                <p className="text-[10px] font-black text-slate-300 mb-1.5">2. Leave the URL blank and click <span className="text-blue-300">Detect Now</span></p>
+                <p className="text-[10px] text-slate-500">Podscape will find Prometheus on <code className="font-mono">127.0.0.1:9090</code> automatically.</p>
+              </div>
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={selectedContext ? (form.prometheusUrls[selectedContext] ?? '') : ''}
+                  onChange={e => {
+                    if (!selectedContext) return
+                    const url = e.target.value
+                    setForm(f => ({ ...f, prometheusUrls: { ...f.prometheusUrls, [selectedContext]: url } }))
+                  }}
+                  placeholder="http://prometheus.monitoring.svc:9090  (blank = auto-discover)"
+                  className="flex-1 text-sm bg-white/[0.05] border border-white/10
+                             text-slate-900 dark:text-slate-100 placeholder-slate-600
+                             rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-mono transition-all"
+                />
+                <button
+                  onClick={async () => {
+                    setProbing(true)
+                    try {
+                      const current = await window.settings.get()
+                      await window.settings.set({ ...current, prometheusUrls: form.prometheusUrls } as any)
+                    } catch { /* ignore */ }
+                    await probePrometheus()
+                    setProbing(false)
+                  }}
+                  disabled={probing}
+                  className="px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-blue-400 hover:text-blue-300
+                             bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20
+                             rounded-xl transition-all disabled:opacity-50 whitespace-nowrap"
+                >
+                  {probing ? 'Detecting…' : 'Detect Now'}
+                </button>
+              </div>
+            </div>
+          </section>
 
           {/* Footer */}
           <div className="flex items-center justify-between pt-2">
             <div className="text-sm min-h-5">
               {error && <span className="text-red-500 text-xs">{error}</span>}
               {saved && <span className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">
-                {(form.kubectlPath || form.shellPath || form.helmPath)
-                  ? 'Saved. Restart the app to apply path changes.'
-                  : 'Saved.'}
+                {form.shellPath ? 'Saved. Restart the app to apply shell path changes.' : 'Saved.'}
               </span>}
             </div>
             <button

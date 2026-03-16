@@ -7,7 +7,7 @@ import {
     KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
     KubeNode, KubeEvent, KubeCRD,
     NodeMetrics, PodMetrics, ResourceKind, AnyKubeResource, PortForwardEntry,
-    HelmRelease, DebugPodEntry, AppGroup
+    HelmRelease, DebugPodEntry, AppGroup, OwnerChainResponse
 } from '../types'
 import { AnalysisSlice } from './slices/analysisSlice'
 
@@ -76,6 +76,9 @@ declare global {
             scanKubesecBatch: (resources: any[]) => Promise<any[]>
             scanTrivyImages: (workloads: any[]) => Promise<any>
             onSecurityProgress: (cb: (line: string) => void) => () => void
+            prometheusStatus: (url?: string) => Promise<{ available: boolean; error?: string }>
+            prometheusQueryBatch: (queries: Array<{ query: string; label: string }>, start: number, end: number) => Promise<Array<{ label: string; points: Array<{ t: number; v: number }>; error?: string }>>
+            getOwnerChain: (kind: string, name: string, namespace: string) => Promise<OwnerChainResponse>
         }
         helm: {
             list: (context: string) => Promise<HelmRelease[]>
@@ -84,6 +87,14 @@ declare global {
             history: (context: string, namespace: string, release: string) => Promise<unknown[]>
             rollback: (context: string, namespace: string, release: string, revision: number) => Promise<string>
             uninstall: (context: string, namespace: string, release: string) => Promise<string>
+            repoList: () => Promise<Array<{ name: string; url: string }>>
+            repoSearch: (query: string, limit: number, offset: number) => Promise<{ charts: Array<{ name: string; repo: string; description: string; version: string; appVersion: string }>; total: number }>
+            repoVersions: (repoName: string, chartName: string) => Promise<Array<{ version: string; appVersion: string; description: string }>>
+            repoValues: (repoName: string, chartName: string, version: string) => Promise<string>
+            repoRefresh: () => Promise<void>
+            install: (chart: string, version: string, releaseName: string, namespace: string, values: string, context: string) => Promise<void>
+            onInstallProgress: (cb: (msg: string) => void) => () => void
+            onRefreshProgress: (cb: (msg: string) => void) => () => void
         }
         exec: {
             start: (context: string, namespace: string, pod: string, container: string) => Promise<string>
@@ -94,8 +105,8 @@ declare global {
             onExit: (id: string, cb: () => void) => () => void
         }
         settings: {
-            get: () => Promise<{ kubectlPath: string; shellPath: string; helmPath: string; theme: string; kubeconfigPath: string; prodContexts: string[] }>
-            set: (s: { kubectlPath: string; shellPath: string; helmPath: string; theme: string; kubeconfigPath: string; prodContexts: string[] }) => Promise<void>
+            get: () => Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string> }>
+            set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string> }) => Promise<void>
             checkTools: () => Promise<{ kubeconfigOk: boolean; trivyOk: boolean }>
         }
         kubeconfig: {
@@ -243,6 +254,20 @@ export interface AppStore extends AnalysisSlice {
     // Port forwarding
     startPortForward: (entry: PortForwardEntry) => void
     stopPortForward: (id: string) => void
+
+    // Prometheus
+    prometheusAvailable: boolean | null
+    prometheusProbeError: string | null
+    prometheusTimeRange: { start: number; end: number }
+    prometheusActivePreset: '1h' | '6h' | '24h' | '7d'
+    setPrometheusTimeRange: (range: { start: number; end: number }, preset?: '1h' | '6h' | '24h' | '7d') => void
+    probePrometheus: () => Promise<void>
+
+    // Owner chains — keyed by resource UID
+    ownerChains: Record<string, OwnerChainResponse>
+
+    // Navigation
+    navigateToResource: (kind: string, name: string, namespace: string) => void
 }
 
 export type StoreSlice<T> = StateCreator<AppStore, [], [], T>

@@ -5,6 +5,7 @@ import { useAppStore } from '../store'
 import { FileCode, X, Activity, Layers, Settings, Box, Info } from 'lucide-react'
 import YAMLViewer from './YAMLViewer'
 import AnalysisView from './AnalysisView'
+import OwnerChain from './OwnerChain'
 
 interface Props { daemonSet: KubeDaemonSet }
 
@@ -69,6 +70,16 @@ export default function DaemonSetDetail({ daemonSet: ds }: Props): JSX.Element {
           </div>
         </div>
       </div>
+
+      {/* Owner chain breadcrumb */}
+      {ds.metadata.uid && (
+        <OwnerChain
+          uid={ds.metadata.uid}
+          kind="DaemonSet"
+          name={ds.metadata.name}
+          namespace={ds.metadata.namespace ?? ''}
+        />
+      )}
 
       <div className="flex border-b border-slate-100 dark:border-slate-800 shrink-0 bg-white/[0.02]">
         <button onClick={() => setTab('overview')}

@@ -117,6 +117,7 @@ export interface ResourceSlice {
     trivyAvailable: boolean | null
     lastPreloadedAt: number
     lastDashboardLoadedAt: number
+    navigateToResource: (kind: string, name: string, namespace: string) => void
 }
 
 export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
@@ -193,6 +194,8 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     loadSection: async (section) => {
         const { selectedContext: ctx, selectedNamespace: ns } = get()
         if (!ctx) return
+        // Snapshot the context so we can discard results if a switch happens mid-fetch.
+        const snapshotCtx = ctx
 
         if (section === 'dashboard') {
             await get().loadDashboard()
@@ -212,6 +215,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     window.kubectl.getNodes(ctx),
                     window.kubectl.getHPAs(ctx, nsArg)
                 ])
+                if (get().selectedContext !== snapshotCtx) return
                 set({
                     podMetrics: Array.isArray(pm) ? pm : [],
                     nodeMetrics: Array.isArray(nm) ? nm : [],
@@ -220,7 +224,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     hpas: (Array.isArray(hpas) ? hpas : []) as KubeHPA[],
                     loadingResources: false
                 })
-            } catch { set({ loadingResources: false, podMetrics: [], nodeMetrics: [] }) }
+            } catch { if (get().selectedContext === snapshotCtx) set({ loadingResources: false, podMetrics: [], nodeMetrics: [] }) }
             return
         }
 
@@ -234,6 +238,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     window.kubectl.getNamespaces(ctx),
                     window.kubectl.getNetworkPolicies(ctx, nsArg)
                 ])
+                if (get().selectedContext !== snapshotCtx) return
                 set({
                     services: svcs as KubeService[],
                     ingresses: ings as KubeIngress[],
@@ -242,7 +247,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     networkpolicies: nps as KubeNetworkPolicy[],
                     loadingResources: false
                 })
-            } catch { set({ loadingResources: false }) }
+            } catch { if (get().selectedContext === snapshotCtx) set({ loadingResources: false }) }
             return
         }
 
@@ -257,6 +262,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     window.kubectl.getJobs(ctx, nsArg),
                     window.kubectl.getCronJobs(ctx, nsArg)
                 ])
+                if (get().selectedContext !== snapshotCtx) return
                 set({
                     pods: pds as KubePod[],
                     deployments: depls as KubeDeployment[],
@@ -266,7 +272,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     cronjobs: cjs as KubeCronJob[],
                     loadingResources: false
                 })
-            } catch { set({ loadingResources: false }) }
+            } catch { if (get().selectedContext === snapshotCtx) set({ loadingResources: false }) }
             return
         }
 
@@ -285,8 +291,11 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         set({ loadingResources: true, error: null, selectedResource: null })
         try {
             const data = await config.fetch(ctx, fetchNs)
+            // Discard results if the context switched while we were fetching.
+            if (get().selectedContext !== snapshotCtx) return
             set({ [config.stateKey]: Array.isArray(data) ? data : [], loadingResources: false } as any)
         } catch (err) {
+            if (get().selectedContext !== snapshotCtx) return
             set({ error: (err as Error).message, loadingResources: false })
         }
     },
@@ -297,6 +306,8 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         // Skip re-fetch if dashboard data is < 30s old (navigation back to dashboard).
         // The explicit refresh() action calls loadSection which bypasses this via direct call.
         if (Date.now() - lastDashboardLoadedAt < 30_000) return
+        // Snapshot context to detect mid-fetch context switches and discard stale results.
+        const snapshotCtx = ctx
         set({ loadingResources: true, error: null })
         const ns = get().selectedNamespace === '_all' ? null : get().selectedNamespace
 
@@ -337,8 +348,11 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                 if (!firstError) firstError = msg
             }
         })
+        // Discard results if the context switched while fetches were in-flight.
+        if (get().selectedContext !== snapshotCtx) return
+
         set({ ...updates, ...(firstError ? { error: firstError } : {}) })
-        
+
         // Group resources into Apps
         const allResources: AnyKubeResource[] = [
             ...(get().deployments),
@@ -514,7 +528,21 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         } finally {
             unsubProgress()
         }
-    }
+    },
+
+    navigateToResource: (kind, name, namespace) => {
+        const section = kindToSection[kind]
+        if (!section) return
+        get().setSection(section)
+        // After section loads, select the matching resource
+        const stateKey = SECTION_CONFIG[section]?.stateKey
+        if (!stateKey) return
+        const resources: AnyKubeResource[] = (get() as any)[stateKey] ?? []
+        const found = resources.find((r: AnyKubeResource) =>
+            r.metadata.name === name && (r.metadata.namespace === namespace || !namespace)
+        )
+        if (found) get().selectResource(found)
+    },
 })
 
 /** Post-filters trivy scan output to match the custom scan scope. */
@@ -530,6 +558,30 @@ function filterTrivyByScope(data: any, options: CustomScanOptions): any {
         resources = resources.filter((r: any) => kindSet.has(r.Kind))
     }
     return { ...data, Resources: resources }
+}
+
+const kindToSection: Record<string, ResourceKind> = {
+    Pod: 'pods',
+    Deployment: 'deployments',
+    ReplicaSet: 'replicasets',
+    DaemonSet: 'daemonsets',
+    StatefulSet: 'statefulsets',
+    Job: 'jobs',
+    CronJob: 'cronjobs',
+    Service: 'services',
+    Ingress: 'ingresses',
+    ConfigMap: 'configmaps',
+    Secret: 'secrets',
+    Node: 'nodes',
+    Namespace: 'namespaces',
+    HorizontalPodAutoscaler: 'hpas',
+    PersistentVolumeClaim: 'pvcs',
+    PersistentVolume: 'pvs',
+    ServiceAccount: 'serviceaccounts',
+    Role: 'roles',
+    ClusterRole: 'clusterroles',
+    RoleBinding: 'rolebindings',
+    ClusterRoleBinding: 'clusterrolebindings',
 }
 
 export function kindLabel(section: string): string {

@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import type { KubeService } from '../types'
 import { formatAge } from '../types'
 import { useAppStore } from '../store'
-import { FileCode, X, Activity, Info, Link as LinkIcon, Share2 } from 'lucide-react'
+import { FileCode, X, Activity, Info, Link as LinkIcon, Share2, Copy, Check } from 'lucide-react'
 import YAMLViewer from './YAMLViewer'
 
 interface Props { service: KubeService }
@@ -12,7 +12,22 @@ export default function ServiceDetail({ service: svc }: Props): JSX.Element {
   const [yaml, setYaml] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
   const [yamlError, setYamlError] = useState<string | null>(null)
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
   const lbIps = svc.status.loadBalancer?.ingress ?? []
+
+  const ns = svc.metadata.namespace ?? 'default'
+  const dnsBase = `${svc.metadata.name}.${ns}.svc.cluster.local`
+
+  const inClusterUrls = (svc.spec.ports ?? []).map(p => {
+    const scheme = p.name?.includes('https') || p.port === 443 ? 'https' : 'http'
+    return { label: p.name || String(p.port), url: `${scheme}://${dnsBase}:${p.port}` }
+  })
+
+  const handleCopy = (url: string) => {
+    navigator.clipboard.writeText(url)
+    setCopiedUrl(url)
+    setTimeout(() => setCopiedUrl(null), 2000)
+  }
 
   const handleViewYAML = async () => {
     setYaml(null); setYamlError(null); setYamlLoading(true)
@@ -77,6 +92,38 @@ export default function ServiceDetail({ service: svc }: Props): JSX.Element {
               )}
               <InfoRow label="Session Affinity" value={svc.spec.sessionAffinity ?? 'None'} />
               <InfoRow label="Created" value={formatAge(svc.metadata.creationTimestamp) + ' ago'} />
+            </div>
+          </section>
+
+          {/* In-Cluster URLs */}
+          <section>
+            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <LinkIcon size={12} /> In-Cluster Access
+            </h4>
+            <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-2xl p-4 space-y-3">
+              {/* DNS hostname */}
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest shrink-0">DNS</span>
+                <span className="flex-1 text-[11px] font-bold font-mono text-slate-300 truncate text-right">{dnsBase}</span>
+                <button onClick={() => handleCopy(dnsBase)} className="shrink-0 w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-200 transition-colors" title="Copy">
+                  {copiedUrl === dnsBase ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                </button>
+              </div>
+              {/* Per-port URLs */}
+              {inClusterUrls.map(({ label, url }) => (
+                <div key={url} className="flex items-center gap-3">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest shrink-0 w-10 truncate">{label}</span>
+                  <span className="flex-1 text-[11px] font-bold font-mono text-emerald-400 truncate">{url}</span>
+                  <button onClick={() => handleCopy(url)} className="shrink-0 w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-200 transition-colors" title="Copy">
+                    {copiedUrl === url ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                  </button>
+                </div>
+              ))}
+              {/* Short form hint */}
+              <p className="text-[9px] text-slate-500 pt-1 border-t border-white/5">
+                Short: <span className="font-mono text-slate-400">{svc.metadata.name}.{ns}</span>
+                {inClusterUrls[0] && <span className="ml-1 font-mono text-slate-500">:{(svc.spec.ports ?? [])[0]?.port}</span>}
+              </p>
             </div>
           </section>
 

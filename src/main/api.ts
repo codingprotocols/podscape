@@ -1,8 +1,9 @@
 import { activeSidecarPort } from './runtime'
 import { sidecarToken } from './auth'
+import { SIDECAR_HOST } from '../common/constants'
 
 export async function sidecarFetch(path: string, options?: RequestInit) {
-  const url = `http://127.0.0.1:${activeSidecarPort}${path.startsWith('/') ? '' : '/'}${path}`
+  const url = `http://${SIDECAR_HOST}:${activeSidecarPort}${path.startsWith('/') ? '' : '/'}${path}`
 
   const maxRetries = 20
   const delay = 500

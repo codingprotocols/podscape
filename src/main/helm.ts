@@ -1,5 +1,9 @@
+import http from 'http'
 import { ipcMain } from 'electron'
 import { checkedSidecarFetch } from './api'
+import { activeSidecarPort } from './runtime'
+import { sidecarToken } from './auth'
+import { SIDECAR_HOST } from '../common/constants'
 
 export function registerHelmHandlers(): void {
   const transformRelease = (r: any) => {
@@ -55,5 +59,122 @@ export function registerHelmHandlers(): void {
   ipcMain.handle('helm:uninstall', async (_event, _context: string, namespace: string, release: string) => {
     await checkedSidecarFetch(`/helm/uninstall?namespace=${encodeURIComponent(namespace)}&release=${encodeURIComponent(release)}`)
     return 'Uninstall successful'
+  })
+
+  // ── Helm Repo Browser ─────────────────────────────────────────────────────
+
+  ipcMain.handle('helm:repoList', async () => {
+    const res = await checkedSidecarFetch('/helm/repos')
+    return res.json()
+  })
+
+  ipcMain.handle('helm:repoSearch', async (_e, query: string, limit: number, offset: number) => {
+    const params = new URLSearchParams({
+      q: query,
+      limit: String(limit),
+      offset: String(offset),
+    })
+    const res = await checkedSidecarFetch(`/helm/repos/search?${params}`)
+    return res.json()
+  })
+
+  ipcMain.handle('helm:repoVersions', async (_e, repoName: string, chartName: string) => {
+    const params = new URLSearchParams({ repo: repoName, chart: chartName })
+    const res = await checkedSidecarFetch(`/helm/repos/versions?${params}`)
+    return res.json()
+  })
+
+  ipcMain.handle('helm:repoValues', async (_e, repoName: string, chartName: string, version: string) => {
+    const params = new URLSearchParams({ repo: repoName, chart: chartName, version })
+    const res = await checkedSidecarFetch(`/helm/repos/values?${params}`)
+    return res.text()
+  })
+
+  // helm:repoRefresh — SSE relay (mirrors kubectl:scanSecurity pattern)
+  ipcMain.handle('helm:repoRefresh', (event) => {
+    return new Promise<void>((resolve, reject) => {
+      const req = http.request(
+        {
+          hostname: SIDECAR_HOST,
+          port: activeSidecarPort,
+          path: '/helm/repos/refresh',
+          method: 'POST',
+          headers: { 'X-Podscape-Token': sidecarToken },
+        },
+        (res) => {
+          let buf = ''
+          res.on('data', (chunk: Buffer) => {
+            buf += chunk.toString()
+            const parts = buf.split('\n\n')
+            buf = parts.pop() ?? ''
+            for (const part of parts) {
+              const eventLine = part.split('\n').find(l => l.startsWith('event:'))
+              const dataLine = part.split('\n').find(l => l.startsWith('data:'))
+              if (!eventLine || !dataLine) continue
+              const evtType = eventLine.slice(6).trim()
+              const data = dataLine.slice(5).trim()
+              if (evtType === 'progress') {
+                event.sender.send('helm:refreshProgress', data)
+              } else if (evtType === 'result') {
+                resolve()
+              } else if (evtType === 'error') {
+                reject(new Error(data))
+              }
+            }
+          })
+          res.on('end', () => resolve())
+          res.on('error', reject)
+        }
+      )
+      req.on('error', reject)
+      req.end()
+    })
+  })
+
+  // helm:install — SSE relay
+  ipcMain.handle('helm:install', (event, chart: string, version: string, releaseName: string, namespace: string, values: string, context: string) => {
+    return new Promise<void>((resolve, reject) => {
+      const body = JSON.stringify({ chart, version, name: releaseName, namespace, values, context })
+      const req = http.request(
+        {
+          hostname: SIDECAR_HOST,
+          port: activeSidecarPort,
+          path: '/helm/install',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Podscape-Token': sidecarToken,
+            'Content-Length': Buffer.byteLength(body),
+          },
+        },
+        (res) => {
+          let buf = ''
+          res.on('data', (chunk: Buffer) => {
+            buf += chunk.toString()
+            const parts = buf.split('\n\n')
+            buf = parts.pop() ?? ''
+            for (const part of parts) {
+              const eventLine = part.split('\n').find(l => l.startsWith('event:'))
+              const dataLine = part.split('\n').find(l => l.startsWith('data:'))
+              if (!eventLine || !dataLine) continue
+              const evtType = eventLine.slice(6).trim()
+              const data = dataLine.slice(5).trim()
+              if (evtType === 'progress') {
+                event.sender.send('helm:installProgress', data)
+              } else if (evtType === 'result') {
+                resolve()
+              } else if (evtType === 'error') {
+                reject(new Error(data))
+              }
+            }
+          })
+          res.on('end', () => resolve())
+          res.on('error', reject)
+        }
+      )
+      req.on('error', reject)
+      req.write(body)
+      req.end()
+    })
   })
 }

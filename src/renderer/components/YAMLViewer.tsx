@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import Editor, { DiffEditor } from '@monaco-editor/react'
 import { useAppStore } from '../store'
+import YAMLEditor from './YAMLEditor'
 
 interface Props {
   content: string
@@ -132,31 +133,11 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
             }}
           />
         ) : (
-          <Editor
-            height="100%"
-            language="yaml"
+          <YAMLEditor
             value={value}
-            loading={<div className="flex items-center justify-center h-full text-slate-400 text-xs font-bold uppercase tracking-widest">Initializing Editor...</div>}
-            onChange={v => editable && setValue(v ?? '')}
-            theme={theme === 'dark' ? 'vs-dark' : 'light'}
-            options={{
-              readOnly: !editable,
-              minimap: { enabled: false },
-              scrollBeyondLastLine: false,
-              fontSize: 12,
-              lineNumbers: 'on',
-              renderWhitespace: 'none',
-              wordWrap: 'on',
-              padding: { top: 12, bottom: 12 },
-              overviewRulerLanes: 0,
-              hideCursorInOverviewRuler: true,
-              scrollbar: { vertical: 'auto', horizontal: 'auto' },
-              folding: true,
-              glyphMargin: false,
-              lineDecorationsWidth: 4,
-              lineNumbersMinChars: 3,
-              fontFamily: "'JetBrains Mono', 'Fira Code', 'Menlo', monospace",
-            }}
+            onChange={v => editable && setValue(v)}
+            readOnly={!editable}
+            height="100%"
           />
         )}
       </div>
