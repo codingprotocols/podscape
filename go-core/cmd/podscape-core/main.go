@@ -26,41 +26,7 @@ func main() {
 	token := flag.String("token", "", "shared secret; requests without X-Podscape-Token matching this value are rejected")
 	flag.Parse()
 
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
-	if err != nil {
-		log.Fatalf("Error building kubeconfig: %s", err.Error())
-	}
-
-	// Raise the default QPS (5) and Burst (10) so informer LIST calls during
-	// cache sync are not throttled. Lens and kubectl use similar higher limits.
-	config.QPS = 50
-	config.Burst = 100
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		log.Fatalf("Error creating kubernetes client: %v", err)
-	}
-
-	// Determine the active context name for the initial cache key.
-	kubeconfigData, err := clientcmd.LoadFromFile(*kubeconfig)
-	activeCtxName := ""
-	if err == nil {
-		activeCtxName = kubeconfigData.CurrentContext
-	}
-	if activeCtxName == "" {
-		activeCtxName = "__default__"
-	}
-
 	store.Store.Kubeconfig = *kubeconfig
-
-	// Bootstrap the initial context cache and set it as active.
-	initialCache, _ := store.Store.GetOrCreateCache(activeCtxName, clientset, config)
-	store.Store.Lock()
-	store.Store.ActiveContextName = activeCtxName
-	store.Store.ActiveCache = initialCache
-	store.Store.Unlock()
-
-	portforward.Init(clientset, config)
 
 	// Register all routes before starting the server.
 	http.HandleFunc("/health", handlers.HandleHealth)
@@ -167,8 +133,58 @@ func main() {
 		withCORS.ServeHTTP(w, r)
 	})
 
-	// Start the HTTP server in a goroutine immediately so health checks can
-	// land while the informer cache is still warming up.
+	// Try to build the k8s client from the kubeconfig file.
+	// If the file is missing (fresh install, CI, new machine), run in no-kubeconfig
+	// mode: start the server immediately so /health returns 200, and let the
+	// renderer show the KubeConfigOnboarding screen instead of crashing.
+	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	if err != nil {
+		log.Printf("[sidecar] no valid kubeconfig at %q (%v) — running in setup mode", *kubeconfig, err)
+		store.Store.Lock()
+		store.Store.NoKubeconfig = true
+		store.Store.Unlock()
+		go func() {
+			fmt.Printf("Go sidecar listening on port %s\n", *port)
+			log.Fatal(http.ListenAndServe("127.0.0.1:"+*port, handler))
+		}()
+		fmt.Printf("Go sidecar ready on port %s (no kubeconfig — onboarding mode)\n", *port)
+		select {} // block until Electron kills the process
+	}
+
+	// Raise the default QPS (5) and Burst (10) so informer LIST calls during
+	// cache sync are not throttled. Lens and kubectl use similar higher limits.
+	config.QPS = 50
+	config.Burst = 100
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		log.Fatalf("Error creating kubernetes client: %v", err)
+	}
+
+	// Determine the active context name for the initial cache key.
+	kubeconfigData, err := clientcmd.LoadFromFile(*kubeconfig)
+	activeCtxName := ""
+	if err == nil {
+		activeCtxName = kubeconfigData.CurrentContext
+	}
+	if activeCtxName == "" {
+		activeCtxName = "__default__"
+	}
+
+	// Bootstrap the initial context cache and set it as active.
+	initialCache, _ := store.Store.GetOrCreateCache(activeCtxName, clientset, config)
+	store.Store.Lock()
+	store.Store.ActiveContextName = activeCtxName
+	store.Store.ActiveCache = initialCache
+	store.Store.Unlock()
+
+	// Init portforward manager BEFORE the HTTP server starts accepting
+	// connections — HandleSwitchContext calls Manager.StopAll() and panics
+	// with a nil dereference if the server is up before Init() runs.
+	portforward.Init(clientset, config)
+
+	// Start the HTTP server — /health returns 503 until informers sync, so
+	// startSidecar() keeps polling. portforward is already initialised above.
 	go func() {
 		fmt.Printf("Go sidecar listening on port %s\n", *port)
 		log.Fatal(http.ListenAndServe("127.0.0.1:"+*port, handler))

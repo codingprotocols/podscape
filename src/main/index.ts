@@ -11,7 +11,7 @@ import { startSidecar, stopSidecar } from './sidecar'
 async function createSplashWindow(): Promise<BrowserWindow> {
   const splash = new BrowserWindow({
     width: 440,
-    height: 260,
+    height: 280,
     frame: false,
     transparent: true,
     resizable: false,

@@ -6,8 +6,7 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     html, body {
-      width: 100%;
-      height: 100%;
+      width: 100%; height: 100%;
       overflow: hidden;
       font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
       -webkit-app-region: drag;
@@ -15,110 +14,207 @@
     }
 
     .container {
-      width: 100%;
-      height: 100%;
+      width: 100%; height: 100%;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      background: rgba(12, 14, 20, 0.88);
+      /* --bg-dark: hsl(222, 20%, 6%) */
+      background: rgba(10, 14, 26, 0.90);
       border-radius: 16px;
       position: relative;
       overflow: hidden;
+      gap: 0;
     }
 
-    /* subtle indigo glow behind the icon */
+    /* diffuse glow — matches --primary: hsl(221, 70%, 55%) = #4065f5 */
     .glow {
       position: absolute;
-      width: 340px;
-      height: 340px;
-      background: radial-gradient(circle, rgba(99, 102, 241, 0.10) 0%, transparent 68%);
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -56%);
+      width: 260px; height: 260px;
+      background: radial-gradient(circle, rgba(64, 101, 245, 0.13) 0%, transparent 65%);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -58%);
       pointer-events: none;
     }
 
-    .icon {
-      width: 80px;
-      height: 80px;
-      border-radius: 20px;
-      margin-bottom: 18px;
+    /* ── Kubernetes wheel ──────────────────────────────────────────────── */
+    .wheel-wrap {
       position: relative;
+      width: 100px; height: 100px;
+      margin-bottom: 20px;
       z-index: 1;
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
     }
 
-    h1 {
-      font-size: 20px;
+    /* the inner spokes + hexagon spin together */
+    .wheel-inner {
+      position: absolute; inset: 0;
+      animation: spin 22s linear infinite;
+      transform-origin: center;
+    }
+
+    /* the chasing arc on the outer ring spins faster, opposite feel */
+    .wheel-arc {
+      position: absolute; inset: 0;
+      animation: spin 3.2s linear infinite;
+      transform-origin: center;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ── title / tagline ──────────────────────────────────────────────── */
+    .title {
+      font-size: 19px;
       font-weight: 700;
       color: #f1f5f9;
-      letter-spacing: -0.4px;
-      margin-bottom: 5px;
-      position: relative;
-      z-index: 1;
+      letter-spacing: -0.3px;
+      margin-bottom: 4px;
+      position: relative; z-index: 1;
     }
 
     .tagline {
       font-size: 11px;
       font-weight: 500;
-      color: #334155;
-      letter-spacing: 0.04em;
-      margin-bottom: 30px;
-      position: relative;
-      z-index: 1;
-    }
-
-    /* three-dot animated loader */
-    .dots {
-      display: flex;
-      gap: 6px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .dot {
-      width: 5px;
-      height: 5px;
-      border-radius: 50%;
-      background: #6366f1;
-      animation: pulse 1.4s ease-in-out infinite;
-    }
-
-    .dot:nth-child(2) { animation-delay: 0.22s; }
-    .dot:nth-child(3) { animation-delay: 0.44s; }
-
-    @keyframes pulse {
-      0%, 60%, 100% { opacity: 0.18; transform: scale(0.7); }
-      30%            { opacity: 1;    transform: scale(1);   }
+      /* --border-dark area: slate-600 equivalent */
+      color: #475569;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      position: relative; z-index: 1;
     }
 
     .version {
       position: absolute;
       bottom: 14px;
       font-size: 10px;
+      /* very dark — hsl(222,20%,10%) area */
       color: #1e293b;
-      z-index: 1;
       letter-spacing: 0.06em;
+      z-index: 1;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="glow"></div>
-    <img class="icon" src="./icon.png" alt="Podscape icon">
-    <h1>Podscape</h1>
-    <p class="tagline">Kubernetes management</p>
-    <div class="dots">
-      <div class="dot"></div>
-      <div class="dot"></div>
-      <div class="dot"></div>
-    </div>
+
+    <div class="wheel-wrap">
+
+      <!--
+        SVG 1 — static outer ring (faint full circle)
+        SVG 2 — spinning inner wheel (7 spokes + hex hub)
+        SVG 3 — spinning chasing arc (the bright moving highlight on the ring)
+        All share the same 100×100 viewBox, stacked absolutely.
+      -->
+
+      <!-- static faint outer ring base -->
+      <svg viewBox="0 0 100 100" style="position:absolute;inset:0;width:100%;height:100%">
+        <circle cx="50" cy="50" r="44"
+          fill="none"
+          stroke="rgba(64,101,245,0.15)"
+          stroke-width="2.5"/>
+      </svg>
+
+      <!-- spinning spokes + hex hub -->
+      <svg viewBox="0 0 100 100"
+           class="wheel-inner"
+           style="position:absolute;inset:0;width:100%;height:100%">
+        <defs>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="1.2" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+
+        <g transform="translate(50,50)" filter="url(#glow)" opacity="0.95">
+
+          <!-- 7 spokes: each is a rounded line from inner-hex edge (r≈14) to near outer ring (r≈34),
+               plus a small filled circle at the tip (r≈38). Rotated by multiples of 360/7 ≈ 51.43°. -->
+
+          <!-- spoke template: vertical, points upward -->
+          <g>
+            <line x1="0" y1="-15" x2="0" y2="-33"
+              stroke="#4065f5" stroke-width="3.5" stroke-linecap="round"/>
+            <circle cx="0" cy="-39" r="3.8" fill="#4065f5"/>
+          </g>
+          <g transform="rotate(51.43)">
+            <line x1="0" y1="-15" x2="0" y2="-33"
+              stroke="#4065f5" stroke-width="3.5" stroke-linecap="round"/>
+            <circle cx="0" cy="-39" r="3.8" fill="#4065f5"/>
+          </g>
+          <g transform="rotate(102.86)">
+            <line x1="0" y1="-15" x2="0" y2="-33"
+              stroke="#4065f5" stroke-width="3.5" stroke-linecap="round"/>
+            <circle cx="0" cy="-39" r="3.8" fill="#4065f5"/>
+          </g>
+          <g transform="rotate(154.29)">
+            <line x1="0" y1="-15" x2="0" y2="-33"
+              stroke="#4065f5" stroke-width="3.5" stroke-linecap="round"/>
+            <circle cx="0" cy="-39" r="3.8" fill="#4065f5"/>
+          </g>
+          <g transform="rotate(205.71)">
+            <line x1="0" y1="-15" x2="0" y2="-33"
+              stroke="#4065f5" stroke-width="3.5" stroke-linecap="round"/>
+            <circle cx="0" cy="-39" r="3.8" fill="#4065f5"/>
+          </g>
+          <g transform="rotate(257.14)">
+            <line x1="0" y1="-15" x2="0" y2="-33"
+              stroke="#4065f5" stroke-width="3.5" stroke-linecap="round"/>
+            <circle cx="0" cy="-39" r="3.8" fill="#4065f5"/>
+          </g>
+          <g transform="rotate(308.57)">
+            <line x1="0" y1="-15" x2="0" y2="-33"
+              stroke="#4065f5" stroke-width="3.5" stroke-linecap="round"/>
+            <circle cx="0" cy="-39" r="3.8" fill="#4065f5"/>
+          </g>
+
+          <!-- central hexagon (flat-top, radius 13) -->
+          <polygon
+            points="13,0 6.5,11.26 -6.5,11.26 -13,0 -6.5,-11.26 6.5,-11.26"
+            fill="none"
+            stroke="#4065f5"
+            stroke-width="2.2"
+            stroke-linejoin="round"/>
+
+        </g>
+      </svg>
+
+      <!-- chasing bright arc on outer ring -->
+      <svg viewBox="0 0 100 100"
+           class="wheel-arc"
+           style="position:absolute;inset:0;width:100%;height:100%">
+        <!--
+          circumference of r=44 ≈ 276.5
+          arc length ≈ 70 (quarter-ish), gap = rest
+          stroke-dasharray="70 206.5"
+        -->
+        <circle cx="50" cy="50" r="44"
+          fill="none"
+          stroke="url(#arcGrad)"
+          stroke-width="2.5"
+          stroke-linecap="round"
+          stroke-dasharray="68 208"
+          transform="rotate(-90, 50, 50)"/>
+        <defs>
+          <linearGradient id="arcGrad" gradientUnits="userSpaceOnUse"
+            x1="50" y1="6" x2="94" y2="50">
+            <!-- lighter tint of #4065f5: hsl(221,70%,72%) ≈ #7a9bf8 -->
+            <stop offset="0%"   stop-color="#7a9bf8" stop-opacity="0"/>
+            <stop offset="60%"  stop-color="#4065f5" stop-opacity="1"/>
+            <stop offset="100%" stop-color="#7a9bf8" stop-opacity="0.5"/>
+          </linearGradient>
+        </defs>
+      </svg>
+
+    </div><!-- .wheel-wrap -->
+
+    <p class="title">Podscape</p>
+    <p class="tagline">Starting Kubernetes backend</p>
+
     <span class="version" id="ver"></span>
   </div>
 
   <script>
-    // Injected by main process via query param: splash.html?v=1.2.3
     const v = new URLSearchParams(location.search).get('v')
     if (v) document.getElementById('ver').textContent = 'v' + v
   </script>
