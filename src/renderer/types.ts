@@ -687,6 +687,9 @@ export type ResourceKind =
   | 'connectivity'
   | 'debugpod'
   | 'security'
+  | 'tls'
+  | 'gitops'
+  | 'costview'
   | 'helm'
 
 export type AnyKubeResource =

@@ -211,6 +211,15 @@ const kubectl = {
   // Owner chain
   getOwnerChain: (kind: string, name: string, namespace: string) =>
     ipcRenderer.invoke('kubectl:getOwnerChain', kind, name, namespace),
+
+  // TLS Certificate Dashboard
+  getTLSCerts: (namespace?: string) =>
+    ipcRenderer.invoke('kubectl:getTLSCerts', namespace),
+
+  // GitOps Panel
+  getGitOps: (namespace?: string) =>
+    ipcRenderer.invoke('kubectl:getGitOps', namespace),
+
 }
 
 // ─── dialog API ───────────────────────────────────────────────────────────────

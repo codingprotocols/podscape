@@ -492,4 +492,17 @@ export function registerKubectlHandlers(): void {
     const res = await checkedSidecarFetch(`/owner-chain?${params}`)
     return res.json()
   })
+
+  ipcMain.handle('kubectl:getTLSCerts', async (_e, namespace?: string) => {
+    const url = namespace ? `/tls-certs?namespace=${encodeURIComponent(namespace)}` : '/tls-certs'
+    const res = await checkedSidecarFetch(url)
+    return res.json()
+  })
+
+  ipcMain.handle('kubectl:getGitOps', async (_e, namespace?: string) => {
+    const url = namespace ? `/gitops?namespace=${encodeURIComponent(namespace)}` : '/gitops'
+    const res = await checkedSidecarFetch(url)
+    return res.json()
+  })
+
 }
