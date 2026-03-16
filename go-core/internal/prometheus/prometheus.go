@@ -241,11 +241,18 @@ func ProbePrometheus() ProbeResult {
 		if err != nil {
 			return ProbeResult{Error: fmt.Sprintf("connection failed: %v", err)}
 		}
+		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		if resp.StatusCode == 200 {
-			return ProbeResult{Available: true}
+		if resp.StatusCode != 200 {
+			return ProbeResult{Error: fmt.Sprintf("HTTP %d from %s", resp.StatusCode, mu)}
 		}
-		return ProbeResult{Error: fmt.Sprintf("HTTP %d from %s", resp.StatusCode, mu)}
+		var result struct {
+			Status string `json:"status"`
+		}
+		if json.Unmarshal(body, &result) != nil || result.Status != "success" {
+			return ProbeResult{Error: fmt.Sprintf("unexpected response from %s (not a Prometheus API)", mu)}
+		}
+		return ProbeResult{Available: true}
 	}
 
 	cs, _ := store.Store.ActiveClientset()
@@ -281,7 +288,9 @@ func ProbePrometheus() ProbeResult {
 	return ProbeResult{Error: "not found via k8s service proxy or localhost (9090/9091/8080) — create a port-forward to Prometheus in the Port Forwards panel, then hit Detect Now"}
 }
 
-// probeLocalPort does a quick Prometheus /api/v1/query check against 127.0.0.1:port.
+// probeLocalPort checks whether a Prometheus instance is listening on 127.0.0.1:port.
+// Verifies the response body is a valid Prometheus API success response, not just any
+// HTTP 200 (which would cause false positives from dev servers, metrics endpoints, etc.).
 func probeLocalPort(port int) bool {
 	u := fmt.Sprintf("http://127.0.0.1:%d/api/v1/query?query=up", port)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -294,8 +303,15 @@ func probeLocalPort(port int) bool {
 	if err != nil {
 		return false
 	}
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	return resp.StatusCode == 200
+	if resp.StatusCode != 200 {
+		return false
+	}
+	var result struct {
+		Status string `json:"status"`
+	}
+	return json.Unmarshal(body, &result) == nil && result.Status == "success"
 }
 
 // QueryRangeBatch executes multiple Prometheus query_range calls in parallel.

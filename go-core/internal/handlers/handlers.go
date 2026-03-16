@@ -188,7 +188,17 @@ func MakeHandler(
 func HandleHealth(w http.ResponseWriter, r *http.Request) {
 	store.Store.RLock()
 	ac := store.Store.ActiveCache
+	noKubeconfig := store.Store.NoKubeconfig
 	store.Store.RUnlock()
+
+	// No kubeconfig on disk — sidecar is up but in onboarding mode.
+	// Return 200 so startSidecar() resolves and the renderer can show
+	// KubeConfigOnboarding instead of the "sidecar failed" error dialog.
+	if noKubeconfig {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+		return
+	}
 
 	var ready bool
 	if ac != nil {
@@ -1108,13 +1118,14 @@ func HandleCPTo(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleGetContexts(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	config, err := clientcmd.LoadFromFile(store.Store.Kubeconfig)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		// Kubeconfig missing or unreadable — return empty list so the renderer
+		// shows KubeConfigOnboarding rather than an unhandled error.
+		json.NewEncoder(w).Encode(map[string]interface{}{})
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(config.Contexts)
 }
 

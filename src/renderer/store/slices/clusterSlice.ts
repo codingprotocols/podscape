@@ -146,7 +146,9 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             if (chosen) {
                 await get().loadSection(get().section)
                 get().preloadSearchResources() // background, fire-and-forget
-                get().probePrometheus()         // background, fire-and-forget
+                // Prometheus is opt-in — only probe when the user clicks
+                // "Detect Now" in Settings. Auto-probing on every context
+                // switch causes false positives or spurious error messages.
             }
             set({ loadingNamespaces: false })
         } catch (err) {

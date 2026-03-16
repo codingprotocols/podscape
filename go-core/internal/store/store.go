@@ -178,6 +178,7 @@ func (c *ContextCache) ClearMaps() {
 type ClusterStore struct {
 	sync.RWMutex                       // guards ActiveCache pointer and caches map only
 	Kubeconfig        string
+	NoKubeconfig      bool   // true when sidecar started with no valid kubeconfig file
 	ActiveContextName string
 	ActiveCache       *ContextCache
 	caches            map[string]*ContextCache
