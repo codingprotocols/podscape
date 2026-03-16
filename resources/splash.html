@@ -3,14 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <style>
+    :root {
+      --primary: hsl(221, 70%, 55%);
+      --accent: hsl(188, 60%, 41%);
+      --bg: hsl(222, 20%, 6%);
+      --grid-color: hsla(221, 70%, 55%, 0.1);
+    }
+
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     html, body {
       width: 100%; height: 100%;
       overflow: hidden;
-      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       -webkit-app-region: drag;
       user-select: none;
+      background: var(--bg);
+      color: #fff;
     }
 
     .container {
@@ -19,204 +28,203 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      /* --bg-dark: hsl(222, 20%, 6%) */
-      background: rgba(10, 14, 26, 0.90);
-      border-radius: 16px;
       position: relative;
       overflow: hidden;
-      gap: 0;
+      background: #000;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
     }
 
-    /* diffuse glow — matches --primary: hsl(221, 70%, 55%) = #4065f5 */
-    .glow {
+    /* ── 3D Grid ─────────────────────────────────────────────────────── */
+    .grid-scene {
       position: absolute;
-      width: 260px; height: 260px;
-      background: radial-gradient(circle, rgba(64, 101, 245, 0.13) 0%, transparent 65%);
-      top: 50%; left: 50%;
-      transform: translate(-50%, -58%);
+      inset: 0;
+      perspective: 800px;
+      z-index: 0;
+      opacity: 0.6;
+    }
+
+    .grid-plane {
+      position: absolute;
+      width: 200%;
+      height: 200%;
+      top: -50%;
+      left: -50%;
+      background-image: 
+        linear-gradient(var(--grid-color) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+      background-size: 60px 60px;
+      transform: rotateX(60deg);
+      animation: grid-scroll 20s linear infinite;
+    }
+
+    @keyframes grid-scroll {
+      from { background-position: 0 0; }
+      to { background-position: 0 1200px; }
+    }
+
+    /* ── Data Nodes ──────────────────────────────────────────────────── */
+    .nodes-container {
+      position: absolute;
+      inset: 0;
       pointer-events: none;
     }
 
-    /* ── Kubernetes wheel ──────────────────────────────────────────────── */
-    .wheel-wrap {
+    .node {
+      position: absolute;
+      width: 4px; height: 4px;
+      background: var(--primary);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--primary), 0 0 20px var(--accent);
+      animation: node-pulse 4s infinite ease-in-out;
+    }
+
+    @keyframes node-pulse {
+      0%, 100% { transform: scale(1); opacity: 0.3; }
+      50% { transform: scale(2); opacity: 0.8; }
+    }
+
+    /* ── Content ─────────────────────────────────────────────────────── */
+    .content {
       position: relative;
-      width: 100px; height: 100px;
-      margin-bottom: 20px;
-      z-index: 1;
+      z-index: 10;
+      text-align: center;
     }
 
-    /* the inner spokes + hexagon spin together */
-    .wheel-inner {
-      position: absolute; inset: 0;
-      animation: spin 22s linear infinite;
-      transform-origin: center;
+    .logo-mark {
+      width: 80px; height: 80px;
+      margin-bottom: 24px;
+      position: relative;
+      display: inline-block;
     }
 
-    /* the chasing arc on the outer ring spins faster, opposite feel */
-    .wheel-arc {
-      position: absolute; inset: 0;
-      animation: spin 3.2s linear infinite;
-      transform-origin: center;
+    .logo-hex {
+      width: 100%; height: 100%;
+      fill: none;
+      stroke: var(--primary);
+      stroke-width: 2;
+      stroke-dasharray: 260;
+      stroke-dashoffset: 260;
+      animation: draw 2s ease-out forwards;
+      filter: drop-shadow(0 0 8px var(--primary));
     }
 
-    @keyframes spin {
-      to { transform: rotate(360deg); }
+    @keyframes draw {
+      to { stroke-dashoffset: 0; }
     }
 
-    /* ── title / tagline ──────────────────────────────────────────────── */
+    .scan-line {
+      position: absolute;
+      width: 100%; height: 2px;
+      background: hsla(221, 70%, 75%, 0.4);
+      box-shadow: 0 0 20px var(--primary);
+      top: -100%;
+      animation: scan 4s linear infinite;
+    }
+
+    @keyframes scan {
+      0% { top: -10%; opacity: 0; }
+      20% { opacity: 1; }
+      80% { opacity: 1; }
+      100% { top: 110%; opacity: 0; }
+    }
+
     .title {
-      font-size: 19px;
-      font-weight: 700;
-      color: #f1f5f9;
-      letter-spacing: -0.3px;
-      margin-bottom: 4px;
-      position: relative; z-index: 1;
+      font-size: 36px;
+      font-weight: 800;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      color: #fff;
+      text-shadow: 0 0 20px hsla(221, 70%, 55%, 0.5);
     }
 
-    .tagline {
-      font-size: 11px;
-      font-weight: 500;
-      /* --border-dark area: slate-600 equivalent */
-      color: #475569;
-      letter-spacing: 0.06em;
+    .status-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      font-size: 10px;
+      color: var(--primary);
       text-transform: uppercase;
-      position: relative; z-index: 1;
+      letter-spacing: 0.4em;
+    }
+
+    .status-bar {
+      width: 120px;
+      height: 2px;
+      background: hsla(221, 70%, 55%, 0.1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .status-progress {
+      position: absolute;
+      top: 0; left: 0;
+      height: 100%;
+      width: 40%;
+      background: var(--primary);
+      box-shadow: 0 0 10px var(--primary);
+      animation: progress-move 2s infinite ease-in-out;
+    }
+
+    @keyframes progress-move {
+      0% { left: -40%; }
+      100% { left: 100%; }
     }
 
     .version {
       position: absolute;
-      bottom: 14px;
-      font-size: 10px;
-      /* very dark — hsl(222,20%,10%) area */
-      color: #1e293b;
-      letter-spacing: 0.06em;
-      z-index: 1;
+      bottom: 20px;
+      font-size: 9px;
+      color: hsla(221, 70%, 55%, 0.3);
+      letter-spacing: 0.2em;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="glow"></div>
+    <div class="grid-scene">
+      <div class="grid-plane"></div>
+    </div>
 
-    <div class="wheel-wrap">
+    <div class="nodes-container" id="nodes"></div>
 
-      <!--
-        SVG 1 — static outer ring (faint full circle)
-        SVG 2 — spinning inner wheel (7 spokes + hex hub)
-        SVG 3 — spinning chasing arc (the bright moving highlight on the ring)
-        All share the same 100×100 viewBox, stacked absolutely.
-      -->
+    <div class="content">
+      <div class="logo-mark">
+        <svg viewBox="0 0 100 100">
+          <polygon class="logo-hex" points="50,5 90,25 90,75 50,95 10,75 10,25" />
+          <path d="M50,25 L50,75 M30,35 L70,65 M30,65 L70,35" stroke="var(--primary)" stroke-width="2" opacity="0.5" />
+        </svg>
+        <div class="scan-line"></div>
+      </div>
 
-      <!-- static faint outer ring base -->
-      <svg viewBox="0 0 100 100" style="position:absolute;inset:0;width:100%;height:100%">
-        <circle cx="50" cy="50" r="44"
-          fill="none"
-          stroke="rgba(64,101,245,0.15)"
-          stroke-width="2.5"/>
-      </svg>
-
-      <!-- spinning spokes + hex hub -->
-      <svg viewBox="0 0 100 100"
-           class="wheel-inner"
-           style="position:absolute;inset:0;width:100%;height:100%">
-        <defs>
-          <filter id="glow">
-            <feGaussianBlur stdDeviation="1.2" result="blur"/>
-            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-          </filter>
-        </defs>
-
-        <g transform="translate(50,50)" filter="url(#glow)" opacity="0.95">
-
-          <!-- 7 spokes: each is a rounded line from inner-hex edge (r≈14) to near outer ring (r≈34),
-               plus a small filled circle at the tip (r≈38). Rotated by multiples of 360/7 ≈ 51.43°. -->
-
-          <!-- spoke template: vertical, points upward -->
-          <g>
-            <line x1="0" y1="-15" x2="0" y2="-33"
-              stroke="#4065f5" stroke-width="3.5" stroke-linecap="round"/>
-            <circle cx="0" cy="-39" r="3.8" fill="#4065f5"/>
-          </g>
-          <g transform="rotate(51.43)">
-            <line x1="0" y1="-15" x2="0" y2="-33"
-              stroke="#4065f5" stroke-width="3.5" stroke-linecap="round"/>
-            <circle cx="0" cy="-39" r="3.8" fill="#4065f5"/>
-          </g>
-          <g transform="rotate(102.86)">
-            <line x1="0" y1="-15" x2="0" y2="-33"
-              stroke="#4065f5" stroke-width="3.5" stroke-linecap="round"/>
-            <circle cx="0" cy="-39" r="3.8" fill="#4065f5"/>
-          </g>
-          <g transform="rotate(154.29)">
-            <line x1="0" y1="-15" x2="0" y2="-33"
-              stroke="#4065f5" stroke-width="3.5" stroke-linecap="round"/>
-            <circle cx="0" cy="-39" r="3.8" fill="#4065f5"/>
-          </g>
-          <g transform="rotate(205.71)">
-            <line x1="0" y1="-15" x2="0" y2="-33"
-              stroke="#4065f5" stroke-width="3.5" stroke-linecap="round"/>
-            <circle cx="0" cy="-39" r="3.8" fill="#4065f5"/>
-          </g>
-          <g transform="rotate(257.14)">
-            <line x1="0" y1="-15" x2="0" y2="-33"
-              stroke="#4065f5" stroke-width="3.5" stroke-linecap="round"/>
-            <circle cx="0" cy="-39" r="3.8" fill="#4065f5"/>
-          </g>
-          <g transform="rotate(308.57)">
-            <line x1="0" y1="-15" x2="0" y2="-33"
-              stroke="#4065f5" stroke-width="3.5" stroke-linecap="round"/>
-            <circle cx="0" cy="-39" r="3.8" fill="#4065f5"/>
-          </g>
-
-          <!-- central hexagon (flat-top, radius 13) -->
-          <polygon
-            points="13,0 6.5,11.26 -6.5,11.26 -13,0 -6.5,-11.26 6.5,-11.26"
-            fill="none"
-            stroke="#4065f5"
-            stroke-width="2.2"
-            stroke-linejoin="round"/>
-
-        </g>
-      </svg>
-
-      <!-- chasing bright arc on outer ring -->
-      <svg viewBox="0 0 100 100"
-           class="wheel-arc"
-           style="position:absolute;inset:0;width:100%;height:100%">
-        <!--
-          circumference of r=44 ≈ 276.5
-          arc length ≈ 70 (quarter-ish), gap = rest
-          stroke-dasharray="70 206.5"
-        -->
-        <circle cx="50" cy="50" r="44"
-          fill="none"
-          stroke="url(#arcGrad)"
-          stroke-width="2.5"
-          stroke-linecap="round"
-          stroke-dasharray="68 208"
-          transform="rotate(-90, 50, 50)"/>
-        <defs>
-          <linearGradient id="arcGrad" gradientUnits="userSpaceOnUse"
-            x1="50" y1="6" x2="94" y2="50">
-            <!-- lighter tint of #4065f5: hsl(221,70%,72%) ≈ #7a9bf8 -->
-            <stop offset="0%"   stop-color="#7a9bf8" stop-opacity="0"/>
-            <stop offset="60%"  stop-color="#4065f5" stop-opacity="1"/>
-            <stop offset="100%" stop-color="#7a9bf8" stop-opacity="0.5"/>
-          </linearGradient>
-        </defs>
-      </svg>
-
-    </div><!-- .wheel-wrap -->
-
-    <p class="title">Podscape</p>
-    <p class="tagline">Starting Kubernetes backend</p>
+      <h1 class="title">Podscape</h1>
+      
+      <div class="status-wrap">
+        <div class="status-bar"><div class="status-progress"></div></div>
+        <span>Initializing</span>
+        <div class="status-bar"><div class="status-progress"></div></div>
+      </div>
+    </div>
 
     <span class="version" id="ver"></span>
   </div>
 
   <script>
     const v = new URLSearchParams(location.search).get('v')
-    if (v) document.getElementById('ver').textContent = 'v' + v
+    if (v) document.getElementById('ver').textContent = 'V-' + v
+
+    // Spawn random nodes
+    const container = document.getElementById('nodes');
+    for (let i = 0; i < 20; i++) {
+      const node = document.createElement('div');
+      node.className = 'node';
+      node.style.top = Math.random() * 100 + '%';
+      node.style.left = Math.random() * 100 + '%';
+      node.style.animationDelay = (Math.random() * -5) + 's';
+      container.appendChild(node);
+    }
   </script>
 </body>
 </html>
