@@ -12,7 +12,7 @@ import {
     LayoutGrid, ListFilter, Download, ChevronDown, Search,
     EyeOff, X, SlidersHorizontal,
     Box, Layers, Database, Server, Play, Clock, Globe, FileText,
-    HardDrive, TrendingUp, RefreshCw, Network, Folder, Key,
+    HardDrive, TrendingUp, RefreshCw, Network, Folder, Key, ArrowUpRight,
 } from 'lucide-react'
 
 // ── Kind → icon + colour ──────────────────────────────────────────────────────
@@ -238,7 +238,7 @@ export default function SecurityHub(): JSX.Element {
     }
 
     return (
-        <div className="flex-1 flex flex-col min-w-0 bg-[#020617] overflow-hidden relative">
+        <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-[hsl(var(--bg-dark))] overflow-hidden relative">
             {showCustomScan && (
                 <CustomScanModal
                     namespaces={availableNamespaces}
@@ -774,7 +774,7 @@ function ResourceTable({ results, groupByNamespace }: { results: any[]; groupByN
                 <HeaderCell col="kind"      label="Kind"      className="w-24 shrink-0" />
                 <HeaderCell col="config"    label="Config"    className="w-28 shrink-0" />
                 <HeaderCell col="cves"      label="CVEs"      className="w-28 shrink-0" />
-                <HeaderCell col="score"     label=""          className="w-8  shrink-0 justify-end" />
+                <HeaderCell col="score"     label=""          className="w-14 shrink-0 justify-end" />
             </div>
 
             {grouped ? (
@@ -799,6 +799,7 @@ function ResourceTable({ results, groupByNamespace }: { results: any[]; groupByN
 }
 
 function TableRow({ res, isLast }: { res: any; isLast: boolean }) {
+    const { navigateToResource } = useAppStore()
     const [expanded, setExpanded] = useState(false)
     const [showAllVulns, setShowAllVulns] = useState(false)
 
@@ -860,13 +861,20 @@ function TableRow({ res, isLast }: { res: any; isLast: boolean }) {
                         <span className="text-[10px] text-slate-700">—</span>
                     )}
                 </div>
-                {/* Score dot */}
-                <div className="w-8 shrink-0 flex justify-end">
-                    <div className={`w-2 h-2 rounded-full ${
+                {/* Score dot + navigate */}
+                <div className="w-14 shrink-0 flex items-center justify-end gap-2">
+                    <div className={`w-2 h-2 rounded-full shrink-0 ${
                         score === 2 ? 'bg-red-500 shadow-sm shadow-red-500/50' :
                         score === 1 ? 'bg-amber-400' :
                         'bg-slate-600'
                     }`} />
+                    <button
+                        onClick={e => { e.stopPropagation(); navigateToResource(res.kind, res.name, res.namespace ?? '') }}
+                        title={`Open ${res.kind}`}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-600 hover:text-blue-400 hover:bg-blue-500/10 transition-all"
+                    >
+                        <ArrowUpRight className="w-3 h-3" />
+                    </button>
                 </div>
             </button>
 
