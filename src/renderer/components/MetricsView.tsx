@@ -25,11 +25,14 @@ export default function MetricsView(): JSX.Element {
     let totalCpuM = 0; let usedCpuM = 0
     let totalMemMiB = 0; let usedMemMiB = 0
 
-    nodes.forEach(n => {
+    const safeNodes = Array.isArray(nodes) ? nodes : []
+    safeNodes.forEach(n => {
       totalCpuM += parseCpuMillicores(n.status.allocatable?.cpu ?? n.status.capacity?.cpu ?? '0')
       totalMemMiB += parseMemoryMiB(n.status.allocatable?.memory ?? n.status.capacity?.memory ?? '0Ki')
     })
-    nodeMetrics.forEach(nm => {
+
+    const safeNodeMetrics = Array.isArray(nodeMetrics) ? nodeMetrics : []
+    safeNodeMetrics.forEach(nm => {
       usedCpuM += parseCpuMillicores(nm.usage.cpu)
       usedMemMiB += parseMemoryMiB(nm.usage.memory)
     })
@@ -45,8 +48,12 @@ export default function MetricsView(): JSX.Element {
 
   // Filtering and Sorting
   const processedPods = useMemo(() => {
-    const list = podMetrics.flatMap(pm => {
-      const podObj = pods.find(p => p.metadata.name === pm.metadata.name && p.metadata.namespace === pm.metadata.namespace)
+    const safePodMetrics = Array.isArray(podMetrics) ? podMetrics : []
+    const safePods = Array.isArray(pods) ? pods : []
+    const safeHPAs = Array.isArray(hpas) ? hpas : []
+
+    const list = safePodMetrics.flatMap(pm => {
+      const podObj = safePods.find(p => p.metadata.name === pm.metadata.name && p.metadata.namespace === pm.metadata.namespace)
 
       return (pm.containers ?? []).map(c => {
         const podContainer = podObj?.spec.containers.find(pc => pc.name === c.name)
@@ -62,7 +69,7 @@ export default function MetricsView(): JSX.Element {
         const curMem = parseMemoryMiB(c.usage.memory)
 
         // Find HPA
-        const hpa = hpas.find(h =>
+        const hpa = safeHPAs.find(h =>
           h.metadata.namespace === pm.metadata.namespace &&
           (h.spec.scaleTargetRef.name === pm.metadata.name || // Simple match
             podObj?.metadata.ownerReferences?.some(or => or.name === h.spec.scaleTargetRef.name))
@@ -158,8 +165,8 @@ export default function MetricsView(): JSX.Element {
                 Cluster Nodes
               </h3>
               <div className="grid gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {nodeMetrics.map(nm => {
-                  const node = nodes.find(n => n.metadata.name === nm.metadata.name)
+                {(Array.isArray(nodeMetrics) ? nodeMetrics : []).map(nm => {
+                  const node = (Array.isArray(nodes) ? nodes : []).find(n => n.metadata.name === nm.metadata.name)
                   const cpuCapM = parseCpuMillicores(node?.status.allocatable?.cpu ?? node?.status.capacity?.cpu ?? '0')
                   const memCapMiB = parseMemoryMiB(node?.status.allocatable?.memory ?? node?.status.capacity?.memory ?? '0Ki')
                   const cpuUsedM = parseCpuMillicores(nm.usage.cpu)
@@ -269,9 +276,17 @@ export default function MetricsView(): JSX.Element {
                                 />
                               </div>
                               {cpuEff !== null && (
-                                <span className={`text-[8px] font-black uppercase tracking-widest ${cpuEff < 20 ? 'text-amber-500' : 'text-slate-400 dark:text-slate-600'}`}>
-                                  Efficiency: {Math.round(cpuEff)}% of Req
-                                </span>
+                                <div className="flex flex-col gap-1">
+                                  <span className={`text-[8px] font-black uppercase tracking-widest ${cpuEff < 10 ? 'text-amber-500 animate-pulse' : 'text-slate-400 dark:text-slate-600'}`}>
+                                    Efficiency: {Math.round(cpuEff)}% of Req
+                                  </span>
+                                  {cpuEff < 10 && reqCpu > 0 && (
+                                    <span className="text-[7px] text-amber-500/80 font-bold italic">Recommendation: Reduce Request to {Math.max(10, Math.round(cpu * 1.5))}m</span>
+                                  )}
+                                  {cpu > limCpu * 0.95 && limCpu > 0 && (
+                                    <span className="text-[7px] text-red-500 font-bold italic">Warning: Throttling likely. Increase Limit.</span>
+                                  )}
+                                </div>
                               )}
                             </div>
                           </td>
@@ -293,9 +308,17 @@ export default function MetricsView(): JSX.Element {
                                 />
                               </div>
                               {memEff !== null && (
-                                <span className={`text-[8px] font-black uppercase tracking-widest ${memEff < 20 ? 'text-amber-500' : 'text-slate-400 dark:text-slate-600'}`}>
-                                  Efficiency: {Math.round(memEff)}% of Req
-                                </span>
+                                <div className="flex flex-col gap-1">
+                                  <span className={`text-[8px] font-black uppercase tracking-widest ${memEff < 15 ? 'text-amber-500 animate-pulse' : 'text-slate-400 dark:text-slate-600'}`}>
+                                    Efficiency: {Math.round(memEff)}% of Req
+                                  </span>
+                                  {memEff < 15 && reqMem > 0 && (
+                                    <span className="text-[7px] text-amber-500/80 font-bold italic">Recommendation: Reduce Request to {Math.max(16, Math.round(mem * 1.2))}Mi</span>
+                                  )}
+                                  {mem > limMem * 0.95 && limMem > 0 && (
+                                    <span className="text-[7px] text-red-500 font-bold italic">Warning: Near OOM. Increase Limit.</span>
+                                  )}
+                                </div>
                               )}
                             </div>
                           </td>

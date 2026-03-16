@@ -71,4 +71,71 @@ describe('operationSlice', () => {
         expect(state.portForwards).toContain(entry)
         expect(windowMock.kubectl.portForward).toHaveBeenCalledWith('ctx1', 'ns1', 'pod', 'p1', 8080, 80, 'pf1')
     })
+
+    it('startPortForward registers all three IPC listeners', () => {
+        const entry = { id: 'pf2', name: 'p2', namespace: 'ns1', type: 'pod', localPort: 9090, remotePort: 90 }
+        const slice = createOperationSlice(set, get, {} as any)
+        slice.startPortForward(entry as any)
+
+        expect(windowMock.kubectl.onPortForwardReady).toHaveBeenCalledWith('pf2', expect.any(Function))
+        expect(windowMock.kubectl.onPortForwardError).toHaveBeenCalledWith('pf2', expect.any(Function))
+        expect(windowMock.kubectl.onPortForwardExit).toHaveBeenCalledWith('pf2', expect.any(Function))
+    })
+
+    it('stopPortForward calls all three unsubscribers and removes entry', () => {
+        const unsubReady = vi.fn()
+        const unsubError = vi.fn()
+        const unsubExit = vi.fn()
+        windowMock.kubectl.onPortForwardReady.mockReturnValueOnce(unsubReady)
+        windowMock.kubectl.onPortForwardError.mockReturnValueOnce(unsubError)
+        windowMock.kubectl.onPortForwardExit.mockReturnValueOnce(unsubExit)
+
+        const entry = { id: 'pf3', name: 'p3', namespace: 'ns1', type: 'pod', localPort: 7070, remotePort: 70 }
+        state.portForwards = [entry]
+        const slice = createOperationSlice(set, get, {} as any)
+        slice.startPortForward(entry as any)
+        slice.stopPortForward('pf3')
+
+        expect(unsubReady).toHaveBeenCalledTimes(1)
+        expect(unsubError).toHaveBeenCalledTimes(1)
+        expect(unsubExit).toHaveBeenCalledTimes(1)
+        expect(windowMock.kubectl.stopPortForward).toHaveBeenCalledWith('pf3')
+        expect(state.portForwards.find((f: any) => f.id === 'pf3')).toBeUndefined()
+    })
+
+    it('onPortForwardReady callback updates entry status to active', () => {
+        let readyCb: (() => void) | undefined
+        windowMock.kubectl.onPortForwardReady.mockImplementationOnce((_id: string, cb: () => void) => {
+            readyCb = cb
+            return vi.fn()
+        })
+
+        const entry = { id: 'pf4', name: 'p4', namespace: 'ns1', type: 'pod', localPort: 6060, remotePort: 60, status: 'starting' }
+        state.portForwards = [entry]
+        const slice = createOperationSlice(set, get, {} as any)
+        slice.startPortForward(entry as any)
+
+        readyCb!()
+        const updated = state.portForwards.find((f: any) => f.id === 'pf4')
+        expect(updated?.status).toBe('active')
+    })
+
+    it('onPortForwardExit callback removes entry and cleans up unsubscribers', () => {
+        let exitCb: (() => void) | undefined
+        windowMock.kubectl.onPortForwardExit.mockImplementationOnce((_id: string, cb: () => void) => {
+            exitCb = cb
+            return vi.fn()
+        })
+
+        const entry = { id: 'pf5', name: 'p5', namespace: 'ns1', type: 'pod', localPort: 5050, remotePort: 50, status: 'active' }
+        state.portForwards = [entry]
+        const slice = createOperationSlice(set, get, {} as any)
+        slice.startPortForward(entry as any)
+
+        exitCb!()
+        expect(state.portForwards.find((f: any) => f.id === 'pf5')).toBeUndefined()
+        // After exit cleans up, stopPortForward should not call stale unsubscribers
+        const unsubReady = windowMock.kubectl.onPortForwardReady.mock.results.at(-1)?.value
+        expect(unsubReady).toBeDefined()
+    })
 })

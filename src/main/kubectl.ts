@@ -1,314 +1,223 @@
+import http from 'http'
 import { ipcMain } from 'electron'
-import { execFile, spawn } from 'child_process'
-import { existsSync, writeFileSync, mkdtempSync, rmSync } from 'fs'
-import { tmpdir } from 'os'
-import { join } from 'path'
-import { getAugmentedEnv } from './env'
-import { getSettings } from './settings_storage'
-import { KubeProvider } from './kubeProvider'
+import { checkedSidecarFetch, sidecarFetch } from './api'
+import { activeSidecarPort } from './runtime'
+import { sidecarToken } from './auth'
+import { SIDECAR_HOST } from '../common/constants'
 
-const KUBECTL_PATHS = [
-  '/opt/homebrew/bin/kubectl',
-  '/usr/local/bin/kubectl',
-  '/usr/bin/kubectl',
-  'kubectl'
-]
-
-export function findKubectl(): string {
-  const { kubectlPath } = getSettings()
-  if (kubectlPath && existsSync(kubectlPath)) return kubectlPath
-  for (const p of KUBECTL_PATHS) {
-    if (p === 'kubectl' || existsSync(p)) return p
-  }
-  return 'kubectl'
-}
-
-const EXEC_ALLOWED_COMMANDS = new Set(['curl', 'nc', 'ping', 'nslookup'])
-
-/**
- * Maps raw kubectl stderr / Node.js child-process errors to short, user-friendly messages.
- * The `raw` argument is the Node.js Error object from execFile.
- */
-function humanizeKubectlError(stderr: string, raw: Error & { code?: unknown; killed?: boolean }): Error {
-  const text = stderr.trim() || raw.message
-
-  // Timeout / network unreachable
-  if (
-    raw.killed ||
-    text.includes('i/o timeout') ||
-    raw.code === 'ETIMEDOUT' ||
-    raw.name === 'AbortError'
-  ) return new Error('Cluster connection timed out. Check your network or VPN and try again.')
-
-  if (text.includes('Unable to connect to the server') || text.includes('connection refused'))
-    return new Error('Cannot reach the cluster. Check that it is running and your network/VPN is active.')
-
-  // Auth / OIDC
-  if (text.includes('Unauthorized') || text.includes('You must be logged in') || text.includes('401'))
-    return new Error('Authentication failed. Your token may have expired — try re-logging into the cluster.')
-
-  // RBAC
-  if (text.includes('Forbidden') || text.includes('cannot list') || text.includes('cannot get') || text.includes('403'))
-    return new Error('Permission denied. Your account does not have access to this resource in this cluster.')
-
-  // Context / kubeconfig
-  if (text.includes('does not exist') && text.includes('context'))
-    return new Error('Context not found in kubeconfig. The cluster entry may have been removed or renamed.')
-
-  if (text.includes('no server found for cluster') || text.includes('no such host'))
-    return new Error('Cluster host not found. The server address in your kubeconfig may be incorrect.')
-
-  // kubectl cp: tar missing in container (distroless / scratch / minimal images)
-  if (text.includes('"tar": executable file not found') || text.includes("exec: \"tar\""))
-    return new Error('tar not found in container. kubectl cp requires tar to be installed inside the container. For distroless or minimal images, copy tar in first via a debug container, or switch to an image that includes tar (e.g. busybox).')
-
-  // Resource type unsupported (e.g. CRD not installed)
-  if (text.includes("server doesn't have a resource type") || text.includes('no matches for kind'))
-    return new Error('This resource type is not available in the cluster. The required API or CRD may not be installed.')
-
-  // kubectl binary missing
-  if (raw.code === 'ENOENT')
-    return new Error('kubectl not found. Set the path in Settings or install kubectl and restart the app.')
-
-  // EKS / AWS auth
-  if (text.includes('exec plugin') || text.includes('aws-iam-authenticator') || text.includes('aws eks'))
-    return new Error('AWS authentication failed. Ensure aws-iam-authenticator or aws CLI is installed and configured.')
-
-  // Strip the "Command failed: /path/kubectl arg1 arg2 ..." prefix that Node appends
-  // when stderr is empty — it leaks full command args including sensitive context names.
-  if (!stderr.trim() && raw.message.startsWith('Command failed:'))
-    return new Error('kubectl command failed. The cluster may be unavailable or you may lack permissions.')
-
-  // Fallback: use stderr if available (it's already the kubectl-formatted message), otherwise generic
-  return new Error(text || 'An unknown kubectl error occurred.')
-}
-
-export class KubectlProvider implements KubeProvider {
-  private missingResources = new Map<string, Set<string>>()
-
-  private spawnKubectl(args: string[], timeoutMs = 10000): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const binary = findKubectl()
-      const env = getAugmentedEnv()
-      execFile(binary, args, { maxBuffer: 20 * 1024 * 1024, env, timeout: timeoutMs }, (error, stdout, stderr) => {
-        if (error) {
-          reject(humanizeKubectlError(stderr, error))
-        } else {
-          resolve(stdout)
-        }
-      })
-    })
-  }
-
-  // Unlike spawnKubectl, this always resolves — even on non-zero exit — so callers
-  // can inspect exitCode and present the output (e.g. the connectivity tester).
-  private spawnKubectlExec(args: string[], timeoutMs = 30000): Promise<{ stdout: string; exitCode: number }> {
-    return new Promise((resolve) => {
-      const binary = findKubectl()
-      const env = getAugmentedEnv()
-      execFile(binary, args, { maxBuffer: 20 * 1024 * 1024, env, timeout: timeoutMs }, (error, stdout, stderr) => {
-        if (error) {
-          const exitCode = typeof (error as any).code === 'number' ? (error as any).code : 1
-          resolve({ stdout: stdout + (stderr ? '\n' + stderr : ''), exitCode })
-        } else {
-          resolve({ stdout, exitCode: 0 })
-        }
-      })
-    })
-  }
-
+export class KubectlProvider {
   async getContexts(): Promise<unknown[]> {
-    const output = await this.spawnKubectl(['config', 'view', '-o', 'json'])
-    try { return (JSON.parse(output).contexts ?? []) as unknown[] } catch { return [] }
+    const res = await checkedSidecarFetch('/config/contexts')
+    const contextsMap = await res.json() as Record<string, any>
+    return Object.entries(contextsMap).map(([name, context]) => ({
+      name,
+      context
+    }))
   }
 
   async getCurrentContext(): Promise<string> {
-    const output = await this.spawnKubectl(['config', 'current-context'])
-    return output.trim()
+    const res = await checkedSidecarFetch('/config/current-context')
+    return (await res.text()).trim()
   }
 
   async switchContext(context: string): Promise<void> {
-    await this.spawnKubectl(['config', 'use-context', context])
+    await checkedSidecarFetch(`/config/switch?context=${encodeURIComponent(context)}`)
   }
 
-  async getNamespaces(context: string): Promise<unknown[]> {
-    // Namespaces are cluster-scoped — never pass --all-namespaces or --namespace.
-    // Use a longer timeout since EKS token refresh can take several seconds.
-    return this.getResources(context, undefined, 'namespaces', 25000)
+  async getNamespaces(_context: string): Promise<unknown[]> {
+    return this.getResources(_context, undefined, 'namespaces')
   }
 
-  async getResources(context: string, namespace: string | null | undefined, kind: string, timeoutMs?: number, silent?: boolean): Promise<unknown[]> {
-    // Check cache
-    if (this.missingResources.get(context)?.has(kind)) return []
-
-    const args = ['get', kind]
-    if (context) args.push('--context', context)
-    if (typeof namespace === 'string') {
-      // Named namespace: scope to it
-      args.push('--namespace', namespace)
-    } else if (namespace === null) {
-      // null means "all namespaces" — only valid for namespace-scoped resources
-      args.push('--all-namespaces')
+  async getResources(_context: string, namespace: string | null | undefined, kind: string): Promise<any[]> {
+    const sidecarMap: Record<string, string> = {
+      'nodes': 'nodes',
+      'namespaces': 'namespaces',
+      'pods': 'pods',
+      'deployments': 'deployments',
+      'daemonsets': 'daemonsets',
+      'statefulsets': 'statefulsets',
+      'replicasets': 'replicasets',
+      'jobs': 'jobs',
+      'cronjobs': 'cronjobs',
+      'horizontalpodautoscalers': 'hpas',
+      'poddisruptionbudgets': 'pdbs',
+      'services': 'services',
+      'ingresses': 'ingresses',
+      'ingressclasses': 'ingressclasses',
+      'networkpolicies': 'networkpolicies',
+      'endpoints': 'endpoints',
+      'configmaps': 'configmaps',
+      'secrets': 'secrets',
+      'persistentvolumeclaims': 'pvcs',
+      'persistentvolumes': 'pvs',
+      'storageclasses': 'storageclasses',
+      'serviceaccounts': 'serviceaccounts',
+      'roles': 'roles',
+      'clusterroles': 'clusterroles',
+      'rolebindings': 'rolebindings',
+      'clusterrolebindings': 'clusterrolebindings',
+      'customresourcedefinitions': 'crds',
+      'events': 'events'
     }
-    // undefined means cluster-scoped — no namespace flag at all
-    args.push('-o', 'json')
-    try {
-      const output = await this.spawnKubectl(args, timeoutMs)
-      try { return (JSON.parse(output).items ?? []) as unknown[] } catch { return [] }
-    } catch (err) {
-      const msg = (err as Error).message
-      const isMissing = msg.includes('resource type is not available') || msg.includes('no matches for kind')
 
-      if (isMissing) {
-        if (!this.missingResources.has(context)) this.missingResources.set(context, new Set())
-        this.missingResources.get(context)!.add(kind)
-      }
-
-      if (!silent) {
-        console.error(`[kubectl] getResources ${kind} failed:`, msg)
-      }
-      return []
+    const endpoint = sidecarMap[kind.toLowerCase()] || kind
+    const url = `/${endpoint}${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`
+    const res = await sidecarFetch(url)
+    if (res.ok) {
+      return await res.json() as any[]
     }
+    return []
   }
 
-  async getPodMetrics(context: string, namespace: string | null): Promise<unknown[]> {
-    return await this.getResources(context, namespace, 'podmetrics.metrics.k8s.io', undefined, true)
+  async getPodMetrics(_context: string, namespace: string | null): Promise<unknown[]> {
+    const url = `/metrics/pods${namespace ? `?namespace=${namespace}` : ''}`
+    const res = await sidecarFetch(url)
+    if (res.ok) {
+      const data = await res.json()
+      return Array.isArray(data) ? data : (data.items || [])
+    }
+    return []
   }
 
-  async getNodeMetrics(context: string): Promise<unknown[]> {
-    // Node metrics are cluster-scoped
-    return await this.getResources(context, undefined, 'nodemetrics.metrics.k8s.io', undefined, true)
+  async getNodeMetrics(_context: string): Promise<unknown[]> {
+    const res = await sidecarFetch('/metrics/nodes')
+    if (res.ok) {
+      const data = await res.json()
+      return Array.isArray(data) ? data : (data.items || [])
+    }
+    return []
   }
 
-  async createDebugPod(context: string, namespace: string, image: string, name: string): Promise<void> {
-    await this.spawnKubectl([
-      'run', name,
-      '--image', image,
-      '--restart=Never',
-      '--namespace', namespace,
-      '--context', context,
-      '--labels', 'created-by=podscape',
-      '--', 'sleep', 'infinity',
-    ], 30000)
-    // Wait until pod is Ready (up to 90s)
-    await this.spawnKubectl([
-      'wait', `pod/${name}`,
-      '--for=condition=Ready',
-      '--namespace', namespace,
-      '--context', context,
-      '--timeout=90s',
-    ], 100000)
+  async createDebugPod(_context: string, namespace: string, image: string, name: string): Promise<void> {
+    const url = `/debugpod/create?namespace=${namespace}&image=${encodeURIComponent(image)}&name=${encodeURIComponent(name)}`
+    await checkedSidecarFetch(url, { method: 'POST' })
   }
 
   async getSecretValue(context: string, namespace: string, name: string, key: string): Promise<string> {
-    const output = await this.spawnKubectl(['get', 'secret', name, '--context', context, '--namespace', namespace, '-o', 'json'])
-    const secret = JSON.parse(output) as { data?: Record<string, string> }
-    const encoded = secret.data?.[key]
-    if (!encoded) throw new Error(`Key '${key}' not found in secret`)
-    return Buffer.from(encoded, 'base64').toString('utf8')
+    const url = `/secret/value?context=${encodeURIComponent(context)}&namespace=${encodeURIComponent(namespace)}&name=${encodeURIComponent(name)}&key=${encodeURIComponent(key)}`
+    const res = await checkedSidecarFetch(url)
+    return await res.text()
   }
 
-  async scaleResource(context: string, namespace: string, kind: string, name: string, replicas: number): Promise<string> {
-    return this.spawnKubectl(['scale', kind, name, `--replicas=${replicas}`, '--context', context, '--namespace', namespace])
+  async scaleResource(_context: string, namespace: string, kind: string, name: string, replicas: number): Promise<string> {
+    const url = `/scale?namespace=${encodeURIComponent(namespace)}&kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}&replicas=${replicas}`
+    await checkedSidecarFetch(url)
+    return 'Scaled successfully'
   }
 
-  async rolloutRestart(context: string, namespace: string, kind: string, name: string): Promise<string> {
-    return this.spawnKubectl(['rollout', 'restart', `${kind}/${name}`, '--context', context, '--namespace', namespace])
+  async rolloutRestart(_context: string, namespace: string, kind: string, name: string): Promise<string> {
+    const url = `/rollout/restart?namespace=${encodeURIComponent(namespace)}&kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`
+    await checkedSidecarFetch(url)
+    return 'Restarted successfully'
   }
 
-  async rolloutHistory(context: string, namespace: string, kind: string, name: string): Promise<string> {
-    return this.spawnKubectl(['rollout', 'history', `${kind}/${name}`, '--context', context, '--namespace', namespace])
+  async rolloutHistory(_context: string, namespace: string, kind: string, name: string): Promise<string> {
+    const url = `/rollout/history?namespace=${encodeURIComponent(namespace)}&kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`
+    const res = await checkedSidecarFetch(url)
+    const data = await res.json()
+    return JSON.stringify(data, null, 2)
   }
 
-  async rolloutUndo(context: string, namespace: string, kind: string, name: string, revision?: number): Promise<string> {
-    const args = ['rollout', 'undo', `${kind}/${name}`, '--context', context, '--namespace', namespace]
-    if (revision) args.push(`--to-revision=${revision}`)
-    return this.spawnKubectl(args)
+  async rolloutUndo(_context: string, namespace: string, kind: string, name: string, revision?: number): Promise<string> {
+    const url = `/rollout/undo?namespace=${encodeURIComponent(namespace)}&kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}${revision ? `&revision=${revision}` : ''}`
+    await checkedSidecarFetch(url)
+    return 'Undo successful'
   }
 
-  async getResourceEvents(context: string, namespace: string, kind: string, name: string): Promise<unknown[]> {
-    try {
-      const output = await this.spawnKubectl([
-        'get', 'events', `--field-selector=involvedObject.kind=${kind},involvedObject.name=${name}`,
-        '--context', context, '--namespace', namespace, '-o', 'json'
-      ])
-      return (JSON.parse(output).items ?? []) as unknown[]
-    } catch { return [] }
+  async getResourceEvents(_context: string, namespace: string, kind: string, name: string): Promise<unknown[]> {
+    const url = `/events?namespace=${namespace}&kind=${kind}&name=${name}`
+    const res = await sidecarFetch(url)
+    if (res.ok) return await res.json()
+    return []
   }
 
-  async deleteResource(context: string, namespace: string | null, kind: string, name: string): Promise<string> {
-    const args = ['delete', kind, name, '--context', context]
-    if (namespace) args.push('--namespace', namespace)
-    return this.spawnKubectl(args)
+  async deleteResource(_context: string, namespace: string | null, kind: string, name: string): Promise<string> {
+    const url = `/delete?namespace=${encodeURIComponent(namespace || '')}&kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`
+    await checkedSidecarFetch(url)
+    return 'Deleted successfully'
   }
 
-  async getYAML(context: string, namespace: string | null, kind: string, name: string): Promise<string> {
-    const args = ['get', kind, name, '--context', context, '-o', 'yaml']
-    if (namespace) args.push('--namespace', namespace)
-    return this.spawnKubectl(args)
+  async getYAML(_context: string, namespace: string | null, kind: string, name: string): Promise<string> {
+    const url = `/getYAML?namespace=${encodeURIComponent(namespace || '')}&kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`
+    const res = await checkedSidecarFetch(url)
+    return await res.text()
   }
 
-  async applyYAML(context: string, yamlContent: string): Promise<string> {
-    const tmpDir = mkdtempSync(join(tmpdir(), 'podscape-'))
-    const tmpFile = join(tmpDir, 'manifest.yaml')
-    writeFileSync(tmpFile, yamlContent, 'utf-8')
-    try {
-      return await this.spawnKubectl(['apply', '-f', tmpFile, '--context', context])
-    } finally {
-      try { rmSync(tmpDir, { recursive: true, force: true }) } catch { /* ignore */ }
-    }
+  async applyYAML(_context: string, yamlContent: string): Promise<string> {
+    const url = `/apply`
+    await checkedSidecarFetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/yaml' },
+      body: yamlContent
+    })
+    return 'Applied successfully'
   }
 
-  spawnLogs(context: string, namespace: string, pod: string, container?: string) {
-    const binary = findKubectl()
-    const args = ['logs', pod, '--context', context, '--namespace', namespace, '--follow', '--tail', '200']
-    if (container) args.push('--container', container)
-    const env = getAugmentedEnv()
-    return spawn(binary, args, { env })
+  async execCommand(_context: string, namespace: string, pod: string, container: string, command: string[]): Promise<{ stdout: string; exitCode: number }> {
+    const url = `/exec/oneshot?namespace=${namespace}&pod=${pod}&container=${container}&${command.map(c => `command=${encodeURIComponent(c)}`).join('&')}`
+    const res = await checkedSidecarFetch(url)
+    const data = await res.json() as { stdout: string; stderr: string; error?: string }
+    return { stdout: data.stdout + (data.stderr || ''), exitCode: data.error ? 1 : 0 }
   }
 
-  spawnPortForward(context: string, namespace: string, type: string, name: string, localPort: number, remotePort: number) {
-    const binary = findKubectl()
-    const env = getAugmentedEnv()
-    return spawn(binary, [
-      'port-forward', `${type}/${name}`, `${localPort}:${remotePort}`,
-      '--context', context, '--namespace', namespace
-    ], { env })
-  }
-  async execCommand(context: string, namespace: string, pod: string, container: string, command: string[]): Promise<{ stdout: string; exitCode: number }> {
-    if (command.length === 0 || !EXEC_ALLOWED_COMMANDS.has(command[0])) {
-      throw new Error(`Command not allowed: '${command[0] ?? ''}'. Permitted: ${[...EXEC_ALLOWED_COMMANDS].join(', ')}`)
-    }
-    return this.spawnKubectlExec([
-      'exec', pod, '--context', context, '--namespace', namespace, '--container', container, '--', ...command
-    ])
-  }
-
-  /** Upload a local file into a running container via `kubectl cp`. */
   async copyToContainer(
-    context: string, namespace: string, pod: string, container: string,
+    _context: string, namespace: string, pod: string, container: string,
     localPath: string, remotePath: string
   ): Promise<void> {
-    await this.spawnKubectl([
-      'cp', localPath, `${namespace}/${pod}:${remotePath}`,
-      '--context', context, '-c', container
-    ], 300_000) // 5-minute ceiling for large files
+    const tar = require('tar')
+    const { basename, dirname } = require('path')
+    const tarStream = tar.c({ gzip: false, C: dirname(localPath) }, [basename(localPath)])
+    const url = `/cp/to?namespace=${namespace}&pod=${pod}&container=${container}&path=${encodeURIComponent(remotePath)}`
+    await checkedSidecarFetch(url, {
+      method: 'POST',
+      body: tarStream as any,
+      // @ts-ignore
+      duplex: 'half'
+    })
   }
 
-  /** Download a file from a running container to local disk via `kubectl cp`. */
   async copyFromContainer(
-    context: string, namespace: string, pod: string, container: string,
+    _context: string, namespace: string, pod: string, container: string,
     remotePath: string, localPath: string
   ): Promise<void> {
-    await this.spawnKubectl([
-      'cp', `${namespace}/${pod}:${remotePath}`, localPath,
-      '--context', context, '-c', container
-    ], 300_000)
+    const { writeFile } = require('fs/promises')
+    const url = `/cp/from?namespace=${namespace}&pod=${pod}&container=${container}&path=${encodeURIComponent(remotePath)}`
+    const res = await checkedSidecarFetch(url)
+    const buffer = await res.arrayBuffer()
+    await writeFile(localPath, Buffer.from(buffer))
+  }
+
+  async scanSecurity(): Promise<any> {
+    const res = await checkedSidecarFetch('/security/scan')
+    return await res.json()
+  }
+
+  async scanKubesec(yaml: string): Promise<any> {
+    const res = await checkedSidecarFetch('/security/kubesec', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/yaml' },
+      body: yaml
+    })
+    return await res.json()
+  }
+
+  async scanKubesecBatch(resources: any[]): Promise<any[]> {
+    const res = await checkedSidecarFetch('/security/kubesec/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(resources),
+    })
+    return await res.json()
   }
 }
 
-const activeStreams = new Map<string, ReturnType<typeof spawn>>()
-const activeForwards = new Map<string, ReturnType<typeof spawn>>()
+async function getTopology(ns: string): Promise<any> {
+  const url = `/topology?namespace=${encodeURIComponent(ns)}`
+  const res = await checkedSidecarFetch(url)
+  return await res.json()
+}
+
+const activeStreams = new Map<string, any>()
 
 export function registerKubectlHandlers(): void {
   const provider = new KubectlProvider()
@@ -347,7 +256,6 @@ export function registerKubectlHandlers(): void {
   ipcMain.handle('kubectl:getNodes', (_e, ctx) => provider.getResources(ctx, undefined, 'nodes'))
   ipcMain.handle('kubectl:getCRDs', (_e, ctx) => provider.getResources(ctx, undefined, 'customresourcedefinitions'))
   ipcMain.handle('kubectl:getEvents', (_e, ctx, ns) => provider.getResources(ctx, ns, 'events'))
-  // Generic handler for CRD instances (e.g. IngressRoute, VirtualService, HTTPProxy)
   ipcMain.handle('kubectl:getCustomResource', (_e, ctx, ns, crdName: string) => provider.getResources(ctx, ns, crdName))
   ipcMain.handle('kubectl:getPodMetrics', (_e, ctx, ns) => provider.getPodMetrics(ctx, ns))
   ipcMain.handle('kubectl:getNodeMetrics', (_e, ctx) => provider.getNodeMetrics(ctx))
@@ -363,41 +271,225 @@ export function registerKubectlHandlers(): void {
   ipcMain.handle('kubectl:getSecretValue', (_e, ctx, ns, name, key) => provider.getSecretValue(ctx, ns, name, key))
   ipcMain.handle('kubectl:execCommand', (_e, ctx, ns, pod, container, cmd) => provider.execCommand(ctx, ns, pod, container, cmd))
   ipcMain.handle('kubectl:applyYAML', (_e, ctx, yaml) => provider.applyYAML(ctx, yaml))
-
-  ipcMain.handle('kubectl:copyToContainer',
-    (_e, ctx: string, ns: string, pod: string, container: string, localPath: string, remotePath: string) =>
-      provider.copyToContainer(ctx, ns, pod, container, localPath, remotePath))
-
-  ipcMain.handle('kubectl:copyFromContainer',
-    (_e, ctx: string, ns: string, pod: string, container: string, remotePath: string, localPath: string) =>
-      provider.copyFromContainer(ctx, ns, pod, container, remotePath, localPath))
+  ipcMain.handle('kubectl:copyToContainer', (_e, ctx, ns, pod, container, local, remote) => provider.copyToContainer(ctx, ns, pod, container, local, remote))
+  ipcMain.handle('kubectl:copyFromContainer', (_e, ctx, ns, pod, container, remote, local) => provider.copyFromContainer(ctx, ns, pod, container, remote, local))
 
   ipcMain.handle('kubectl:streamLogs', async (event, ctx, ns, pod, container) => {
     const streamId = `${ctx}/${ns}/${pod}${container ? '/' + container : ''}`
-    if (activeStreams.has(streamId)) { activeStreams.get(streamId)!.kill(); activeStreams.delete(streamId) }
-    const child = provider.spawnLogs(ctx, ns, pod, container)
-    activeStreams.set(streamId, child)
+    if (activeStreams.has(streamId)) { 
+      activeStreams.get(streamId)!.close()
+      activeStreams.delete(streamId)
+    }
+
+    const WebSocket = require('ws')
+    const ws = new WebSocket(`ws://${SIDECAR_HOST}:${activeSidecarPort}/logs?pod=${pod}&namespace=${ns}&container=${container || ''}`, {
+      headers: { 'X-Podscape-Token': sidecarToken }
+    })
+    activeStreams.set(streamId, ws)
     const sender = event.sender
-    child.stdout.on('data', (chunk: Buffer) => { if (!sender.isDestroyed()) sender.send('kubectl:logChunk', streamId, chunk.toString()) })
-    child.stderr.on('data', (chunk: Buffer) => { if (!sender.isDestroyed()) sender.send('kubectl:logError', streamId, chunk.toString()) })
-    child.on('close', () => { activeStreams.delete(streamId); if (!sender.isDestroyed()) sender.send('kubectl:logEnd', streamId) })
+
+    ws.on('message', (data: Buffer) => {
+      if (!sender.isDestroyed()) sender.send('kubectl:logChunk', streamId, data.toString())
+    })
+
+    ws.on('error', (err: any) => {
+      console.error(`[Logs] WS error for stream ${streamId}:`, err)
+      if (!sender.isDestroyed()) sender.send('kubectl:logError', streamId, err.message)
+    })
+
+    ws.on('close', (code: number, reason: string) => {
+      console.log(`[Logs] WS closed for stream ${streamId}. Code: ${code}, Reason: ${reason || 'no reason'}`)
+      activeStreams.delete(streamId)
+      if (!sender.isDestroyed()) sender.send('kubectl:logEnd', streamId)
+    })
+
     return streamId
   })
 
   ipcMain.handle('kubectl:stopLogs', async (_e, streamId) => {
-    if (activeStreams.has(streamId)) { activeStreams.get(streamId)!.kill(); activeStreams.delete(streamId) }
+    if (activeStreams.has(streamId)) { 
+      activeStreams.get(streamId)!.close()
+      activeStreams.delete(streamId)
+    }
   })
 
-  ipcMain.handle('kubectl:portForward', async (event, ctx, ns, type, name, localPort, remotePort, id) => {
-    const child = provider.spawnPortForward(ctx, ns, type, name, localPort, remotePort)
-    activeForwards.set(id, child)
-    child.stdout.on('data', (chunk: Buffer) => { if (!event.sender.isDestroyed()) event.sender.send('portforward:ready', id, chunk.toString()) })
-    child.stderr.on('data', (chunk: Buffer) => { if (!event.sender.isDestroyed()) event.sender.send('portforward:error', id, chunk.toString()) })
-    child.on('close', () => { activeForwards.delete(id); if (!event.sender.isDestroyed()) event.sender.send('portforward:exit', id) })
+  ipcMain.handle('kubectl:getTopology', (_e, ns) => getTopology(ns))
+
+  ipcMain.handle('kubectl:portForward', async (event, _ctx, ns, type, name, localPort, remotePort, id) => {
+    try {
+      const url = `/portforward?id=${id}&namespace=${ns}&type=${type ?? 'pod'}&name=${name}&localPort=${localPort}&remotePort=${remotePort}`
+      const res = await sidecarFetch(url)
+      if (res.ok) {
+        if (!event.sender.isDestroyed()) event.sender.send('portforward:ready', id, 'Forwarding started')
+      } else {
+        if (!event.sender.isDestroyed()) event.sender.send('portforward:error', id, `Sidecar error: ${res.status}`)
+      }
+    } catch (err: any) {
+       if (!event.sender.isDestroyed()) event.sender.send('portforward:error', id, err.message)
+    }
   })
 
   ipcMain.handle('kubectl:stopPortForward', async (_e, id) => {
-    activeForwards.get(id)?.kill()
-    activeForwards.delete(id)
+    try {
+      await sidecarFetch(`/stopPortForward?id=${id}`)
+    } catch (err) {
+      console.error('Failed to stop port forward', err)
+    }
+  })
+
+  // Returns true when the sidecar's informer cache is fully synced.
+  // /health is token-exempt so no auth header is needed, but sidecarFetch
+  // adds it anyway — the sidecar ignores extra headers on that route.
+  ipcMain.handle('kubectl:isReady', async () => {
+    try {
+      const res = await sidecarFetch('/health')
+      return res.ok
+    } catch {
+      return false
+    }
+  })
+
+  // scanSecurity consumes an SSE stream from the sidecar via http.get (not fetch),
+  // avoiding undici's 5-minute bodyTimeout which terminates long-running trivy scans.
+  ipcMain.handle('kubectl:scanSecurity', (event) => {
+    return new Promise<any>((resolve, reject) => {
+      const req = http.get(
+        { hostname: SIDECAR_HOST, port: activeSidecarPort, path: '/security/scan',
+          headers: { 'X-Podscape-Token': sidecarToken } },
+        (res) => {
+          const contentType = res.headers['content-type'] ?? ''
+
+          // Non-SSE: trivy_not_found 503 or unexpected status.
+          if (!contentType.includes('text/event-stream')) {
+            let body = ''
+            res.on('data', (chunk: Buffer) => { body += chunk.toString() })
+            res.on('end', () => {
+              if (res.statusCode !== 200) {
+                reject(new Error(`Go sidecar returned ${res.statusCode} for /security/scan: ${body}`))
+              } else {
+                try { resolve(JSON.parse(body)) } catch { resolve(null) }
+              }
+            })
+            return
+          }
+
+          // SSE stream: parse event blocks and relay progress to the renderer.
+          let buffer = ''
+          res.on('data', (chunk: Buffer) => {
+            buffer += chunk.toString()
+            const blocks = buffer.split('\n\n')
+            buffer = blocks.pop() ?? ''
+
+            for (const block of blocks) {
+              let eventType = 'message'
+              let data = ''
+              for (const line of block.split('\n')) {
+                if (line.startsWith('event: ')) eventType = line.slice(7).trim()
+                else if (line.startsWith('data: ')) data = line.slice(6)
+              }
+
+              if (eventType === 'progress' && data) {
+                if (!event.sender.isDestroyed()) event.sender.send('security:progress', data)
+              } else if (eventType === 'result') {
+                res.destroy()
+                try { resolve(JSON.parse(data)) } catch (e) { reject(e) }
+                return
+              } else if (eventType === 'error') {
+                res.destroy()
+                reject(new Error(`trivy scan failed: ${data}`))
+                return
+              }
+            }
+          })
+
+          res.on('end', () => resolve(null))
+          res.on('error', reject)
+        }
+      )
+      req.on('error', reject)
+    })
+  })
+  ipcMain.handle('kubectl:scanTrivyImages', (event, workloads) => {
+    return new Promise<any>((resolve, reject) => {
+      const reqBody = JSON.stringify({ workloads })
+      const req = http.request(
+        {
+          hostname: SIDECAR_HOST, port: activeSidecarPort,
+          path: '/security/trivy/images', method: 'POST',
+          headers: {
+            'X-Podscape-Token': sidecarToken,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(reqBody),
+          },
+        },
+        (res) => {
+          const contentType = res.headers['content-type'] ?? ''
+          if (!contentType.includes('text/event-stream')) {
+            let body = ''
+            res.on('data', (chunk: Buffer) => { body += chunk.toString() })
+            res.on('end', () => {
+              if (res.statusCode !== 200) {
+                reject(new Error(`Go sidecar returned ${res.statusCode} for /security/trivy/images: ${body}`))
+              } else {
+                try { resolve(JSON.parse(body)) } catch { resolve(null) }
+              }
+            })
+            return
+          }
+          let buffer = ''
+          res.on('data', (chunk: Buffer) => {
+            buffer += chunk.toString()
+            const blocks = buffer.split('\n\n')
+            buffer = blocks.pop() ?? ''
+            for (const block of blocks) {
+              let eventType = 'message', data = ''
+              for (const line of block.split('\n')) {
+                if (line.startsWith('event: ')) eventType = line.slice(7).trim()
+                else if (line.startsWith('data: ')) data = line.slice(6)
+              }
+              if (eventType === 'progress' && data) {
+                if (!event.sender.isDestroyed()) event.sender.send('security:progress', data)
+              } else if (eventType === 'result') {
+                res.destroy()
+                try { resolve(JSON.parse(data)) } catch (e) { reject(e) }
+                return
+              } else if (eventType === 'error') {
+                res.destroy()
+                reject(new Error(`trivy scan failed: ${data}`))
+                return
+              }
+            }
+          })
+          res.on('end', () => resolve(null))
+          res.on('error', reject)
+        }
+      )
+      req.on('error', reject)
+      req.write(reqBody)
+      req.end()
+    })
+  })
+  ipcMain.handle('kubectl:scanKubesec', (_e, yaml) => provider.scanKubesec(yaml))
+  ipcMain.handle('kubectl:scanKubesecBatch', (_e, resources) => provider.scanKubesecBatch(resources))
+
+  ipcMain.handle('kubectl:prometheusStatus', async (_e, url?: string) => {
+    const path = url ? `/prometheus/status?url=${encodeURIComponent(url)}` : '/prometheus/status'
+    const res = await checkedSidecarFetch(path)
+    return res.json()
+  })
+
+  ipcMain.handle('kubectl:prometheusQueryBatch', async (_e, queries, start, end) => {
+    const res = await checkedSidecarFetch('/prometheus/query_range_batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ queries, start, end }),
+    })
+    return res.json()
+  })
+
+  ipcMain.handle('kubectl:getOwnerChain', async (_e, kind, name, namespace) => {
+    const params = new URLSearchParams({ kind, name, namespace: namespace ?? '' })
+    const res = await checkedSidecarFetch(`/owner-chain?${params}`)
+    return res.json()
   })
 }

@@ -1,6 +1,5 @@
 import { AnyKubeResource } from '../../types'
 import { ScanResult, ScannerRule, ScanIssue } from './types'
-import { securityRules } from './securityRules'
 import { bestPracticeRules } from './bestPracticeRules'
 
 export type { ScanResult } from './types'
@@ -9,7 +8,7 @@ export class ScannerEngine {
     private rules: ScannerRule[] = []
 
     constructor() {
-        this.rules = [...securityRules, ...bestPracticeRules]
+        this.rules = [...bestPracticeRules]
     }
 
     scan(resource: AnyKubeResource): ScanResult {

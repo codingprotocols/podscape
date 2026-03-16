@@ -2,14 +2,14 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { useAppStore } from '../store'
 import type { HelmRelease, HelmHistoryEntry } from '../types'
 import { formatAge } from '../types'
-import LoadingAnimation from './LoadingAnimation'
 import YAMLViewer from './YAMLViewer'
-import { FileCode, X, Activity, HardDrive, History, Trash2, Clock, Globe, Shield, RefreshCw } from 'lucide-react'
+import HelmRepoBrowser from './HelmRepoBrowser'
+import { FileCode, X, Activity, HardDrive, History, Trash2, Clock, Globe, Shield, RefreshCw, Package } from 'lucide-react'
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
-  const s = status.toLowerCase()
+  const s = (status || '').toLowerCase()
   const cls =
     s === 'deployed' ? 'bg-emerald-500/10 text-emerald-500 outline-emerald-500/20 shadow-[0_0_8px_rgba(16,185,129,0.1)]' :
       s === 'failed' ? 'bg-red-500/10 text-red-500 outline-red-500/20' :
@@ -21,7 +21,7 @@ function StatusBadge({ status }: { status: string }) {
 
   return (
     <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider outline outline-1 outline-offset-[-1px] transition-all ${cls}`}>
-      {status}
+      {String(status || '')}
     </span>
   )
 }
@@ -155,7 +155,9 @@ function ReleaseDrawer({
                   <div className="flex items-center gap-3">
                     <span className="text-slate-500">{label}</span>
                   </div>
-                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 text-right truncate max-w-[240px] font-mono">{value}</span>
+                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 text-right truncate max-w-[240px] font-mono">
+                    {typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—')}
+                  </span>
                 </div>
               ))}
             </div>
@@ -295,7 +297,8 @@ function ReleaseDrawer({
 // ─── Main HelmPanel ───────────────────────────────────────────────────────────
 
 export default function HelmPanel(): JSX.Element {
-  const { selectedContext } = useAppStore()
+  const { selectedContext, loadingNamespaces } = useAppStore()
+  const [activeTab, setActiveTab] = useState<'releases' | 'browser'>('releases')
   const [releases, setReleases] = useState<HelmRelease[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -304,8 +307,17 @@ export default function HelmPanel(): JSX.Element {
   const [uninstallTarget, setUninstallTarget] = useState<HelmRelease | null>(null)
   const [uninstalling, setUninstalling] = useState(false)
 
+  // Clear stale release selection when context changes so the detail panel
+  // doesn't show a release from the previous context while the new list loads.
+  useEffect(() => {
+    setSelected(null)
+    setReleases([])
+  }, [selectedContext])
+
   const load = useCallback(async () => {
-    if (!selectedContext) return
+    // Wait until the context switch is fully complete (sidecar has switched +
+    // namespaces loaded) before fetching — avoids getting old-context releases.
+    if (!selectedContext || loadingNamespaces) return
     setLoading(true)
     setError(null)
     try {
@@ -316,7 +328,7 @@ export default function HelmPanel(): JSX.Element {
     } finally {
       setLoading(false)
     }
-  }, [selectedContext])
+  }, [selectedContext, loadingNamespaces])
 
   useEffect(() => { load() }, [load])
 
@@ -336,10 +348,10 @@ export default function HelmPanel(): JSX.Element {
     }
   }
 
-  const filtered = releases.filter(r =>
-    r.name.toLowerCase().includes(filter.toLowerCase()) ||
-    r.namespace.toLowerCase().includes(filter.toLowerCase()) ||
-    r.chart.toLowerCase().includes(filter.toLowerCase())
+  const filtered = (Array.isArray(releases) ? releases : []).filter(r =>
+    (r.name || '').toLowerCase().includes(filter.toLowerCase()) ||
+    (r.namespace || '').toLowerCase().includes(filter.toLowerCase()) ||
+    (r.chart || '').toLowerCase().includes(filter.toLowerCase())
   )
 
   return (
@@ -348,45 +360,77 @@ export default function HelmPanel(): JSX.Element {
       <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
         {/* Toolbar */}
         <div className="flex items-center justify-between px-8 py-7 border-b border-slate-200 dark:border-white/5 shrink-0 bg-white/5 backdrop-blur-md">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-6">
             <div>
-              <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight leading-none uppercase">Helm Releases</h2>
-              {!loading && (
+              <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight leading-none uppercase">
+                {activeTab === 'releases' ? 'Helm Releases' : 'Repository Browser'}
+              </h2>
+              {activeTab === 'releases' && !loading && (
                 <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[.25em] mt-2.5 flex items-center gap-2 leading-none">
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6]" />
                   {filtered.length} installed
                 </p>
               )}
             </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <div className="relative group">
-              <input
-                type="text"
-                value={filter}
-                onChange={e => setFilter(e.target.value)}
-                placeholder="Filter releases..."
-                className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] font-bold rounded-xl px-4 py-2.5 pl-10
-                           border border-transparent focus:border-blue-500/50 focus:outline-none focus:ring-4 focus:ring-blue-500/10 
-                           w-64 transition-all placeholder-slate-400 dark:placeholder-slate-600"
-              />
-              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
-              </div>
+            {/* Tab switcher */}
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-white/5 rounded-xl p-1">
+              <button
+                onClick={() => setActiveTab('releases')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all ${
+                  activeTab === 'releases'
+                    ? 'bg-white dark:bg-white/10 text-slate-800 dark:text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                }`}
+              >
+                <Activity size={11} />
+                Releases
+              </button>
+              <button
+                onClick={() => setActiveTab('browser')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all ${
+                  activeTab === 'browser'
+                    ? 'bg-white dark:bg-white/10 text-slate-800 dark:text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                }`}
+              >
+                <Package size={11} />
+                Repository
+              </button>
             </div>
-
-            <button onClick={load} disabled={loading}
-              className="flex items-center gap-2 px-5 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300
-                         glass-panel hover:bg-white/10 dark:hover:bg-white/5 rounded-xl shadow-sm
-                         disabled:opacity-50 active:scale-95 leading-none">
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-              Sync
-            </button>
           </div>
+
+          {activeTab === 'releases' && (
+            <div className="flex items-center gap-4">
+              <div className="relative group">
+                <input
+                  type="text"
+                  value={filter}
+                  onChange={e => setFilter(e.target.value)}
+                  placeholder="Filter releases..."
+                  className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] font-bold rounded-xl px-4 py-2.5 pl-10
+                             border border-transparent focus:border-blue-500/50 focus:outline-none focus:ring-4 focus:ring-blue-500/10
+                             w-64 transition-all placeholder-slate-400 dark:placeholder-slate-600"
+                />
+                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                </div>
+              </div>
+
+              <button onClick={load} disabled={loading}
+                className="flex items-center gap-2 px-5 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300
+                           glass-panel hover:bg-white/10 dark:hover:bg-white/5 rounded-xl shadow-sm
+                           disabled:opacity-50 active:scale-95 leading-none">
+                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                Sync
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Content */}
+        {activeTab === 'browser' ? (
+          <HelmRepoBrowser />
+        ) : (
         <div className="flex-1 overflow-auto scrollbar-hide">
           {!selectedContext ? (
             <div className="flex flex-col items-center justify-center py-24 gap-3 text-slate-400">
@@ -446,10 +490,10 @@ export default function HelmPanel(): JSX.Element {
                         : 'hover:bg-slate-100/50 dark:hover:bg-white/5 border-l-[3px] border-transparent'
                         }`}
                     >
-                      <td className="px-8 py-4 font-mono text-xs font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">{r.name}</td>
-                      <td className="px-8 py-4 text-xs font-bold text-slate-500 dark:text-slate-500 font-mono tracking-tighter uppercase leading-none">{r.namespace}</td>
-                      <td className="px-8 py-4 text-xs text-slate-600 dark:text-slate-400 font-mono whitespace-nowrap">{r.chart}</td>
-                      <td className="px-8 py-4 text-xs text-slate-500 dark:text-slate-400 font-bold whitespace-nowrap">{r.app_version || '—'}</td>
+                      <td className="px-8 py-4 font-mono text-xs font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">{String(r.name || '')}</td>
+                      <td className="px-8 py-4 text-xs font-bold text-slate-500 dark:text-slate-500 font-mono tracking-tighter uppercase leading-none">{String(r.namespace || '')}</td>
+                      <td className="px-8 py-4 text-xs text-slate-600 dark:text-slate-400 font-mono whitespace-nowrap">{String(r.chart || '')}</td>
+                      <td className="px-8 py-4 text-xs text-slate-500 dark:text-slate-400 font-bold whitespace-nowrap">{String(r.app_version || '—')}</td>
                       <td className="px-8 py-4 whitespace-nowrap"><StatusBadge status={r.status} /></td>
                       <td className="px-8 py-4 text-xs text-slate-400 dark:text-slate-500 whitespace-nowrap">
                         {r.updated ? formatAge(r.updated) + ' ago' : '—'}
@@ -466,6 +510,7 @@ export default function HelmPanel(): JSX.Element {
             </table>
           )}
         </div>
+        )}
       </div>
 
       {/* Drawer — key forces full remount on release change, resetting all tab state */}

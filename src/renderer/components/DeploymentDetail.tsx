@@ -6,13 +6,16 @@ import ScaleDialog from './ScaleDialog'
 import YAMLViewer from './YAMLViewer'
 import AnalysisView from './AnalysisView'
 import { FileCode, X, Activity, Layers, History, Settings, Zap, RefreshCw } from 'lucide-react'
+import OwnerChain from './OwnerChain'
+import TimeSeriesChart, { PrometheusTimeRangeBar } from './TimeSeriesChart'
+import { deploymentCpuQuery, deploymentMemoryQuery } from '../utils/prometheusQueries'
 
 interface Props { deployment: KubeDeployment }
 
 type Tab = 'overview' | 'history' | 'events' | 'analysis'
 
 export default function DeploymentDetail({ deployment: d }: Props): JSX.Element {
-  const { rolloutRestart, getYAML, applyYAML, refresh, selectedContext, selectedNamespace, scanResource, scanResults, isScanning } = useAppStore()
+  const { rolloutRestart, getYAML, applyYAML, refresh, selectedContext, selectedNamespace, scanResource, scanResults, isScanning, prometheusAvailable } = useAppStore()
   const [showScale, setShowScale] = useState(false)
   const [yaml, setYaml] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
@@ -156,6 +159,16 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
         )}
       </div>
 
+      {/* Owner chain breadcrumb */}
+      {d.metadata.uid && (
+        <OwnerChain
+          uid={d.metadata.uid}
+          kind="Deployment"
+          name={d.metadata.name}
+          namespace={d.metadata.namespace ?? ''}
+        />
+      )}
+
       <div className="flex border-b border-slate-100 dark:border-slate-800 shrink-0 bg-white/[0.02]">
         {(['overview', 'history', 'events'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)}
@@ -220,6 +233,28 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
                 </div>
               </div>
             </section>
+
+            {/* Prometheus metrics */}
+            {prometheusAvailable && (
+              <section>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Metrics</h4>
+                  <PrometheusTimeRangeBar />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <TimeSeriesChart
+                    queries={[deploymentCpuQuery(d.metadata.name, d.metadata.namespace ?? '')]}
+                    title="CPU"
+                    unit="m"
+                  />
+                  <TimeSeriesChart
+                    queries={[deploymentMemoryQuery(d.metadata.name, d.metadata.namespace ?? '')]}
+                    title="Memory"
+                    unit=" MiB"
+                  />
+                </div>
+              </section>
+            )}
 
             {/* Conditions */}
             {d.status.conditions && d.status.conditions.length > 0 && (

@@ -3,9 +3,7 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { ipcMain, shell } from 'electron'
 import { findKubeconfigPath, getSettings, saveSettings, PodscapeSettings } from './settings_storage'
-import { findKubectl } from './kubectl'
-import { findHelm } from './helm'
-import { getAugmentedEnv } from './env'
+import { startSidecar, stopSidecar } from './sidecar'
 
 export function registerSettingsHandlers(): void {
   ipcMain.handle('settings:get', () => {
@@ -49,6 +47,11 @@ export function registerSettingsHandlers(): void {
         const settings = getSettings()
         settings.kubeconfigPath = filePaths[0]
         saveSettings(settings)
+        
+        // Restart sidecar with new config
+        await stopSidecar()
+        await startSidecar()
+        
         return filePaths[0]
       }
     } catch (e) {
@@ -57,28 +60,21 @@ export function registerSettingsHandlers(): void {
     return null
   })
 
-  ipcMain.handle('kubeconfig:clearPath', () => {
+  ipcMain.handle('kubeconfig:clearPath', async () => {
     const settings = getSettings()
     settings.kubeconfigPath = ''
     saveSettings(settings)
+    
+    // Restart sidecar
+    await stopSidecar()
+    await startSidecar()
   })
 
   ipcMain.handle('settings:checkTools', async () => {
-    const kPath = findKubectl()
-    const hPath = findHelm()
-    const env = getAugmentedEnv()
-
-    // We don't just check path, we check if they are executable
-    const check = (cmd: string, args: string): Promise<boolean> => new Promise((resolve) => {
-      const { exec } = require('child_process')
-      // Use augmented env so we can find things in /opt/homebrew/bin etc.
-      exec(`${cmd} ${args}`, { env }, (err: any) => resolve(!err))
-    })
-
-    const kubectlOk = await check(kPath, 'version --client')
-    const helmOk = await check(hPath, 'version')
     const kubeconfigOk = existsSync(findKubeconfigPath())
-
-    return { kubectlOk, helmOk, kubeconfigOk }
+    const { spawnSync } = await import('child_process')
+    const trivyCheck = spawnSync('trivy', ['--version'], { stdio: 'ignore' })
+    const trivyOk = trivyCheck.status === 0
+    return { kubeconfigOk, trivyOk }
   })
 }

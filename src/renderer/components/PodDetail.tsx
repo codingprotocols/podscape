@@ -7,7 +7,10 @@ import PodRestartAnalyzer from './PodRestartAnalyzer'
 import YAMLViewer from './YAMLViewer'
 import AnalysisView from './AnalysisView'
 import PodLifecycleTimeline from './PodLifecycleTimeline'
-import { Shield, Clock as ClockIcon } from 'lucide-react'
+import { Shield, Clock as ClockIcon, BarChart2 } from 'lucide-react'
+import OwnerChain from './OwnerChain'
+import TimeSeriesChart, { PrometheusTimeRangeBar } from './TimeSeriesChart'
+import { podCpuQuery, podMemoryQuery, podNetworkRxQuery, podNetworkTxQuery } from '../utils/prometheusQueries'
 
 interface Props {
   pod: KubePod
@@ -16,9 +19,9 @@ interface Props {
 export default function PodDetail({ pod }: Props): JSX.Element {
   const {
     selectedContext, selectedNamespace, openExec, getYAML, applyYAML, refresh,
-    scanResults, scanResource, isScanning
+    scanResults, scanResource, isScanning, prometheusAvailable,
   } = useAppStore()
-  const [activeTab, setActiveTab] = useState<'logs' | 'analysis' | 'lifecycle'>('logs')
+  const [activeTab, setActiveTab] = useState<'logs' | 'metrics' | 'analysis' | 'lifecycle'>('logs')
   const [events, setEvents] = useState<KubeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
   const [logs, setLogs] = useState<string[]>([])
@@ -26,7 +29,10 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const [logError, setLogError] = useState<string | null>(null)
   const [autoScroll, setAutoScroll] = useState(true)
   const [copyMsg, setCopyMsg] = useState('')
-  const [selectedContainer, setSelectedContainer] = useState(pod.spec.containers[0]?.name ?? '')
+  const isDebugPod = pod.metadata.name.startsWith('podscape-debug-')
+  const [selectedContainer, setSelectedContainer] = useState(
+    isDebugPod ? 'debug' : (pod.spec.containers[0]?.name ?? '')
+  )
   const [search, setSearch] = useState('')
   const [logFullscreen, setLogFullscreen] = useState(false)
   const [wrapLogs, setWrapLogs] = useState(false)
@@ -81,8 +87,12 @@ export default function PodDetail({ pod }: Props): JSX.Element {
           if (isMountedRef.current) setLogs(prev => [...prev, ...chunk.split('\n')].slice(-2000))
         },
         () => {
-          activeStreamIdRef.current = null
-          if (isMountedRef.current) setIsStreaming(false)
+          // Guard against a stale onEnd from a previous stream (e.g. when stopLogs
+          // triggers ws.close() asynchronously after the next stream has already started).
+          if (activeStreamIdRef.current === streamId) {
+            activeStreamIdRef.current = null
+            if (isMountedRef.current) setIsStreaming(false)
+          }
         }
       )
       activeStreamIdRef.current = streamId
@@ -405,6 +415,16 @@ export default function PodDetail({ pod }: Props): JSX.Element {
           </div>
         </div>
 
+        {/* Owner chain breadcrumb */}
+        {pod.metadata.uid && (
+          <OwnerChain
+            uid={pod.metadata.uid}
+            kind="Pod"
+            name={pod.metadata.name}
+            namespace={pod.metadata.namespace ?? ''}
+          />
+        )}
+
         {/* Details Wrapper (Scrollable) */}
         <div className="flex-1 overflow-y-auto min-h-0 scrollbar-hide">
           {/* Metadata */}
@@ -531,6 +551,14 @@ export default function PodDetail({ pod }: Props): JSX.Element {
             label="Logs"
             icon={<Terminal size={14} />}
           />
+          {prometheusAvailable && (
+            <TabButton
+              active={activeTab === 'metrics'}
+              onClick={() => setActiveTab('metrics')}
+              label="Metrics"
+              icon={<BarChart2 size={14} />}
+            />
+          )}
           <TabButton
             active={activeTab === 'analysis'}
             onClick={() => setActiveTab('analysis')}
@@ -576,6 +604,38 @@ export default function PodDetail({ pod }: Props): JSX.Element {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'metrics' && (
+          <div className="flex-1 overflow-y-auto scrollbar-hide min-h-0">
+            <div className="px-6 py-4">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Prometheus Metrics</span>
+                <PrometheusTimeRangeBar />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <TimeSeriesChart
+                  queries={[podCpuQuery(pod.metadata.name, pod.metadata.namespace ?? '')]}
+                  title="CPU"
+                  unit="m"
+                />
+                <TimeSeriesChart
+                  queries={[podMemoryQuery(pod.metadata.name, pod.metadata.namespace ?? '')]}
+                  title="Memory"
+                  unit=" MiB"
+                />
+                <TimeSeriesChart
+                  queries={[
+                    podNetworkRxQuery(pod.metadata.name, pod.metadata.namespace ?? ''),
+                    podNetworkTxQuery(pod.metadata.name, pod.metadata.namespace ?? ''),
+                  ]}
+                  title="Network I/O"
+                  unit=" KiB/s"
+                  className="col-span-2"
+                />
+              </div>
+            </div>
           </div>
         )}
 

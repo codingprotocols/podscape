@@ -33,7 +33,11 @@ export function getAugmentedEnv(extra: Record<string, string> = {}): Record<stri
     }
 
     const { kubeconfigPath } = getSettings()
-    const kubecfg = kubeconfigPath || process.env.KUBECONFIG || join(homedir(), '.kube', 'config')
+    let kubecfg = kubeconfigPath || process.env.KUBECONFIG || join(homedir(), '.kube', 'config')
+    
+    // If specific path doesn't exist, fallback to default or don't set it if we want sidecar to fail gracefully
+    // But here we want to at least provide a string.
+    if (!kubecfg) kubecfg = join(homedir(), '.kube', 'config')
 
     return { ...base, HOME: homedir(), KUBECONFIG: kubecfg, ...extra }
 }

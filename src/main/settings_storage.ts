@@ -3,22 +3,22 @@ import { homedir } from 'os'
 import { join } from 'path'
 
 export interface PodscapeSettings {
-    kubectlPath: string             // absolute path or '' for auto-detect
     shellPath: string               // absolute path or '' for auto-detect
-    helmPath: string                // absolute path or '' for auto-detect
     theme: 'light' | 'dark' | ''   // '' means use last-used / OS preference
     kubeconfigPath: string         // absolute path or '' for default (~/.kube/config)
+    prodContexts: string[]         // List of contexts considered "Production"
+    prometheusUrls: Record<string, string>  // per-context manual Prometheus URL; '' = auto-discover
 }
 
 const SETTINGS_DIR = join(homedir(), '.podscape')
 const SETTINGS_FILE = join(SETTINGS_DIR, 'settings.json')
 
 const DEFAULTS: PodscapeSettings = {
-    kubectlPath: '',
     shellPath: '',
-    helmPath: '',
     theme: 'dark',
-    kubeconfigPath: ''
+    kubeconfigPath: '',
+    prodContexts: [],
+    prometheusUrls: {},
 }
 
 export function getSettings(): PodscapeSettings {

@@ -1,13 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '../store'
-import type { KubeIngress, KubePod, KubeService, KubeNetworkPolicy } from '../types'
 import { Shield } from 'lucide-react'
 import type { ResourceKind } from '../types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type NodeKind = 'ingress' | 'service' | 'pod' | 'policy'
-type EdgeKind = 'ing-svc' | 'svc-pod' | 'policy-pod' | 'pol-ingress' | 'pol-egress'
+type NodeKind = 'ingress' | 'service' | 'pod' | 'policy' | 'workload' | 'pvc' | 'node'
+type EdgeKind = 'ing-svc' | 'svc-pod' | 'policy-pod' | 'pol-ingress' | 'pol-egress' | 'pod-pvc' | 'pod-node' | 'controller-pod' | 'controller-workload'
 
 interface GraphNode {
   id: string
@@ -17,6 +16,7 @@ interface GraphNode {
   phase?: string
   serviceType?: string
   ports?: string[]
+  workloadKind?: string
 }
 
 interface GraphEdge {
@@ -48,7 +48,10 @@ const NS_PALETTE = [
   { bg: 'hsla(0, 84%, 60%, 0.08)', border: 'hsla(0, 84%, 60%, 0.25)', text: '#ef4444' },
 ] as const
 
-function nsColor(nsIdx: number) { return NS_PALETTE[nsIdx % NS_PALETTE.length] }
+function nsColor(nsIdx: number) {
+  const idx = Math.max(0, nsIdx)
+  return NS_PALETTE[idx % NS_PALETTE.length]
+}
 
 // ─── Node colours ─────────────────────────────────────────────────────────────
 
@@ -60,7 +63,10 @@ function nodeColor(n: GraphNode): string {
     return '#60a5fa'
   }
   if (n.kind === 'policy') return '#f472b6'
-  if (n.phase === 'Running') return '#34d399'
+  if (n.kind === 'workload') return '#fbbf24'
+  if (n.kind === 'pvc') return '#f87171'
+  if (n.kind === 'node') return '#06b6d4'
+  if (n.phase === 'Running' || n.phase === 'Bound') return '#34d399'
   if (n.phase === 'Pending') return '#fbbf24'
   if (n.phase === 'Failed') return '#f87171'
   return '#94a3b8'
@@ -80,16 +86,30 @@ function nodeBorder(n: GraphNode, dark: boolean): string {
 
 function edgeStyle(kind: EdgeKind): { color: string; dur: string } {
   switch (kind) {
-    case 'ing-svc':     return { color: '#8b5cf6', dur: '1.5s' }
-    case 'policy-pod':  return { color: '#f472b6', dur: '2.5s' }
-    case 'pol-ingress': return { color: '#a78bfa', dur: '1.8s' }
-    case 'pol-egress':  return { color: '#60a5fa', dur: '1.8s' }
-    default:            return { color: '#3b82f6', dur: '2.5s' } // svc-pod
+    case 'ing-svc':             return { color: '#8b5cf6', dur: '1.5s' }
+    case 'policy-pod':          return { color: '#f472b6', dur: '2.5s' }
+    case 'pol-ingress':         return { color: '#a78bfa', dur: '1.8s' }
+    case 'pol-egress':          return { color: '#60a5fa', dur: '1.8s' }
+    case 'pod-pvc':             return { color: '#f87171', dur: '3.0s' }
+    case 'pod-node':            return { color: '#06b6d4', dur: '3.0s' }
+    case 'controller-pod':      return { color: '#fbbf24', dur: '2.0s' }
+    case 'controller-workload': return { color: '#fbbf24', dur: '2.0s' }
+    default:                    return { color: '#3b82f6', dur: '2.5s' } // svc-pod
   }
 }
 
 // All unique edge colors (for predefining arrow markers)
-const ALL_EDGE_COLORS = ['#8b5cf6', '#f472b6', '#a78bfa', '#60a5fa', '#3b82f6']
+const ALL_EDGE_COLORS = ['#8b5cf6', '#f472b6', '#a78bfa', '#60a5fa', '#3b82f6', '#f87171', '#06b6d4', '#fbbf24']
+
+const KIND_DEFS: { kind: NodeKind; label: string; color: string }[] = [
+  { kind: 'ingress', label: 'Ingress', color: '#a78bfa' },
+  { kind: 'workload', label: 'Workload', color: '#fbbf24' },
+  { kind: 'service', label: 'Service', color: '#60a5fa' },
+  { kind: 'pod', label: 'Pod', color: '#34d399' },
+  { kind: 'pvc', label: 'PVC', color: '#f87171' },
+  { kind: 'node', label: 'Node', color: '#06b6d4' },
+  { kind: 'policy', label: 'Policy', color: '#f472b6' },
+]
 
 // ─── Shared SVG defs (glow filter + per-color arrow markers) ─────────────────
 
@@ -112,123 +132,26 @@ function GraphDefs() {
   )
 }
 
-// ─── Graph builder ────────────────────────────────────────────────────────────
-
-function buildGraph(services: KubeService[], ingresses: KubeIngress[], pods: KubePod[], policies: KubeNetworkPolicy[]): Graph {
-  const nodes: GraphNode[] = []
-  const edges: GraphEdge[] = []
-  const edgeSet = new Set<string>()
-
-  const addEdge = (src: string, tgt: string, kind: EdgeKind, label?: string) => {
-    const id = `${src}--${tgt}`
-    if (!edgeSet.has(id)) { edgeSet.add(id); edges.push({ id, source: src, target: tgt, kind, label }) }
-  }
-
-  for (const ing of ingresses)
-    nodes.push({ id: `ing:${ing.metadata.namespace}:${ing.metadata.name}`, kind: 'ingress', name: ing.metadata.name, namespace: ing.metadata.namespace ?? '' })
-
-  for (const svc of services)
-    nodes.push({ id: `svc:${svc.metadata.namespace}:${svc.metadata.name}`, kind: 'service', name: svc.metadata.name, namespace: svc.metadata.namespace ?? '', serviceType: svc.spec.type, ports: svc.spec.ports?.map(p => `${p.port}/${p.protocol ?? 'TCP'}`) })
-
-  const cappedPods = pods.slice(0, 100)
-  for (const pod of cappedPods)
-    nodes.push({ id: `pod:${pod.metadata.uid}`, kind: 'pod', name: pod.metadata.name, namespace: pod.metadata.namespace ?? '', phase: pod.status.phase })
-
-  for (const pol of policies)
-    nodes.push({ id: `pol:${pol.metadata.namespace}:${pol.metadata.name}`, kind: 'policy', name: pol.metadata.name, namespace: pol.metadata.namespace ?? '' })
-
-  const svcSet = new Set(services.map(s => `svc:${s.metadata.namespace}:${s.metadata.name}`))
-  const podsByNs = new Map<string, KubePod[]>()
-  for (const pod of cappedPods) {
-    const ns = pod.metadata.namespace ?? ''
-    if (!podsByNs.has(ns)) podsByNs.set(ns, [])
-    podsByNs.get(ns)!.push(pod)
-  }
-
-  for (const ing of ingresses) {
-    const ingId = `ing:${ing.metadata.namespace}:${ing.metadata.name}`
-    for (const rule of ing.spec.rules ?? [])
-      for (const path of rule.http?.paths ?? []) {
-        const svcName = path.backend.service?.name
-        if (svcName) {
-          const svcId = `svc:${ing.metadata.namespace}:${svcName}`
-          if (svcSet.has(svcId)) {
-            const port = path.backend.service?.port?.number ?? path.backend.service?.port?.name
-            addEdge(ingId, svcId, 'ing-svc', port != null ? `:${port}` : undefined)
-          }
-        }
-      }
-  }
-
-  for (const svc of services) {
-    if (!svc.spec.selector || !Object.keys(svc.spec.selector).length) continue
-    const svcId = `svc:${svc.metadata.namespace}:${svc.metadata.name}`
-    for (const pod of podsByNs.get(svc.metadata.namespace ?? '') ?? [])
-      if (Object.entries(svc.spec.selector).every(([k, v]) => pod.metadata.labels?.[k] === v))
-        addEdge(svcId, `pod:${pod.metadata.uid}`, 'svc-pod')
-  }
-
-  for (const pol of policies) {
-    const polId = `pol:${pol.metadata.namespace}:${pol.metadata.name}`
-    const selector = pol.spec.podSelector?.matchLabels
-    const ns = pol.metadata.namespace ?? ''
-    const nsPods = podsByNs.get(ns) ?? []
-
-    if (!selector || !Object.keys(selector).length) {
-      for (const pod of nsPods) addEdge(polId, `pod:${pod.metadata.uid}`, 'policy-pod')
-    } else {
-      for (const pod of nsPods)
-        if (Object.entries(selector).every(([k, v]) => pod.metadata.labels?.[k] === v))
-          addEdge(polId, `pod:${pod.metadata.uid}`, 'policy-pod')
-    }
-
-    if (pol.spec.policyTypes?.includes('Ingress') || (pol.spec.ingress && !pol.spec.policyTypes)) {
-      for (const rule of pol.spec.ingress ?? []) {
-        if (!rule.from || !rule.from.length) continue
-        for (const peer of rule.from) {
-          if (peer.podSelector) {
-            const targetNs = peer.namespaceSelector ? null : ns
-            for (const pod of cappedPods) {
-              if (targetNs && pod.metadata.namespace !== targetNs) continue
-              const pSel = peer.podSelector.matchLabels
-              if (!pSel || Object.entries(pSel).every(([k, v]) => pod.metadata.labels?.[k] === v))
-                addEdge(`pod:${pod.metadata.uid}`, polId, 'pol-ingress')
-            }
-          }
-        }
-      }
-    }
-
-    if (pol.spec.policyTypes?.includes('Egress') || (pol.spec.egress && !pol.spec.policyTypes)) {
-      for (const rule of pol.spec.egress ?? []) {
-        if (!rule.to || !rule.to.length) continue
-        for (const peer of rule.to) {
-          if (peer.podSelector) {
-            const targetNs = peer.namespaceSelector ? null : ns
-            for (const pod of cappedPods) {
-              if (targetNs && pod.metadata.namespace !== targetNs) continue
-              const pSel = peer.podSelector.matchLabels
-              if (!pSel || Object.entries(pSel).every(([k, v]) => pod.metadata.labels?.[k] === v))
-                addEdge(polId, `pod:${pod.metadata.uid}`, 'pol-egress')
-            }
-          }
-        }
-      }
-    }
-  }
-
-  const namespaces = [...new Set(nodes.map(n => n.namespace))].sort()
-  return { nodes, edges, namespaces }
-}
-
 // ─── Force simulation (step-based for async rAF) ─────────────────────────────
 
-const REPULSION = 12000
-const ATTRACTION = 0.004
-const GRAVITY = 0.0008
-const DAMPING = 0.82
-const NATURAL_LEN = 300
-const NS_CLUSTER_STR = 0.015
+const REPULSION = 10000
+const ATTRACTION = 0.005
+const GRAVITY = 0.001
+const DAMPING = 0.8
+const NATURAL_LEN = 220
+const NS_CLUSTER_STR = 0.02
+const COLLISION_R = 12 * 2.5
+
+// Target radii for different kinds (radial bands)
+const KIND_RADIUS: Record<NodeKind, number> = {
+  ingress: 700,
+  workload: 550,
+  service: 400,
+  pod: 250,
+  pvc: 100,
+  node: 850,
+  policy: 900
+}
 
 function createSimulator(graph: Graph, groupByNs: boolean): { positions: Map<string, NodePos>; step: (iter: number, total: number) => void } {
   const { nodes, edges, namespaces } = graph
@@ -238,7 +161,7 @@ function createSimulator(graph: Graph, groupByNs: boolean): { positions: Map<str
   const clusterCenters = new Map<string, { x: number; y: number }>()
 
   if (groupByNs && namespaces.length > 1) {
-    const cr = Math.max(350, namespaces.length * 160)
+    const cr = Math.max(450, namespaces.length * 200)
     namespaces.forEach((ns, i) => {
       const a = (i / namespaces.length) * Math.PI * 2
       clusterCenters.set(ns, { x: Math.cos(a) * cr, y: Math.sin(a) * cr })
@@ -250,17 +173,18 @@ function createSimulator(graph: Graph, groupByNs: boolean): { positions: Map<str
     }
     for (const [ns, nNodes] of byNs) {
       const c = clusterCenters.get(ns) ?? { x: 0, y: 0 }
-      const lr = Math.max(60, Math.sqrt(nNodes.length) * 45)
+      const lr = Math.max(80, Math.sqrt(nNodes.length) * 60)
       nNodes.forEach((n, i) => {
         const a = (i / nNodes.length) * Math.PI * 2
         positions.set(n.id, { x: c.x + Math.cos(a) * lr, y: c.y + Math.sin(a) * lr, vx: 0, vy: 0 })
       })
     }
   } else {
-    const ir = Math.max(200, Math.sqrt(nodes.length) * 120)
+    // Initial radial layout based on kind
     nodes.forEach((n, i) => {
+      const r = KIND_RADIUS[n.kind] || 400
       const a = (i / nodes.length) * Math.PI * 2
-      positions.set(n.id, { x: Math.cos(a) * ir, y: Math.sin(a) * ir, vx: 0, vy: 0 })
+      positions.set(n.id, { x: Math.cos(a) * r, y: Math.sin(a) * r, vx: 0, vy: 0 })
     })
   }
 
@@ -270,18 +194,33 @@ function createSimulator(graph: Graph, groupByNs: boolean): { positions: Map<str
   function step(iter: number, total: number) {
     const alpha = 1 - iter / total
 
+    // 1. Repulsion + Collision Detection
     for (let i = 0; i < ids.length; i++) {
-      const a = positions.get(ids[i])!
+      const aId = ids[i]
+      const a = positions.get(aId)!
       for (let j = i + 1; j < ids.length; j++) {
-        const b = positions.get(ids[j])!
+        const bId = ids[j]
+        const b = positions.get(bId)!
         const dx = b.x - a.x, dy = b.y - a.y
-        const dist = Math.sqrt(dx * dx + dy * dy) || 0.1
-        const f = (REPULSION / (dist * dist)) * alpha
+        const distSq = dx * dx + dy * dy
+        const dist = Math.sqrt(distSq) || 0.1
+
+        // Collision detection: push apart harder if overlapping
+        if (dist < COLLISION_R) {
+          const strength = (COLLISION_R - dist) / COLLISION_R
+          const fx = (dx / dist) * strength * 0.5
+          const fy = (dy / dist) * strength * 0.5
+          a.vx -= fx; a.vy -= fy; b.vx += fx; b.vy += fy
+        }
+
+        // Standard repulsion
+        const f = (REPULSION / (distSq + 200)) * alpha
         const fx = (dx / dist) * f, fy = (dy / dist) * f
         a.vx -= fx; a.vy -= fy; b.vx += fx; b.vy += fy
       }
     }
 
+    // 2. Attraction (Edges)
     for (const edge of edges) {
       const s = positions.get(edge.source), t = positions.get(edge.target)
       if (!s || !t) continue
@@ -292,11 +231,22 @@ function createSimulator(graph: Graph, groupByNs: boolean): { positions: Map<str
       s.vx += fx; s.vy += fy; t.vx -= fx; t.vy -= fy
     }
 
-    for (const p of positions.values()) {
+    // 3. Central Gravity & Radial Constraints
+    for (const [id, p] of positions.entries()) {
+      const n = nodeById.get(id)!
+      if (!groupByNs) {
+        // Radial constraint: pull nodes towards their kind-specific target radius
+        const targetR = KIND_RADIUS[n.kind] || 400
+        const dist = Math.sqrt(p.x * p.x + p.y * p.y) || 0.1
+        const f = (dist - targetR) * 0.002 * alpha
+        p.vx -= (p.x / dist) * f
+        p.vy -= (p.y / dist) * f
+      }
       p.vx -= p.x * GRAVITY * alpha
       p.vy -= p.y * GRAVITY * alpha
     }
 
+    // 4. Namespace Clustering
     if (groupByNs && clusterCenters.size) {
       for (const id of ids) {
         const p = positions.get(id)!
@@ -307,6 +257,7 @@ function createSimulator(graph: Graph, groupByNs: boolean): { positions: Map<str
       }
     }
 
+    // 5. Apply Movement
     for (const p of positions.values()) {
       p.vx *= DAMPING; p.vy *= DAMPING
       p.x += p.vx; p.y += p.vy
@@ -322,25 +273,44 @@ const NODE_W = 164
 const NODE_H = 54
 const H_GAP = 36
 
-const ROW_Y: Record<NodeKind, number> = { ingress: 80, service: 240, policy: 400, pod: 560 }
+const ROW_Y: Record<NodeKind, number> = {
+  ingress: 80,
+  workload: 200,
+  service: 320,
+  pod: 440,
+  pvc: 560,
+  node: 680,
+  policy: 800
+}
 
+const LANE_ROW_Y: Record<NodeKind, number> = {
+  ingress: 68,
+  workload: 180,
+  service: 292,
+  pod: 404,
+  pvc: 516,
+  node: 628,
+  policy: 740
+}
 const LANE_MIN_W = 180
 const LANE_PAD_X = 20
 const LANE_GAP = 28
-const LANE_ROW_Y: Record<NodeKind, number> = { ingress: 68, service: 192, policy: 316, pod: 440 }
 const LANE_HEADER = 36
-const LANE_HEIGHT = LANE_ROW_Y.pod + NODE_H + 26
+const LANE_HEIGHT = LANE_ROW_Y.policy + NODE_H + 26
 
 interface LaneDef { ns: string; nsIdx: number; x: number; y: number; w: number; h: number }
 
 function computeTopoPositions(graph: Graph, groupByNs: boolean) {
   const positions = new Map<string, { x: number; y: number }>()
   const lanes: LaneDef[] = []
+  const ALL_KINDS: NodeKind[] = ['ingress', 'workload', 'service', 'pod', 'pvc', 'node', 'policy']
 
   if (!groupByNs) {
-    const byKind: Record<NodeKind, GraphNode[]> = { ingress: [], service: [], policy: [], pod: [] }
+    const byKind: Record<NodeKind, GraphNode[]> = {
+      ingress: [], workload: [], service: [], pod: [], pvc: [], node: [], policy: []
+    }
     for (const n of graph.nodes) byKind[n.kind].push(n)
-    for (const kind of ['ingress', 'service', 'policy', 'pod'] as NodeKind[]) {
+    for (const kind of ALL_KINDS) {
       const row = byKind[kind]
       if (!row.length) continue
       const totalW = row.length * NODE_W + (row.length - 1) * H_GAP
@@ -352,7 +322,11 @@ function computeTopoPositions(graph: Graph, groupByNs: boolean) {
 
   const { namespaces } = graph
   const byNsKind = new Map<string, Record<NodeKind, GraphNode[]>>()
-  for (const ns of namespaces) byNsKind.set(ns, { ingress: [], service: [], policy: [], pod: [] })
+  for (const ns of namespaces) {
+    byNsKind.set(ns, {
+      ingress: [], workload: [], service: [], pod: [], pvc: [], node: [], policy: []
+    })
+  }
   for (const n of graph.nodes) {
     const bucket = byNsKind.get(n.namespace)
     if (bucket) bucket[n.kind].push(n)
@@ -360,7 +334,8 @@ function computeTopoPositions(graph: Graph, groupByNs: boolean) {
 
   const laneWidths = namespaces.map(ns => {
     const b = byNsKind.get(ns)!
-    const mx = Math.max(b.ingress.length, b.service.length, b.policy.length, b.pod.length, 1)
+    const counts = ALL_KINDS.map(k => b[k].length)
+    const mx = Math.max(...counts, 1)
     return Math.max(LANE_MIN_W, mx * (NODE_W + H_GAP) - H_GAP + LANE_PAD_X * 2)
   })
 
@@ -372,7 +347,7 @@ function computeTopoPositions(graph: Graph, groupByNs: boolean) {
     const laneCenter = curX + lw / 2
     const b = byNsKind.get(ns)!
 
-    for (const kind of ['ingress', 'service', 'policy', 'pod'] as NodeKind[]) {
+    for (const kind of ALL_KINDS) {
       const row = b[kind]
       const rowW = row.length * NODE_W + (row.length - 1) * H_GAP
       const rowStart = laneCenter - rowW / 2 + NODE_W / 2
@@ -437,15 +412,15 @@ function EdgeLabel({ x, y, label, color }: { x: number; y: number; label: string
 // ─── Legend overlay ───────────────────────────────────────────────────────────
 
 const LEGEND_ENTRIES = [
-  { icon: '⬡', color: '#8b5cf6', label: 'Ingress' },
-  { icon: '◈', color: '#3b82f6', label: 'Service · ClusterIP' },
-  { icon: '◈', color: '#06b6d4', label: 'Service · LoadBalancer' },
-  { icon: '◈', color: '#14b8a6', label: 'Service · NodePort' },
-  { icon: '🛡', color: '#f472b6', label: 'Network Policy' },
-  { icon: '●', color: '#10b981', label: 'Pod · Running' },
+  { icon: '⬡', color: '#a78bfa', label: 'Ingress' },
+  { icon: '📦', color: '#fbbf24', label: 'Workload (Deploy/RS...)' },
+  { icon: '◈', color: '#60a5fa', label: 'Service' },
+  { icon: '●', color: '#34d399', label: 'Pod · Running' },
   { icon: '●', color: '#f59e0b', label: 'Pod · Pending' },
   { icon: '●', color: '#ef4444', label: 'Pod · Failed' },
-  { icon: '●', color: '#64748b', label: 'Pod · Other' },
+  { icon: '💿', color: '#f87171', label: 'PVC' },
+  { icon: '🖥', color: '#06b6d4', label: 'Node' },
+  { icon: '🛡', color: '#f472b6', label: 'Network Policy' },
 ]
 
 function Legend({ dark }: { dark: boolean }) {
@@ -467,10 +442,11 @@ function Legend({ dark }: { dark: boolean }) {
         <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Edges</p>
         {([
           ['#8b5cf6', 'Ingress → Service'],
+          ['#fbbf24', 'Controller relationship'],
           ['#3b82f6', 'Service → Pod'],
           ['#f472b6', 'Policy governs Pod'],
-          ['#a78bfa', 'Allowed Ingress'],
-          ['#60a5fa', 'Allowed Egress']
+          ['#f87171', 'Pod uses PVC'],
+          ['#06b6d4', 'Pod on Node'],
         ] as [string, string][]).map(([c, lbl]) => (
           <div key={lbl} className="flex items-center gap-2.5">
             <svg width="22" height="8" className="shrink-0">
@@ -915,8 +891,16 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
       else { b.minX = Math.min(b.minX, p.x); b.maxX = Math.max(b.maxX, p.x); b.minY = Math.min(b.minY, p.y); b.maxY = Math.max(b.maxY, p.y) }
     }
     const result = new Map<string, { x: number; y: number; w: number; h: number; nsIdx: number }>()
-    for (const [ns, b] of raw)
-      result.set(ns, { x: b.minX - PAD, y: b.minY - PAD, w: b.maxX - b.minX + PAD * 2, h: b.maxY - b.minY + PAD * 2, nsIdx: graph.namespaces.indexOf(ns) })
+    for (const [ns, b] of raw) {
+      const idx = graph.namespaces.indexOf(ns)
+      result.set(ns, { 
+        x: b.minX - PAD, 
+        y: b.minY - PAD, 
+        w: b.maxX - b.minX + PAD * 2, 
+        h: b.maxY - b.minY + PAD * 2, 
+        nsIdx: idx === -1 ? 0 : idx 
+      })
+    }
     return result
   }, [nodePos, groupByNs, graph.nodes, graph.namespaces])
 
@@ -986,9 +970,11 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
             return (
               <g key={ns}>
                 <rect x={b.x} y={b.y} width={b.w} height={b.h}
-                  fill={c.bg} stroke={c.border} strokeWidth={1} strokeDasharray="6 4" rx={14} />
-                <text x={b.x + 10} y={b.y + 20}
-                  fontSize={11} fontWeight={700} fill={c.text} style={{ userSelect: 'none' }}>
+                  fill={c.bg} stroke={c.border} strokeWidth={1} strokeDasharray="8 6" rx={24} 
+                  className="transition-all duration-500" />
+                <text x={b.x + 14} y={b.y + 24}
+                  fontSize={12} fontWeight={800} fill={c.text} fillOpacity={0.6}
+                  style={{ userSelect: 'none', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                   {ns}
                 </text>
               </g>
@@ -1022,6 +1008,12 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
                     <animate attributeName="stroke-dashoffset" from="16" to="0" dur={dur} repeatCount="indefinite" />
                   </path>
                 )}
+                {animate && isConnected && (
+                  <circle r="2" fill={color} filter="url(#glow)">
+                    {/* @ts-ignore */}
+                    <animateMotion dur={dur} repeatCount="indefinite" path={path} />
+                  </circle>
+                )}
                 {edge.label && <EdgeLabel x={lx} y={ly - 8} label={edge.label} color={color} />}
               </g>
             )
@@ -1036,7 +1028,7 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
             const active = tooltip?.node.id === n.id
             const isMatch = matchedIds ? matchedIds.has(n.id) : true
             const nodeOpacity = searchActive && !isMatch ? 0.12 : 1
-            const label = n.name.length > 12 ? n.name.slice(0, 11) + '…' : n.name
+            const label = n.name.length > 14 ? n.name.slice(0, 12) + '..' : n.name
             const kindIcon = n.kind === 'ingress' ? '⬡' : n.kind === 'service' ? '◈' : n.kind === 'policy' ? '🛡' : '●'
             const strokeW = active ? 2.5 : isMatch && searchActive ? 3 : 1.8
             return (
@@ -1077,71 +1069,58 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
 
 // ─── Main NetworkPanel ────────────────────────────────────────────────────────
 
-const KIND_DEFS: { kind: NodeKind; color: string; label: string }[] = [
-  { kind: 'ingress', color: '#8b5cf6', label: 'Ingress' },
-  { kind: 'service', color: '#3b82f6', label: 'Services' },
-  { kind: 'policy', color: '#f472b6', label: 'NetPol' },
-  { kind: 'pod', color: '#10b981', label: 'Pods' },
-]
-
 const KIND_TO_SECTION: Record<NodeKind, ResourceKind> = {
   ingress: 'ingresses',
   service: 'services',
   pod: 'pods',
   policy: 'networkpolicies',
+  workload: 'deployments',
+  pvc: 'pvcs',
+  node: 'nodes',
 }
 
 export default function NetworkPanel(): JSX.Element {
-  const { selectedContext, namespaces, theme, setSection, selectResource } = useAppStore()
+  const { selectedContext, loadingNamespaces, namespaces, theme, setSection } = useAppStore()
   const dark = theme === 'dark'
 
-  const [panelNs, setPanelNs] = useState<string>('_all')
+  const [panelNs, setPanelNs] = useState<string>('default')
   const [loading, setLoading] = useState(false)
-  const [svcs, setSvcs] = useState<KubeService[]>([])
-  const [ings, setIngs] = useState<KubeIngress[]>([])
-  const [pds, setPds] = useState<KubePod[]>([])
-  const [pols, setPols] = useState<KubeNetworkPolicy[]>([])
+  const [rawGraph, setRawGraph] = useState<Graph>({ nodes: [], edges: [], namespaces: [] })
 
   const [tab, setTab] = useState<'topology' | 'map'>('topology')
   const [groupByNs, setGroupByNs] = useState(false)
   const [animate, setAnimate] = useState(false)
   const [showLegend, setShowLegend] = useState(false)
   const [fitTrigger, setFitTrigger] = useState(0)
-  const [visibleKinds, setVisibleKinds] = useState<Set<NodeKind>>(new Set(['ingress', 'service', 'policy', 'pod']))
+  const [visibleKinds, setVisibleKinds] = useState<Set<NodeKind>>(new Set(['ingress', 'service', 'pod', 'workload', 'pvc', 'node', 'policy']))
   const [searchQuery, setSearchQuery] = useState('')
 
   const load = useCallback((ns: string) => {
-    if (!selectedContext) return
+    if (!selectedContext || loadingNamespaces) return
     setLoading(true)
-    const nsArg = ns === '_all' ? null : ns
-    Promise.all([
-      window.kubectl.getServices(selectedContext, nsArg),
-      window.kubectl.getIngresses(selectedContext, nsArg),
-      window.kubectl.getPods(selectedContext, nsArg),
-      window.kubectl.getNetworkPolicies(selectedContext, nsArg),
-    ]).then(([s, i, p, pol]) => {
-      setSvcs(s as KubeService[])
-      setIngs(i as KubeIngress[])
-      setPds(p as KubePod[])
-      setPols(pol as KubeNetworkPolicy[])
-      setLoading(false)
-    }).catch(() => setLoading(false))
-  }, [selectedContext])
+    const nsArg = ns === '_all' ? '' : ns
+    // @ts-ignore
+    window.kubectl.getTopology(nsArg)
+      .then((data: Graph) => {
+        setRawGraph(data)
+        setLoading(false)
+      })
+      .catch((err) => {
+        console.error('Failed to load topology:', err)
+        setLoading(false)
+      })
+  }, [selectedContext, loadingNamespaces])
 
   useEffect(() => { load(panelNs) }, [panelNs, load])
 
-  const rawGraph = useMemo(() => buildGraph(svcs, ings, pds, pols), [svcs, ings, pds, pols])
-
   const graph = useMemo(() => {
-    if (visibleKinds.size === 4) return rawGraph
+    if (visibleKinds.size === KIND_DEFS.length) return rawGraph
     const nodes = rawGraph.nodes.filter(n => visibleKinds.has(n.kind))
     const nodeIds = new Set(nodes.map(n => n.id))
     const edges = rawGraph.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target))
     const nss = [...new Set(nodes.map(n => n.namespace))].sort()
     return { nodes, edges, namespaces: nss }
   }, [rawGraph, visibleKinds])
-
-  const cappedPods = pds.length > 100
 
   const toggleKind = (kind: NodeKind) => {
     setVisibleKinds(prev => {
@@ -1152,30 +1131,14 @@ export default function NetworkPanel(): JSX.Element {
     })
   }
 
-  // Click a graph node → navigate to its section + select the resource
   const handleNodeClick = useCallback((node: GraphNode) => {
     const section = KIND_TO_SECTION[node.kind]
-    let resource: KubeService | KubePod | KubeIngress | KubeNetworkPolicy | undefined
-
-    switch (node.kind) {
-      case 'service':
-        resource = svcs.find(s => s.metadata.name === node.name && s.metadata.namespace === node.namespace)
-        break
-      case 'pod':
-        resource = pds.find(p => p.metadata.name === node.name && p.metadata.namespace === node.namespace)
-        break
-      case 'ingress':
-        resource = ings.find(i => i.metadata.name === node.name && i.metadata.namespace === node.namespace)
-        break
-      case 'policy':
-        resource = pols.find(p => p.metadata.name === node.name && p.metadata.namespace === node.namespace)
-        break
-    }
-
+    // For now, we don't have the full resource object in the topology node 
+    // unless we enrich it or do another fetch.
+    // Let's at least navigate to the section.
     setSection(section)
-    // selectResource runs after setSection's synchronous selectedResource:null clear
-    if (resource) selectResource(resource)
-  }, [svcs, pds, ings, pols, setSection, selectResource])
+    // TODO: Implement selection using name/namespace if needed
+  }, [setSection])
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0 bg-white dark:bg-[hsl(var(--bg-dark))] transition-colors duration-200">
@@ -1189,7 +1152,6 @@ export default function NetworkPanel(): JSX.Element {
             {graph.namespaces.length > 1 && (
               <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800/50">{graph.namespaces.length} namespaces</span>
             )}
-            {cappedPods && <span className="text-amber-500 dark:text-amber-400 font-bold ml-1">· pods capped at 100</span>}
           </p>
         </div>
 

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    :root {
+      --primary: hsl(221, 70%, 55%);
+      --accent: hsl(188, 60%, 41%);
+      --bg: hsl(222, 20%, 6%);
+      --grid-color: hsla(221, 70%, 55%, 0.1);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-app-region: drag;
+      user-select: none;
+      background: var(--bg);
+      color: #fff;
+    }
+
+    .container {
+      width: 100%; height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      background: #000;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+    }
+
+    /* ── 3D Grid ─────────────────────────────────────────────────────── */
+    .grid-scene {
+      position: absolute;
+      inset: 0;
+      perspective: 800px;
+      z-index: 0;
+      opacity: 0.6;
+    }
+
+    .grid-plane {
+      position: absolute;
+      width: 200%;
+      height: 200%;
+      top: -50%;
+      left: -50%;
+      background-image: 
+        linear-gradient(var(--grid-color) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+      background-size: 60px 60px;
+      transform: rotateX(60deg);
+      animation: grid-scroll 20s linear infinite;
+    }
+
+    @keyframes grid-scroll {
+      from { background-position: 0 0; }
+      to { background-position: 0 1200px; }
+    }
+
+    /* ── Data Nodes ──────────────────────────────────────────────────── */
+    .nodes-container {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .node {
+      position: absolute;
+      width: 4px; height: 4px;
+      background: var(--primary);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--primary), 0 0 20px var(--accent);
+      animation: node-pulse 4s infinite ease-in-out;
+    }
+
+    @keyframes node-pulse {
+      0%, 100% { transform: scale(1); opacity: 0.3; }
+      50% { transform: scale(2); opacity: 0.8; }
+    }
+
+    /* ── Content ─────────────────────────────────────────────────────── */
+    .content {
+      position: relative;
+      z-index: 10;
+      text-align: center;
+    }
+
+    .logo-mark {
+      width: 80px; height: 80px;
+      margin-bottom: 24px;
+      position: relative;
+      display: inline-block;
+    }
+
+    .logo-hex {
+      width: 100%; height: 100%;
+      fill: none;
+      stroke: var(--primary);
+      stroke-width: 2;
+      stroke-dasharray: 260;
+      stroke-dashoffset: 260;
+      animation: draw 2s ease-out forwards;
+      filter: drop-shadow(0 0 8px var(--primary));
+    }
+
+    @keyframes draw {
+      to { stroke-dashoffset: 0; }
+    }
+
+    .scan-line {
+      position: absolute;
+      width: 100%; height: 2px;
+      background: hsla(221, 70%, 75%, 0.4);
+      box-shadow: 0 0 20px var(--primary);
+      top: -100%;
+      animation: scan 4s linear infinite;
+    }
+
+    @keyframes scan {
+      0% { top: -10%; opacity: 0; }
+      20% { opacity: 1; }
+      80% { opacity: 1; }
+      100% { top: 110%; opacity: 0; }
+    }
+
+    .title {
+      font-size: 36px;
+      font-weight: 800;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      color: #fff;
+      text-shadow: 0 0 20px hsla(221, 70%, 55%, 0.5);
+    }
+
+    .status-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      font-size: 10px;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.4em;
+    }
+
+    .status-bar {
+      width: 120px;
+      height: 2px;
+      background: hsla(221, 70%, 55%, 0.1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .status-progress {
+      position: absolute;
+      top: 0; left: 0;
+      height: 100%;
+      width: 40%;
+      background: var(--primary);
+      box-shadow: 0 0 10px var(--primary);
+      animation: progress-move 2s infinite ease-in-out;
+    }
+
+    @keyframes progress-move {
+      0% { left: -40%; }
+      100% { left: 100%; }
+    }
+
+    .version {
+      position: absolute;
+      bottom: 20px;
+      font-size: 9px;
+      color: hsla(221, 70%, 55%, 0.3);
+      letter-spacing: 0.2em;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="grid-scene">
+      <div class="grid-plane"></div>
+    </div>
+
+    <div class="nodes-container" id="nodes"></div>
+
+    <div class="content">
+      <div class="logo-mark">
+        <svg viewBox="0 0 100 100">
+          <polygon class="logo-hex" points="50,5 90,25 90,75 50,95 10,75 10,25" />
+          <path d="M50,25 L50,75 M30,35 L70,65 M30,65 L70,35" stroke="var(--primary)" stroke-width="2" opacity="0.5" />
+        </svg>
+        <div class="scan-line"></div>
+      </div>
+
+      <h1 class="title">Podscape</h1>
+      
+      <div class="status-wrap">
+        <div class="status-bar"><div class="status-progress"></div></div>
+        <span>Initializing</span>
+        <div class="status-bar"><div class="status-progress"></div></div>
+      </div>
+    </div>
+
+    <span class="version" id="ver"></span>
+  </div>
+
+  <script>
+    const v = new URLSearchParams(location.search).get('v')
+    if (v) document.getElementById('ver').textContent = 'V-' + v
+
+    // Spawn random nodes
+    const container = document.getElementById('nodes');
+    for (let i = 0; i < 20; i++) {
+      const node = document.createElement('div');
+      node.className = 'node';
+      node.style.top = Math.random() * 100 + '%';
+      node.style.left = Math.random() * 100 + '%';
+      node.style.animationDelay = (Math.random() * -5) + 's';
+      container.appendChild(node);
+    }
+  </script>
+</body>
+</html>
