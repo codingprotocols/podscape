@@ -16,7 +16,7 @@ jobs:
           - runner: macos-latest   # arm64 — Apple Silicon (M1/M2/M3)
             goarch: arm64
             electron_arch: arm64
-          - runner: macos-13       # x86_64 — Intel
+          - runner: macos-14       # x86_64 — Intel (Now using macos-14 for stability)
             goarch: amd64
             electron_arch: x64
     runs-on: ${{ matrix.runner }}
