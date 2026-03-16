@@ -530,11 +530,13 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         }
     },
 
-    navigateToResource: (kind, name, namespace) => {
+    navigateToResource: async (kind, name, namespace) => {
         const section = kindToSection[kind]
         if (!section) return
-        get().setSection(section)
-        // After section loads, select the matching resource
+        // Update nav state directly (setSection also calls loadSection without await)
+        set({ section, selectedResource: null })
+        // Wait for resources to load before searching
+        await get().loadSection(section)
         const stateKey = SECTION_CONFIG[section]?.stateKey
         if (!stateKey) return
         const resources: AnyKubeResource[] = (get() as any)[stateKey] ?? []

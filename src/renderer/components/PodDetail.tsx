@@ -7,7 +7,7 @@ import PodRestartAnalyzer from './PodRestartAnalyzer'
 import YAMLViewer from './YAMLViewer'
 import AnalysisView from './AnalysisView'
 import PodLifecycleTimeline from './PodLifecycleTimeline'
-import { Shield, Clock as ClockIcon } from 'lucide-react'
+import { Shield, Clock as ClockIcon, BarChart2 } from 'lucide-react'
 import OwnerChain from './OwnerChain'
 import TimeSeriesChart, { PrometheusTimeRangeBar } from './TimeSeriesChart'
 import { podCpuQuery, podMemoryQuery, podNetworkRxQuery, podNetworkTxQuery } from '../utils/prometheusQueries'
@@ -21,7 +21,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     selectedContext, selectedNamespace, openExec, getYAML, applyYAML, refresh,
     scanResults, scanResource, isScanning, prometheusAvailable,
   } = useAppStore()
-  const [activeTab, setActiveTab] = useState<'logs' | 'analysis' | 'lifecycle'>('logs')
+  const [activeTab, setActiveTab] = useState<'logs' | 'metrics' | 'analysis' | 'lifecycle'>('logs')
   const [events, setEvents] = useState<KubeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
   const [logs, setLogs] = useState<string[]>([])
@@ -543,37 +543,6 @@ export default function PodDetail({ pod }: Props): JSX.Element {
           )}
         </div>
 
-        {/* Prometheus metrics */}
-        {prometheusAvailable && (
-          <div className="px-6 py-4 border-b border-slate-100 dark:border-white/5 shrink-0">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Metrics</span>
-              <PrometheusTimeRangeBar />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <TimeSeriesChart
-                queries={[podCpuQuery(pod.metadata.name, pod.metadata.namespace ?? '')]}
-                title="CPU"
-                unit="m"
-              />
-              <TimeSeriesChart
-                queries={[podMemoryQuery(pod.metadata.name, pod.metadata.namespace ?? '')]}
-                title="Memory"
-                unit=" MiB"
-              />
-              <TimeSeriesChart
-                queries={[
-                  podNetworkRxQuery(pod.metadata.name, pod.metadata.namespace ?? ''),
-                  podNetworkTxQuery(pod.metadata.name, pod.metadata.namespace ?? ''),
-                ]}
-                title="Network I/O"
-                unit=" KiB/s"
-                className="col-span-2"
-              />
-            </div>
-          </div>
-        )}
-
         {/* Tabs */}
         <div className="px-6 flex items-center gap-6 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
           <TabButton
@@ -582,6 +551,14 @@ export default function PodDetail({ pod }: Props): JSX.Element {
             label="Logs"
             icon={<Terminal size={14} />}
           />
+          {prometheusAvailable && (
+            <TabButton
+              active={activeTab === 'metrics'}
+              onClick={() => setActiveTab('metrics')}
+              label="Metrics"
+              icon={<BarChart2 size={14} />}
+            />
+          )}
           <TabButton
             active={activeTab === 'analysis'}
             onClick={() => setActiveTab('analysis')}
@@ -627,6 +604,38 @@ export default function PodDetail({ pod }: Props): JSX.Element {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'metrics' && (
+          <div className="flex-1 overflow-y-auto scrollbar-hide min-h-0">
+            <div className="px-6 py-4">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Prometheus Metrics</span>
+                <PrometheusTimeRangeBar />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <TimeSeriesChart
+                  queries={[podCpuQuery(pod.metadata.name, pod.metadata.namespace ?? '')]}
+                  title="CPU"
+                  unit="m"
+                />
+                <TimeSeriesChart
+                  queries={[podMemoryQuery(pod.metadata.name, pod.metadata.namespace ?? '')]}
+                  title="Memory"
+                  unit=" MiB"
+                />
+                <TimeSeriesChart
+                  queries={[
+                    podNetworkRxQuery(pod.metadata.name, pod.metadata.namespace ?? ''),
+                    podNetworkTxQuery(pod.metadata.name, pod.metadata.namespace ?? ''),
+                  ]}
+                  title="Network I/O"
+                  unit=" KiB/s"
+                  className="col-span-2"
+                />
+              </div>
+            </div>
           </div>
         )}
 
