@@ -35,6 +35,9 @@ import MetricsView from './components/MetricsView'
 import SettingsPanel from './components/SettingsPanel'
 import UnifiedLogs from './components/UnifiedLogs'
 import SecurityHub from './components/SecurityHub'
+import TLSCertDashboard from './components/TLSCertDashboard'
+import GitOpsPanel from './components/GitOpsPanel'
+import CostWasteView from './components/CostWasteView'
 import NetworkPanel from './components/NetworkPanel'
 import ExecPanel from './components/ExecPanel'
 import ConnectivityTester from './components/ConnectivityTester'
@@ -308,7 +311,7 @@ export default function App(): JSX.Element {
   const {
     init, section, setSection,
     selectedResource, execTarget, closeExec, refresh, error, clearError,
-    kubeconfigOk, isSearchOpen, setSearchOpen, isProduction
+    kubeconfigOk, isSearchOpen, setSearchOpen, isProduction,
   } = useAppStore()
 
   const [sidecarCrashed, setSidecarCrashed] = React.useState(false)
@@ -402,6 +405,12 @@ export default function App(): JSX.Element {
               <HelmPanel />
             ) : section === 'security' ? (
               <SecurityHub />
+            ) : section === 'tls' ? (
+              <TLSCertDashboard />
+            ) : section === 'gitops' ? (
+              <GitOpsPanel />
+            ) : section === 'costview' ? (
+              <CostWasteView />
             ) : section === 'connectivity' ? (
               <ConnectivityTester />
             ) : section === 'debugpod' ? (

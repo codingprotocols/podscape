@@ -79,6 +79,8 @@ declare global {
             prometheusStatus: (url?: string) => Promise<{ available: boolean; error?: string }>
             prometheusQueryBatch: (queries: Array<{ query: string; label: string }>, start: number, end: number) => Promise<Array<{ label: string; points: Array<{ t: number; v: number }>; error?: string }>>
             getOwnerChain: (kind: string, name: string, namespace: string) => Promise<OwnerChainResponse>
+            getTLSCerts: (namespace?: string) => Promise<any[]>
+            getGitOps: (namespace?: string) => Promise<any>
         }
         helm: {
             list: (context: string) => Promise<HelmRelease[]>

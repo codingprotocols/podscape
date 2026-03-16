@@ -110,6 +110,12 @@ func main() {
 	http.HandleFunc("/helm/repos/refresh", handlers.HandleHelmRepoRefresh)
 	http.HandleFunc("/helm/install", handlers.HandleHelmInstall)
 
+	// TLS Certificate Dashboard
+	http.HandleFunc("/tls-certs", handlers.HandleTLSCerts)
+
+	// GitOps Panel
+	http.HandleFunc("/gitops", handlers.HandleGitOps)
+
 	// Build the middleware chain (innermost → outermost):
 	//   mux → [token auth] → CORS
 	// CORS is outermost so every response, including auth rejections, gets the header.
