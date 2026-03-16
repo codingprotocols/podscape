@@ -24,6 +24,7 @@
     "appId": "com.codingprotocols.podscape",
     "productName": "Podscape",
     "copyright": "Copyright © 2025 Coding Protocols Private Limited",
+    "afterSign": "scripts/notarize.js",
     "icon": "resources/icon.png",
     "mac": {
       "icon": "resources/icon.icns",
@@ -32,6 +33,7 @@
       "gatekeeperAssess": false,
       "entitlements": "entitlements.mac.plist",
       "entitlementsInherit": "entitlements.mac.inherit.plist",
+      "notarize": false,
       "target": [
         {
           "target": "dmg",
@@ -114,6 +116,7 @@
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^1.0.1",
+    "@electron/notarize": "^3.1.1",
     "@monaco-editor/react": "^4.6.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.14.8",
