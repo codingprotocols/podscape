@@ -4,6 +4,7 @@ import { useAppStore } from '../store'
 import {
   Activity, GitBranch, Box, Layers, ExternalLink, RefreshCw, Search, X, Info, Shield, AlertTriangle, CheckCircle, Clock, LayoutGrid, ListFilter
 } from 'lucide-react'
+import PageHeader from './PageHeader'
 
 interface GitOpsResource {
   kind: string
@@ -483,44 +484,37 @@ export default function GitOpsPanel() {
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-[hsl(var(--bg-dark))] overflow-hidden relative h-full">
 
-      <div className="pl-8 pr-6 py-6 border-b border-white/[0.05] shrink-0 flex items-center justify-between bg-white/[0.015] backdrop-blur-md z-20">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl premium-gradient flex items-center justify-center shadow-lg shadow-blue-500/10">
-            <Activity className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h2 className="text-lg font-black text-white tracking-tight leading-none mb-1">GitOps</h2>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Continuous Delivery Hub</p>
-          </div>
-        </div>
-
+      <PageHeader
+        title="GitOps Hub"
+        subtitle="Synchronized cluster state and automated delivery status"
+      >
         <div className="flex items-center gap-6">
           {/* inline stats */}
           {resources.length > 0 && (
-            <div className="flex items-center gap-4 border-l border-white/10 pl-4">
+            <div className="flex items-center gap-4 border-r border-slate-200 dark:border-white/10 pr-6 mr-2">
               <div className="flex items-center gap-2">
-                <Layers className="w-3.5 h-3.5 text-slate-600" />
+                <Layers className="w-3.5 h-3.5 text-slate-400" />
                 <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Total</span>
-                <span className="text-[12px] font-black font-mono text-slate-300">{resources.length}</span>
+                <span className="text-[12px] font-black font-mono text-slate-700 dark:text-slate-300">{resources.length}</span>
               </div>
               {resources.filter(isHealthy).length > 0 && (
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Healthy</span>
-                  <span className="text-[12px] font-black font-mono text-emerald-400">{resources.filter(isHealthy).length}</span>
+                  <span className="text-[12px] font-black font-mono text-emerald-500">{resources.filter(isHealthy).length}</span>
                 </div>
               )}
               {data?.fluxDetected && (
-                <span className="px-2 py-0.5 text-[9px] font-black tracking-widest bg-sky-500/10 text-sky-400 rounded-md border border-sky-500/20 uppercase">Flux</span>
+                <span className="px-2 py-0.5 text-[9px] font-black tracking-widest bg-sky-500/10 text-sky-500 dark:text-sky-400 rounded-md border border-sky-500/20 uppercase">Flux</span>
               )}
               {data?.argoDetected && (
-                <span className="px-2 py-0.5 text-[9px] font-black tracking-widest bg-orange-500/10 text-orange-400 rounded-md border border-orange-500/20 uppercase">Argo CD</span>
+                <span className="px-2 py-0.5 text-[9px] font-black tracking-widest bg-orange-500/10 text-orange-500 dark:text-orange-400 rounded-md border border-orange-500/20 uppercase">Argo CD</span>
               )}
             </div>
           )}
 
           {resources.length === 0 && !loading && (
-            <div className="flex items-center gap-2 border-l border-white/10 pl-4">
-              <span className="text-[10px] font-black tracking-widest text-slate-600 uppercase">Status:</span>
+            <div className="flex items-center gap-2 border-r border-slate-200 dark:border-white/10 pr-6 mr-2">
+              <span className="text-[10px] font-black tracking-widest text-slate-400 dark:text-slate-600 uppercase">Status:</span>
               <div className="px-3 py-1 rounded-full bg-amber-500/5 border border-amber-500/20 flex items-center gap-2">
                 <AlertTriangle className="w-3 h-3 text-amber-500/60" />
                 <span className="text-[10px] font-black tracking-widest text-amber-500/80 uppercase">No Tools Detected</span>
@@ -529,14 +523,15 @@ export default function GitOpsPanel() {
           )}
 
           <button
-            onClick={load} disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-white bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.08] rounded-xl transition-all disabled:opacity-40 hover:shadow-lg hover:shadow-white/[0.02]"
+            onClick={load}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl transition-all disabled:opacity-40"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
         </div>
-      </div>
+      </PageHeader>
 
       {resources.length > 0 && (
         <div className="px-5 py-3 border-b border-white/[0.05] shrink-0 flex items-center gap-4 bg-white/[0.005]">
@@ -565,11 +560,15 @@ export default function GitOpsPanel() {
           </div>
 
           {/* search pinned to right */}
-          <div className="ml-auto relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none w-3.5 h-3.5" />
+          <div className="ml-auto relative group">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 group-focus-within:text-blue-500 transition-colors pointer-events-none" />
             <input
-              type="text" placeholder="Search GitOps…" value={search} onChange={e => setSearch(e.target.value)}
-              className="pl-8 pr-3 py-2 text-[10px] bg-white/[0.03] border border-white/[0.06] rounded-xl text-slate-300 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-sky-500/40 w-44 transition-all focus:bg-white/[0.05]"
+              type="text"
+              placeholder="Search GitOps…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-9 pr-4 py-2 text-[10px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl
+                         focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all w-44"
             />
           </div>
         </div>

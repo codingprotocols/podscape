@@ -158,6 +158,7 @@ export default function ConfigMapDetail({ configMap: cm }: Props): JSX.Element {
                 </div>
               ) : yaml !== null ? (
                 <YAMLViewer
+                  editable
                   content={yaml}
                   onSave={handleApplyYAML}
                 />

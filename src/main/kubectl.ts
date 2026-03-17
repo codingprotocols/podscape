@@ -131,6 +131,14 @@ export class KubectlProvider {
     return []
   }
 
+  async cordonNode(name: string, unschedulable: boolean): Promise<void> {
+    await checkedSidecarFetch(`/node/cordon?name=${encodeURIComponent(name)}&unschedulable=${unschedulable}`, { method: 'POST' })
+  }
+
+  async drainNode(name: string): Promise<void> {
+    await checkedSidecarFetch(`/node/drain?name=${encodeURIComponent(name)}`, { method: 'POST' })
+  }
+
   async deleteResource(_context: string, namespace: string | null, kind: string, name: string): Promise<string> {
     const url = `/delete?namespace=${encodeURIComponent(namespace || '')}&kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`
     await checkedSidecarFetch(url)
@@ -266,6 +274,8 @@ export function registerKubectlHandlers(): void {
   ipcMain.handle('kubectl:rolloutUndo', (_e, ctx, ns, kind, name, rev) => provider.rolloutUndo(ctx, ns, kind, name, rev))
   ipcMain.handle('kubectl:getResourceEvents', (_e, ctx, ns, kind, name) => provider.getResourceEvents(ctx, ns, kind, name))
   ipcMain.handle('kubectl:rolloutRestart', (_e, ctx, ns, kind, name) => provider.rolloutRestart(ctx, ns, kind, name))
+  ipcMain.handle('kubectl:cordonNode', (_e, _ctx, name, unschedulable) => provider.cordonNode(name, unschedulable))
+  ipcMain.handle('kubectl:drainNode', (_e, _ctx, name) => provider.drainNode(name))
   ipcMain.handle('kubectl:deleteResource', (_e, ctx, ns, kind, name) => provider.deleteResource(ctx, ns, kind, name))
   ipcMain.handle('kubectl:getYAML', (_e, ctx, ns, kind, name) => provider.getYAML(ctx, ns, kind, name))
   ipcMain.handle('kubectl:getSecretValue', (_e, ctx, ns, name, key) => provider.getSecretValue(ctx, ns, name, key))

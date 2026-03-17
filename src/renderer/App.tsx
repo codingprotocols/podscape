@@ -1,83 +1,52 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useAppStore } from './store'
+import { useShallow } from 'zustand/react/shallow'
 import Sidebar from './components/Sidebar'
 import Dashboard from './components/Dashboard'
-import ResourceList from './components/ResourceList'
-import PodDetail from './components/PodDetail'
-import DeploymentDetail from './components/DeploymentDetail'
-import StatefulSetDetail from './components/StatefulSetDetail'
-import JobDetail from './components/JobDetail'
-import CronJobDetail from './components/CronJobDetail'
-import IngressDetail from './components/IngressDetail'
-import ServiceDetail from './components/ServiceDetail'
-import NodeDetail from './components/NodeDetail'
-import ConfigMapDetail from './components/ConfigMapDetail'
-import SecretDetail from './components/SecretDetail'
-import DaemonSetDetail from './components/DaemonSetDetail'
-import HPADetail from './components/HPADetail'
-import PVCDetail from './components/PVCDetail'
-import RoleBindingDetail from './components/RoleBindingDetail'
-import RoleDetail from './components/RoleDetail'
-import ReplicaSetDetail from './components/ReplicaSetDetail'
-import NamespaceDetail from './components/NamespaceDetail'
-import CRDDetail from './components/CRDDetail'
-import PDBDetail from './components/PDBDetail'
-import IngressClassDetail from './components/IngressClassDetail'
-import NetworkPolicyDetail from './components/NetworkPolicyDetail'
-import EndpointsDetail from './components/EndpointsDetail'
-import StorageClassDetail from './components/StorageClassDetail'
-import PVDetail from './components/PVDetail'
-import SADetail from './components/SADetail'
+import ResourceList, { SECTION_LABELS } from './components/ResourceList'
+import DetailPanel from './components/DetailPanel'
 import HelmPanel from './components/HelmPanel'
 import PortForwardPanel from './components/PortForwardPanel'
 import EventsView from './components/EventsView'
 import MetricsView from './components/MetricsView'
 import SettingsPanel from './components/SettingsPanel'
 import UnifiedLogs from './components/UnifiedLogs'
+import PageHeader from './components/PageHeader'
+import { Search, RefreshCw } from 'lucide-react'
 import SecurityHub from './components/SecurityHub'
 import TLSCertDashboard from './components/TLSCertDashboard'
 import GitOpsPanel from './components/GitOpsPanel'
-import CostWasteView from './components/CostWasteView'
 import NetworkPanel from './components/NetworkPanel'
-import ExecPanel from './components/ExecPanel'
 import ConnectivityTester from './components/ConnectivityTester'
 import DebugPodLauncher from './components/DebugPodLauncher'
-import YAMLViewer from './components/YAMLViewer'
 import KubeConfigOnboarding from './components/KubeConfigOnboarding'
+import ExecPanel from './components/ExecPanel'
 import CommandPalette from './components/CommandPalette'
-import type {
-  KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet, KubeJob, KubeCronJob,
-  KubeService, KubeIngress, KubeNode, KubeCRD,
-  KubeConfigMap, KubeSecret, KubeHPA, KubePVC, KubeRoleBinding, KubeClusterRoleBinding,
-  KubeRole, KubeClusterRole, KubeReplicaSet, KubeNamespace,
-  KubePDB, KubeIngressClass, KubeNetworkPolicy, KubeEndpoints,
-  KubeStorageClass, KubePV, KubeServiceAccount,
-  AnyKubeResource
-} from './types'
 
-// ─── Error boundary ───────────────────────────────────────────────────────────
-
-class ErrorBoundary extends React.Component<
-  { children: React.ReactNode; resetKey?: string },
-  { error: Error | null }
-> {
-  state: { error: Error | null } = { error: null }
-
-  static getDerivedStateFromError(error: Error) {
-    return { error }
+// Error boundary for individual sections to prevent one failing fetch from crashing the entire app
+class ErrorBoundary extends React.Component<{ children: React.ReactNode; resetKey?: string }, { error: Error | null }> {
+  constructor(props: any) {
+    super(props)
+    this.state = { error: null }
   }
-
+  static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidUpdate(prevProps: any) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null })
+    }
+  }
   render() {
     if (this.state.error) {
       return (
-        <div className="flex flex-col items-center justify-center h-full gap-4 p-8 bg-white dark:bg-[hsl(var(--bg-dark))]">
-          <div className="w-10 h-10 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400">
-              <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
-            </svg>
+        <div className="flex flex-col items-center justify-center h-full p-8 text-center animate-in fade-in duration-500">
+          <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-6 text-red-500">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
           </div>
-          <p className="text-sm font-bold text-slate-900 dark:text-white">Panel crashed</p>
-          <pre className="text-[11px] text-slate-500 dark:text-slate-400 max-w-sm text-center break-words whitespace-pre-wrap">
+          <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2 tracking-tight">Something went wrong</h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-sm leading-relaxed">
+            There was an error loading this section. This usually happens if the resource type is not supported by your cluster version.
+          </p>
+          <pre className="text-[10px] font-mono bg-red-500/5 text-red-600 dark:text-red-400 p-4 rounded-xl mb-6 max-w-lg overflow-auto border border-red-500/10">
             {this.state.error.message}
           </pre>
           <button
@@ -104,250 +73,59 @@ const LIST_SECTIONS = [
   'nodes', 'namespaces', 'crds'
 ]
 
-function DetailPanelContainer({ children }: { children: React.ReactNode }) {
-  const { detailWidth, setDetailWidth } = useAppStore()
-  const [isResizing, setIsResizing] = React.useState(false)
-
-  React.useEffect(() => {
-    if (!isResizing) return
-
-    const onMouseMove = (e: MouseEvent) => {
-      const newWidth = Math.max(380, Math.min(window.innerWidth - 300, window.innerWidth - e.clientX))
-      setDetailWidth(newWidth)
-    }
-
-    const onMouseUp = () => {
-      setIsResizing(false)
-      document.body.style.cursor = 'default'
-    }
-
-    document.addEventListener('mousemove', onMouseMove)
-    document.addEventListener('mouseup', onMouseUp)
-    document.body.style.cursor = 'col-resize'
-
-    return () => {
-      document.removeEventListener('mousemove', onMouseMove)
-      document.removeEventListener('mouseup', onMouseUp)
-      document.body.style.cursor = 'default'
-    }
-  }, [isResizing, setDetailWidth])
-
-  return (
-    <div
-      className="relative flex flex-col border-l border-slate-200 dark:border-white/5 glass-heavy h-full shadow-2xl animate-in slide-in-from-right-4 z-50"
-      style={{ width: `${detailWidth}px` }}
-    >
-      <div
-        onMouseDown={() => setIsResizing(true)}
-        className="resize-handle-v left-0"
-      />
-      {children}
-    </div>
-  )
-}
-
-function DetailPanel({ resource, section }: { resource: AnyKubeResource; section: string }) {
-  let content: React.ReactNode
-
-  switch (section) {
-    case 'pods':
-      content = <PodDetail pod={resource as KubePod} />
-      break
-    case 'deployments':
-      content = <DeploymentDetail deployment={resource as KubeDeployment} />
-      break
-    case 'statefulsets':
-      content = <StatefulSetDetail statefulSet={resource as KubeStatefulSet} />
-      break
-    case 'jobs':
-      content = <JobDetail job={resource as KubeJob} />
-      break
-    case 'cronjobs':
-      content = <CronJobDetail cronJob={resource as KubeCronJob} />
-      break
-    case 'ingresses':
-      content = <IngressDetail ingress={resource as KubeIngress} />
-      break
-    case 'daemonsets':
-      content = <DaemonSetDetail daemonSet={resource as KubeDaemonSet} />
-      break
-    case 'services':
-      content = <ServiceDetail service={resource as KubeService} />
-      break
-    case 'nodes':
-      content = <NodeDetail node={resource as KubeNode} />
-      break
-    case 'configmaps':
-      content = <ConfigMapDetail configMap={resource as KubeConfigMap} />
-      break
-    case 'secrets':
-      content = <SecretDetail secret={resource as KubeSecret} />
-      break
-    case 'hpas':
-      content = <HPADetail hpa={resource as KubeHPA} />
-      break
-    case 'pdbs':
-      content = <PDBDetail pdb={resource as KubePDB} />
-      break
-    case 'ingressclasses':
-      content = <IngressClassDetail ic={resource as KubeIngressClass} />
-      break
-    case 'networkpolicies':
-      content = <NetworkPolicyDetail np={resource as KubeNetworkPolicy} />
-      break
-    case 'endpoints':
-      content = <EndpointsDetail ep={resource as KubeEndpoints} />
-      break
-    case 'storageclasses':
-      content = <StorageClassDetail sc={resource as KubeStorageClass} />
-      break
-    case 'pvs':
-      content = <PVDetail pv={resource as KubePV} />
-      break
-    case 'serviceaccounts':
-      content = <SADetail sa={resource as KubeServiceAccount} />
-      break
-    case 'pvcs':
-      content = <PVCDetail pvc={resource as KubePVC} />
-      break
-    case 'replicasets':
-      content = <ReplicaSetDetail replicaSet={resource as KubeReplicaSet} />
-      break
-    case 'rolebindings':
-      content = <RoleBindingDetail binding={resource as KubeRoleBinding} />
-      break
-    case 'clusterrolebindings':
-      content = <RoleBindingDetail binding={resource as KubeClusterRoleBinding} />
-      break
-    case 'roles':
-      content = <RoleDetail role={resource as KubeRole} clusterScoped={false} />
-      break
-    case 'clusterroles':
-      content = <RoleDetail role={resource as KubeClusterRole} clusterScoped={true} />
-      break
-    case 'namespaces':
-      content = <NamespaceDetail namespace={resource as KubeNamespace} />
-      break
-    case 'crds':
-      content = <CRDDetail crd={resource as KubeCRD} />
-      break
-    default:
-      content = <DefaultDetail resource={resource} section={section} />
-  }
-
-  return <DetailPanelContainer>{content}</DetailPanelContainer>
-}
-
-function DefaultDetail({ resource, section }: { resource: AnyKubeResource; section: string }) {
-  const [yaml, setYaml] = React.useState<string | null>(null)
-  const { getYAML, applyYAML, refresh } = useAppStore()
-
-  const clusterScoped = ['nodes', 'namespaces', 'crds', 'ingressclasses', 'pvs', 'storageclasses', 'clusterroles', 'clusterrolebindings'].includes(section)
-
-  useEffect(() => {
-    getYAML(
-      kindForSection(section),
-      resource.metadata.name,
-      clusterScoped,
-      resource.metadata.namespace
-    ).then(setYaml).catch(() => setYaml('# Unable to fetch YAML'))
-  }, [resource.metadata.uid, section])
-
-  return (
-    <>
-      <div className="px-8 py-6 border-b border-slate-200 dark:border-white/5 shrink-0 bg-white/5">
-        <div className="flex items-center gap-3 mb-1">
-          <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6]" />
-          <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 font-mono truncate tracking-tight">{resource.metadata.name}</h3>
-        </div>
-        {resource.metadata.namespace && (
-          <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.15em] ml-5">{resource.metadata.namespace}</p>
-        )}
-      </div>
-      <div className="flex-1 min-h-0">
-        {yaml !== null ? (
-          yaml.startsWith('#') ? (
-            <YAMLViewer content={yaml} />
-          ) : (
-            <YAMLViewer
-              content={yaml}
-              editable
-              onSave={async (updatedYaml) => {
-                await applyYAML(updatedYaml)
-                refresh()
-                const next = await getYAML(kindForSection(section), resource.metadata.name, clusterScoped, resource.metadata.namespace)
-                setYaml(next)
-              }}
-            />
-          )
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-4">
-            <div className="w-6 h-6 border-2 border-slate-200 dark:border-slate-800 border-t-blue-500 rounded-full animate-spin" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] animate-pulse">Retrieving Manifest...</span>
-          </div>
-        )}
-      </div>
-    </>
-  )
-}
-
-function kindForSection(section: string): string {
-  const map: Record<string, string> = {
-    pods: 'pod', deployments: 'deployment', daemonsets: 'daemonset',
-    statefulsets: 'statefulset', replicasets: 'replicaset', jobs: 'job', cronjobs: 'cronjob',
-    hpas: 'horizontalpodautoscaler', pdbs: 'poddisruptionbudget',
-    services: 'service', ingresses: 'ingress', ingressclasses: 'ingressclass',
-    networkpolicies: 'networkpolicy', endpoints: 'endpoints',
-    configmaps: 'configmap', secrets: 'secret',
-    pvcs: 'persistentvolumeclaim', pvs: 'persistentvolume', storageclasses: 'storageclass',
-    serviceaccounts: 'serviceaccount', roles: 'role', clusterroles: 'clusterrole',
-    rolebindings: 'rolebinding', clusterrolebindings: 'clusterrolebinding',
-    nodes: 'node', namespaces: 'namespace', crds: 'crd'
-  }
-  return map[section] ?? section
-}
-
 export default function App(): JSX.Element {
   const {
-    init, section, setSection,
-    selectedResource, execTarget, closeExec, refresh, error, clearError,
-    kubeconfigOk, isSearchOpen, setSearchOpen, isProduction,
-  } = useAppStore()
+    init,
+    section,
+    selectedNamespace,
+    selectedResource,
+    searchQuery,
+    setSearchQuery,
+    loadingResources,
+    refresh,
+    error,
+    clearError,
+    kubeconfigOk,
+    execTarget,
+    closeExec,
+    isProduction,
+  } = useAppStore(useShallow(s => ({
+    init: s.init,
+    section: s.section,
+    selectedNamespace: s.selectedNamespace,
+    selectedResource: s.selectedResource,
+    searchQuery: s.searchQuery,
+    setSearchQuery: s.setSearchQuery,
+    loadingResources: s.loadingResources,
+    refresh: s.refresh,
+    error: s.error,
+    clearError: s.clearError,
+    kubeconfigOk: s.kubeconfigOk,
+    execTarget: s.execTarget,
+    closeExec: s.closeExec,
+    isProduction: s.isProduction,
+  })))
 
-  const [sidecarCrashed, setSidecarCrashed] = React.useState(false)
-  const [sidecarRestarting, setSidecarRestarting] = React.useState(false)
+  const [sidecarCrashed, setSidecarCrashed] = useState(false)
+  const [sidecarRestarting, setSidecarRestarting] = useState(false)
 
   useEffect(() => { init() }, [])
 
   useEffect(() => {
-    const unsub = (window as any).sidecar?.onCrashed(() => setSidecarCrashed(true))
-    return () => unsub?.()
+    const unlisten = (window as any).sidecar?.onCrashed(() => {
+      setSidecarCrashed(true)
+    })
+    return () => { if (unlisten) unlisten() }
   }, [])
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'r') {
-        e.preventDefault()
-        refresh()
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        setSearchOpen(!isSearchOpen)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [refresh, setSection, isSearchOpen, setSearchOpen])
-
 
   const handleSidecarRestart = async () => {
     setSidecarRestarting(true)
     try {
       await (window as any).sidecar?.restart()
       setSidecarCrashed(false)
-      init()
-    } catch {
-      // restart failed — banner stays visible
+      window.location.reload()
+    } catch (err) {
+      console.error('Failed to restart sidecar:', err)
     } finally {
       setSidecarRestarting(false)
     }
@@ -409,21 +187,57 @@ export default function App(): JSX.Element {
               <TLSCertDashboard />
             ) : section === 'gitops' ? (
               <GitOpsPanel />
-            ) : section === 'costview' ? (
-              <CostWasteView />
             ) : section === 'connectivity' ? (
               <ConnectivityTester />
             ) : section === 'debugpod' ? (
               <DebugPodLauncher />
             ) : (LIST_SECTIONS as string[]).includes(section) ? (
-              <>
-                <ResourceList />
-                {selectedResource && (
-                  <ErrorBoundary key={selectedResource.metadata.uid}>
-                    <DetailPanel resource={selectedResource} section={section} />
-                  </ErrorBoundary>
-                )}
-              </>
+              <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden">
+                <PageHeader
+                  title={SECTION_LABELS[section] ?? section}
+                  subtitle={
+                    (() => {
+                      const clusterScoped = ['nodes', 'namespaces', 'crds', 'pvs', 'storageclasses', 'clusterroles', 'clusterrolebindings', 'ingressclasses'].includes(section)
+                      if (clusterScoped) return 'cluster-wide'
+                      return selectedNamespace === '_all' ? 'all namespaces' : (selectedNamespace ?? 'no namespace')
+                    })()
+                  }
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="relative group">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+                      <input
+                        type="text"
+                        placeholder="Filter resources..."
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        className="pl-9 pr-4 py-2 text-[11px] font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl
+                                   focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all w-48"
+                      />
+                    </div>
+
+                    <button
+                      onClick={refresh}
+                      disabled={loadingResources}
+                      className="flex items-center gap-2 px-5 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300
+                                 glass-panel hover:bg-white/10 dark:hover:bg-white/5 rounded-xl shadow-sm
+                                 disabled:opacity-50 active:scale-95 border border-slate-200 dark:border-white/5"
+                    >
+                      <RefreshCw className={`w-4 h-4 transition-transform duration-700 ${loadingResources ? 'animate-spin' : ''}`} />
+                      Sync
+                    </button>
+                  </div>
+                </PageHeader>
+
+                <div className="flex flex-1 min-w-0 overflow-hidden">
+                  <ResourceList />
+                  {selectedResource && (
+                    <ErrorBoundary key={selectedResource.metadata.uid}>
+                      <DetailPanel resource={selectedResource} section={section} />
+                    </ErrorBoundary>
+                  )}
+                </div>
+              </div>
             ) : null}
           </ErrorBoundary>
         )}

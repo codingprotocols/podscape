@@ -8,9 +8,10 @@ import (
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/release"
+	"sigs.k8s.io/yaml"
 )
 
-func ListReleases(kubeconfig, context, namespace string) ([]*release.Release, error) {
+func newSettings(kubeconfig, context string) *cli.EnvSettings {
 	settings := cli.New()
 	if kubeconfig != "" {
 		settings.KubeConfig = kubeconfig
@@ -18,9 +19,21 @@ func ListReleases(kubeconfig, context, namespace string) ([]*release.Release, er
 	if context != "" {
 		settings.KubeContext = context
 	}
+	return settings
+}
 
+func newActionConfig(kubeconfig, context, namespace string) (*action.Configuration, error) {
+	settings := newSettings(kubeconfig, context)
 	actionConfig := new(action.Configuration)
 	if err := actionConfig.Init(settings.RESTClientGetter(), namespace, os.Getenv("HELM_DRIVER"), log.Printf); err != nil {
+		return nil, err
+	}
+	return actionConfig, nil
+}
+
+func ListReleases(kubeconfig, context, namespace string) ([]*release.Release, error) {
+	actionConfig, err := newActionConfig(kubeconfig, context, namespace)
+	if err != nil {
 		return nil, err
 	}
 
@@ -31,10 +44,9 @@ func ListReleases(kubeconfig, context, namespace string) ([]*release.Release, er
 	return client.Run()
 }
 
-func GetReleaseStatus(namespace, releaseName string) (string, error) {
-	settings := cli.New()
-	actionConfig := new(action.Configuration)
-	if err := actionConfig.Init(settings.RESTClientGetter(), namespace, os.Getenv("HELM_DRIVER"), log.Printf); err != nil {
+func GetReleaseStatus(kubeconfig, context, namespace, releaseName string) (string, error) {
+	actionConfig, err := newActionConfig(kubeconfig, context, namespace)
+	if err != nil {
 		return "", err
 	}
 
@@ -44,14 +56,12 @@ func GetReleaseStatus(namespace, releaseName string) (string, error) {
 		return "", err
 	}
 
-	// Simplifying status output
 	return fmt.Sprintf("Status: %s\nUpdated: %s\nNamespace: %s", rel.Info.Status, rel.Info.LastDeployed, rel.Namespace), nil
 }
 
-func GetReleaseValues(namespace, releaseName string, allValues bool) (string, error) {
-	settings := cli.New()
-	actionConfig := new(action.Configuration)
-	if err := actionConfig.Init(settings.RESTClientGetter(), namespace, os.Getenv("HELM_DRIVER"), log.Printf); err != nil {
+func GetReleaseValues(kubeconfig, context, namespace, releaseName string, allValues bool) (string, error) {
+	actionConfig, err := newActionConfig(kubeconfig, context, namespace)
+	if err != nil {
 		return "", err
 	}
 
@@ -62,14 +72,16 @@ func GetReleaseValues(namespace, releaseName string, allValues bool) (string, er
 		return "", err
 	}
 
-	// In a real app, you'd likely marshal this to YAML
-	return fmt.Sprintf("%v", vals), nil
+	out, err := yaml.Marshal(vals)
+	if err != nil {
+		return fmt.Sprintf("%v", vals), nil
+	}
+	return string(out), nil
 }
 
-func GetReleaseHistory(namespace, releaseName string) ([]*release.Release, error) {
-	settings := cli.New()
-	actionConfig := new(action.Configuration)
-	if err := actionConfig.Init(settings.RESTClientGetter(), namespace, os.Getenv("HELM_DRIVER"), log.Printf); err != nil {
+func GetReleaseHistory(kubeconfig, context, namespace, releaseName string) ([]*release.Release, error) {
+	actionConfig, err := newActionConfig(kubeconfig, context, namespace)
+	if err != nil {
 		return nil, err
 	}
 
@@ -77,10 +89,9 @@ func GetReleaseHistory(namespace, releaseName string) ([]*release.Release, error
 	return client.Run(releaseName)
 }
 
-func RollbackRelease(namespace, releaseName string, revision int) error {
-	settings := cli.New()
-	actionConfig := new(action.Configuration)
-	if err := actionConfig.Init(settings.RESTClientGetter(), namespace, os.Getenv("HELM_DRIVER"), log.Printf); err != nil {
+func RollbackRelease(kubeconfig, context, namespace, releaseName string, revision int) error {
+	actionConfig, err := newActionConfig(kubeconfig, context, namespace)
+	if err != nil {
 		return err
 	}
 
@@ -89,10 +100,9 @@ func RollbackRelease(namespace, releaseName string, revision int) error {
 	return client.Run(releaseName)
 }
 
-func UninstallRelease(namespace, releaseName string) (*release.UninstallReleaseResponse, error) {
-	settings := cli.New()
-	actionConfig := new(action.Configuration)
-	if err := actionConfig.Init(settings.RESTClientGetter(), namespace, os.Getenv("HELM_DRIVER"), log.Printf); err != nil {
+func UninstallRelease(kubeconfig, context, namespace, releaseName string) (*release.UninstallReleaseResponse, error) {
+	actionConfig, err := newActionConfig(kubeconfig, context, namespace)
+	if err != nil {
 		return nil, err
 	}
 

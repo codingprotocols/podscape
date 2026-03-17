@@ -9,7 +9,7 @@ interface Props { ingress: KubeIngress }
 type Tab = 'rules' | 'events'
 
 export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
-  const { getYAML, selectedContext, selectedNamespace } = useAppStore()
+  const { getYAML, applyYAML, selectedContext, selectedNamespace } = useAppStore()
   const [tab, setTab] = useState<Tab>('rules')
   const [yaml, setYaml] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
@@ -36,6 +36,12 @@ export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
     } finally {
       setYamlLoading(false)
     }
+  }
+
+  const handleApplyYAML = async (updated: string) => {
+    await applyYAML(updated)
+    const refreshed = await getYAML('ingress', ing.metadata.name, false, ing.metadata.namespace)
+    setYaml(refreshed)
   }
 
   const loadEvents = async () => {
@@ -230,7 +236,7 @@ export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
                 <div className="flex items-center justify-center h-full">
                   <div className="w-8 h-8 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
-              ) : yaml !== null ? <YAMLViewer content={yaml} /> : null}
+              ) : yaml !== null ? <YAMLViewer content={yaml} editable onSave={handleApplyYAML} /> : null}
             </div>
           </div>
         </div>

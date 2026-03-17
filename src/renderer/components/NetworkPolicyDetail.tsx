@@ -160,7 +160,7 @@ export default function NetworkPolicyDetail({ np }: { np: KubeNetworkPolicy }) {
                                     <div className="w-8 h-8 border-2 border-slate-700 border-t-rose-500 rounded-full animate-spin" />
                                 </div>
                             ) : yaml !== null ? (
-                                <YAMLViewer
+                                <YAMLViewer editable
                                     content={yaml}
                                     editable
                                     onSave={async (updated) => {

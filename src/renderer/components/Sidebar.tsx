@@ -404,7 +404,6 @@ export default function Sidebar(): JSX.Element {
             <NavItem label="Unified Logs" section="unifiedlogs" icon={ICONS.terminal} />
             <NavItem label="Security Hub" section="security" icon={ICONS.secret} />
             <NavItem label="TLS Certificates" section="tls" icon={ICONS.secret} />
-            <NavItem label="Cost & Waste" section="costview" icon={ICONS.metrics} />
           </NavGroup>
 
           <NavGroup title="Tools">
