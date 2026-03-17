@@ -111,7 +111,10 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
+    "@tanstack/react-virtual": "^3.13.23",
+    "@types/react-window": "^1.8.8",
     "js-yaml": "^4.1.0",
+    "react-window": "^2.2.7",
     "ws": "^8.19.0"
   },
   "devDependencies": {

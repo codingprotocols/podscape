@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo, useCallback } from 'react'
 import { useAppStore } from '../store'
 import { parseCpuMillicores, parseMemoryMiB } from '../types'
 import { Search, Database, Cpu, ArrowUp, ArrowDown, RefreshCw } from 'lucide-react'
@@ -7,6 +7,24 @@ import { Search, Database, Cpu, ArrowUp, ArrowDown, RefreshCw } from 'lucide-rea
 
 type SortField = 'name' | 'cpu' | 'memory'
 type SortOrder = 'asc' | 'desc'
+
+interface SortHeaderProps {
+  field: SortField
+  label: string
+  current: SortField
+  order: SortOrder
+  onSort: (f: SortField) => void
+  className?: string
+}
+
+interface ClusterStatProps {
+  label: string
+  used: number
+  total: number
+  pct: number
+  icon: React.ReactNode
+  fmt: (n: number) => string
+}
 
 export default function MetricsView(): JSX.Element {
   const {
@@ -17,6 +35,14 @@ export default function MetricsView(): JSX.Element {
   const [searchTerm, setSearchTerm] = useState('')
   const [sortField, setSortField] = useState<SortField>('cpu')
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
+
+  const handleSort = useCallback((f: SortField) => {
+    setSortField(prev => {
+      if (prev === f) { setSortOrder(o => o === 'asc' ? 'desc' : 'asc'); return prev }
+      setSortOrder('desc')
+      return f
+    })
+  }, [])
 
   useEffect(() => { loadSection('metrics') }, [selectedNamespace])
 
@@ -201,18 +227,9 @@ export default function MetricsView(): JSX.Element {
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-slate-100/50 dark:bg-white/5 border-b border-slate-200 dark:border-white/5">
-                          <SortHeader field="name" label="Pod / Container" current={sortField} order={sortOrder} onSort={(f: any) => {
-                            if (sortField === f) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
-                            else { setSortField(f); setSortOrder('desc') }
-                          }} />
-                          <SortHeader field="cpu" label="CPU" current={sortField} order={sortOrder} onSort={(f: any) => {
-                            if (sortField === f) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
-                            else { setSortField(f); setSortOrder('desc') }
-                          }} className="text-right" />
-                          <SortHeader field="memory" label="Memory" current={sortField} order={sortOrder} onSort={(f: any) => {
-                            if (sortField === f) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
-                            else { setSortField(f); setSortOrder('desc') }
-                          }} className="text-right" />
+                          <SortHeader field="name" label="Pod / Container" current={sortField} order={sortOrder} onSort={handleSort} />
+                          <SortHeader field="cpu" label="CPU" current={sortField} order={sortOrder} onSort={handleSort} className="text-right" />
+                          <SortHeader field="memory" label="Memory" current={sortField} order={sortOrder} onSort={handleSort} className="text-right" />
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-white/5">
@@ -342,7 +359,7 @@ export default function MetricsView(): JSX.Element {
   )
 }
 
-function SortHeader({ field, label, current, order, onSort, className }: any) {
+function SortHeader({ field, label, current, order, onSort, className }: SortHeaderProps) {
   const active = current === field
   return (
     <th
@@ -361,7 +378,7 @@ function SortHeader({ field, label, current, order, onSort, className }: any) {
   )
 }
 
-function ClusterStat({ label, used, total, pct, icon, fmt }: any) {
+function ClusterStat({ label, used, total, pct, icon, fmt }: ClusterStatProps) {
   const color =
     pct >= 85 ? 'var(--danger)' :
       pct >= 65 ? 'var(--warning)' :

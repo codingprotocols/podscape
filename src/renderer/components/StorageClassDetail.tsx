@@ -144,7 +144,6 @@ export default function StorageClassDetail({ sc }: { sc: KubeStorageClass }) {
                             ) : yaml !== null ? (
                                 <YAMLViewer editable
                                     content={yaml}
-                                    editable
                                     onSave={async (updated) => {
                                         await applyYAML(updated)
                                         refresh()

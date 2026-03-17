@@ -310,15 +310,17 @@ function CertRow({ cert, selected, onClick }: { cert: TLSCertInfo; selected: boo
 
 export default function TLSCertDashboard() {
   const { selectedContext, selectedNamespace } = useAppStore()
-  const [certs, setCerts]     = useState<TLSCertInfo[]>([])
-  const [loading, setLoading] = useState(false)
-  const [filter, setFilter]   = useState<'all' | 'expired' | 'expiring' | 'valid'>('all')
-  const [search, setSearch]   = useState('')
+  const [certs, setCerts]       = useState<TLSCertInfo[]>([])
+  const [loading, setLoading]   = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [filter, setFilter]     = useState<'all' | 'expired' | 'expiring' | 'valid'>('all')
+  const [search, setSearch]     = useState('')
   const [selected, setSelected] = useState<TLSCertInfo | null>(null)
 
   const load = useCallback(async () => {
     if (!selectedContext) return
     setLoading(true)
+    setLoadError(null)
     try {
       const ns = selectedNamespace === '_all' ? undefined : selectedNamespace ?? undefined
       const data = await window.kubectl.getTLSCerts(ns)
@@ -329,8 +331,9 @@ export default function TLSCertDashboard() {
         if (!a.isExpiringSoon && b.isExpiringSoon) return 1
         return a.daysLeft - b.daysLeft
       }))
-    } catch {
+    } catch (err) {
       setCerts([])
+      setLoadError((err as Error)?.message ?? 'Failed to load TLS certificates')
     } finally {
       setLoading(false)
     }
@@ -351,7 +354,7 @@ export default function TLSCertDashboard() {
       const q = search.toLowerCase()
       return c.secretName.toLowerCase().includes(q)
         || c.namespace.toLowerCase().includes(q)
-        || c.commonName.toLowerCase().includes(q)
+        || (c.commonName ?? '').toLowerCase().includes(q)
         || (c.dnsNames ?? []).some(d => d.toLowerCase().includes(q))
     }
     return true
@@ -424,6 +427,16 @@ export default function TLSCertDashboard() {
         <div className="flex-1 flex items-center justify-center gap-3 text-slate-600">
           <div className="w-4 h-4 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
           <span className="text-xs font-bold">Loading certificates…</span>
+        </div>
+      ) : loadError ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex items-center gap-3 px-5 py-4 rounded-xl bg-red-500/[0.08] border border-red-500/20 max-w-md">
+            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+            <div>
+              <p className="text-[11px] font-black text-red-400">Failed to load certificates</p>
+              <p className="text-[10px] text-red-400/60 mt-0.5">{loadError}</p>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="flex flex-1 overflow-hidden">

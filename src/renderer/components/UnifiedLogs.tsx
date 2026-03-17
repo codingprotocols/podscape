@@ -2,6 +2,21 @@ import React, { useEffect, useState, useRef } from 'react'
 import { useAppStore } from '../store'
 import { Search, Play, Square, Trash2, Terminal } from 'lucide-react'
 
+/**
+ * Exported for unit testing: given a map of active stream IDs, determines
+ * whether the streaming state should be reset to false (all pods failed).
+ */
+export function shouldResetStreaming(streamIds: Record<string, string>): boolean {
+  return Object.keys(streamIds).length === 0
+}
+
+/**
+ * Exported for unit testing: escapes a string for use in a RegExp.
+ */
+export function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 interface LogEntry {
   id: string
   podName: string
@@ -68,14 +83,28 @@ export default function UnifiedLogs(): JSX.Element {
     }
   }, [])
 
+  // Issue 3 fix: clear selected pods and stop all streams when context changes
+  useEffect(() => {
+    const cleanup = async () => {
+      for (const sid of Object.values(streamIds.current)) {
+        await window.kubectl.stopLogs(sid)
+      }
+      streamIds.current = {}
+      setSelectedPods([])
+      setLogs([])
+      setIsStreaming(false)
+    }
+    cleanup()
+  }, [selectedContext])
+
   useEffect(() => {
     const syncPods = async () => {
       const existingPodNames = new Set(pods.map(p => p.metadata.name))
       const removedPods = selectedPods.filter(name => !existingPodNames.has(name))
-      
+
       if (removedPods.length > 0) {
         setSelectedPods(prev => prev.filter(name => existingPodNames.has(name)))
-        
+
         // Stop streams for removed pods
         for (const name of removedPods) {
           if (streamIds.current[name]) {
@@ -105,11 +134,13 @@ export default function UnifiedLogs(): JSX.Element {
         const podName = selectedPods[i]
         const pod = pods.find(p => p.metadata.name === podName)
         if (!pod) continue
-        
+
         const namespace = pod.metadata.namespace || 'default'
-        const containerName = pod.spec.containers[0].name
+        // Issue 2 fix: guard against empty containers array
+        const containerName = pod.spec.containers[0]?.name
+        if (!containerName) continue
         const color = POD_COLORS[i % POD_COLORS.length]
-        
+
         try {
             const sid = await window.kubectl.streamLogs(
                 selectedContext, namespace, podName, containerName,
@@ -131,6 +162,11 @@ export default function UnifiedLogs(): JSX.Element {
         } catch (err) {
             console.error(`Failed to stream logs for ${podName}:`, err)
         }
+    }
+
+    // Issue 2 fix: if no streams were started (all failed), reset streaming state
+    if (Object.keys(streamIds.current).length === 0) {
+      setIsStreaming(false)
     }
   }
 
@@ -283,7 +319,7 @@ export default function UnifiedLogs(): JSX.Element {
               </span>
               <span className="text-slate-300 break-all">
                 {searchTerm ? (
-                  l.message.split(new RegExp(`(${searchTerm})`, 'gi')).map((part, i) => 
+                  l.message.split(new RegExp(`(${escapeRegExp(searchTerm)})`, 'gi')).map((part, i) =>
                     part.toLowerCase() === searchTerm.toLowerCase() 
                       ? <span key={i} className="bg-blue-500/40 text-white px-0.5 rounded-sm">{part}</span> 
                       : <span key={i}>{part}</span>

@@ -138,7 +138,6 @@ export default function IngressClassDetail({ ic }: { ic: KubeIngressClass }) {
                             ) : yaml !== null ? (
                                 <YAMLViewer editable
                                     content={yaml}
-                                    editable
                                     onSave={async (updated) => {
                                         await applyYAML(updated)
                                         refresh()

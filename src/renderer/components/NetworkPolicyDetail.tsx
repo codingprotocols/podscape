@@ -162,7 +162,6 @@ export default function NetworkPolicyDetail({ np }: { np: KubeNetworkPolicy }) {
                             ) : yaml !== null ? (
                                 <YAMLViewer editable
                                     content={yaml}
-                                    editable
                                     onSave={async (updated) => {
                                         await applyYAML(updated)
                                         refresh()

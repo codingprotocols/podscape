@@ -152,7 +152,6 @@ export default function SADetail({ sa }: { sa: KubeServiceAccount }) {
                             ) : yaml !== null ? (
                                 <YAMLViewer editable
                                     content={yaml}
-                                    editable
                                     onSave={async (updated) => {
                                         await applyYAML(updated)
                                         refresh()

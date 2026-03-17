@@ -154,7 +154,8 @@ export default function Sidebar(): JSX.Element {
     section, setSection,
     pods, deployments, events,
     navWidth, setNavWidth,
-    prodContexts, setProdContexts
+    prodContexts, setProdContexts,
+    contextSwitchStatus,
   } = useAppStore()
 
   const [isResizing, setIsResizing] = useState(false)
@@ -287,11 +288,16 @@ export default function Sidebar(): JSX.Element {
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
           <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Connected</p>
           {selectedContext ? (
-            <div className="flex items-center gap-2.5 min-w-0">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)] shrink-0 animate-pulse" />
-              <span className="text-[13px] font-bold text-slate-100 truncate leading-none">
-                {selectedContext}
-              </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${contextSwitchStatus ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.7)] animate-pulse' : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)] animate-pulse'}`} />
+                <span className="text-[13px] font-bold text-slate-100 truncate leading-none">
+                  {selectedContext}
+                </span>
+              </div>
+              {contextSwitchStatus && (
+                <p className="text-[10px] text-amber-400/80 font-medium mt-1 ml-4.5 truncate">{contextSwitchStatus}</p>
+              )}
             </div>
           ) : (
             <span className="text-[11px] text-slate-500 font-bold italic">Offline</span>

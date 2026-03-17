@@ -5,6 +5,13 @@ import { SIDECAR_HOST } from '../common/constants'
 
 const activeStreams = new Map<string, any>()
 
+export function cancelAllExecStreams(): void {
+  for (const [id, ws] of activeStreams) {
+    try { ws.close() } catch {}
+    activeStreams.delete(id)
+  }
+}
+
 export function registerTerminalHandlers(): void {
   // ── Exec into container ───────────────────────────────────────────────────
 

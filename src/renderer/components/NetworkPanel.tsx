@@ -1123,6 +1123,15 @@ export default function NetworkPanel(): JSX.Element {
     return { nodes, edges, namespaces: nss }
   }, [rawGraph, visibleKinds])
 
+  // O(n) single-pass count map so KindPill badges don't each scan rawGraph.nodes
+  const kindCounts = useMemo(() =>
+    rawGraph.nodes.reduce((acc, n) => {
+      acc[n.kind] = (acc[n.kind] ?? 0) + 1
+      return acc
+    }, {} as Record<NodeKind, number>),
+    [rawGraph.nodes]
+  )
+
   const toggleKind = (kind: NodeKind) => {
     setVisibleKinds(prev => {
       const next = new Set(prev)
@@ -1212,7 +1221,7 @@ export default function NetworkPanel(): JSX.Element {
         <div className="flex items-center gap-1.5 pl-3 border-l border-slate-200 dark:border-slate-700 py-2">
           {KIND_DEFS.map(({ kind, color, label }) => (
             <KindPill key={kind} color={color} label={label}
-              count={rawGraph.nodes.filter(n => n.kind === kind).length}
+              count={kindCounts[kind] ?? 0}
               active={visibleKinds.has(kind)}
               onToggle={() => toggleKind(kind)}
             />

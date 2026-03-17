@@ -28,14 +28,17 @@ export default function SettingsPanel(): JSX.Element {
   const [showEditor, setShowEditor] = useState(false)
 
   useEffect(() => {
-    window.settings.get().then(s => setForm({ ...s, prodContexts: s.prodContexts ?? prodContexts, prometheusUrls: (s as any).prometheusUrls ?? {} })).catch(() => {
+    window.settings.get().then(s => setForm({ ...s, prodContexts: s.prodContexts ?? prodContexts, prometheusUrls: s.prometheusUrls ?? {} })).catch(err => {
+      console.error('[SettingsPanel] Failed to load settings:', err)
       setForm(f => ({ ...f, prodContexts }))
     })
     window.kubeconfig.get().then(({ path, content }) => {
       setKubeconfigPath(path)
       setKubeconfigContent(content)
       setKubeconfigOriginal(content)
-    }).catch(() => { })
+    }).catch(err => {
+      console.error('[SettingsPanel] Failed to load kubeconfig:', err)
+    })
   }, [])
 
   // Keep form.theme in sync with store theme
@@ -47,7 +50,7 @@ export default function SettingsPanel(): JSX.Element {
     setError(null)
     setSaved(false)
     try {
-      await window.settings.set(form as any)
+      await window.settings.set(form)
       // Apply theme change immediately
       if (form.theme === 'light' || form.theme === 'dark') setTheme(form.theme)
       setSaved(true)
@@ -326,8 +329,10 @@ export default function SettingsPanel(): JSX.Element {
                           setProbing(true)
                           try {
                             const current = await window.settings.get()
-                            await window.settings.set({ ...current, prometheusUrls: form.prometheusUrls } as any)
-                          } catch { /* ignore */ }
+                            await window.settings.set({ ...current, prometheusUrls: form.prometheusUrls })
+                          } catch (err) {
+                            console.error('[SettingsPanel] Failed to save Prometheus URL:', err)
+                          }
                           await probePrometheus()
                           setProbing(false)
                         }}

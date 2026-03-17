@@ -69,6 +69,7 @@ declare global {
                 onChunk: (chunk: string) => void, onEnd: () => void
             ) => Promise<string>
             stopLogs: (streamId: string) => Promise<void>
+            cancelAllStreams: () => Promise<void>
             portForward: (context: string, namespace: string, type: string, name: string, localPort: number, remotePort: number, id: string) => Promise<string>
             stopPortForward: (id: string) => Promise<void>
             onPortForwardReady: (id: string, cb: (msg: string) => void) => () => void

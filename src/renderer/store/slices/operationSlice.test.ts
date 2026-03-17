@@ -120,6 +120,31 @@ describe('operationSlice', () => {
         expect(updated?.status).toBe('active')
     })
 
+    // ── Error / rejection paths ───────────────────────────────────────────────
+
+    it('scaleDeployment propagates kubectl error without corrupting store', async () => {
+        windowMock.kubectl.scale.mockRejectedValue(new Error('scale failed'))
+        const slice = createOperationSlice(set, get, {} as any)
+        await expect(slice.scaleDeployment('dep1', 5)).rejects.toThrow('scale failed')
+        // loadSection must NOT have been called — caller handles error display
+        expect(state.loadSection).not.toHaveBeenCalled()
+    })
+
+    it('rolloutRestart propagates kubectl error', async () => {
+        windowMock.kubectl.rolloutRestart.mockRejectedValue(new Error('rollout error'))
+        const slice = createOperationSlice(set, get, {} as any)
+        await expect(slice.rolloutRestart('deployment', 'dep1')).rejects.toThrow('rollout error')
+    })
+
+    it('deleteResource propagates kubectl error and does not clear selectedResource', async () => {
+        windowMock.kubectl.deleteResource.mockRejectedValue(new Error('delete error'))
+        const slice = createOperationSlice(set, get, {} as any)
+        await expect(slice.deleteResource('pod', 'pod1')).rejects.toThrow('delete error')
+        // selectedResource must not have been cleared — the resource still exists
+        expect(set).not.toHaveBeenCalledWith({ selectedResource: null })
+        expect(state.loadSection).not.toHaveBeenCalled()
+    })
+
     it('onPortForwardExit callback removes entry and cleans up unsubscribers', () => {
         let exitCb: (() => void) | undefined
         windowMock.kubectl.onPortForwardExit.mockImplementationOnce((_id: string, cb: () => void) => {

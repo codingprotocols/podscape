@@ -6,23 +6,21 @@ import { FileCode, X, Activity, RefreshCw, Zap, Server } from 'lucide-react'
 import YAMLViewer from './YAMLViewer'
 import AnalysisView from './AnalysisView'
 import OwnerChain from './OwnerChain'
+import { useYAMLEditor } from '../hooks/useYAMLEditor'
 
 interface Props { statefulSet: KubeStatefulSet }
 
 type Tab = 'overview' | 'events' | 'analysis'
 
 export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Element {
-  const { rolloutRestart, getYAML, applyYAML, refresh, selectedContext, selectedNamespace, scanResource, scanResults, isScanning } = useAppStore()
+  const { rolloutRestart, selectedContext, selectedNamespace, scanResource, scanResults, isScanning } = useAppStore()
+  const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const [tab, setTab] = useState<Tab>('overview')
   const [showScale, setShowScale] = useState(false)
   const [scaleVal, setScaleVal] = useState(String(s.spec.replicas ?? 1))
   const [scaleLoading, setScaleLoading] = useState(false)
   const [scaleMsg, setScaleMsg] = useState('')
   const [restartMsg, setRestartMsg] = useState('')
-
-  const [yaml, setYaml] = useState<string | null>(null)
-  const [yamlLoading, setYamlLoading] = useState(false)
-  const [yamlError, setYamlError] = useState<string | null>(null)
 
   const [events, setEvents] = useState<KubeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
@@ -59,28 +57,6 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
     setTimeout(() => setRestartMsg(''), 5000)
   }
 
-  const handleViewYAML = async () => {
-    setYaml(null); setYamlError(null); setYamlLoading(true)
-    try {
-      const content = await getYAML('statefulset', s.metadata.name, false, s.metadata.namespace)
-      setYaml(content)
-    } catch (err) {
-      setYamlError((err as Error).message ?? 'Failed to fetch YAML')
-    } finally {
-      setYamlLoading(false)
-    }
-  }
-
-  const handleApplyYAML = async (newYaml: string) => {
-    try {
-      await applyYAML(newYaml)
-      refresh()
-      setYaml(null)
-    } catch (err) {
-      throw err
-    }
-  }
-
   const loadEvents = async () => {
     if (!selectedContext) return
     setEventsLoading(true)
@@ -112,7 +88,7 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={handleViewYAML}
+              onClick={() => openYAML('statefulset', s.metadata.name, false, s.metadata.namespace)}
               disabled={yamlLoading}
               className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
             >
@@ -277,7 +253,7 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
               </div>
               <button
                 type="button"
-                onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }}
+                onClick={closeYAML}
                 className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors focus:outline-none"
               >
                 <X size={20} strokeWidth={2.5} />
@@ -299,7 +275,7 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
               ) : yaml !== null ? (
                 <YAMLViewer editable
                   content={yaml}
-                  onSave={handleApplyYAML}
+                  onSave={applyYAML}
                 />
               ) : null}
             </div>

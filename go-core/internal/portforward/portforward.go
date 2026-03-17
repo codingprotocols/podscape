@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"sync"
+	"time"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -27,9 +28,12 @@ type ForwardRequest struct {
 
 type PortForwardManager struct {
 	sync.Mutex
-	Forwards map[string]*ForwardRequest
+	Forwards  map[string]*ForwardRequest
 	Clientset kubernetes.Interface
 	Config    *rest.Config
+	// runForwardFn replaces the real runForward implementation when set.
+	// Used in tests to simulate tunnel behaviour without a real Kubernetes server.
+	runForwardFn func(req *ForwardRequest, errCh chan<- error) error
 }
 
 func NewManager(clientset kubernetes.Interface, config *rest.Config) *PortForwardManager {
@@ -40,6 +44,10 @@ func NewManager(clientset kubernetes.Interface, config *rest.Config) *PortForwar
 	}
 }
 
+// ReadyTimeout is the maximum time StartForward will wait for a tunnel to become ready.
+// Override in tests to avoid 30-second delays.
+var ReadyTimeout = 30 * time.Second
+
 func (m *PortForwardManager) StartForward(id, namespace, podName string, localPort, remotePort int) error {
 	m.Lock()
 	if _, ok := m.Forwards[id]; ok {
@@ -49,6 +57,7 @@ func (m *PortForwardManager) StartForward(id, namespace, podName string, localPo
 
 	stopCh := make(chan struct{})
 	readyCh := make(chan struct{})
+	errCh := make(chan error, 1)
 
 	req := &ForwardRequest{
 		Namespace:  namespace,
@@ -62,9 +71,12 @@ func (m *PortForwardManager) StartForward(id, namespace, podName string, localPo
 	m.Forwards[id] = req
 	m.Unlock()
 
+	runFn := m.runForward
+	if m.runForwardFn != nil {
+		runFn = m.runForwardFn
+	}
 	go func() {
-		err := m.runForward(req)
-		if err != nil {
+		if err := runFn(req, errCh); err != nil {
 			fmt.Printf("Port forward error for %s: %v\n", id, err)
 		}
 		m.Lock()
@@ -72,7 +84,25 @@ func (m *PortForwardManager) StartForward(id, namespace, podName string, localPo
 		m.Unlock()
 	}()
 
-	return nil
+	// Block until the tunnel is ready, fails, or times out.
+	// This ensures the HTTP caller only sees 200 when the tunnel is actually up.
+	select {
+	case <-readyCh:
+		return nil
+	case err := <-errCh:
+		m.Lock()
+		delete(m.Forwards, id)
+		m.Unlock()
+		return err
+	case <-time.After(ReadyTimeout):
+		m.Lock()
+		if r, ok := m.Forwards[id]; ok {
+			close(r.StopCh)
+			delete(m.Forwards, id)
+		}
+		m.Unlock()
+		return fmt.Errorf("port forward %s: tunnel did not become ready within %s", id, ReadyTimeout)
+	}
 }
 
 func (m *PortForwardManager) StopForward(id string) {
@@ -115,17 +145,19 @@ func (m *PortForwardManager) UpdateClients(clientset kubernetes.Interface, confi
 	m.Config = config
 }
 
-func (m *PortForwardManager) runForward(req *ForwardRequest) error {
+func (m *PortForwardManager) runForward(req *ForwardRequest, errCh chan<- error) error {
 	path := fmt.Sprintf("/api/v1/namespaces/%s/pods/%s/portforward", req.Namespace, req.PodName)
 	hostIP := req.restConfig.Host
 	u, err := url.Parse(hostIP)
 	if err != nil {
+		errCh <- err
 		return err
 	}
 	u.Path = path
 
 	transport, upgrader, err := spdy.RoundTripperFor(req.restConfig)
 	if err != nil {
+		errCh <- err
 		return err
 	}
 
@@ -135,10 +167,25 @@ func (m *PortForwardManager) runForward(req *ForwardRequest) error {
 
 	pf, err := portforward.New(dialer, ports, req.StopCh, req.ReadyCh, os.Stdout, os.Stderr)
 	if err != nil {
+		errCh <- err
 		return err
 	}
 
-	return pf.ForwardPorts()
+	err = pf.ForwardPorts()
+	// If ReadyCh was never signaled, ForwardPorts failed before the tunnel came up.
+	// Propagate to StartForward so it can unblock and return the error.
+	select {
+	case <-req.ReadyCh:
+		// ReadyCh was already signaled — this is a normal teardown, StartForward already returned.
+	default:
+		if err != nil {
+			select {
+			case errCh <- err:
+			default: // StartForward already timed out and cleaned up.
+			}
+		}
+	}
+	return err
 }
 
 var Manager *PortForwardManager
