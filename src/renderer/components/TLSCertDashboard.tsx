@@ -54,9 +54,9 @@ function OverviewPanel({ certs }: { certs: TLSCertInfo[] }) {
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      <div className="px-5 py-4 border-b border-white/[0.05] shrink-0 flex items-center justify-between">
-        <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-600">Overview</p>
-        <Info className="w-3 h-3 text-slate-600" />
+      <div className="px-5 py-4 border-b border-slate-200 dark:border-white/[0.05] shrink-0 flex items-center justify-between">
+        <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-500 dark:text-slate-600">Overview</p>
+        <Info className="w-3 h-3 text-slate-400 dark:text-slate-600" />
       </div>
 
       <div className="px-5 py-5 flex flex-col gap-5">
@@ -156,15 +156,15 @@ function CertDetail({ cert, onClose }: { cert: TLSCertInfo; onClose: () => void 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
       {/* top bar */}
-      <div className="flex items-center justify-between px-5 py-3 shrink-0 border-b border-white/[0.05]">
-        <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-600">Certificate</p>
-        <button onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-600 hover:text-slate-300 hover:bg-white/5 transition-all">
+      <div className="flex items-center justify-between px-5 py-3 shrink-0 border-b border-slate-200 dark:border-white/[0.05]">
+        <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-500 dark:text-slate-600">Certificate</p>
+        <button onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-400 dark:text-slate-600 hover:text-slate-900 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-all">
           <X className="w-4 h-4" />
         </button>
       </div>
 
       {/* hero */}
-      <div className="px-5 pt-5 pb-4 border-b border-white/[0.05]">
+      <div className="px-5 pt-5 pb-4 border-b border-slate-200 dark:border-white/[0.05]">
         <div className="flex items-start justify-between mb-2">
           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border ${st.badge}`}>
             {st.icon}
@@ -178,13 +178,13 @@ function CertDetail({ cert, onClose }: { cert: TLSCertInfo; onClose: () => void 
           )}
         </div>
 
-        <p className="font-mono text-sm font-bold text-white break-all leading-tight">{cert.secretName}</p>
+        <p className="font-mono text-sm font-bold text-slate-900 dark:text-white break-all leading-tight">{cert.secretName}</p>
         <p className="text-[10px] text-slate-500 font-mono mt-0.5">{cert.namespace}</p>
 
         {/* lifetime bar */}
         {lifetimePct !== null && (
           <div className="mt-4">
-            <div className="relative h-2 rounded-full bg-white/[0.07] overflow-visible">
+            <div className="relative h-2 rounded-full bg-slate-100 dark:bg-white/[0.07] overflow-visible">
               {/* filled portion */}
               <div
                 className={`absolute inset-y-0 left-0 rounded-full ${cert.isExpired ? 'bg-red-500' : cert.isExpiringSoon ? 'bg-amber-400' : 'bg-emerald-500'}`}
@@ -207,26 +207,26 @@ function CertDetail({ cert, onClose }: { cert: TLSCertInfo; onClose: () => void 
 
       {/* identity */}
       {!cert.error && (
-        <div className="px-5 py-4 border-b border-white/[0.05]">
-          <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-600 mb-3">Identity</p>
+        <div className="px-5 py-4 border-b border-slate-200 dark:border-white/[0.05]">
+          <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-500 dark:text-slate-600 mb-3">Identity</p>
           <div className="flex flex-col gap-2">
             <div className="flex items-start gap-3">
-              <span className="text-[10px] text-slate-600 w-16 shrink-0 pt-0.5">Common Name</span>
-              <span className="font-mono text-[10px] text-slate-300 flex-1 break-all">{cert.commonName || '—'}</span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-600 w-16 shrink-0 pt-0.5">Common Name</span>
+              <span className="font-mono text-[10px] text-slate-600 dark:text-slate-300 flex-1 break-all">{cert.commonName || '—'}</span>
             </div>
             {cert.dnsNames?.length > 0 && (
               <div className="flex items-start gap-3">
-                <span className="text-[10px] text-slate-600 w-16 shrink-0 pt-0.5">SANs</span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-600 w-16 shrink-0 pt-0.5">SANs</span>
                 <div className="flex flex-wrap gap-1 flex-1">
                   {cert.dnsNames.map(d => (
-                    <span key={d} className="px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/[0.06] font-mono text-[9px] text-slate-400">{d}</span>
+                    <span key={d} className="px-1.5 py-0.5 rounded bg-slate-50 dark:bg-white/[0.04] border border-slate-100 dark:border-white/[0.06] font-mono text-[9px] text-slate-600 dark:text-slate-400">{d}</span>
                   ))}
                 </div>
               </div>
             )}
             <div className="flex items-start gap-3">
-              <span className="text-[10px] text-slate-600 w-16 shrink-0 pt-0.5">Issuer</span>
-              <span className="text-[10px] text-slate-400 flex-1 break-all">{cert.issuer || '—'}</span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-600 w-16 shrink-0 pt-0.5">Issuer</span>
+              <span className="text-[10px] text-slate-600 dark:text-slate-400 flex-1 break-all">{cert.issuer || '—'}</span>
             </div>
           </div>
         </div>
@@ -235,15 +235,15 @@ function CertDetail({ cert, onClose }: { cert: TLSCertInfo; onClose: () => void 
       {/* validity dates */}
       {!cert.error && (
         <div className="px-5 py-4">
-          <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-600 mb-3">Validity Period</p>
-          <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] divide-y divide-white/[0.04]">
+          <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-500 dark:text-slate-600 mb-3">Validity Period</p>
+          <div className="rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.05] divide-y divide-slate-100 dark:divide-white/[0.04]">
             <div className="flex items-center gap-3 px-3 py-2.5">
-              <span className="text-[10px] text-slate-600 w-20 shrink-0">Not Before</span>
-              <span className="font-mono text-[10px] text-slate-300">{fmtDate(cert.notBefore)}</span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-600 w-20 shrink-0">Not Before</span>
+              <span className="font-mono text-[10px] text-slate-600 dark:text-slate-300">{fmtDate(cert.notBefore)}</span>
             </div>
             <div className="flex items-center gap-3 px-3 py-2.5">
-              <span className="text-[10px] text-slate-600 w-20 shrink-0">Not After</span>
-              <span className={`font-mono text-[10px] font-bold ${cert.isExpired ? 'text-red-400' : cert.isExpiringSoon ? 'text-amber-400' : 'text-slate-300'}`}>
+              <span className="text-[10px] text-slate-500 dark:text-slate-600 w-20 shrink-0">Not After</span>
+              <span className={`font-mono text-[10px] font-bold ${cert.isExpired ? 'text-red-400' : cert.isExpiringSoon ? 'text-amber-400' : 'text-slate-600 dark:text-slate-300'}`}>
                 {fmtDate(cert.notAfter)}
               </span>
             </div>
@@ -270,13 +270,13 @@ function CertRow({ cert, selected, onClick }: { cert: TLSCertInfo; selected: boo
   return (
     <tr
       onClick={onClick}
-      className={`cursor-pointer transition-colors ${selected ? 'bg-blue-500/[0.08]' : 'hover:bg-white/[0.03]'}`}
+      className={`cursor-pointer transition-colors ${selected ? 'bg-blue-500/[0.08]' : 'hover:bg-slate-50 dark:hover:bg-white/[0.03]'}`}
     >
       <td className="pl-5 pr-3 py-3">
         <span className={`w-1.5 h-1.5 rounded-full inline-block ${st.dot}`} />
       </td>
       <td className="px-3 py-3 max-w-0">
-        <p className="font-mono text-[11px] font-semibold text-slate-200 truncate">{cert.secretName}</p>
+        <p className="font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-200 truncate">{cert.secretName}</p>
       </td>
       <td className="px-3 py-3 text-[10px] text-slate-500 font-mono whitespace-nowrap">{cert.namespace}</td>
       <td className="px-3 py-3 max-w-0">
@@ -361,7 +361,7 @@ export default function TLSCertDashboard() {
   }), [certs, filter, search])
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 bg-[hsl(var(--bg-dark))] overflow-hidden relative h-full">
+    <div className="flex-1 flex flex-col min-w-0 bg-slate-50 dark:bg-[hsl(var(--bg-dark))] overflow-hidden relative h-full transition-colors duration-200">
 
       <PageHeader
         title="TLS Certificates"
@@ -463,14 +463,14 @@ export default function TLSCertDashboard() {
                   <col style={{ width: '100px' }} />
                 </colgroup>
                 <thead>
-                  <tr className="border-b border-white/[0.05]">
+                  <tr className="border-b border-slate-200 dark:border-white/[0.05]">
                     <th className="pl-5 pr-3 py-2.5" />
                     {['Secret', 'Namespace', 'Common Name', 'Issuer', 'Expires', 'Days Left', 'Status'].map(h => (
-                      <th key={h} className="px-3 py-2.5 text-[9px] font-black uppercase tracking-[0.12em] text-slate-600 text-left">{h}</th>
+                      <th key={h} className="px-3 py-2.5 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-600 text-left">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/[0.03]">
+                <tbody className="divide-y divide-slate-100 dark:divide-white/[0.03]">
                   {filtered.map(cert => (
                     <CertRow
                       key={`${cert.namespace}/${cert.secretName}`}
@@ -487,7 +487,7 @@ export default function TLSCertDashboard() {
           </div>
 
           {/* ── right: detail or overview ───────────────────────────────── */}
-          <div className="border-l border-white/[0.05] overflow-hidden" style={{ width: '35%' }}>
+          <div className="border-l border-slate-200 dark:border-white/[0.05] overflow-hidden" style={{ width: '35%' }}>
             {selected
               ? <CertDetail cert={selected} onClose={() => setSelected(null)} />
               : <OverviewPanel certs={certs} />

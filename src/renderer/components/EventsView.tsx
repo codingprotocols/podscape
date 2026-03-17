@@ -33,7 +33,7 @@ export default function EventsView(): JSX.Element {
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-[hsl(var(--bg-dark))]">
       {/* Sub-header for local filters */}
-      <div className="px-8 py-4 border-b border-slate-100 dark:border-white/5 flex items-center justify-between bg-white/[0.02] shrink-0">
+      <div className="px-8 py-4 border-b border-slate-200 dark:border-white/5 flex items-center justify-between bg-slate-50/50 dark:bg-white/[0.02] shrink-0">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
             <Filter size={12} />
@@ -102,8 +102,8 @@ function EventRow({ event: e }: { event: KubeEvent }) {
       <div className="flex items-start gap-4">
         <div className="shrink-0 mt-1">
           <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider border ${isWarning
-              ? 'bg-orange-500/10 text-orange-400 border-orange-500/20'
-              : 'bg-slate-500/10 text-slate-400 border-slate-500/20'
+              ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20'
+              : 'bg-slate-500/10 text-slate-500 dark:text-slate-400 border-slate-500/20'
             }`}>
             {e.type ?? 'Unknown'}
           </span>

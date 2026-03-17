@@ -99,15 +99,15 @@ export default function SettingsPanel(): JSX.Element {
   const kubeconfigDirty = kubeconfigContent !== kubeconfigOriginal
 
   return (
-    <div className="flex flex-col flex-1 bg-white dark:bg-[hsl(var(--bg-dark))] h-screen overflow-hidden transition-colors duration-200">
+    <div className="flex flex-col flex-1 bg-slate-50 dark:bg-[hsl(var(--bg-dark))] h-screen overflow-hidden transition-colors duration-200">
       {/* Scrollable Content (No PageHeader) */}
       <div className="flex-1 overflow-auto scrollbar-hide">
         <div className="max-w-4xl mx-auto px-8 md:px-12 py-10 space-y-12">
           
           {/* ── Status Bar for Saves ────────────────────────────────────────── */}
-          <div className="flex items-center justify-between sticky top-0 z-10 py-4 mb-4 bg-white/10 backdrop-blur-xl border-b border-white/5 rounded-2xl px-6">
+          <div className="flex items-center justify-between sticky top-0 z-10 py-4 mb-4 bg-white/80 dark:bg-white/10 backdrop-blur-xl border-b border-slate-200 dark:border-white/5 rounded-2xl px-6">
             <div className="min-w-0">
-               <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Application Control</h2>
+               <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Application Control</h2>
             </div>
             <div className="flex items-center gap-4">
               <div className="text-right">
@@ -133,10 +133,10 @@ export default function SettingsPanel(): JSX.Element {
 
           {/* ── Appearance ──────────────────────────────────────────────────── */}
           <section className="space-y-6">
-            <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] flex items-center gap-3">
+            <h3 className="text-[10px] font-bold text-slate-500 dark:text-slate-600 uppercase tracking-[0.2em] flex items-center gap-3">
               <Monitor size={14} />
               Appearance
-              <span className="flex-1 h-px bg-slate-100 dark:bg-white/5" />
+              <span className="flex-1 h-px bg-slate-200 dark:bg-white/5" />
             </h3>
             <div className="grid grid-cols-2 gap-4">
               {(['light', 'dark'] as const).map(t => (

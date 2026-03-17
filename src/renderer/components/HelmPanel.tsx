@@ -94,16 +94,16 @@ function ReleaseDrawer({
   return (
     <div className="flex flex-col w-[520px] min-w-[420px] border-l border-slate-100 dark:border-white/5 glass-heavy h-full shadow-2xl scale-in origin-right z-30">
       {/* Header */}
-      <div className="px-6 py-6 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
+      <div className="px-6 py-6 border-b border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-white/5 shrink-0">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-black text-slate-900 dark:text-white font-mono truncate tracking-tight uppercase tracking-widest">{release.name}</h3>
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <StatusBadge status={release.status} />
-              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none mt-1">{release.namespace} · REV {release.revision}</span>
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest leading-none mt-1">{release.namespace} · REV {release.revision}</span>
             </div>
           </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 transition-colors">
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 dark:text-slate-500 transition-colors">
             <X size={18} />
           </button>
         </div>
@@ -126,12 +126,12 @@ function ReleaseDrawer({
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-100 dark:border-white/5 shrink-0 bg-white/5">
+      <div className="flex border-b border-slate-200 dark:border-white/5 shrink-0 bg-slate-50 dark:bg-white/5">
         {(['overview', 'history'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-8 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all relative ${tab === t
-              ? 'text-blue-400'
-              : 'text-slate-500 hover:text-slate-300'
+              ? 'text-blue-500 dark:text-blue-400'
+              : 'text-slate-400 hover:text-slate-900 dark:text-slate-500 dark:hover:text-slate-300'
               }`}>
             {t}
             {tab === t && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />}
@@ -270,12 +270,12 @@ function ReleaseDrawer({
               <button
                 type="button"
                 onClick={() => { setValues(null); setValuesError(null); setLoadingValues(false) }}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors focus:outline-none"
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors focus:outline-none"
               >
                 <X size={20} strokeWidth={2.5} />
               </button>
             </div>
-            <div className="flex-1 min-h-0 bg-slate-950">
+            <div className="flex-1 min-h-0 bg-slate-100 dark:bg-slate-950">
               {valuesError ? (
                 <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
                   <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center mb-2">

@@ -51,7 +51,7 @@ function RingChart({
           cx={cx} cy={cy} r={r}
           fill="none"
           stroke="currentColor"
-          className="text-slate-100 dark:text-white/5"
+          className="text-slate-200 dark:text-white/5"
           strokeWidth={stroke}
         />
         {/* Fill */}
@@ -128,9 +128,9 @@ function StatCard({
   const style = accentStyles[accent]
 
   return (
-    <div className="flex flex-col gap-4 p-6 rounded-3xl bg-white/[0.02] border border-white/[0.06] shadow-xl group hover:bg-white/[0.04] hover:border-white/[0.1] transition-all duration-300 relative overflow-hidden">
+    <div className="flex flex-col gap-4 p-6 rounded-3xl bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] shadow-xl group hover:bg-slate-50 dark:hover:bg-white/[0.04] hover:border-slate-300 dark:hover:border-white/[0.1] transition-all duration-300 relative overflow-hidden">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">{label}</span>
+        <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">{label}</span>
         {Icon && (
           <div className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-transform group-hover:scale-110 ${style}`}>
             <Icon size={16} />
@@ -138,9 +138,9 @@ function StatCard({
         )}
       </div>
       <div>
-        <span className="text-3xl font-black tabular-nums leading-none tracking-tighter text-white">{value}</span>
+        <span className="text-3xl font-black tabular-nums leading-none tracking-tighter text-slate-900 dark:text-white">{value}</span>
         {sub && (
-          <p className="text-[10px] font-bold text-slate-500 mt-2.5 truncate max-w-full uppercase tracking-widest">
+          <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mt-2.5 truncate max-w-full uppercase tracking-widest">
             {sub}
           </p>
         )}
@@ -180,7 +180,7 @@ function NodeCard({ node, metrics }: { node: KubeNode; metrics: NodeMetrics | un
         <div className="min-w-0">
           <p className="text-sm font-black text-slate-900 dark:text-white font-mono truncate tracking-tight">{node.metadata.name}</p>
           {internalIP && (
-            <p className="text-[9px] font-black text-slate-500 dark:text-slate-600 font-mono mt-1 tracking-widest uppercase">{internalIP}</p>
+            <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 font-mono mt-1 tracking-widest uppercase">{internalIP}</p>
           )}
         </div>
         <span className={`
@@ -240,7 +240,7 @@ function NodeCard({ node, metrics }: { node: KubeNode; metrics: NodeMetrics | un
 function InfoRow({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
   return (
     <div className="flex items-baseline gap-2">
-      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-600 w-16 shrink-0 uppercase tracking-tighter">{k}</span>
+      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 w-16 shrink-0 uppercase tracking-tighter">{k}</span>
       <span className={`text-[10px] font-bold text-slate-700 dark:text-slate-300 truncate tracking-tight ${mono ? 'font-mono' : ''}`}>{v}</span>
     </div>
   )
@@ -254,37 +254,37 @@ function EventRow({ event: e }: { event: KubeEvent }) {
 
   return (
     <div className={`
-      flex items-start gap-5 px-8 py-5 hover:bg-white/[0.02] transition-all relative group
-      ${isWarning ? 'bg-rose-500/[0.02]' : ''}
+      flex items-start gap-5 px-8 py-5 hover:bg-slate-100 dark:hover:bg-white/[0.02] transition-all relative group
+      ${isWarning ? 'bg-rose-500/5 dark:bg-rose-500/[0.02]' : ''}
     `}>
       {isWarning && <div className="absolute left-0 top-0 bottom-0 w-1 bg-rose-500/40" />}
 
       {/* Type indicator */}
-      <div className={`shrink-0 mt-2 w-2 h-2 rounded-full ${isWarning ? 'bg-rose-500 shadow-[0_0_8px_#f43f5e]' : 'bg-slate-700'}`} />
+      <div className={`shrink-0 mt-2 w-2 h-2 rounded-full ${isWarning ? 'bg-rose-500 shadow-[0_0_8px_#f43f5e]' : 'bg-slate-700 dark:bg-slate-400'}`} />
 
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-3 flex-wrap">
           <span className="text-sm font-black text-slate-900 dark:text-white tracking-tight">{e.reason ?? '—'}</span>
-          <span className="text-[10px] font-black text-slate-500 dark:text-slate-500 font-mono uppercase tracking-[0.2em] bg-white/[0.02] px-2.5 py-0.5 rounded-lg border border-white/5">
+          <span className="text-[10px] font-black text-slate-500 dark:text-slate-500 font-mono uppercase tracking-[0.2em] bg-slate-100 dark:bg-white/[0.02] px-2.5 py-0.5 rounded-lg border border-slate-200 dark:border-white/5">
             {e.involvedObject.kind}
           </span>
           <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 font-mono truncate max-w-[200px]">
             {e.involvedObject.name}
           </span>
           {e.metadata.namespace && (
-            <span className="text-[9px] font-black text-blue-500/50 uppercase tracking-[0.2em]">
+            <span className="text-[9px] font-black text-blue-500/50 dark:text-blue-500/50 uppercase tracking-[0.2em]">
               {e.metadata.namespace}
             </span>
           )}
         </div>
-        <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-2 line-clamp-2 leading-relaxed tracking-tight font-medium group-hover:dark:text-white transition-colors">{e.message ?? ''}</p>
+        <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-2 line-clamp-2 leading-relaxed tracking-tight font-medium group-hover:text-slate-900 dark:group-hover:text-white transition-colors">{e.message ?? ''}</p>
       </div>
 
       {/* Age & Count */}
       <div className="shrink-0 text-right">
         {ts && <span className="text-[10px] font-black text-slate-500 dark:text-slate-600 uppercase tracking-widest">{formatAge(ts)} ago</span>}
         {e.count && e.count > 1 && (
-          <div className="mt-2 inline-flex items-center justify-center px-2 py-0.5 rounded-lg bg-blue-500/10 text-blue-500 text-[10px] font-black tracking-tighter border border-blue-500/10">
+          <div className="mt-2 inline-flex items-center justify-center px-2 py-0.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[10px] font-black tracking-tighter border border-blue-500/10">
             ×{e.count}
           </div>
         )}
@@ -355,7 +355,7 @@ export default function Dashboard(): JSX.Element {
   }, [pods, deployments, nodes, events, nodeMetrics])
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 bg-[hsl(var(--bg-dark))] overflow-hidden relative h-full">
+    <div className="flex-1 flex flex-col min-w-0 bg-slate-50 dark:bg-[hsl(var(--bg-dark))] overflow-hidden relative h-full transition-colors duration-200">
       {/* Scrollable Content (No PageHeader) */}
       <div className="flex-1 overflow-y-auto scrollbar-hide">
         {loadingResources && pods.length === 0 ? (
@@ -363,11 +363,11 @@ export default function Dashboard(): JSX.Element {
             <LoadingAnimation />
           </div>
         ) : (
-          <div className="px-8 py-10 space-y-16">
+          <div className="px-8 py-10 space-y-16 text-slate-900 dark:text-slate-100">
             {/* ── Cluster stats ───────────────────────────────────────────────── */}
             <section>
               <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-6 flex items-center gap-3">
-                <span className="w-6 h-px bg-slate-100 dark:bg-white/5" />
+                <span className="w-6 h-px bg-slate-200 dark:bg-white/5" />
                 Cluster Overview
               </h2>
               <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-5 gap-6">
@@ -414,20 +414,20 @@ export default function Dashboard(): JSX.Element {
               <section className="space-y-6">
                 <div className="flex items-center justify-between">
                   <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] flex items-center gap-3">
-                    <span className="w-6 h-px bg-slate-100 dark:bg-white/5" />
+                    <span className="w-6 h-px bg-slate-200 dark:bg-white/5" />
                     Live Infrastructure Metrics
                   </h2>
                   <PrometheusTimeRangeBar />
                 </div>
                 <div className="grid grid-cols-2 gap-6">
-                  <div className="bg-slate-50 dark:bg-white/[0.02] p-8 rounded-[32px] border border-slate-100 dark:border-white/5 shadow-inner">
+                  <div className="bg-white dark:bg-white/[0.02] p-8 rounded-[32px] border border-slate-100 dark:border-white/5 shadow-inner">
                     <div className="flex items-center gap-3 mb-6">
                        <div className="p-2 rounded-xl bg-blue-500/10 text-blue-500"><Cpu size={16} /></div>
                        <span className="text-[11px] font-black uppercase tracking-widest text-slate-400">Cluster CPU Demand</span>
                     </div>
                     <TimeSeriesChart queries={[clusterCpuQuery()]} title="" unit="m" />
                   </div>
-                  <div className="bg-slate-50 dark:bg-white/[0.02] p-8 rounded-[32px] border border-slate-100 dark:border-white/5 shadow-inner">
+                  <div className="bg-white dark:bg-white/[0.02] p-8 rounded-[32px] border border-slate-100 dark:border-white/5 shadow-inner">
                     <div className="flex items-center gap-3 mb-6">
                        <div className="p-2 rounded-xl bg-purple-500/10 text-purple-500"><Database size={16} /></div>
                        <span className="text-[11px] font-black uppercase tracking-widest text-slate-400">Memory Allocation</span>
@@ -442,7 +442,7 @@ export default function Dashboard(): JSX.Element {
             <section>
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] flex items-center gap-3">
-                  <span className="w-6 h-px bg-slate-100 dark:bg-white/5" />
+                  <span className="w-6 h-px bg-slate-200 dark:bg-white/5" />
                   Compute Resources
                   {nodeMetrics.length === 0 && (
                     <span className="ml-3 text-slate-600 normal-case font-bold tracking-tight">
@@ -471,17 +471,17 @@ export default function Dashboard(): JSX.Element {
             <section className="pb-20">
               <div className="flex items-center justify-between mb-8">
                 <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] flex items-center gap-3">
-                  <span className="w-6 h-px bg-slate-100 dark:bg-white/5" />
+                  <span className="w-6 h-px bg-slate-200 dark:bg-white/5" />
                   Real-time Activity Timeline
                 </h2>
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.3)]" />
-                    <span className="text-[9px] font-black uppercase text-slate-500">Normal</span>
+                    <span className="text-[9px] font-black uppercase text-slate-500 whitespace-nowrap">Normal</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]" />
-                    <span className="text-[9px] font-black uppercase text-slate-500">Warning</span>
+                    <span className="text-[9px] font-black uppercase text-slate-500 whitespace-nowrap">Warning</span>
                   </div>
                 </div>
               </div>
@@ -493,7 +493,7 @@ export default function Dashboard(): JSX.Element {
               {recentEvents.length === 0 && !loadingResources ? (
                 <EmptySection message="No recent cluster activity recorded" />
               ) : (
-                <div className="bg-white/30 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 shadow-2xl rounded-[32px] overflow-hidden divide-y divide-slate-100 dark:divide-white/5">
+                <div className="bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 shadow-2xl rounded-[32px] overflow-hidden divide-y divide-slate-100 dark:divide-white/5">
                   {recentEvents.map(event => {
                     if (!event || !event.metadata) return null
                     return <EventRow key={event.metadata.uid + (event.count || 1)} event={event} />
@@ -529,10 +529,10 @@ function EventTimeline({ events }: { events: (KubeEvent & { _ts: number })[] }) 
   }, [events])
 
   return (
-    <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-[28px] p-8 shadow-inner">
+    <div className="bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 rounded-[28px] p-8 shadow-inner">
       <div className="flex items-center justify-between mb-8 px-2">
         <span className="text-[10px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-[0.3em]">Event Stream Density (Last Hour)</span>
-        <div className="flex items-center gap-1.5 p-1 px-3 rounded-xl bg-white dark:bg-black/20 border border-white/5">
+        <div className="flex items-center gap-1.5 p-1 px-3 rounded-xl bg-slate-100 dark:bg-black/20 border border-slate-200/50 dark:border-white/5">
            <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 tabular-nums">{events.length}</span>
            <span className="text-[9px] font-bold text-slate-500 uppercase">Records tracked</span>
         </div>
@@ -563,10 +563,10 @@ function EventTimeline({ events }: { events: (KubeEvent & { _ts: number })[] }) 
 function EmptySection({ message }: { message: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-24 bg-white dark:bg-white/[0.01] border border-dashed border-slate-200 dark:border-white/10 rounded-[40px] gap-5">
-      <div className="w-16 h-16 rounded-[24px] bg-slate-50 dark:bg-white/[0.03] flex items-center justify-center text-slate-200 dark:text-slate-800 shadow-inner">
+      <div className="w-16 h-16 rounded-[24px] bg-slate-50 dark:bg-white/[0.03] flex items-center justify-center text-slate-300 dark:text-slate-700 shadow-inner">
         <LayoutGrid size={32} />
       </div>
-      <p className="text-[11px] font-black text-slate-400 dark:text-slate-700 uppercase tracking-[0.4em]">{message}</p>
+      <p className="text-[11px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-[0.4em]">{message}</p>
     </div>
   )
 }
