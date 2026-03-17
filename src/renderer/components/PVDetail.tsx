@@ -155,7 +155,6 @@ export default function PVDetail({ pv }: { pv: KubePV }) {
                             ) : yaml !== null ? (
                                 <YAMLViewer editable
                                     content={yaml}
-                                    editable
                                     onSave={async (updated) => {
                                         await applyYAML(updated)
                                         refresh()

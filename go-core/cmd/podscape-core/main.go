@@ -120,9 +120,11 @@ func main() {
 	// GitOps Panel
 	http.HandleFunc("/gitops", handlers.HandleGitOps)
 
-	// Build the middleware chain (innermost → outermost):
-	//   mux → [token auth] → CORS
-	// CORS is outermost so every response, including auth rejections, gets the header.
+	// Build the middleware chain: mux → [token auth]
+	// CORS headers are intentionally omitted — the sidecar binds to 127.0.0.1
+	// and is only accessed by the Electron renderer (file:// / localhost origin).
+	// A wildcard CORS header would allow any webpage the user visits to send
+	// requests to the sidecar, defeating the token-auth layer.
 	var handler http.Handler = http.DefaultServeMux
 	if *token != "" {
 		tok := *token
@@ -137,11 +139,6 @@ func main() {
 			inner.ServeHTTP(w, r)
 		})
 	}
-	withCORS := handler
-	handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		withCORS.ServeHTTP(w, r)
-	})
 
 	// Initialize the portforward manager early (with nil clients) so handlers
 	// like HandleSwitchContext can safely call Manager.StopAll() immediately.

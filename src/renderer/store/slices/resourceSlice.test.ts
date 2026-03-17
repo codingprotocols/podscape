@@ -1,5 +1,6 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
-import { createResourceSlice } from './resourceSlice'
+import { createResourceSlice, SECTION_CONFIG, sectionClearState } from './resourceSlice'
+import { createClusterSlice } from './clusterSlice'
 import { setupMocks } from './test-utils'
 
 const { windowMock } = setupMocks()
@@ -148,6 +149,48 @@ describe('resourceSlice', () => {
 
         // _all means "all namespaces" — translated to null before the API call
         expect(windowMock.kubectl.getPods).toHaveBeenCalledWith('ctx1', null)
+    })
+
+    // ── SECTION_CONFIG exhaustiveness ─────────────────────────────────────────
+
+    it('every SECTION_CONFIG stateKey maps to a key in the slice initial state', () => {
+        // SECTION_CONFIG spans both resourceSlice (namespaced + most cluster-scoped
+        // resources) and clusterSlice (namespaces). Merge both initial states so the
+        // check covers the full AppStore shape relevant to resource sections.
+        const resourceState = createResourceSlice(set, get, {} as any)
+        const clusterState = createClusterSlice(set, get, {} as any)
+        const combinedState = { ...resourceState, ...clusterState }
+
+        const missing: string[] = []
+        for (const [section, config] of Object.entries(SECTION_CONFIG)) {
+            if (!(config!.stateKey in combinedState)) {
+                missing.push(`${section} → stateKey "${config!.stateKey}" not found in slice`)
+            }
+        }
+        if (missing.length > 0) {
+            throw new Error(`SECTION_CONFIG stateKey mismatches:\n  ${missing.join('\n  ')}`)
+        }
+    })
+
+    it('sectionClearState contains an entry for every SECTION_CONFIG key', () => {
+        const configKeys = Object.keys(SECTION_CONFIG)
+        const clearKeys = Object.keys(sectionClearState)
+
+        // Every stateKey in SECTION_CONFIG must be in sectionClearState
+        for (const [section, config] of Object.entries(SECTION_CONFIG)) {
+            if (!clearKeys.includes(config!.stateKey)) {
+                throw new Error(
+                    `sectionClearState is missing stateKey "${config!.stateKey}" for section "${section}"`
+                )
+            }
+        }
+        // sectionClearState must not have extra keys beyond SECTION_CONFIG
+        const stateKeys = configKeys.map(k => SECTION_CONFIG[k as keyof typeof SECTION_CONFIG]!.stateKey)
+        for (const key of clearKeys) {
+            if (!stateKeys.includes(key)) {
+                throw new Error(`sectionClearState has unexpected key "${key}" not in SECTION_CONFIG`)
+            }
+        }
     })
 
     // ── scanSecurity ──────────────────────────────────────────────────────────

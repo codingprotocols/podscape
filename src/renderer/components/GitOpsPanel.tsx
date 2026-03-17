@@ -446,6 +446,7 @@ export default function GitOpsPanel() {
   const { selectedContext, selectedNamespace } = useAppStore()
   const [data, setData] = useState<GitOpsResponse | null>(null)
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [kindFilter, setKindFilter] = useState('all')
   const [selected, setSelected] = useState<GitOpsResource | null>(null)
@@ -453,11 +454,13 @@ export default function GitOpsPanel() {
   const load = useCallback(async () => {
     if (!selectedContext) return
     setLoading(true)
+    setLoadError(null)
     try {
       const ns = selectedNamespace === '_all' ? undefined : selectedNamespace ?? undefined
       setData(await window.kubectl.getGitOps(ns))
-    } catch {
-      setData({ fluxDetected: false, argoDetected: false, resources: [] })
+    } catch (err) {
+      setData(null)
+      setLoadError((err as Error)?.message ?? 'Failed to load GitOps resources')
     } finally {
       setLoading(false)
     }
@@ -479,7 +482,7 @@ export default function GitOpsPanel() {
       || r.kind.toLowerCase().includes(q)
   }), [resources, kindFilter, search])
 
-  const noControllers = data !== null && !data.fluxDetected && !data.argoDetected && resources.length === 0
+  const noControllers = data !== null && !loadError && !data.fluxDetected && !data.argoDetected && resources.length === 0
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-[hsl(var(--bg-dark))] overflow-hidden relative h-full">
@@ -579,6 +582,16 @@ export default function GitOpsPanel() {
         <div className="flex-1 flex items-center justify-center gap-3 text-slate-600">
           <div className="w-4 h-4 border-2 border-slate-700 border-t-sky-500 rounded-full animate-spin" />
           <span className="text-xs font-bold">Detecting GitOps controllers…</span>
+        </div>
+      ) : loadError ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex items-center gap-3 px-5 py-4 rounded-xl bg-red-500/[0.08] border border-red-500/20 max-w-md">
+            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+            <div>
+              <p className="text-[11px] font-black text-red-400">Failed to load GitOps resources</p>
+              <p className="text-[10px] text-red-400/60 mt-0.5">{loadError}</p>
+            </div>
+          </div>
         </div>
       ) : noControllers ? (
         <div className="flex-1 flex items-center justify-center">

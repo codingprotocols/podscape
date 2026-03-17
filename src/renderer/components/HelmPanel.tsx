@@ -46,6 +46,7 @@ function ReleaseDrawer({
   const [valuesError, setValuesError] = useState<string | null>(null)
   const [history, setHistory] = useState<HelmHistoryEntry[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null)
   const [rollingBack, setRollingBack] = useState(false)
   const [rbError, setRbError] = useState<string | null>(null)
@@ -53,9 +54,10 @@ function ReleaseDrawer({
   useEffect(() => {
     if (tab === 'history' && history.length === 0) {
       setLoadingHistory(true)
+      setHistoryError(null)
       window.helm.history(context, release.namespace, release.name)
         .then(raw => setHistory(raw as HelmHistoryEntry[]))
-        .catch(() => setHistory([]))
+        .catch(err => setHistoryError((err as Error)?.message ?? 'Failed to load release history'))
         .finally(() => setLoadingHistory(false))
     }
   }, [tab])
@@ -181,6 +183,8 @@ function ReleaseDrawer({
               <div className="flex items-center justify-center py-20">
                 <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
               </div>
+            ) : historyError ? (
+              <p className="text-xs text-red-400 italic text-center py-20 uppercase tracking-widest opacity-60">{historyError}</p>
             ) : history.length === 0 ? (
               <p className="text-xs text-slate-500 italic text-center py-20 uppercase tracking-widest opacity-40">No history available</p>
             ) : (

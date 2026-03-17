@@ -184,6 +184,7 @@ const kubectl = {
     return ipcRenderer.invoke('kubectl:streamLogs', context, namespace, pod, container)
   },
   stopLogs: (streamId: string) => ipcRenderer.invoke('kubectl:stopLogs', streamId),
+  cancelAllStreams: (): Promise<void> => ipcRenderer.invoke('kubectl:cancelAllStreams'),
 
   // File transfer (kubectl cp)
   copyToContainer: (
@@ -347,7 +348,10 @@ const sidecar = {
 
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
+    contextBridge.exposeInMainWorld('electron', {
+      ...electronAPI,
+      shell: { openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url) },
+    })
     contextBridge.exposeInMainWorld('kubectl', kubectl)
     contextBridge.exposeInMainWorld('helm', helm)
     contextBridge.exposeInMainWorld('exec', exec)
@@ -360,7 +364,10 @@ if (process.contextIsolated) {
   }
 } else {
   // @ts-ignore
-  window.electron = electronAPI
+  window.electron = {
+    ...electronAPI,
+    shell: { openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url) },
+  }
   // @ts-ignore
   window.kubectl = kubectl
   // @ts-ignore

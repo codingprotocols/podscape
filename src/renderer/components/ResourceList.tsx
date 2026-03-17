@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { useAppStore } from '../store'
 import { useShallow } from 'zustand/react/shallow'
 import { SECTION_CONFIG } from '../store/slices/resourceSlice'
@@ -45,7 +46,7 @@ export const SECTION_LABELS: Record<string, string> = {
 
 // ─── Row renderers ────────────────────────────────────────────────────────────
 
-function PodRow({ pod }: { pod: KubePod }) {
+const PodRow = React.memo(function PodRow({ pod }: { pod: KubePod }) {
   const phase = pod.status.phase ?? 'Unknown'
   const restarts = totalRestarts(pod)
   return (
@@ -63,9 +64,9 @@ function PodRow({ pod }: { pod: KubePod }) {
       <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(pod.metadata.creationTimestamp)}</td>
     </>
   )
-}
+})
 
-function DeploymentRow({ d }: { d: KubeDeployment }) {
+const DeploymentRow = React.memo(function DeploymentRow({ d }: { d: KubeDeployment }) {
   const desired = d.spec.replicas ?? 0
   const ready = d.status.readyReplicas ?? 0
   const ok = ready >= desired
@@ -79,7 +80,7 @@ function DeploymentRow({ d }: { d: KubeDeployment }) {
       <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(d.metadata.creationTimestamp)}</td>
     </>
   )
-}
+})
 
 function StatefulSetRow({ s }: { s: KubeStatefulSet }) {
   const desired = s.spec.replicas ?? 0
@@ -143,7 +144,7 @@ function CronJobRow({ cj }: { cj: KubeCronJob }) {
   )
 }
 
-function ServiceRow({ svc }: { svc: KubeService }) {
+const ServiceRow = React.memo(function ServiceRow({ svc }: { svc: KubeService }) {
   const lbIp = svc.status.loadBalancer?.ingress?.[0]?.ip ?? svc.status.loadBalancer?.ingress?.[0]?.hostname ?? ''
   return (
     <>
@@ -156,7 +157,7 @@ function ServiceRow({ svc }: { svc: KubeService }) {
       </td>
     </>
   )
-}
+})
 
 function IngressRow({ ing }: { ing: KubeIngress }) {
   const hosts = (ing.spec.rules ?? []).map(r => r.host ?? '*').join(', ')
@@ -171,7 +172,7 @@ function IngressRow({ ing }: { ing: KubeIngress }) {
   )
 }
 
-function ConfigMapRow({ cm }: { cm: KubeConfigMap }) {
+const ConfigMapRow = React.memo(function ConfigMapRow({ cm }: { cm: KubeConfigMap }) {
   const keyCount = Object.keys(cm.data ?? {}).length
   return (
     <>
@@ -180,9 +181,9 @@ function ConfigMapRow({ cm }: { cm: KubeConfigMap }) {
       <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(cm.metadata.creationTimestamp)}</td>
     </>
   )
-}
+})
 
-function SecretRow({ sec }: { sec: KubeSecret }) {
+const SecretRow = React.memo(function SecretRow({ sec }: { sec: KubeSecret }) {
   const keyCount = Object.keys(sec.data ?? {}).length
   return (
     <>
@@ -192,9 +193,9 @@ function SecretRow({ sec }: { sec: KubeSecret }) {
       <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(sec.metadata.creationTimestamp)}</td>
     </>
   )
-}
+})
 
-function NodeRow({ node }: { node: KubeNode }) {
+const NodeRow = React.memo(function NodeRow({ node }: { node: KubeNode }) {
   const ready = getNodeReady(node)
   const internalIP = (node.status.addresses ?? []).find(a => a.type === 'InternalIP')?.address ?? '—'
   return (
@@ -210,7 +211,7 @@ function NodeRow({ node }: { node: KubeNode }) {
       <td className="px-6 py-3 text-xs font-bold text-slate-600 dark:text-slate-300 font-mono">{internalIP}</td>
     </>
   )
-}
+})
 
 function NamespaceRow({ ns }: { ns: KubeNamespace }) {
   return (
@@ -549,39 +550,23 @@ function CustomCheckbox({ checked, onChange, partiallyChecked = false }: { check
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function ResourceList(): JSX.Element {
-  const { 
-    section, 
-    selectedResource, 
-    selectResource, 
-    loadingResources, 
-    refresh,
-    selectedNamespace, 
-    selectedContext, 
-    deleteResource, 
-    getYAML, 
-    applyYAML, 
-    rolloutRestart, 
-    openExec,
-    scaleStatefulSet, 
-    startPortForward,
-    searchQuery
-  } = useAppStore(useShallow(s => ({
-    section: s.section,
-    selectedResource: s.selectedResource,
-    selectResource: s.selectResource,
-    loadingResources: s.loadingResources,
-    refresh: s.refresh,
-    selectedNamespace: s.selectedNamespace,
-    selectedContext: s.selectedContext,
-    deleteResource: s.deleteResource,
-    getYAML: s.getYAML,
-    applyYAML: s.applyYAML,
-    rolloutRestart: s.rolloutRestart,
-    openExec: s.openExec,
-    scaleStatefulSet: s.scaleStatefulSet, 
-    startPortForward: s.startPortForward,
-    searchQuery: s.searchQuery
-  })))
+  // Data fields — subscribed via shallow equality so any change triggers a re-render.
+  const { section, selectedResource, loadingResources, selectedNamespace, selectedContext, searchQuery } =
+    useAppStore(useShallow(s => ({
+      section: s.section,
+      selectedResource: s.selectedResource,
+      loadingResources: s.loadingResources,
+      selectedNamespace: s.selectedNamespace,
+      selectedContext: s.selectedContext,
+      searchQuery: s.searchQuery,
+    })))
+
+  // Action functions — stable refs created once; read directly from the store
+  // without subscribing so they never cause re-renders.
+  const {
+    selectResource, refresh, deleteResource, getYAML, applyYAML,
+    rolloutRestart, openExec, scaleStatefulSet, startPortForward,
+  } = useAppStore.getState()
   const resources = useResources()
   const [scaleTarget, setScaleTarget] = useState<KubeDeployment | null>(null)
   const [stsScaleTarget, setStsScaleTarget] = useState<KubeStatefulSet | null>(null)
@@ -613,17 +598,18 @@ export default function ResourceList(): JSX.Element {
   const [sortCol, setSortCol] = useState<string | null>(null)
   const [sortAsc, setSortAsc] = useState(true)
 
-  const handleSort = (col: string) => {
+  const handleSort = useCallback((col: string) => {
     if (sortCol === col) {
-      setSortAsc(!sortAsc)
+      setSortAsc(prev => !prev)
     } else {
       setSortCol(col)
       setSortAsc(true)
     }
-  }
+  }, [sortCol])
 
   const filtered = useMemo(() => {
-    let result = resources.filter(r => r.metadata.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    const q = searchQuery.toLowerCase()
+    let result = resources.filter(r => r.metadata.name.toLowerCase().includes(q))
     
     if (sortCol) {
       result = [...result].sort((a, b) => {
@@ -648,6 +634,27 @@ export default function ResourceList(): JSX.Element {
     setSortCol(null)
     setSortAsc(true)
   }, [section])
+
+  // ── Virtualization ────────────────────────────────────────────────────────
+  // Renders only the visible rows (overscan: 5 above/below) via padding <tr>
+  // spacers so the native <table> structure and all <td> row renderers remain
+  // unchanged. Row height is estimated at 45 px; the virtualizer measures
+  // actual heights after mount via measureElement.
+
+  const tableContainerRef = useRef<HTMLDivElement>(null)
+
+  const rowVirtualizer = useVirtualizer({
+    count: filtered.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => 45,
+    overscan: 5,
+  })
+
+  const virtualItems = rowVirtualizer.getVirtualItems()
+  const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0
+  const paddingBottom = virtualItems.length > 0
+    ? rowVirtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end
+    : 0
 
   const allSelected = filtered.length > 0 && selectedUids.size === filtered.length
   const toggleSelectAll = () => {
@@ -826,7 +833,7 @@ export default function ResourceList(): JSX.Element {
 
 
       {/* Table */}
-      <div className="flex-1 overflow-auto">
+      <div ref={tableContainerRef} className="flex-1 overflow-auto">
         {loadingResources ? (
           <div className="flex items-center justify-center py-24">
             <LoadingAnimation />
@@ -844,6 +851,7 @@ export default function ResourceList(): JSX.Element {
             </div>
           </div>
         ) : (
+          <>
           <table className="w-full text-sm border-collapse">
             <thead className="sticky top-0 bg-white/80 dark:bg-[hsl(var(--bg-dark),_0.8)] backdrop-blur-xl z-20">
               <tr className="border-b border-slate-100 dark:border-white/5 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
@@ -885,7 +893,12 @@ export default function ResourceList(): JSX.Element {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50 dark:divide-slate-900">
-              {filtered.map(resource => {
+              {/* Top spacer — represents rows scrolled above the viewport */}
+              {paddingTop > 0 && (
+                <tr><td style={{ height: paddingTop }} colSpan={cols.length + 3} /></tr>
+              )}
+              {virtualItems.map(virtualRow => {
+                const resource = filtered[virtualRow.index]
                 const uid = resource.metadata.uid
                 const isSelected = selectedResource?.metadata.uid === uid
                 return (
@@ -900,9 +913,9 @@ export default function ResourceList(): JSX.Element {
                   >
                     <td className="px-6 py-3 text-center" onClick={e => e.stopPropagation()}>
                       <div className={`transition-all duration-200 ${selectedUids.has(uid) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                        <CustomCheckbox 
-                          checked={selectedUids.has(uid)} 
-                          onChange={() => toggleSelect(uid)} 
+                        <CustomCheckbox
+                          checked={selectedUids.has(uid)}
+                          onChange={() => toggleSelect(uid)}
                         />
                       </div>
                     </td>
@@ -923,8 +936,13 @@ export default function ResourceList(): JSX.Element {
                   </tr>
                 )
               })}
+              {/* Bottom spacer — represents rows below the viewport */}
+              {paddingBottom > 0 && (
+                <tr><td style={{ height: paddingBottom }} colSpan={cols.length + 3} /></tr>
+              )}
             </tbody>
           </table>
+          </>
         )}
       </div>
 

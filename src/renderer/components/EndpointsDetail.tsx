@@ -161,7 +161,6 @@ export default function EndpointsDetail({ ep }: { ep: KubeEndpoints }) {
                             ) : yaml !== null ? (
                                 <YAMLViewer editable
                                     content={yaml}
-                                    editable
                                     onSave={async (updated) => {
                                         await applyYAML(updated)
                                         refresh()

@@ -227,6 +227,13 @@ async function getTopology(ns: string): Promise<any> {
 
 const activeStreams = new Map<string, any>()
 
+export function cancelAllLogStreams(): void {
+  for (const [id, ws] of activeStreams) {
+    try { ws.close() } catch {}
+    activeStreams.delete(id)
+  }
+}
+
 export function registerKubectlHandlers(): void {
   const provider = new KubectlProvider()
 
@@ -317,10 +324,14 @@ export function registerKubectlHandlers(): void {
   })
 
   ipcMain.handle('kubectl:stopLogs', async (_e, streamId) => {
-    if (activeStreams.has(streamId)) { 
+    if (activeStreams.has(streamId)) {
       activeStreams.get(streamId)!.close()
       activeStreams.delete(streamId)
     }
+  })
+
+  ipcMain.handle('kubectl:cancelAllStreams', () => {
+    cancelAllLogStreams()
   })
 
   ipcMain.handle('kubectl:getTopology', (_e, ns) => getTopology(ns))

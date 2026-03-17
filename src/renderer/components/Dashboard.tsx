@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react'
 import { useAppStore } from '../store'
+import { useShallow } from 'zustand/react/shallow'
 import type { KubeNode, KubeEvent, NodeMetrics } from '../types'
 import {
   getNodeReady, formatAge,
@@ -300,7 +301,16 @@ export default function Dashboard(): JSX.Element {
     pods, deployments, namespaces,
     nodes, nodeMetrics, events,
     prometheusAvailable,
-  } = useAppStore()
+  } = useAppStore(useShallow(s => ({
+    loadingResources: s.loadingResources,
+    pods: s.pods,
+    deployments: s.deployments,
+    namespaces: s.namespaces,
+    nodes: s.nodes,
+    nodeMetrics: s.nodeMetrics,
+    events: s.events,
+    prometheusAvailable: s.prometheusAvailable,
+  })))
 
   // Pre-calculate timestamps and derive stats memoized
   const { 

@@ -85,16 +85,17 @@ describe('clusterSlice', () => {
     })
 
     it('selectContext handles timeout', async () => {
+        windowMock.kubectl.switchContext.mockResolvedValue(undefined)
         windowMock.kubectl.getNamespaces.mockImplementation(() => new Promise(() => { })) // Never resolves
 
         const slice = createClusterSlice(set, get, {} as any)
         const promise = slice.selectContext('my-ctx')
 
-        vi.advanceTimersByTime(30001)
+        vi.advanceTimersByTime(15001)
 
         await expect(promise).resolves.toBeUndefined() // It catches internally and sets error
         expect(set).toHaveBeenCalledWith(expect.objectContaining({
-            error: expect.stringContaining('timed out'),
+            error: expect.stringContaining('did not respond in time'),
             loadingNamespaces: false,
         }))
     })
@@ -105,6 +106,88 @@ describe('clusterSlice', () => {
 
         expect(set).toHaveBeenCalledWith({ selectedNamespace: 'myns', selectedResource: null })
         expect(state.loadSection).toHaveBeenCalledWith('pods')
+    })
+
+    // ── Rollback tests ────────────────────────────────────────────────────────
+
+    it('selectContext rolls back to previous context when getNamespaces fails', async () => {
+        const previousCtx = 'prev-ctx'
+        state.selectedContext = previousCtx
+        state.prodContexts = []
+        windowMock.kubectl.switchContext
+            .mockResolvedValueOnce(undefined)  // forward switch succeeds
+            .mockResolvedValueOnce(undefined)  // rollback switch
+        windowMock.kubectl.getNamespaces.mockRejectedValue(new Error('connection refused'))
+
+        const slice = createClusterSlice(set, get, {} as any)
+        await slice.selectContext('bad-ctx')
+
+        // Store should be restored to the previous context
+        expect(state.selectedContext).toBe(previousCtx)
+        // Error message should be set
+        expect(set).toHaveBeenCalledWith(expect.objectContaining({
+            error: expect.stringContaining('bad-ctx'),
+            loadingNamespaces: false,
+            contextSwitchStatus: null,
+        }))
+        // Rollback switchContext must have been called
+        expect(windowMock.kubectl.switchContext).toHaveBeenCalledWith(previousCtx)
+    })
+
+    it('selectContext clears contextSwitchStatus on success', async () => {
+        windowMock.kubectl.switchContext.mockResolvedValue(undefined)
+        windowMock.kubectl.getNamespaces.mockResolvedValue([{ name: 'ns1' }])
+        state.preloadSearchResources = vi.fn()
+
+        const slice = createClusterSlice(set, get, {} as any)
+        await slice.selectContext('ok-ctx')
+
+        expect(set).toHaveBeenCalledWith(expect.objectContaining({
+            loadingNamespaces: false,
+            contextSwitchStatus: null,
+        }))
+    })
+
+    it('selectContext clears contextSwitchStatus on failure', async () => {
+        windowMock.kubectl.switchContext.mockResolvedValue(undefined)
+        windowMock.kubectl.getNamespaces.mockRejectedValue(new Error('unreachable'))
+
+        const slice = createClusterSlice(set, get, {} as any)
+        await slice.selectContext('bad-ctx')
+
+        expect(set).toHaveBeenCalledWith(expect.objectContaining({
+            contextSwitchStatus: null,
+            loadingNamespaces: false,
+        }))
+    })
+
+    // ── probePrometheus stale-context guard ───────────────────────────────────
+
+    it('probePrometheus discards result when context switches mid-probe', async () => {
+        // Deferred promise so we can control when prometheusStatus resolves
+        let resolveProbe: ((v: { available: boolean }) => void) | undefined
+        const probePromise = new Promise<{ available: boolean }>(r => { resolveProbe = r })
+        windowMock.kubectl.prometheusStatus.mockReturnValue(probePromise)
+        // settings.get needed by probePrometheus to look up URL
+        windowMock.settings.get.mockResolvedValue({
+            shellPath: '', theme: 'dark', kubeconfigPath: '', prodContexts: [], prometheusUrls: {},
+        })
+
+        state.selectedContext = 'ctx-a'
+        state.prometheusAvailable = null
+
+        const slice = createClusterSlice(set, get, {} as any)
+        const probe = slice.probePrometheus()
+
+        // Context switches away before probe resolves
+        state.selectedContext = 'ctx-b'
+
+        // Resolve the in-flight probe with available=true
+        resolveProbe!({ available: true })
+        await probe
+
+        // prometheusAvailable must NOT have been updated — stale result discarded
+        expect(state.prometheusAvailable).toBeNull()
     })
 
     // ── Race condition test (Issue 11A) ────────────────────────────────────────
