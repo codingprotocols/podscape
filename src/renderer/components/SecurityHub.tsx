@@ -3,7 +3,6 @@ import { useAppStore } from '../store'
 import { scannerEngine } from '../utils/scanner/engine'
 import { buildUnifiedResults } from '../utils/security/buildUnifiedResults'
 import { getUniqueImages } from '../utils/security/extractImages'
-import type { UniqueImageEntry } from '../utils/security/extractImages'
 export type { UnifiedResource } from '../utils/security/buildUnifiedResults'
 export { buildUnifiedResults } from '../utils/security/buildUnifiedResults'
 import type { CustomScanOptions } from '../store/types'
@@ -14,6 +13,7 @@ import {
     Box, Layers, Database, Server, Play, Clock, Globe, FileText,
     HardDrive, TrendingUp, RefreshCw, Network, Folder, Key, ArrowUpRight,
 } from 'lucide-react'
+import PageHeader from './PageHeader'
 
 // ── Kind → icon + colour ──────────────────────────────────────────────────────
 
@@ -114,7 +114,7 @@ type SeverityFilter = 'all' | 'critical' | 'warning'
 export default function SecurityHub(): JSX.Element {
     const {
         pods, deployments, statefulsets, daemonsets, jobs, cronjobs,
-        selectedNamespace, scanSecurity, securityScanResults, kubesecBatchResults,
+        scanSecurity, securityScanResults, kubesecBatchResults,
         trivyAvailable, securityScanning, securityScanProgressLines, error,
     } = useAppStore()
 
@@ -277,88 +277,48 @@ export default function SecurityHub(): JSX.Element {
                     onClose={() => setShowImagePicker(false)}
                 />
             )}
-            {/* ── Header ── */}
-            <div className="px-8 py-6 border-b border-white/5 bg-white/[0.02] shrink-0">
-                <div className="flex items-start justify-between mb-6">
-                    {/* Title */}
-                    <div className="flex items-center gap-4">
-                        <div className="w-11 h-11 rounded-2xl premium-gradient flex items-center justify-center shadow-2xl shadow-blue-500/20 shrink-0">
-                            <ShieldCheck className="w-6 h-6 text-white" />
-                        </div>
-                        <div>
-                            <h2 className="text-xl font-black text-white tracking-tight leading-none mb-1.5">Security Hub</h2>
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-black text-blue-400 uppercase tracking-widest">
-                                    {selectedNamespace === '_all' ? 'Cluster-wide' : selectedNamespace}
-                                </span>
-                                <span className="w-1 h-1 rounded-full bg-slate-700" />
-                                <span className="text-[10px] text-slate-500 font-semibold">
-                                    {allWorkloads.length} workloads monitored
-                                </span>
-                                {ignoredNamespaces.size > 0 && (
-                                    <>
-                                        <span className="w-1 h-1 rounded-full bg-slate-700" />
-                                        <span className="text-[10px] text-slate-500 font-semibold">
-                                            {ignoredNamespaces.size} namespace{ignoredNamespaces.size !== 1 ? 's' : ''} ignored
-                                        </span>
-                                    </>
-                                )}
-                                {unifiedResults.length > 0 && (
-                                    <>
-                                        <span className="w-1 h-1 rounded-full bg-slate-700" />
-                                        <span className="text-[10px] font-bold text-amber-500">
-                                            {unifiedResults.length} need attention
-                                        </span>
-                                    </>
-                                )}
-                            </div>
-                        </div>
+            {/* Hero Section */}
+            <PageHeader
+                title="Security Hub"
+                subtitle="Continuous security scanning and automated health checks"
+            >
+                <div className="flex flex-col items-end gap-1.5">
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setShowCustomScan(true)}
+                            disabled={securityScanning}
+                            className={`h-9 px-4 rounded-xl bg-white/5 border border-white/10 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 ${
+                                securityScanning ? 'opacity-40 cursor-not-allowed' : 'hover:bg-white/8 hover:border-white/15'
+                            }`}
+                        >
+                            <SlidersHorizontal className="w-3 h-3" />
+                            Custom Scan
+                        </button>
+                        <button
+                            onClick={() => scanSecurity({ namespaces: [], kinds: [], runKubesec: true, runTrivy: true })}
+                            disabled={securityScanning}
+                            className={`h-9 px-4 rounded-xl premium-gradient text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg transition-all active:scale-95 ${
+                                securityScanning ? 'opacity-50 cursor-not-allowed' : 'hover:-translate-y-0.5 hover:shadow-blue-500/20'
+                            }`}
+                        >
+                            {securityScanning
+                                ? <div className="w-3 h-3 border-[1.5px] border-white/30 border-t-white rounded-full animate-spin" />
+                                : <Search className="w-3 h-3" />
+                            }
+                            {securityScanning ? 'Scanning...' : 'Full Scan'}
+                        </button>
                     </div>
-
-                    {/* Scan buttons */}
-                    <div className="flex flex-col items-end gap-1.5 shrink-0">
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={() => setShowCustomScan(true)}
-                                disabled={securityScanning}
-                                className={`h-9 px-4 rounded-xl bg-white/5 border border-white/10 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 ${
-                                    securityScanning ? 'opacity-40 cursor-not-allowed' : 'hover:bg-white/8 hover:border-white/15'
-                                }`}
-                            >
-                                <SlidersHorizontal className="w-3 h-3" />
-                                Custom Scan
-                            </button>
-                            <button
-                                onClick={() => {
-                                    if (trivyAvailable === false) {
-                                        scanSecurity({ namespaces: [], kinds: [], runTrivy: false, runKubesec: true })
-                                    } else {
-                                        setPendingScanOpts(null)
-                                        setShowImagePicker(true)
-                                    }
-                                }}
-                                disabled={securityScanning}
-                                className={`h-9 px-4 rounded-xl premium-gradient text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg transition-all active:scale-95 ${
-                                    securityScanning ? 'opacity-50 cursor-not-allowed' : 'hover:-translate-y-0.5 hover:shadow-blue-500/20'
-                                }`}
-                            >
-                                {securityScanning
-                                    ? <div className="w-3 h-3 border-[1.5px] border-white/30 border-t-white rounded-full animate-spin" />
-                                    : <Search className="w-3 h-3" />
-                                }
-                                {securityScanning ? 'Scanning...' : 'Full Scan'}
-                            </button>
-                        </div>
-                        <p className="text-[9px] text-slate-600 font-medium">
-                            {trivyAvailable === false
-                                ? 'trivy not installed — config analysis only'
-                                : trivyAvailable === true ? 'config + image CVEs'
-                                : 'config analysis · trivy for CVEs'}
-                        </p>
-                    </div>
+                    <p className="text-[9px] text-slate-600 font-medium">
+                        {trivyAvailable === false
+                            ? 'trivy not installed — config analysis only'
+                            : trivyAvailable === true ? 'config + image CVEs'
+                            : 'config analysis · trivy for CVEs'}
+                    </p>
                 </div>
+            </PageHeader>
 
-                {/* Stat cards */}
+            {/* Stat cards - Now below header */}
+            <div className="px-8 py-8 border-b border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02]">
                 <div className="grid grid-cols-4 gap-3">
                     <StatCard
                         label="Critical"
@@ -429,7 +389,7 @@ export default function SecurityHub(): JSX.Element {
             )}
 
             {/* ── Toolbar ── */}
-            <div className="px-8 py-3 border-b border-white/5 flex items-center justify-between gap-4 bg-[#020617]/95 backdrop-blur-sm sticky top-0 z-10 shrink-0">
+            <div className="pl-8 pr-6 py-3 border-b border-white/5 flex items-center justify-between gap-4 bg-[#020617]/95 backdrop-blur-sm sticky top-[95px] z-30 shrink-0">
                 {/* Severity tabs */}
                 <div className="flex items-center gap-1 p-1 rounded-xl bg-white/[0.03] border border-white/5">
                     <FilterTab label={`All  ${unifiedResults.length}`} active={severityFilter === 'all'} onClick={() => setSeverityFilter('all')} color="default" />

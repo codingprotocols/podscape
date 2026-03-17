@@ -110,6 +110,10 @@ func main() {
 	http.HandleFunc("/helm/repos/refresh", handlers.HandleHelmRepoRefresh)
 	http.HandleFunc("/helm/install", handlers.HandleHelmInstall)
 
+	// Node operations
+	http.HandleFunc("/node/cordon", handlers.HandleCordonNode)
+	http.HandleFunc("/node/drain", handlers.HandleDrainNode)
+
 	// TLS Certificate Dashboard
 	http.HandleFunc("/tls-certs", handlers.HandleTLSCerts)
 
@@ -138,6 +142,10 @@ func main() {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		withCORS.ServeHTTP(w, r)
 	})
+
+	// Initialize the portforward manager early (with nil clients) so handlers
+	// like HandleSwitchContext can safely call Manager.StopAll() immediately.
+	portforward.Init(nil, nil)
 
 	// Try to build the k8s client from the kubeconfig file.
 	// If the file is missing (fresh install, CI, new machine), run in no-kubeconfig
@@ -184,10 +192,8 @@ func main() {
 	store.Store.ActiveCache = initialCache
 	store.Store.Unlock()
 
-	// Init portforward manager BEFORE the HTTP server starts accepting
-	// connections — HandleSwitchContext calls Manager.StopAll() and panics
-	// with a nil dereference if the server is up before Init() runs.
-	portforward.Init(clientset, config)
+	// Update the portforward manager with valid clients now that we have them.
+	portforward.Manager.UpdateClients(clientset, config)
 
 	// Start the HTTP server — /health returns 503 until informers sync, so
 	// startSidecar() keeps polling. portforward is already initialised above.

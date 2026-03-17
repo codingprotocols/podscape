@@ -9,10 +9,12 @@ import { nodeCpuQuery, nodeMemoryQuery } from '../utils/prometheusQueries'
 interface Props { node: KubeNode }
 
 export default function NodeDetail({ node }: Props): JSX.Element {
-  const { getYAML, pods, nodeMetrics, selectResource, prometheusAvailable } = useAppStore()
+  const { getYAML, applyYAML, pods, nodeMetrics, selectResource, prometheusAvailable, selectedContext } = useAppStore()
   const [yaml, setYaml] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
   const [yamlError, setYamlError] = useState<string | null>(null)
+  const [actionLoading, setActionLoading] = useState<'cordon' | 'uncordon' | 'drain' | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const nodePods = pods.filter(p => p.spec.nodeName === node.metadata.name)
   const metrics = nodeMetrics.find(m => m.metadata.name === node.metadata.name)
@@ -30,13 +32,43 @@ export default function NodeDetail({ node }: Props): JSX.Element {
   const handleViewYAML = async () => {
     setYaml(null); setYamlError(null); setYamlLoading(true)
     try {
-      // Nodes are cluster-scoped, so clusterScoped=true
       const content = await getYAML('node', node.metadata.name, true)
       setYaml(content)
     } catch (err) {
       setYamlError((err as Error).message ?? 'Failed to fetch YAML')
     } finally {
       setYamlLoading(false)
+    }
+  }
+
+  const handleApplyYAML = async (updated: string) => {
+    await applyYAML(updated)
+    const refreshed = await getYAML('node', node.metadata.name, true)
+    setYaml(refreshed)
+  }
+
+  const isCordonned = !!node.spec.unschedulable
+
+  const handleCordon = async () => {
+    const action = isCordonned ? 'uncordon' : 'cordon'
+    setActionLoading(action); setActionError(null)
+    try {
+      await window.kubectl.cordonNode(selectedContext!, node.metadata.name, !isCordonned)
+    } catch (err) {
+      setActionError((err as Error).message)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleDrain = async () => {
+    setActionLoading('drain'); setActionError(null)
+    try {
+      await window.kubectl.drainNode(selectedContext!, node.metadata.name)
+    } catch (err) {
+      setActionError((err as Error).message)
+    } finally {
+      setActionLoading(null)
     }
   }
 
@@ -61,12 +93,35 @@ export default function NodeDetail({ node }: Props): JSX.Element {
             </div>
           </div>
         </div>
-        <div className="flex gap-2 mt-4">
+        <div className="flex flex-wrap gap-2 mt-4">
           <button onClick={handleViewYAML} disabled={yamlLoading}
             className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-all disabled:opacity-50 uppercase tracking-wider">
             {yamlLoading ? 'Loading…' : 'YAML'}
           </button>
+          <button
+            onClick={handleCordon}
+            disabled={actionLoading !== null}
+            className={`text-[11px] font-bold px-4 py-1.5 rounded-xl border transition-all disabled:opacity-50 uppercase tracking-wider ${
+              isCordonned
+                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
+                : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20'
+            }`}
+          >
+            {actionLoading === 'cordon' || actionLoading === 'uncordon'
+              ? (isCordonned ? 'Uncordoning…' : 'Cordoning…')
+              : (isCordonned ? 'Uncordon' : 'Cordon')}
+          </button>
+          <button
+            onClick={handleDrain}
+            disabled={actionLoading !== null}
+            className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all disabled:opacity-50 uppercase tracking-wider"
+          >
+            {actionLoading === 'drain' ? 'Draining…' : 'Drain'}
+          </button>
         </div>
+        {actionError && (
+          <p className="mt-2 text-[10px] text-red-500 font-mono break-all">{actionError}</p>
+        )}
       </div>
 
       {/* Prometheus metrics */}
@@ -265,7 +320,7 @@ export default function NodeDetail({ node }: Props): JSX.Element {
                   <div className="w-8 h-8 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
               ) : yaml !== null ? (
-                <YAMLViewer content={yaml} />
+                <YAMLViewer content={yaml} editable onSave={handleApplyYAML} />
               ) : null}
             </div>
           </div>

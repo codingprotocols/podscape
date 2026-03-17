@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAppStore } from '../store'
 import {
-  Shield, AlertTriangle, CheckCircle, Clock, Search, RefreshCw, X, Lock, Info
+  AlertTriangle, CheckCircle, Clock, X, Lock, Info, Search, RefreshCw
 } from 'lucide-react'
+import PageHeader from './PageHeader'
 
 interface TLSCertInfo {
   secretName: string
@@ -359,63 +360,64 @@ export default function TLSCertDashboard() {
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-[hsl(var(--bg-dark))] overflow-hidden relative h-full">
 
-      {/* ── toolbar ──────────────────────────────────────────────────────── */}
-      <div className="pl-8 pr-6 py-6 border-b border-white/[0.05] shrink-0 flex items-center gap-5 flex-wrap bg-white/[0.01] transition-all duration-300">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl premium-gradient flex items-center justify-center shadow-lg shadow-blue-500/10">
-            <Shield className="w-5 h-5 text-white" />
+      <PageHeader
+        title="TLS Certificates"
+        subtitle="Monitoring cluster-wide SSL/TLS certificate health"
+      >
+        <div className="flex items-center gap-6">
+          {/* filter chips */}
+          <div className="flex items-center gap-1 border-r border-slate-200 dark:border-white/10 pr-6 mr-2">
+            {([
+              { key: 'all'      as const, label: `All (${certs.length})` },
+              { key: 'expired'  as const, label: `Expired (${expiredCount})`,        active: expiredCount > 0  },
+              { key: 'expiring' as const, label: `Expiring (${expiringCount})`,      active: expiringCount > 0 },
+              { key: 'valid'    as const, label: `Valid (${validCount})` },
+            ]).map(f => (
+              <button
+                key={f.key}
+                onClick={() => setFilter(v => v === f.key ? 'all' : f.key)}
+                className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all
+                  ${filter === f.key
+                    ? f.key === 'expired'  ? 'bg-red-500/20 text-red-400 ring-1 ring-red-500/30'
+                    : f.key === 'expiring' ? 'bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/30'
+                    : f.key === 'valid'    ? 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/30'
+                    : 'bg-blue-600/20 text-blue-400 ring-1 ring-blue-500/30'
+                    : (f as any).active
+                      ? f.key === 'expired'  ? 'text-red-500 hover:text-red-400'
+                      : 'text-amber-500 hover:text-amber-400'
+                    : 'text-slate-500 hover:text-slate-300'
+                  }`}
+              >
+                {f.label}
+              </button>
+            ))}
           </div>
-          <div>
-            <h2 className="text-lg font-black text-white tracking-tight leading-none mb-1">TLS Certificates</h2>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Trust & Validity Hub</p>
-          </div>
-        </div>
 
-        {/* filter chips */}
-        <div className="flex items-center gap-1 border-l border-white/[0.06] pl-3">
-          {([
-            { key: 'all'      as const, label: `All (${certs.length})` },
-            { key: 'expired'  as const, label: `Expired (${expiredCount})`,        active: expiredCount > 0  },
-            { key: 'expiring' as const, label: `Expiring (${expiringCount})`,      active: expiringCount > 0 },
-            { key: 'valid'    as const, label: `Valid (${validCount})` },
-          ]).map(f => (
+          <div className="flex items-center gap-3">
+            {/* search */}
+            <div className="relative group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 group-focus-within:text-blue-500 transition-colors pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search certificates…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="pl-9 pr-4 py-2 text-[10px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl
+                           focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all w-48"
+              />
+            </div>
+
             <button
-              key={f.key}
-              onClick={() => setFilter(v => v === f.key ? 'all' : f.key)}
-              className={`px-2 py-1 text-[10px] font-bold rounded transition-all
-                ${filter === f.key
-                  ? f.key === 'expired'  ? 'bg-red-500/20 text-red-400 ring-1 ring-red-500/30'
-                  : f.key === 'expiring' ? 'bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/30'
-                  : f.key === 'valid'    ? 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/30'
-                  : 'bg-blue-600/20 text-blue-400 ring-1 ring-blue-500/30'
-                  : (f as any).active
-                    ? f.key === 'expired'  ? 'text-red-500 hover:text-red-400'
-                    : 'text-amber-500 hover:text-amber-400'
-                  : 'text-slate-500 hover:text-slate-300'
-                }`}
+              onClick={load}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-slate-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl transition-all disabled:opacity-40"
             >
-              {f.label}
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
             </button>
-          ))}
+          </div>
         </div>
-
-        {/* search */}
-        <div className="ml-auto relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none w-3.5 h-3.5" />
-          <input
-            type="text" placeholder="Search certificates…" value={search} onChange={e => setSearch(e.target.value)}
-            className="pl-8 pr-3 py-2 text-[10px] bg-white/[0.03] border border-white/[0.06] rounded-xl text-slate-300 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500/40 w-44 transition-all focus:bg-white/[0.05]"
-          />
-        </div>
-
-        <button
-          onClick={load} disabled={loading}
-          className="flex items-center gap-2 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-slate-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-all disabled:opacity-40"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
-      </div>
+      </PageHeader>
 
       {/* ── body ─────────────────────────────────────────────────────────── */}
       {loading ? (

@@ -194,6 +194,18 @@ export default function CommandPalette() {
   useEffect(() => { setSelectedIndex(0) }, [searchQuery])
 
   useEffect(() => {
+    const handleOpen = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        if (isSearchOpen) close()
+        else setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', handleOpen)
+    return () => window.removeEventListener('keydown', handleOpen)
+  }, [isSearchOpen])
+
+  useEffect(() => {
     const handleEvents = (e: KeyboardEvent) => {
       if (!isSearchOpen) return
       if (e.key === 'Escape') {

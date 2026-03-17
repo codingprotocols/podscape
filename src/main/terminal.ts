@@ -60,4 +60,5 @@ export function registerTerminalHandlers(): void {
       activeStreams.delete(id)
     }
   })
+
 }

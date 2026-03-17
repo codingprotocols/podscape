@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react'
+import React, { useMemo } from 'react'
 import { useAppStore } from '../store'
 import type { KubeNode, KubeEvent, NodeMetrics } from '../types'
 import {
@@ -8,6 +8,14 @@ import {
 import LoadingAnimation from './LoadingAnimation'
 import TimeSeriesChart, { PrometheusTimeRangeBar } from './TimeSeriesChart'
 import { clusterCpuQuery, clusterMemoryQuery } from '../utils/prometheusQueries'
+import {
+  Box,
+  Layers,
+  Database,
+  AlertTriangle,
+  LayoutGrid,
+  Cpu
+} from 'lucide-react'
 
 // ─── Ring chart (SVG donut) ───────────────────────────────────────────────────
 
@@ -88,9 +96,9 @@ function UsageBar({ pct, label, value }: { pct: number; label: string; value: st
     <div>
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">{label}</span>
-        <span className="text-[10px] font-bold tabular-nums text-slate-600 dark:text-slate-300">{value}</span>
+        <span className="text-[10px] font-bold tabular-nums text-slate-600 dark:text-slate-300 font-mono tracking-tight">{value}</span>
       </div>
-      <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+      <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-800/50 overflow-hidden shadow-inner">
         <div
           className={`h-full rounded-full ${color} transition-all duration-700 shadow-[0_0_8px_rgba(0,0,0,0.1)]`}
           style={{ width: `${Math.min(100, pct)}%` }}
@@ -100,30 +108,44 @@ function UsageBar({ pct, label, value }: { pct: number; label: string; value: st
   )
 }
 
-// ─── Stat card ────────────────────────────────────────────────────────────────
-
 function StatCard({
-  label, value, sub, accent
+  label, value, sub, accent = 'blue', icon: Icon
 }: {
   label: string
   value: string | number
   sub?: string
   accent?: 'green' | 'yellow' | 'red' | 'blue' | 'gray'
+  icon?: React.ElementType
 }) {
-  const accentMap = {
-    green: 'text-emerald-500',
-    yellow: 'text-amber-500',
-    red: 'text-rose-500',
-    blue: 'text-blue-500',
-    gray: 'text-slate-500'
+  const accentStyles = {
+    green:  'text-emerald-400 bg-emerald-500/10 border-emerald-500/20 shadow-emerald-500/5',
+    yellow: 'text-amber-400 bg-amber-500/10 border-amber-500/20 shadow-amber-500/5',
+    red:    'text-rose-400 bg-rose-500/10 border-rose-500/20 shadow-rose-500/5',
+    blue:   'text-blue-400 bg-blue-500/10 border-blue-500/20 shadow-blue-500/5',
+    gray:   'text-slate-400 bg-slate-500/10 border-slate-500/20 shadow-slate-500/5',
   }
-  const color = accent ? accentMap[accent] : 'text-slate-900 dark:text-white'
+  const style = accentStyles[accent]
 
   return (
-    <div className="flex flex-col gap-2 card-solid px-6 py-5 min-w-0 group hover:scale-[1.02] hover:border-slate-300 dark:hover:border-slate-700 shadow-sm">
-      <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em]">{label}</span>
-      <span className={`text-3xl font-black tabular-nums leading-none tracking-tighter ${color}`}>{value}</span>
-      {sub && <span className="text-[10px] font-extrabold text-slate-400 dark:text-slate-600 truncate">{sub}</span>}
+    <div className="flex flex-col gap-4 p-6 rounded-3xl bg-white/[0.02] border border-white/[0.06] shadow-xl group hover:bg-white/[0.04] hover:border-white/[0.1] transition-all duration-300 relative overflow-hidden">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">{label}</span>
+        {Icon && (
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-transform group-hover:scale-110 ${style}`}>
+            <Icon size={16} />
+          </div>
+        )}
+      </div>
+      <div>
+        <span className="text-3xl font-black tabular-nums leading-none tracking-tighter text-white">{value}</span>
+        {sub && (
+          <p className="text-[10px] font-bold text-slate-500 mt-2.5 truncate max-w-full uppercase tracking-widest">
+            {sub}
+          </p>
+        )}
+      </div>
+      {/* Subtle background glow */}
+      <div className={`absolute -right-4 -bottom-4 w-12 h-12 blur-2xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700 ${style.split(' ')[1]}`} />
     </div>
   )
 }
@@ -149,53 +171,53 @@ function NodeCard({ node, metrics }: { node: KubeNode; metrics: NodeMetrics | un
 
   return (
     <div className={`
-      flex flex-col gap-6 glass-card glass-light p-6 scale-in
+      flex flex-col gap-6 glass-card glass-light p-6 scale-in hover:scale-[1.02] transition-all
       ${!ready && 'border-rose-500/30 bg-rose-500/5'}
     `}>
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 overflow-hidden">
         <div className="min-w-0">
-          <p className="text-[15px] font-black text-slate-900 dark:text-white font-mono truncate tracking-tight">{node.metadata.name}</p>
+          <p className="text-sm font-black text-slate-900 dark:text-white font-mono truncate tracking-tight">{node.metadata.name}</p>
           {internalIP && (
-            <p className="text-[10px] font-black text-slate-500 dark:text-slate-600 font-mono mt-1 tracking-widest">{internalIP}</p>
+            <p className="text-[9px] font-black text-slate-500 dark:text-slate-600 font-mono mt-1 tracking-widest uppercase">{internalIP}</p>
           )}
         </div>
         <span className={`
-          shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest outline outline-1
+          shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest border
           ${ready
-            ? 'bg-emerald-500/10 text-emerald-500 outline-emerald-500/20'
-            : 'bg-rose-500/10 text-rose-500 outline-rose-500/20'
+            ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+            : 'bg-rose-500/10 text-rose-500 border-rose-500/20'
           }
         `}>
-          <span className={`w-1.5 h-1.5 rounded-full ${ready ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-rose-500'}`} />
-          {ready ? 'Active' : 'Down'}
+          <span className={`w-1.5 h-1.5 rounded-full ${ready ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-rose-500 shadow-[0_0_8px_#f43f5e]'}`} />
+          {ready ? 'Ready' : 'Not Ready'}
         </span>
       </div>
 
       {/* Ring charts */}
       {(cpuPct !== null || memPct !== null) && (
-        <div className="flex items-center justify-around py-1 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl py-3 border border-slate-100 dark:border-slate-800/50">
+        <div className="flex items-center justify-around py-4 bg-slate-50/50 dark:bg-white/[0.02] rounded-2xl border border-slate-100 dark:border-white/5 shadow-inner">
           {cpuPct !== null && <RingChart pct={cpuPct} label="CPU" />}
           {memPct !== null && <RingChart pct={memPct} label="MEM" />}
         </div>
       )}
 
       {/* Capacity bars */}
-      <div className="space-y-3">
+      <div className="space-y-4">
         {cpuPct !== null && cpuUsedM !== null ? (
-          <UsageBar label="CPU" pct={cpuPct} value={`${fmtCpu(cpuUsedM)} / ${fmtCpu(cpuCapM)}`} />
+          <UsageBar label="CPU Load" pct={cpuPct} value={`${fmtCpu(cpuUsedM)} / ${fmtCpu(cpuCapM)}`} />
         ) : (
-          <UsageBar label="CPU (ALLOC)" pct={0} value={`${fmtCpu(cpuCapM)} total`} />
+          <UsageBar label="CPU total" pct={0} value={`${fmtCpu(cpuCapM)} total`} />
         )}
         {memPct !== null && memUsedMiB !== null ? (
-          <UsageBar label="MEMORY" pct={memPct} value={`${fmtMem(memUsedMiB)} / ${fmtMem(memCapMiB)}`} />
+          <UsageBar label="Memory Load" pct={memPct} value={`${fmtMem(memUsedMiB)} / ${fmtMem(memCapMiB)}`} />
         ) : (
-          <UsageBar label="MEM (ALLOC)" pct={0} value={`${fmtMem(memCapMiB)} total`} />
+          <UsageBar label="Memory total" pct={0} value={`${fmtMem(memCapMiB)} total`} />
         )}
       </div>
 
       {/* System info */}
-      <div className="space-y-1.5 border-t border-slate-100 dark:border-slate-800/50 pt-4">
+      <div className="space-y-1.5 border-t border-slate-100 dark:border-white/5 pt-4">
         {ni && (
           <>
             <InfoRow k="Kubelet" v={ni.kubeletVersion} mono />
@@ -218,7 +240,7 @@ function InfoRow({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
   return (
     <div className="flex items-baseline gap-2">
       <span className="text-[10px] font-bold text-slate-400 dark:text-slate-600 w-16 shrink-0 uppercase tracking-tighter">{k}</span>
-      <span className={`text-[11px] font-bold text-slate-700 dark:text-slate-300 truncate ${mono ? 'font-mono' : ''}`}>{v}</span>
+      <span className={`text-[10px] font-bold text-slate-700 dark:text-slate-300 truncate tracking-tight ${mono ? 'font-mono' : ''}`}>{v}</span>
     </div>
   )
 }
@@ -231,35 +253,37 @@ function EventRow({ event: e }: { event: KubeEvent }) {
 
   return (
     <div className={`
-      flex items-start gap-4 px-8 py-5 hover:bg-white/5 transition-all
-      ${isWarning ? 'bg-rose-500/[0.03]' : ''}
+      flex items-start gap-5 px-8 py-5 hover:bg-white/[0.02] transition-all relative group
+      ${isWarning ? 'bg-rose-500/[0.02]' : ''}
     `}>
-      {/* Type indicator */}
-      <div className={`shrink-0 mt-1.5 w-2 h-2 rounded-full ${isWarning ? 'bg-rose-500 shadow-[0_0_8px_#f43f5e]' : 'bg-slate-700'}`} />
+      {isWarning && <div className="absolute left-0 top-0 bottom-0 w-1 bg-rose-500/40" />}
 
-      <div className="flex-1 min-w-0 pl-1">
+      {/* Type indicator */}
+      <div className={`shrink-0 mt-2 w-2 h-2 rounded-full ${isWarning ? 'bg-rose-500 shadow-[0_0_8px_#f43f5e]' : 'bg-slate-700'}`} />
+
+      <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-3 flex-wrap">
           <span className="text-sm font-black text-slate-900 dark:text-white tracking-tight">{e.reason ?? '—'}</span>
-          <span className="text-[10px] font-black text-slate-500 dark:text-slate-600 font-mono uppercase tracking-widest bg-white/5 px-2 py-0.5 rounded border border-white/5">
+          <span className="text-[10px] font-black text-slate-500 dark:text-slate-500 font-mono uppercase tracking-[0.2em] bg-white/[0.02] px-2.5 py-0.5 rounded-lg border border-white/5">
             {e.involvedObject.kind}
           </span>
-          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 font-mono truncate max-w-[150px]">
+          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 font-mono truncate max-w-[200px]">
             {e.involvedObject.name}
           </span>
           {e.metadata.namespace && (
-            <span className="text-[9px] font-black text-blue-500/60 uppercase tracking-widest">
+            <span className="text-[9px] font-black text-blue-500/50 uppercase tracking-[0.2em]">
               {e.metadata.namespace}
             </span>
           )}
         </div>
-        <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-2 line-clamp-2 leading-relaxed tracking-tight font-medium">{e.message ?? ''}</p>
+        <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-2 line-clamp-2 leading-relaxed tracking-tight font-medium group-hover:dark:text-white transition-colors">{e.message ?? ''}</p>
       </div>
 
       {/* Age & Count */}
       <div className="shrink-0 text-right">
-        {ts && <span className="text-[10px] font-black text-slate-500 dark:text-slate-600 uppercase tracking-tighter">{formatAge(ts)} ago</span>}
+        {ts && <span className="text-[10px] font-black text-slate-500 dark:text-slate-600 uppercase tracking-widest">{formatAge(ts)} ago</span>}
         {e.count && e.count > 1 && (
-          <div className="mt-1.5 inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 text-[10px] font-black tracking-tighter">
+          <div className="mt-2 inline-flex items-center justify-center px-2 py-0.5 rounded-lg bg-blue-500/10 text-blue-500 text-[10px] font-black tracking-tighter border border-blue-500/10">
             ×{e.count}
           </div>
         )}
@@ -272,16 +296,11 @@ function EventRow({ event: e }: { event: KubeEvent }) {
 
 export default function Dashboard(): JSX.Element {
   const {
-    loadDashboard, loadingResources, refresh,
+    loadingResources,
     pods, deployments, namespaces,
     nodes, nodeMetrics, events,
-    selectedContext, prometheusAvailable,
+    prometheusAvailable,
   } = useAppStore()
-
-  // Dashboard data is loaded by selectContext → loadSection and by setSection.
-  // A separate useEffect on selectedContext would race against the context switch
-  // (selectedContext is set before the sidecar switches) and overwrite fresh data
-  // with stale results from the previous context.
 
   // Pre-calculate timestamps and derive stats memoized
   const { 
@@ -298,11 +317,15 @@ export default function Dashboard(): JSX.Element {
 
     // Map metrics for O(1) lookup
     const safeNodeMetrics = Array.isArray(nodeMetrics) ? nodeMetrics : []
-    const metricsById = new Map(safeNodeMetrics.map(m => [m.metadata.name, m]))
+    const metricsById = new Map<string, NodeMetrics>(
+      safeNodeMetrics
+        .filter(m => m && m.metadata && m.metadata.name)
+        .map(m => [m.metadata.name, m] as [string, NodeMetrics])
+    )
 
     // Sorted and pre-parsed events
     const safeEvents = Array.isArray(events) ? events : []
-    const processedEvents = safeEvents.map(e => ({
+    const processedEvents = safeEvents.filter(e => e && (e.lastTimestamp || e.firstTimestamp || e.eventTime)).map(e => ({
       ...e,
       _ts: new Date(e.lastTimestamp ?? e.firstTimestamp ?? e.eventTime ?? 0).getTime()
     }))
@@ -322,110 +345,107 @@ export default function Dashboard(): JSX.Element {
   }, [pods, deployments, nodes, events, nodeMetrics])
 
   return (
-    <div className="flex flex-col flex-1 h-full overflow-auto bg-slate-50 dark:bg-[hsl(var(--bg-dark))] transition-colors duration-200">
-      {/* Top bar */}
-      <div className="flex items-center justify-between px-8 py-8 border-b border-slate-200 dark:border-white/5 shrink-0 bg-white/5 backdrop-blur-md">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter leading-none">Dashboard</h1>
-          {selectedContext && (
-            <p className="text-[10px] font-black text-slate-500 dark:text-slate-600 mt-2.5 font-mono uppercase tracking-[0.25em] flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6]" />
-              {selectedContext}
-            </p>
-          )}
-        </div>
-        <button
-          onClick={refresh}
-          disabled={loadingResources}
-          className="flex items-center gap-2 px-5 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300
-                     glass-panel hover:bg-white/10 dark:hover:bg-white/5 rounded-xl shadow-sm
-                     disabled:opacity-50 active:scale-95"
-        >
-          <span className={`transition-transform duration-700 ${loadingResources ? 'animate-spin' : ''}`}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6m12 6a9 9 0 0 1-15-6.7L3 16" /></svg>
-          </span>
-          Sync
-        </button>
-      </div>
-
-      <div className="flex-1 px-8 py-8 space-y-10 min-h-0">
-        {loadingResources ? (
-          <div className="h-full flex items-center justify-center py-24">
+    <div className="flex-1 flex flex-col min-w-0 bg-[hsl(var(--bg-dark))] overflow-hidden relative h-full">
+      {/* Scrollable Content (No PageHeader) */}
+      <div className="flex-1 overflow-y-auto scrollbar-hide">
+        {loadingResources && pods.length === 0 ? (
+          <div className="h-full flex items-center justify-center py-32">
             <LoadingAnimation />
           </div>
         ) : (
-          <>
+          <div className="px-8 py-10 space-y-16">
             {/* ── Cluster stats ───────────────────────────────────────────────── */}
             <section>
-              <h2 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] mb-4">
+              <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-6 flex items-center gap-3">
+                <span className="w-6 h-px bg-slate-100 dark:bg-white/5" />
                 Cluster Overview
               </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-5 gap-6">
                 <StatCard
-                  label="Pods"
+                  label="Pods active"
                   value={pods.length}
                   sub={`${runningPods} running`}
                   accent={runningPods < pods.length ? 'yellow' : 'green'}
+                  icon={Box}
                 />
                 <StatCard
                   label="Deployments"
                   value={deployments.length}
-                  sub={`${readyDeploys} ready`}
+                  sub={`${readyDeploys} ready state`}
                   accent={readyDeploys < deployments.length ? 'yellow' : 'green'}
+                  icon={Layers}
                 />
                 <StatCard
-                  label="Nodes"
+                  label="Available Nodes"
                   value={nodes.length}
-                  sub={`${readyNodes} ready`}
+                  sub={`${readyNodes} health state`}
                   accent={readyNodes < nodes.length ? 'red' : 'green'}
+                  icon={Database}
                 />
                 <StatCard
                   label="Namespaces"
                   value={namespaces.length}
+                  sub="Active environments"
                   accent="blue"
+                  icon={LayoutGrid}
                 />
                 <StatCard
-                  label="Warnings"
+                  label="Warning Alerts"
                   value={warnEvents}
-                  sub={warnEvents > 0 ? 'across all ns' : 'none'}
+                  sub={warnEvents > 0 ? 'Urgent attention' : 'Stable performance'}
                   accent={warnEvents > 0 ? 'red' : 'gray'}
+                  icon={AlertTriangle}
                 />
               </div>
             </section>
 
             {/* ── Cluster utilisation charts (Prometheus) ─────────────────────── */}
             {prometheusAvailable && (
-              <section>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em]">
-                    Cluster Utilisation
+              <section className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] flex items-center gap-3">
+                    <span className="w-6 h-px bg-slate-100 dark:bg-white/5" />
+                    Live Infrastructure Metrics
                   </h2>
                   <PrometheusTimeRangeBar />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <TimeSeriesChart queries={[clusterCpuQuery()]} title="CPU" unit="m" />
-                  <TimeSeriesChart queries={[clusterMemoryQuery()]} title="Memory" unit=" GiB" />
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="bg-slate-50 dark:bg-white/[0.02] p-8 rounded-[32px] border border-slate-100 dark:border-white/5 shadow-inner">
+                    <div className="flex items-center gap-3 mb-6">
+                       <div className="p-2 rounded-xl bg-blue-500/10 text-blue-500"><Cpu size={16} /></div>
+                       <span className="text-[11px] font-black uppercase tracking-widest text-slate-400">Cluster CPU Demand</span>
+                    </div>
+                    <TimeSeriesChart queries={[clusterCpuQuery()]} title="" unit="m" />
+                  </div>
+                  <div className="bg-slate-50 dark:bg-white/[0.02] p-8 rounded-[32px] border border-slate-100 dark:border-white/5 shadow-inner">
+                    <div className="flex items-center gap-3 mb-6">
+                       <div className="p-2 rounded-xl bg-purple-500/10 text-purple-500"><Database size={16} /></div>
+                       <span className="text-[11px] font-black uppercase tracking-widest text-slate-400">Memory Allocation</span>
+                    </div>
+                    <TimeSeriesChart queries={[clusterMemoryQuery()]} title="" unit=" GiB" />
+                  </div>
                 </div>
               </section>
             )}
 
             {/* ── Nodes ───────────────────────────────────────────────────────── */}
             <section>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em]">
-                  Cluster Nodes
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] flex items-center gap-3">
+                  <span className="w-6 h-px bg-slate-100 dark:bg-white/5" />
+                  Compute Resources
                   {nodeMetrics.length === 0 && (
-                    <span className="ml-3 text-slate-400/50 normal-case font-medium tracking-tight">
-                      · metrics-server disabled
+                    <span className="ml-3 text-slate-600 normal-case font-bold tracking-tight">
+                      (metrics-server not detected)
                     </span>
                   )}
                 </h2>
               </div>
 
               {nodes.length === 0 && !loadingResources ? (
-                <EmptySection message="No nodes discovered" />
+                <EmptySection message="No compute nodes discovered" />
               ) : (
-                <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {nodes.map(node => (
                     <NodeCard
                       key={node.metadata.uid}
@@ -438,36 +458,40 @@ export default function Dashboard(): JSX.Element {
             </section>
 
             {/* ── Cluster Events ──────────────────────────────────────────────── */}
-            <section>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em]">
-                  Timeline & Events
+            <section className="pb-20">
+              <div className="flex items-center justify-between mb-8">
+                <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] flex items-center gap-3">
+                  <span className="w-6 h-px bg-slate-100 dark:bg-white/5" />
+                  Real-time Activity Timeline
                 </h2>
-                <div className="flex items-center gap-3">
-                  {warnEvents > 0 && (
-                    <span className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 px-2.5 py-0.5 rounded-full font-bold">
-                      {warnEvents} WARNINGS
-                    </span>
-                  )}
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.3)]" />
+                    <span className="text-[9px] font-black uppercase text-slate-500">Normal</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]" />
+                    <span className="text-[9px] font-black uppercase text-slate-500">Warning</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="mb-6">
+              <div className="mb-10">
                 <EventTimeline events={processedEvents} />
               </div>
 
               {recentEvents.length === 0 && !loadingResources ? (
-                <EmptySection message="No recent events" />
+                <EmptySection message="No recent cluster activity recorded" />
               ) : (
-                <div className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 shadow-sm rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800/50">
-                  {recentEvents.map(event => (
-                      <EventRow key={event.metadata.uid} event={event} />
-                    ))
-                  }
+                <div className="bg-white/30 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 shadow-2xl rounded-[32px] overflow-hidden divide-y divide-slate-100 dark:divide-white/5">
+                  {recentEvents.map(event => {
+                    if (!event || !event.metadata) return null
+                    return <EventRow key={event.metadata.uid + (event.count || 1)} event={event} />
+                  })}
                 </div>
               )}
             </section>
-          </>
+          </div>
         )}
       </div>
     </div>
@@ -477,57 +501,50 @@ export default function Dashboard(): JSX.Element {
 function EventTimeline({ events }: { events: (KubeEvent & { _ts: number })[] }) {
   const buckets = useMemo(() => {
     const now = Date.now()
-    const buckets = Array(60).fill(0).map((_, i) => ({
+    const b = Array(60).fill(0).map((_, i) => ({
       timestamp: now - (59 - i) * 60000,
       count: 0,
       warnings: 0
     }))
 
-    // Iterate through pre-parsed events
     events.forEach(e => {
       const diffMins = Math.floor((now - e._ts) / 60000)
       if (diffMins >= 0 && diffMins < 60) {
         const idx = 59 - diffMins
-        buckets[idx].count++
-        if (e.type === 'Warning') buckets[idx].warnings++
+        b[idx].count++
+        if (e.type === 'Warning') b[idx].warnings++
       }
     })
-    return buckets
+    return b
   }, [events])
 
   return (
-    <div className="glass-card glass-light p-4">
-      <div className="flex items-center justify-between mb-3 px-1">
-        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Event Density (Last 60m)</span>
-        <div className="flex gap-4">
-          <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-            <span className="text-[8px] font-bold text-slate-400 uppercase">Normal</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-            <span className="text-[8px] font-bold text-slate-400 uppercase">Warning</span>
-          </div>
+    <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-[28px] p-8 shadow-inner">
+      <div className="flex items-center justify-between mb-8 px-2">
+        <span className="text-[10px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-[0.3em]">Event Stream Density (Last Hour)</span>
+        <div className="flex items-center gap-1.5 p-1 px-3 rounded-xl bg-white dark:bg-black/20 border border-white/5">
+           <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 tabular-nums">{events.length}</span>
+           <span className="text-[9px] font-bold text-slate-500 uppercase">Records tracked</span>
         </div>
       </div>
-      <div className="flex gap-[2px] h-10 items-end">
+      <div className="flex gap-1 h-12 items-end">
         {buckets.map((b, i) => {
           const total = b.count
-          const height = total === 0 ? '2px' : `${Math.min(100, (total / 5) * 100)}%`
+          const height = total === 0 ? '4px' : `${Math.min(100, (total / 5) * 100)}%`
           const color = b.warnings > 0 ? 'bg-rose-500' : total > 0 ? 'bg-blue-500' : 'bg-slate-200 dark:bg-white/5'
           return (
             <div
               key={i}
-              className={`flex-1 rounded-t-[1px] transition-all duration-500 ${color}`}
+              className={`flex-1 rounded-full transition-all duration-1000 ${color} shadow-sm`}
               style={{ height }}
               title={`${total} events (${b.warnings} warnings) at ${new Date(b.timestamp).toLocaleTimeString()}`}
             />
           )
         })}
       </div>
-      <div className="flex justify-between mt-2 px-1 text-[8px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-tighter">
-        <span>60m ago</span>
-        <span>Now</span>
+      <div className="flex justify-between mt-4 px-2 text-[9px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-[0.4em]">
+        <span>Ancient history (60m)</span>
+        <span>Realtime</span>
       </div>
     </div>
   )
@@ -535,11 +552,11 @@ function EventTimeline({ events }: { events: (KubeEvent & { _ts: number })[] }) 
 
 function EmptySection({ message }: { message: string }) {
   return (
-    <div className="flex flex-col items-center justify-center py-12 bg-white dark:bg-slate-900/40 border border-dashed border-slate-200 dark:border-slate-800 rounded-3xl gap-3">
-      <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center text-slate-300 dark:text-slate-700">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M3 9h18" /><path d="M9 21V9" /></svg>
+    <div className="flex flex-col items-center justify-center py-24 bg-white dark:bg-white/[0.01] border border-dashed border-slate-200 dark:border-white/10 rounded-[40px] gap-5">
+      <div className="w-16 h-16 rounded-[24px] bg-slate-50 dark:bg-white/[0.03] flex items-center justify-center text-slate-200 dark:text-slate-800 shadow-inner">
+        <LayoutGrid size={32} />
       </div>
-      <p className="text-[11px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">{message}</p>
+      <p className="text-[11px] font-black text-slate-400 dark:text-slate-700 uppercase tracking-[0.4em]">{message}</p>
     </div>
   )
 }

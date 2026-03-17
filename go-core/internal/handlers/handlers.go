@@ -95,11 +95,15 @@ var kindGVR = map[string]schema.GroupVersionResource{
 	"node":                    {Group: "", Version: "v1", Resource: "nodes"},
 	"namespace":               {Group: "", Version: "v1", Resource: "namespaces"},
 	"crd":                     {Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"},
+	// Aliases — renderer components use both short and full names
+	"hpa":                     {Group: "autoscaling", Version: "v1", Resource: "horizontalpodautoscalers"},
+	"persistentvolumeclaim":   {Group: "", Version: "v1", Resource: "persistentvolumeclaims"},
+	"persistentvolume":        {Group: "", Version: "v1", Resource: "persistentvolumes"},
 }
 
 // clusterScopedKinds are not namespace-scoped; calls must omit the namespace.
 var clusterScopedKinds = map[string]bool{
-	"pv": true, "storageclass": true, "ingressclass": true,
+	"pv": true, "persistentvolume": true, "storageclass": true, "ingressclass": true,
 	"clusterrole": true, "clusterrolebinding": true,
 	"node": true, "namespace": true, "crd": true,
 }
@@ -472,7 +476,12 @@ func HandleHelmStatus(w http.ResponseWriter, r *http.Request) {
 	namespace := r.URL.Query().Get("namespace")
 	release := r.URL.Query().Get("release")
 
-	status, err := helm.GetReleaseStatus(namespace, release)
+	store.Store.RLock()
+	kubeconfig := store.Store.Kubeconfig
+	context := store.Store.ActiveContextName
+	store.Store.RUnlock()
+
+	status, err := helm.GetReleaseStatus(kubeconfig, context, namespace, release)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -487,7 +496,12 @@ func HandleHelmValues(w http.ResponseWriter, r *http.Request) {
 	release := r.URL.Query().Get("release")
 	all := r.URL.Query().Get("all") == "true"
 
-	values, err := helm.GetReleaseValues(namespace, release, all)
+	store.Store.RLock()
+	kubeconfig := store.Store.Kubeconfig
+	context := store.Store.ActiveContextName
+	store.Store.RUnlock()
+
+	values, err := helm.GetReleaseValues(kubeconfig, context, namespace, release, all)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -501,7 +515,12 @@ func HandleHelmHistory(w http.ResponseWriter, r *http.Request) {
 	namespace := r.URL.Query().Get("namespace")
 	release := r.URL.Query().Get("release")
 
-	history, err := helm.GetReleaseHistory(namespace, release)
+	store.Store.RLock()
+	kubeconfig := store.Store.Kubeconfig
+	context := store.Store.ActiveContextName
+	store.Store.RUnlock()
+
+	history, err := helm.GetReleaseHistory(kubeconfig, context, namespace, release)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1278,7 +1297,12 @@ func HandleHelmRollback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = helm.RollbackRelease(namespace, releaseName, revision); err != nil {
+	store.Store.RLock()
+	kubeconfig := store.Store.Kubeconfig
+	context := store.Store.ActiveContextName
+	store.Store.RUnlock()
+
+	if err = helm.RollbackRelease(kubeconfig, context, namespace, releaseName, revision); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1382,7 +1406,12 @@ func HandleHelmUninstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := helm.UninstallRelease(namespace, releaseName)
+	store.Store.RLock()
+	kubeconfig := store.Store.Kubeconfig
+	context := store.Store.ActiveContextName
+	store.Store.RUnlock()
+
+	_, err := helm.UninstallRelease(kubeconfig, context, namespace, releaseName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -2454,4 +2483,86 @@ func HandleGitOps(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// HandleCordonNode cordons (unschedulable=true) or uncordons (unschedulable=false) a node.
+// Query params: name (required), unschedulable (true|false, default true)
+func HandleCordonNode(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		http.Error(w, "missing name", http.StatusBadRequest)
+		return
+	}
+	unschedulable := r.URL.Query().Get("unschedulable") != "false"
+
+	cs, _ := store.Store.ActiveClientset()
+	if cs == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
+	patch := []byte(fmt.Sprintf(`{"spec":{"unschedulable":%v}}`, unschedulable))
+	if _, err := cs.CoreV1().Nodes().Patch(r.Context(), name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// HandleDrainNode cordons the node then deletes all evictable pods (skips DaemonSet-owned and mirror pods).
+func HandleDrainNode(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		http.Error(w, "missing name", http.StatusBadRequest)
+		return
+	}
+
+	cs, _ := store.Store.ActiveClientset()
+	if cs == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
+	// 1. Cordon the node first.
+	cordonPatch := []byte(`{"spec":{"unschedulable":true}}`)
+	if _, err := cs.CoreV1().Nodes().Patch(r.Context(), name, types.MergePatchType, cordonPatch, metav1.PatchOptions{}); err != nil {
+		http.Error(w, "cordon failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// 2. List all pods scheduled on this node.
+	pods, err := cs.CoreV1().Pods("").List(r.Context(), metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("spec.nodeName=%s", name),
+	})
+	if err != nil {
+		http.Error(w, "list pods failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// 3. Delete evictable pods (skip DaemonSet-owned and mirror/static pods).
+	var errs []string
+	for _, pod := range pods.Items {
+		isDaemonSet := false
+		for _, ref := range pod.OwnerReferences {
+			if ref.Kind == "DaemonSet" {
+				isDaemonSet = true
+				break
+			}
+		}
+		if isDaemonSet {
+			continue
+		}
+		if _, isMirror := pod.Annotations["kubernetes.io/config.mirror"]; isMirror {
+			continue
+		}
+		if delErr := cs.CoreV1().Pods(pod.Namespace).Delete(r.Context(), pod.Name, metav1.DeleteOptions{}); delErr != nil && !errors.IsNotFound(delErr) {
+			errs = append(errs, fmt.Sprintf("%s/%s: %v", pod.Namespace, pod.Name, delErr))
+		}
+	}
+
+	if len(errs) > 0 {
+		http.Error(w, "drain partial failure: "+strings.Join(errs, "; "), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }

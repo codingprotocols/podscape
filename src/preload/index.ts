@@ -73,6 +73,10 @@ const kubectl = {
     ipcRenderer.invoke('kubectl:rolloutUndo', context, namespace, kind, name, revision),
   getResourceEvents: (context: string, namespace: string, kind: string, name: string) =>
     ipcRenderer.invoke('kubectl:getResourceEvents', context, namespace, kind, name),
+  cordonNode: (context: string, name: string, unschedulable: boolean): Promise<void> =>
+    ipcRenderer.invoke('kubectl:cordonNode', context, name, unschedulable),
+  drainNode: (context: string, name: string): Promise<void> =>
+    ipcRenderer.invoke('kubectl:drainNode', context, name),
   deleteResource: (context: string, namespace: string | null, kind: string, name: string) =>
     ipcRenderer.invoke('kubectl:deleteResource', context, namespace, kind, name),
   getYAML: (context: string, namespace: string | null, kind: string, name: string) =>

@@ -76,6 +76,9 @@ func (m *PortForwardManager) StartForward(id, namespace, podName string, localPo
 }
 
 func (m *PortForwardManager) StopForward(id string) {
+	if m == nil {
+		return
+	}
 	m.Lock()
 	defer m.Unlock()
 	if req, ok := m.Forwards[id]; ok {
@@ -86,8 +89,14 @@ func (m *PortForwardManager) StopForward(id string) {
 
 // StopAll terminates every active port-forward. Call this before switching contexts.
 func (m *PortForwardManager) StopAll() {
+	if m == nil {
+		return
+	}
 	m.Lock()
 	defer m.Unlock()
+	if m.Forwards == nil {
+		return
+	}
 	for id, req := range m.Forwards {
 		close(req.StopCh)
 		delete(m.Forwards, id)
@@ -97,6 +106,9 @@ func (m *PortForwardManager) StopAll() {
 // UpdateClients swaps the clientset and REST config used for new port-forwards.
 // Existing forwards have already been stopped via StopAll before this is called.
 func (m *PortForwardManager) UpdateClients(clientset kubernetes.Interface, config *rest.Config) {
+	if m == nil {
+		return
+	}
 	m.Lock()
 	defer m.Unlock()
 	m.Clientset = clientset

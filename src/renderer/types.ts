@@ -689,7 +689,6 @@ export type ResourceKind =
   | 'security'
   | 'tls'
   | 'gitops'
-  | 'costview'
   | 'helm'
 
 export type AnyKubeResource =

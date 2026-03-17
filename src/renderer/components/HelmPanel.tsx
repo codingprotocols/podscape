@@ -5,6 +5,7 @@ import { formatAge } from '../types'
 import YAMLViewer from './YAMLViewer'
 import HelmRepoBrowser from './HelmRepoBrowser'
 import { FileCode, X, Activity, HardDrive, History, Trash2, Clock, Globe, Shield, RefreshCw, Package } from 'lucide-react'
+import PageHeader from './PageHeader'
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -359,19 +360,18 @@ export default function HelmPanel(): JSX.Element {
       {/* List */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
         {/* Toolbar */}
-        <div className="flex items-center justify-between px-8 py-7 border-b border-slate-200 dark:border-white/5 shrink-0 bg-white/5 backdrop-blur-md">
+        <PageHeader
+          title={activeTab === 'releases' ? 'Helm Releases' : 'Repository Browser'}
+          subtitle={
+            activeTab === 'releases' && !loading ? (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6]" />
+                {filtered.length} installed
+              </>
+            ) : undefined
+          }
+        >
           <div className="flex items-center gap-6">
-            <div>
-              <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight leading-none uppercase">
-                {activeTab === 'releases' ? 'Helm Releases' : 'Repository Browser'}
-              </h2>
-              {activeTab === 'releases' && !loading && (
-                <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[.25em] mt-2.5 flex items-center gap-2 leading-none">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6]" />
-                  {filtered.length} installed
-                </p>
-              )}
-            </div>
             {/* Tab switcher */}
             <div className="flex items-center gap-1 bg-slate-100 dark:bg-white/5 rounded-xl p-1">
               <button
@@ -399,8 +399,8 @@ export default function HelmPanel(): JSX.Element {
             </div>
           </div>
 
-          {activeTab === 'releases' && (
-            <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4">
+            {activeTab === 'releases' && (
               <div className="relative group">
                 <input
                   type="text"
@@ -415,17 +415,17 @@ export default function HelmPanel(): JSX.Element {
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
                 </div>
               </div>
+            )}
 
-              <button onClick={load} disabled={loading}
-                className="flex items-center gap-2 px-5 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300
-                           glass-panel hover:bg-white/10 dark:hover:bg-white/5 rounded-xl shadow-sm
-                           disabled:opacity-50 active:scale-95 leading-none">
-                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                Sync
-              </button>
-            </div>
-          )}
-        </div>
+            <button onClick={load} disabled={loading}
+              className="flex items-center gap-2 px-5 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300
+                         glass-panel hover:bg-white/10 dark:hover:bg-white/5 rounded-xl shadow-sm
+                         disabled:opacity-50 active:scale-95 leading-none">
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              Sync
+            </button>
+          </div>
+        </PageHeader>
 
         {/* Content */}
         {activeTab === 'browser' ? (
@@ -470,7 +470,7 @@ export default function HelmPanel(): JSX.Element {
               <thead className="sticky top-0 bg-white/70 dark:bg-[hsl(var(--bg-dark),_0.7)] backdrop-blur-xl z-20">
                 <tr className="border-b border-slate-100 dark:border-white/5">
                   {['Name', 'Namespace', 'Chart', 'Version', 'Status', 'Updated'].map(h => (
-                    <th key={h} className="text-left px-8 py-5 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest whitespace-nowrap">
+                    <th key={h} className="text-left pl-8 py-5 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest whitespace-nowrap">
                       {h}
                     </th>
                   ))}

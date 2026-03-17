@@ -166,7 +166,7 @@ export default function PVCDetail({ pvc }: Props): JSX.Element {
                   <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
               ) : yaml !== null ? (
-                <YAMLViewer
+                <YAMLViewer editable
                   content={yaml}
                   onSave={handleApplyYAML}
                 />

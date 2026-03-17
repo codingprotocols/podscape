@@ -55,6 +55,8 @@ declare global {
             rolloutHistory: (context: string, namespace: string, kind: string, name: string) => Promise<string>
             rolloutUndo: (context: string, namespace: string, kind: string, name: string, revision?: number) => Promise<string>
             getResourceEvents: (context: string, namespace: string, kind: string, name: string) => Promise<KubeEvent[]>
+            cordonNode: (context: string, name: string, unschedulable: boolean) => Promise<void>
+            drainNode: (context: string, name: string) => Promise<void>
             deleteResource: (context: string, namespace: string | null, kind: string, name: string) => Promise<string>
             getYAML: (context: string, namespace: string | null, kind: string, name: string) => Promise<string>
             getSecretValue: (context: string, namespace: string, name: string, key: string) => Promise<string>
@@ -264,6 +266,7 @@ export interface AppStore extends AnalysisSlice {
     prometheusActivePreset: '1h' | '6h' | '24h' | '7d'
     setPrometheusTimeRange: (range: { start: number; end: number }, preset?: '1h' | '6h' | '24h' | '7d') => void
     probePrometheus: () => Promise<void>
+    disconnectPrometheus: () => void
 
     // Owner chains — keyed by resource UID
     ownerChains: Record<string, OwnerChainResponse>
