@@ -186,9 +186,9 @@ export default function UnifiedLogs(): JSX.Element {
   )
 
   return (
-    <div className="flex flex-col flex-1 bg-white dark:bg-[hsl(var(--bg-dark))] h-full overflow-hidden transition-colors duration-200">
+    <div className="flex flex-col flex-1 bg-slate-50 dark:bg-[hsl(var(--bg-dark))] h-full overflow-hidden transition-colors duration-200">
       {/* Local Controls bar (no PageHeader) */}
-      <div className="px-8 py-4 border-b border-slate-100 dark:border-white/5 bg-white/[0.02] flex items-center justify-between shrink-0">
+      <div className="px-8 py-4 border-b border-slate-200 dark:border-white/5 bg-white dark:bg-white/[0.02] flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
           <button
             onClick={() => { if (isStreaming) stopAllStreams(); else startStreaming() }}
@@ -250,7 +250,7 @@ export default function UnifiedLogs(): JSX.Element {
                       className={`px-3 py-2 rounded-lg text-[10px] font-bold border transition-all items-center flex justify-between group/item
                         ${isSelected 
                           ? 'bg-blue-500/10 border-blue-500/10 text-blue-500/50 cursor-default' 
-                          : 'bg-transparent border-transparent text-slate-600 dark:text-slate-300 hover:bg-blue-500/5 hover:border-blue-500/20 hover:text-blue-400'}`}
+                          : 'bg-white dark:bg-transparent border-slate-100 dark:border-transparent text-slate-600 dark:text-slate-300 hover:bg-blue-500/5 hover:border-blue-500/20 hover:text-blue-500 dark:hover:text-blue-400'}`}
                     >
                       <div className="flex items-center gap-2 overflow-hidden">
                         <span className="truncate">{p.metadata.name}</span>
@@ -270,15 +270,15 @@ export default function UnifiedLogs(): JSX.Element {
         </div>
       </div>
 
-      <div className="flex flex-col flex-1 min-h-0 bg-slate-950">
+      <div className="flex flex-col flex-1 min-h-0 bg-white dark:bg-slate-950 shadow-inner">
         {/* Selected Pods Pill Area */}
-        <div className="flex items-center gap-3 px-8 py-3 bg-white/[0.02] border-b border-white/[0.05] shrink-0">
-          <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] whitespace-nowrap">Streams:</span>
+        <div className="flex items-center gap-3 px-8 py-3 bg-slate-50 dark:bg-white/[0.02] border-b border-slate-100 dark:border-white/[0.05] shrink-0">
+          <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] whitespace-nowrap">Streams:</span>
           <div className="flex flex-wrap gap-2 overflow-x-auto scrollbar-hide py-1">
             {selectedPods.map((name) => (
               <div
                 key={name}
-                className="px-3 py-1 rounded-lg bg-blue-600/10 border border-blue-500/30 text-blue-400 text-[10px] font-black flex items-center gap-2 animate-in zoom-in-95 duration-200"
+                className="px-3 py-1 rounded-lg bg-blue-500/10 border border-blue-400/20 dark:border-blue-500/30 text-blue-600 dark:text-blue-400 text-[10px] font-black flex items-center gap-2 animate-in zoom-in-95 duration-200"
               >
                 <span className="truncate max-w-[150px]">{name}</span>
                 <button 
@@ -294,10 +294,10 @@ export default function UnifiedLogs(): JSX.Element {
               <span className="text-[10px] font-bold text-slate-600 italic">No pods active</span>
             )}
           </div>
-          {selectedPods.length > 0 && !isStreaming && (
+            {selectedPods.length > 0 && !isStreaming && (
             <button 
               onClick={clearAll} 
-              className="ml-auto text-[9px] font-black text-slate-500 hover:text-slate-300 uppercase tracking-widest transition-colors"
+              className="ml-auto text-[9px] font-black text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300 uppercase tracking-widest transition-colors"
             >
               Clear All
             </button>
@@ -310,14 +310,14 @@ export default function UnifiedLogs(): JSX.Element {
           className="flex-1 overflow-auto p-6 font-mono text-[12px] selection:bg-blue-500/30 scroll-smooth leading-relaxed"
         >
           {filteredLogs.map(l => (
-            <div key={l.id} className="flex gap-6 py-0.5 hover:bg-white/[0.02] group transition-colors">
-              <span className="text-slate-600 shrink-0 select-none w-20 whitespace-nowrap font-medium">
+            <div key={l.id} className="flex gap-6 py-0.5 hover:bg-slate-100 dark:hover:bg-white/[0.02] group transition-colors">
+              <span className="text-slate-400 dark:text-slate-600 shrink-0 select-none w-20 whitespace-nowrap font-medium">
                 {l.timestamp.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               </span>
               <span className={`shrink-0 font-black truncate w-40 tracking-tight ${l.color}`}>
                 {l.podName}
               </span>
-              <span className="text-slate-300 break-all">
+              <span className="text-slate-600 dark:text-slate-300 break-all">
                 {searchTerm ? (
                   l.message.split(new RegExp(`(${escapeRegExp(searchTerm)})`, 'gi')).map((part, i) =>
                     part.toLowerCase() === searchTerm.toLowerCase() 
@@ -329,19 +329,19 @@ export default function UnifiedLogs(): JSX.Element {
             </div>
           ))}
           {logs.length === 0 && (
-            <div className="h-full flex flex-col items-center justify-center gap-6 opacity-20">
-              <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-white/10 flex items-center justify-center">
+            <div className="h-full flex flex-col items-center justify-center gap-6 opacity-40">
+              <div className="w-16 h-16 rounded-3xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 flex items-center justify-center">
                 <Terminal className="w-8 h-8 text-blue-500" />
               </div>
-              <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Stream Pending</p>
+              <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400 dark:text-slate-600">Stream Pending</p>
             </div>
           )}
         </div>
         
         {/* Terminal Footer / Search */}
-        <div className="px-8 py-2 bg-slate-900/50 border-t border-white/[0.05] flex items-center gap-4 shrink-0">
-          <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-            <Search size={12} className="text-slate-600" />
+        <div className="px-8 py-2 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-white/[0.05] flex items-center gap-4 shrink-0">
+          <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+            <Search size={12} className="text-slate-400 dark:text-slate-600" />
             Filter Log Output
           </div>
           <input
@@ -349,7 +349,7 @@ export default function UnifiedLogs(): JSX.Element {
             placeholder="Search within logs..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 text-[11px] font-bold text-slate-300 placeholder:text-slate-700 font-mono"
+            className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 text-[11px] font-bold text-slate-700 dark:text-slate-300 placeholder:text-slate-300 dark:placeholder:text-slate-700 font-mono"
           />
         </div>
       </div>

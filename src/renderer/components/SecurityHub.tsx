@@ -287,8 +287,8 @@ export default function SecurityHub(): JSX.Element {
                         <button
                             onClick={() => setShowCustomScan(true)}
                             disabled={securityScanning}
-                            className={`h-9 px-4 rounded-xl bg-white/5 border border-white/10 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 ${
-                                securityScanning ? 'opacity-40 cursor-not-allowed' : 'hover:bg-white/8 hover:border-white/15'
+                            className={`h-9 px-4 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 ${
+                                securityScanning ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-200 dark:hover:bg-white/8 hover:border-slate-300 dark:hover:border-white/15'
                             }`}
                         >
                             <SlidersHorizontal className="w-3 h-3" />
@@ -358,9 +358,9 @@ export default function SecurityHub(): JSX.Element {
 
             {/* ── Scan Progress Terminal ── */}
             {securityScanning && (
-                <div className="px-8 py-4 border-b border-white/5 bg-black/20 shrink-0">
-                    <div className="rounded-xl bg-black/50 border border-white/[0.06] overflow-hidden">
-                        <div className="px-4 py-2 border-b border-white/[0.06] flex items-center justify-between gap-2.5">
+                <div className="px-8 py-4 border-b border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-black/20 shrink-0">
+                    <div className="rounded-xl bg-white dark:bg-black/50 border border-slate-200 dark:border-white/[0.06] overflow-hidden">
+                        <div className="px-4 py-2 border-b border-slate-100 dark:border-white/[0.06] flex items-center justify-between gap-2.5">
                             <div className="flex items-center gap-2.5">
                                 <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
                                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.15em]">Scan Progress</span>
@@ -389,9 +389,9 @@ export default function SecurityHub(): JSX.Element {
             )}
 
             {/* ── Toolbar ── */}
-            <div className="pl-8 pr-6 py-3 border-b border-white/5 flex items-center justify-between gap-4 bg-[#020617]/95 backdrop-blur-sm sticky top-[95px] z-30 shrink-0">
+            <div className="pl-8 pr-6 py-3 border-b border-slate-200 dark:border-white/5 flex items-center justify-between gap-4 bg-white/90 dark:bg-[#020617]/95 backdrop-blur-sm sticky top-[95px] z-30 shrink-0">
                 {/* Severity tabs */}
-                <div className="flex items-center gap-1 p-1 rounded-xl bg-white/[0.03] border border-white/5">
+                <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-white/[0.03] border border-slate-200 dark:border-white/5">
                     <FilterTab label={`All  ${unifiedResults.length}`} active={severityFilter === 'all'} onClick={() => setSeverityFilter('all')} color="default" />
                     <FilterTab label={`Critical  ${criticalCount}`} active={severityFilter === 'critical'} onClick={() => setSeverityFilter('critical')} color="red" />
                     <FilterTab label={`Warnings  ${warningCount}`} active={severityFilter === 'warning'} onClick={() => setSeverityFilter('warning')} color="amber" />
@@ -420,7 +420,7 @@ export default function SecurityHub(): JSX.Element {
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-widest ${
                             groupByNamespace
                                 ? 'bg-blue-500/10 border-blue-500/25 text-blue-400'
-                                : 'bg-white/[0.03] border-white/8 text-slate-500 hover:text-slate-300 hover:bg-white/[0.06]'
+                                : 'bg-slate-100 dark:bg-white/[0.03] border-slate-200 dark:border-white/8 text-slate-500 hover:text-slate-900 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/[0.06]'
                         }`}
                     >
                         <LayoutGrid className="w-3 h-3" />
@@ -431,7 +431,7 @@ export default function SecurityHub(): JSX.Element {
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-widest ${
                             includeSystem
                                 ? 'bg-amber-500/10 border-amber-500/25 text-amber-400'
-                                : 'bg-white/[0.03] border-white/8 text-slate-500 hover:text-slate-300 hover:bg-white/[0.06]'
+                                : 'bg-slate-100 dark:bg-white/[0.03] border-slate-200 dark:border-white/8 text-slate-500 hover:text-slate-900 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/[0.06]'
                         }`}
                     >
                         <ListFilter className="w-3 h-3" />
@@ -468,7 +468,7 @@ export default function SecurityHub(): JSX.Element {
                                     <p className="text-[12px] font-bold text-amber-400 mb-0.5">Trivy not installed</p>
                                     <p className="text-[11px] text-slate-400 leading-relaxed">
                                         Image CVE scanning requires the trivy CLI. Install with{' '}
-                                        <code className="px-1.5 py-0.5 rounded bg-white/5 text-slate-200 font-mono text-[10px]">brew install trivy</code>.
+                                        <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-white/5 text-slate-900 dark:text-slate-200 font-mono text-[10px]">brew install trivy</code>.
                                         {' '}Configuration analysis below works without it.
                                     </p>
                                 </div>
@@ -523,7 +523,7 @@ function NamespaceFilterDropdown({ namespaces, value, onChange }: {
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-widest min-w-[140px] justify-between ${
                     value
                         ? 'bg-blue-500/10 border-blue-500/25 text-blue-300'
-                        : 'bg-white/[0.03] border-white/8 text-slate-500 hover:text-slate-300 hover:bg-white/[0.06]'
+                        : 'bg-slate-100 dark:bg-white/[0.03] border-slate-200 dark:border-white/8 text-slate-500 hover:text-slate-900 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/[0.06]'
                 }`}
             >
                 <div className="flex items-center gap-1.5 min-w-0">
@@ -534,7 +534,7 @@ function NamespaceFilterDropdown({ namespaces, value, onChange }: {
             </button>
 
             {open && (
-                <div className="absolute left-0 top-full mt-2 w-56 rounded-xl bg-[#0d1525] border border-white/10 shadow-2xl shadow-black/50 z-50 overflow-hidden">
+                <div className="absolute left-0 top-full mt-2 w-56 rounded-xl bg-white dark:bg-[#0d1525] border border-slate-200 dark:border-white/10 shadow-xl dark:shadow-2xl dark:shadow-black/50 z-50 overflow-hidden">
                     <div className="py-1">
                         <button
                             onClick={() => { onChange(null); setOpen(false) }}
@@ -596,7 +596,7 @@ function NamespaceIgnorePicker({ namespaces, ignored, onToggle, onClear }: {
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-widest ${
                     ignored.size > 0
                         ? 'bg-slate-500/10 border-slate-500/25 text-slate-300'
-                        : 'bg-white/[0.03] border-white/8 text-slate-500 hover:text-slate-300 hover:bg-white/[0.06]'
+                        : 'bg-slate-100 dark:bg-white/[0.03] border-slate-200 dark:border-white/8 text-slate-500 hover:text-slate-900 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/[0.06]'
                 }`}
             >
                 <EyeOff className="w-3 h-3" />
@@ -609,7 +609,7 @@ function NamespaceIgnorePicker({ namespaces, ignored, onToggle, onClear }: {
             </button>
 
             {open && (
-                <div className="absolute right-0 top-full mt-2 w-56 rounded-xl bg-[#0d1525] border border-white/10 shadow-2xl shadow-black/50 z-50 overflow-hidden">
+                <div className="absolute right-0 top-full mt-2 w-56 rounded-xl bg-white dark:bg-[#0d1525] border border-slate-200 dark:border-white/10 shadow-xl dark:shadow-2xl dark:shadow-black/50 z-50 overflow-hidden">
                     <div className="px-3 py-2.5 border-b border-white/5 flex items-center justify-between">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ignore Namespaces</p>
                         {ignored.size > 0 && (
@@ -726,7 +726,7 @@ function ResourceTable({ results, groupByNamespace }: { results: any[]; groupByN
     return (
         <div className="px-8 pt-3 pb-8">
             {/* Column headers */}
-            <div className="flex items-center px-4 py-2 border-b border-white/[0.06]">
+            <div className="flex items-center px-4 py-2 border-b border-slate-100 dark:border-white/[0.06]">
                 <div className="flex-1 min-w-0 pl-[2.375rem]">
                     <HeaderCell col="name" label="Resource" />
                 </div>
@@ -771,17 +771,17 @@ function TableRow({ res, isLast }: { res: any; isLast: boolean }) {
 
     return (
         <div className={`transition-colors ${
-            expanded ? 'bg-white/[0.025]' : 'hover:bg-white/[0.02]'
-        } ${!isLast ? 'border-b border-white/[0.04]' : ''}`}>
+            expanded ? 'bg-slate-50 dark:bg-white/[0.025]' : 'hover:bg-slate-100 dark:hover:bg-white/[0.02]'
+        } ${!isLast ? 'border-b border-slate-100 dark:border-white/[0.04]' : ''}`}>
             <button
                 onClick={() => setExpanded(e => !e)}
                 className="w-full flex items-center px-4 py-2.5 text-left group"
             >
                 {/* Chevron + icon + name */}
                 <div className="flex-1 min-w-0 flex items-center gap-2.5">
-                    <ChevronDown className={`w-3 h-3 text-slate-700 group-hover:text-slate-500 shrink-0 transition-transform duration-150 ${expanded ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`w-3 h-3 text-slate-400 dark:text-slate-700 group-hover:text-slate-600 dark:group-hover:text-slate-500 shrink-0 transition-transform duration-150 ${expanded ? 'rotate-180' : ''}`} />
                     <KindIcon kind={res.kind ?? ''} />
-                    <span className="text-[12px] font-semibold text-slate-200 truncate">{res.name}</span>
+                    <span className="text-[12px] font-semibold text-slate-800 dark:text-slate-200 truncate">{res.name}</span>
                 </div>
                 {/* Namespace */}
                 <div className="w-32 shrink-0">
@@ -831,7 +831,7 @@ function TableRow({ res, isLast }: { res: any; isLast: boolean }) {
                     <button
                         onClick={e => { e.stopPropagation(); navigateToResource(res.kind, res.name, res.namespace ?? '') }}
                         title={`Open ${res.kind}`}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-600 hover:text-blue-400 hover:bg-blue-500/10 transition-all"
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-400 dark:text-slate-600 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all"
                     >
                         <ArrowUpRight className="w-3 h-3" />
                     </button>
@@ -840,7 +840,7 @@ function TableRow({ res, isLast }: { res: any; isLast: boolean }) {
 
             {/* Expanded detail */}
             {expanded && (
-                <div className="border-t border-white/[0.06] px-4 pb-4 pt-3 ml-[2.375rem] grid grid-cols-1 xl:grid-cols-2 gap-6">
+                <div className="border-t border-slate-100 dark:border-white/[0.06] px-4 pb-4 pt-3 ml-[2.375rem] grid grid-cols-1 xl:grid-cols-2 gap-6">
                     {res.issues.length > 0 && (
                         <div>
                             <p className="text-[9px] font-black text-slate-600 uppercase tracking-[0.2em] mb-3">Configuration Issues</p>
@@ -891,7 +891,7 @@ function IssueRow({ issue }: { issue: any }) {
                 {isCritical ? 'Critical' : 'Warn'}
             </span>
             <div className="min-w-0">
-                <p className="text-[12px] font-semibold text-slate-200 leading-snug">{issue.message}</p>
+                <p className="text-[12px] font-semibold text-slate-800 dark:text-slate-200 leading-snug">{issue.message}</p>
                 <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">Fix: {issue.suggestion}</p>
             </div>
         </div>
@@ -906,7 +906,7 @@ function VulnRow({ v }: { v: any }) {
         LOW: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
     }
     return (
-        <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/[0.02] border border-white/5">
+        <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5">
             <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border shrink-0 ${styles[v.severity] ?? styles.LOW}`}>
                 {v.severity}
             </span>
@@ -946,7 +946,7 @@ function DownloadButton({ results }: { results: any[] }) {
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-widest ${
                     results.length === 0
                         ? 'opacity-30 cursor-not-allowed bg-white/[0.03] border-white/8 text-slate-500'
-                        : 'bg-white/[0.03] border-white/8 text-slate-500 hover:text-slate-300 hover:bg-white/[0.06]'
+                        : 'bg-slate-100 dark:bg-white/[0.03] border-slate-200 dark:border-white/8 text-slate-500 hover:text-slate-900 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/[0.06]'
                 }`}
             >
                 <Download className="w-3 h-3" />
@@ -1006,9 +1006,9 @@ function StatCard({ label, value, icon, active, activeColor, activeBg, inactiveC
     active: boolean; activeColor: string; activeBg: string; inactiveColor?: string
 }) {
     const valueColor = active ? activeColor : (inactiveColor ?? 'text-slate-500')
-    const iconBg = active ? activeBg : 'bg-white/5 border-white/10'
+    const iconBg = active ? activeBg : 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10'
     return (
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 flex items-center gap-3">
+        <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-slate-50/50 dark:bg-white/[0.02] p-4 flex items-center gap-3">
             <div className={`w-9 h-9 rounded-lg border flex items-center justify-center shrink-0 ${iconBg} ${active ? activeColor : 'text-slate-500'}`}>
                 {icon}
             </div>
@@ -1045,7 +1045,7 @@ function ImagePickerModal({ workloads, onScan, onSkip, onClose }: {
             className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
             onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
         >
-            <div className="w-[520px] max-h-[80vh] flex flex-col rounded-2xl bg-[#0d1525] border border-white/10 shadow-2xl shadow-black/60 overflow-hidden">
+            <div className="w-[520px] max-h-[80vh] flex flex-col rounded-2xl bg-white dark:bg-[#0d1525] border border-slate-200 dark:border-white/10 shadow-2xl shadow-black/60 overflow-hidden">
                 {/* Header */}
                 <div className="px-6 py-5 border-b border-white/5 flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-3">
@@ -1182,7 +1182,7 @@ function CustomScanModal({ namespaces, trivyAvailable, onRun, onClose }: {
             className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
             onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
         >
-            <div className="w-[480px] rounded-2xl bg-[#0d1525] border border-white/10 shadow-2xl shadow-black/60 overflow-hidden">
+            <div className="w-[480px] rounded-2xl bg-white dark:bg-[#0d1525] border border-slate-200 dark:border-white/10 shadow-2xl shadow-black/60 overflow-hidden">
                 {/* Header */}
                 <div className="px-6 py-5 border-b border-white/5 flex items-center justify-between">
                     <div className="flex items-center gap-3">

@@ -175,6 +175,7 @@ export interface AppStore extends AnalysisSlice {
     prodContexts: string[]
     setProdContexts: (contexts: string[]) => Promise<void>
     isProduction: boolean
+    contextSwitchStatus: string | null
     resourceHistory: AnyKubeResource[]
     apps: AppGroup[]
 

@@ -113,11 +113,11 @@ function OverviewPanel({ resources, fluxDetected, argoDetected }: {
 
   if (total === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 px-6 text-slate-600">
-        <div className="w-12 h-12 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center">
-          <Activity className="w-6 h-6 text-slate-600" />
+      <div className="flex flex-col items-center justify-center h-full gap-4 px-6 text-slate-500">
+        <div className="w-12 h-12 rounded-2xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.06] flex items-center justify-center">
+          <Activity className="w-6 h-6 text-slate-400 dark:text-slate-600" />
         </div>
-        <p className="text-sm font-black text-slate-300 mb-1.5 tracking-tight">Select a resource</p>
+        <p className="text-sm font-black text-slate-900 dark:text-slate-300 mb-1.5 tracking-tight">Select a resource</p>
         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest text-center">to view details</p>
       </div>
     )
@@ -135,30 +135,30 @@ function OverviewPanel({ resources, fluxDetected, argoDetected }: {
 
         {/* health bar */}
         <div className="mb-3">
-          <div className="flex rounded-full overflow-hidden h-2 bg-white/[0.05] mb-2">
+          <div className="flex rounded-full overflow-hidden h-2 bg-slate-100 dark:bg-white/[0.05] mb-2">
             {healthyN > 0 && <div className="bg-emerald-500" style={{ width: `${(healthyN / total) * 100}%` }} />}
             {progressingN > 0 && <div className="bg-amber-500" style={{ width: `${(progressingN / total) * 100}%` }} />}
             {degradedN > 0 && <div className="bg-red-500" style={{ width: `${(degradedN / total) * 100}%` }} />}
-            {unknownN > 0 && <div className="bg-slate-600" style={{ width: `${(unknownN / total) * 100}%` }} />}
+            {unknownN > 0 && <div className="bg-slate-400 dark:bg-slate-600" style={{ width: `${(unknownN / total) * 100}%` }} />}
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-emerald-400">{healthPct}% healthy</span>
-            <span className="text-[9px] text-slate-600">{total} total</span>
+            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">{healthPct}% healthy</span>
+            <span className="text-[9px] text-slate-500 dark:text-slate-600">{total} total</span>
           </div>
         </div>
 
         {/* legend */}
         <div className="grid grid-cols-2 gap-1.5">
           {[
-            { label: 'Healthy', n: healthyN, color: 'bg-emerald-500', text: 'text-emerald-400' },
-            { label: 'Syncing', n: progressingN, color: 'bg-amber-500', text: 'text-amber-400' },
-            { label: 'Degraded', n: degradedN, color: 'bg-red-500', text: 'text-red-400' },
-            { label: 'Unknown', n: unknownN, color: 'bg-slate-600', text: 'text-slate-500' },
+            { label: 'Healthy', n: healthyN, color: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400' },
+            { label: 'Syncing', n: progressingN, color: 'bg-amber-500', text: 'text-amber-600 dark:text-amber-400' },
+            { label: 'Degraded', n: degradedN, color: 'bg-red-500', text: 'text-red-500 dark:text-red-400' },
+            { label: 'Unknown', n: unknownN, color: 'bg-slate-400 dark:bg-slate-600', text: 'text-slate-500' },
           ].filter(s => s.n > 0).map(s => (
-            <div key={s.label} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.04]">
+            <div key={s.label} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.04]">
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.color}`} />
               <span className={`text-[10px] font-bold ${s.text}`}>{s.n}</span>
-              <span className="text-[9px] text-slate-600 truncate">{s.label}</span>
+              <span className="text-[9px] text-slate-500 dark:text-slate-600 truncate">{s.label}</span>
             </div>
           ))}
         </div>
@@ -168,17 +168,17 @@ function OverviewPanel({ resources, fluxDetected, argoDetected }: {
       <div>
         <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-600 mb-2">Controllers</p>
         <div className="flex flex-col gap-1.5">
-          <div className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border ${fluxDetected ? 'bg-sky-500/8 border-sky-500/20' : 'bg-white/[0.02] border-white/[0.04] opacity-40'
+          <div className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border ${fluxDetected ? 'bg-sky-500/8 border-sky-500/20' : 'bg-slate-50 dark:bg-white/[0.02] border-slate-200 dark:border-white/[0.04] opacity-40'
             }`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${fluxDetected ? 'bg-sky-400' : 'bg-slate-600'}`} />
-            <span className={`text-[10px] font-black tracking-wider uppercase ${fluxDetected ? 'text-sky-400' : 'text-slate-600'}`}>Flux CD</span>
-            {!fluxDetected && <span className="text-[9px] text-slate-700 ml-auto">not detected</span>}
+            <span className={`w-1.5 h-1.5 rounded-full ${fluxDetected ? 'bg-sky-400' : 'bg-slate-300 dark:bg-slate-600'}`} />
+            <span className={`text-[10px] font-black tracking-wider uppercase ${fluxDetected ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400 dark:text-slate-600'}`}>Flux CD</span>
+            {!fluxDetected && <span className="text-[9px] text-slate-400 dark:text-slate-700 ml-auto">not detected</span>}
           </div>
-          <div className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border ${argoDetected ? 'bg-orange-500/8 border-orange-500/20' : 'bg-white/[0.02] border-white/[0.04] opacity-40'
+          <div className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border ${argoDetected ? 'bg-orange-500/8 border-orange-500/20' : 'bg-slate-50 dark:bg-white/[0.02] border-slate-200 dark:border-white/[0.04] opacity-40'
             }`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${argoDetected ? 'bg-orange-400' : 'bg-slate-600'}`} />
-            <span className={`text-[10px] font-black tracking-wider uppercase ${argoDetected ? 'text-orange-400' : 'text-slate-600'}`}>Argo CD</span>
-            {!argoDetected && <span className="text-[9px] text-slate-700 ml-auto">not detected</span>}
+            <span className={`w-1.5 h-1.5 rounded-full ${argoDetected ? 'bg-orange-400' : 'bg-slate-300 dark:bg-slate-600'}`} />
+            <span className={`text-[10px] font-black tracking-wider uppercase ${argoDetected ? 'text-orange-600 dark:text-orange-400' : 'text-slate-400 dark:text-slate-600'}`}>Argo CD</span>
+            {!argoDetected && <span className="text-[9px] text-slate-400 dark:text-slate-700 ml-auto">not detected</span>}
           </div>
         </div>
       </div>
@@ -191,14 +191,14 @@ function OverviewPanel({ resources, fluxDetected, argoDetected }: {
               const m = kindMeta(kind)
               return (
                 <div key={kind} className="flex items-center gap-2">
-                  <div className="flex-1 h-1 rounded-full bg-white/[0.05] overflow-hidden">
+                  <div className="flex-1 h-1 rounded-full bg-slate-100 dark:bg-white/[0.05] overflow-hidden">
                     <div
                       className="h-full rounded-full"
                       style={{ width: `${(count / total) * 100}%`, background: m.dot }}
                     />
                   </div>
                   <span className={`text-[10px] font-bold w-16 text-right ${m.color}`}>{m.label}</span>
-                  <span className="text-[10px] text-slate-600 w-4 text-right">{count}</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-600 w-4 text-right">{count}</span>
                 </div>
               )
             })}
@@ -212,11 +212,11 @@ function OverviewPanel({ resources, fluxDetected, argoDetected }: {
           <div className="flex flex-col gap-1">
             {nsCounts.map(([ns, count]) => (
               <div key={ns} className="flex items-center gap-2">
-                <div className="flex-1 h-1 rounded-full bg-white/[0.05] overflow-hidden">
-                  <div className="h-full rounded-full bg-slate-500" style={{ width: `${(count / total) * 100}%` }} />
+                <div className="flex-1 h-1 rounded-full bg-slate-100 dark:bg-white/[0.05] overflow-hidden">
+                  <div className="h-full rounded-full bg-slate-300 dark:bg-slate-500" style={{ width: `${(count / total) * 100}%` }} />
                 </div>
                 <span className="text-[10px] text-slate-400 font-mono w-28 text-right truncate">{ns}</span>
-                <span className="text-[10px] text-slate-600 w-4 text-right">{count}</span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-600 w-4 text-right">{count}</span>
               </div>
             ))}
           </div>
@@ -240,18 +240,18 @@ function DetailPanel({ r, onClose }: { r: GitOpsResource; onClose: () => void })
   return (
     <div className="flex flex-col h-full overflow-y-auto">
       {/* top bar */}
-      <div className="flex items-center justify-between px-5 py-3 shrink-0 border-b border-white/[0.05]">
-        <span className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-600">Resource Detail</span>
+      <div className="flex items-center justify-between px-5 py-3 shrink-0 border-b border-slate-200 dark:border-white/[0.05]">
+        <span className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400 dark:text-slate-600">Resource Detail</span>
         <button
           onClick={onClose}
-          className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-600 hover:text-slate-300 hover:bg-white/5 transition-all"
+          className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-all"
         >
           <X className="w-4 h-4" />
         </button>
       </div>
 
       {/* hero card */}
-      <div className="relative overflow-hidden mx-4 mt-4 mb-4 p-4 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+      <div className="relative overflow-hidden mx-4 mt-4 mb-4 p-4 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.06]">
         <div
           className="absolute -top-8 -right-8 w-32 h-32 rounded-full blur-3xl opacity-[0.08] pointer-events-none"
           style={{ background: m.dot }}
@@ -266,8 +266,8 @@ function DetailPanel({ r, onClose }: { r: GitOpsResource; onClose: () => void })
             {r.status || 'Unknown'}
           </span>
         </div>
-        <p className="font-mono text-sm font-bold text-white break-all leading-tight">{r.name}</p>
-        {r.namespace && <p className="text-[10px] text-slate-500 mt-0.5">{r.namespace}</p>}
+        <p className="font-mono text-sm font-bold text-slate-900 dark:text-white break-all leading-tight">{r.name}</p>
+        {r.namespace && <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{r.namespace}</p>}
         {r.message && (
           <p className={`mt-2.5 text-[10px] leading-relaxed rounded-lg px-3 py-2 border ${healthy ? 'text-emerald-400/80 bg-emerald-500/5 border-emerald-500/10'
               : progressing ? 'text-amber-400/80 bg-amber-500/5 border-amber-500/10'
@@ -281,8 +281,8 @@ function DetailPanel({ r, onClose }: { r: GitOpsResource; onClose: () => void })
       {/* source + revision */}
       {(r.source || r.revision) && (
         <div className="px-4 mb-4">
-          <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-600 mb-2">Source</p>
-          <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] divide-y divide-white/[0.04]">
+          <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400 dark:text-slate-600 mb-2">Source</p>
+          <div className="rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.05] divide-y divide-slate-100 dark:divide-white/[0.04]">
             {r.source && (
               <div className="flex items-start gap-3 px-3 py-2.5">
                 <span className="text-[10px] text-slate-600 w-16 shrink-0 pt-0.5 flex items-center gap-1.5 font-black uppercase tracking-widest px-1">
@@ -316,12 +316,12 @@ function DetailPanel({ r, onClose }: { r: GitOpsResource; onClose: () => void })
       {/* labels */}
       {labelEntries.length > 0 && (
         <div className="px-4 mb-4">
-          <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-600 mb-2">Labels</p>
+          <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400 dark:text-slate-600 mb-2">Labels</p>
           <div className="flex flex-wrap gap-1.5">
             {labelEntries.map(([k, v]) => (
-              <span key={k} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.06]">
-                <span className="text-[9px] font-bold text-slate-500">{k}</span>
-                <span className="text-[9px] text-slate-400 font-mono max-w-[100px] truncate">{v}</span>
+              <span key={k} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.06]">
+                <span className="text-[9px] font-bold text-slate-500 dark:text-slate-500">{k}</span>
+                <span className="text-[9px] text-slate-600 dark:text-slate-400 font-mono max-w-[100px] truncate">{v}</span>
               </span>
             ))}
           </div>
@@ -419,18 +419,18 @@ function TableRow({ r, selected, onClick }: { r: GitOpsResource; selected: boole
         <KindPill kind={r.kind} />
       </td>
       <td className="px-3 py-3 max-w-0">
-        <span className="text-[10px] text-slate-500 font-mono truncate block" title={r.namespace}>{r.namespace || '—'}</span>
+        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono truncate block" title={r.namespace}>{r.namespace || '—'}</span>
       </td>
       <td className="px-3 py-3 max-w-0">
-        <span className="text-[10px] text-slate-500 font-mono truncate block" title={r.source}>
+        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono truncate block" title={r.source}>
           {r.source || '—'}
         </span>
       </td>
       <td className="px-3 pr-5 py-3 whitespace-nowrap">
         {r.revision ? (
-          <span className="font-mono text-[10px] text-slate-500">{r.revision.slice(0, 8)}</span>
+          <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">{r.revision.slice(0, 8)}</span>
         ) : (
-          <span className="text-[10px] text-slate-700">—</span>
+          <span className="text-[10px] text-slate-300 dark:text-slate-700">—</span>
         )}
       </td>
       <td className="px-3 py-3 max-w-0">
@@ -485,7 +485,7 @@ export default function GitOpsPanel() {
   const noControllers = data !== null && !loadError && !data.fluxDetected && !data.argoDetected && resources.length === 0
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 bg-[hsl(var(--bg-dark))] overflow-hidden relative h-full">
+    <div className="flex-1 flex flex-col min-w-0 bg-slate-50 dark:bg-[hsl(var(--bg-dark))] overflow-hidden relative h-full transition-colors duration-200">
 
       <PageHeader
         title="GitOps Hub"
@@ -507,10 +507,10 @@ export default function GitOpsPanel() {
                 </div>
               )}
               {data?.fluxDetected && (
-                <span className="px-2 py-0.5 text-[9px] font-black tracking-widest bg-sky-500/10 text-sky-500 dark:text-sky-400 rounded-md border border-sky-500/20 uppercase">Flux</span>
+                <span className="px-2 py-0.5 text-[9px] font-black tracking-widest bg-sky-500/10 text-sky-600 dark:text-sky-400 rounded-md border border-sky-500/20 uppercase">Flux</span>
               )}
               {data?.argoDetected && (
-                <span className="px-2 py-0.5 text-[9px] font-black tracking-widest bg-orange-500/10 text-orange-500 dark:text-orange-400 rounded-md border border-orange-500/20 uppercase">Argo CD</span>
+                <span className="px-2 py-0.5 text-[9px] font-black tracking-widest bg-orange-500/10 text-orange-600 dark:text-orange-400 rounded-md border border-orange-500/20 uppercase">Argo CD</span>
               )}
             </div>
           )}
@@ -537,28 +537,28 @@ export default function GitOpsPanel() {
       </PageHeader>
 
       {resources.length > 0 && (
-        <div className="px-5 py-3 border-b border-white/[0.05] shrink-0 flex items-center gap-4 bg-white/[0.005]">
+        <div className="px-5 py-3 border-b border-slate-200 dark:border-white/[0.05] shrink-0 flex items-center gap-4 bg-white/50 dark:bg-white/[0.005]">
           {/* kind filter tabs */}
           <div className="flex items-center gap-1">
             <button
               onClick={() => setKindFilter('all')}
-              className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-all ${kindFilter === 'all' ? 'bg-sky-500/20 text-sky-400 border-sky-500/30' : 'text-slate-500 hover:text-slate-300 border-transparent hover:bg-white/5'}`}
+              className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-all ${kindFilter === 'all' ? 'bg-sky-500/10 text-sky-600 dark:bg-sky-500/20 dark:text-sky-400 border-sky-500/30' : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-300 border-transparent hover:bg-slate-100 dark:hover:bg-white/5'}`}
             >
-              All <span className="text-slate-600 ml-0.5">({resources.length})</span>
+              All <span className="text-slate-400 dark:text-slate-600 ml-0.5">({resources.length})</span>
             </button>
             {kinds.map(k => (
               <button
                 key={k}
                 onClick={() => setKindFilter(f => f === k ? 'all' : k)}
-                className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-all ${kindFilter === k ? 'bg-sky-500/20 text-sky-400 border-sky-500/30' : 'text-slate-500 hover:text-slate-300 border-transparent hover:bg-white/5'}`}
+                className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-all ${kindFilter === k ? 'bg-sky-500/10 text-sky-600 dark:bg-sky-500/20 dark:text-sky-400 border-sky-500/30' : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-300 border-transparent hover:bg-slate-100 dark:hover:bg-white/5'}`}
               >
                 {KIND_META[k]?.label ?? k}
-                <span className="text-slate-600 ml-0.5">({resources.filter(r => r.kind === k).length})</span>
+                <span className="text-slate-400 dark:text-slate-600 ml-0.5">({resources.filter(r => r.kind === k).length})</span>
               </button>
             ))}
             <div className="flex items-center gap-1 ml-2">
-              <button className="p-1 rounded bg-white/5 text-slate-600 hover:text-slate-300"><LayoutGrid className="w-3 h-3" /></button>
-              <button className="p-1 rounded bg-white/5 text-slate-600 hover:text-slate-300"><ListFilter className="w-3 h-3" /></button>
+              <button className="p-1 rounded bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-600 hover:text-slate-900 dark:hover:text-slate-300"><LayoutGrid className="w-3 h-3" /></button>
+              <button className="p-1 rounded bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-600 hover:text-slate-900 dark:hover:text-slate-300"><ListFilter className="w-3 h-3" /></button>
             </div>
           </div>
 
@@ -579,17 +579,17 @@ export default function GitOpsPanel() {
 
       {/* ── body ───────────────────────────────────────────────────────── */}
       {loading ? (
-        <div className="flex-1 flex items-center justify-center gap-3 text-slate-600">
-          <div className="w-4 h-4 border-2 border-slate-700 border-t-sky-500 rounded-full animate-spin" />
+        <div className="flex-1 flex items-center justify-center gap-3 text-slate-500 dark:text-slate-600">
+          <div className="w-4 h-4 border-2 border-slate-300 dark:border-slate-700 border-t-sky-500 rounded-full animate-spin" />
           <span className="text-xs font-bold">Detecting GitOps controllers…</span>
         </div>
       ) : loadError ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="flex items-center gap-3 px-5 py-4 rounded-xl bg-red-500/[0.08] border border-red-500/20 max-w-md">
-            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+            <AlertTriangle className="w-4 h-4 text-red-500 dark:text-red-400 shrink-0" />
             <div>
-              <p className="text-[11px] font-black text-red-400">Failed to load GitOps resources</p>
-              <p className="text-[10px] text-red-400/60 mt-0.5">{loadError}</p>
+              <p className="text-[11px] font-black text-red-600 dark:text-red-400">Failed to load GitOps resources</p>
+              <p className="text-[10px] text-red-500/60 dark:text-red-400/60 mt-0.5">{loadError}</p>
             </div>
           </div>
         </div>
@@ -603,7 +603,7 @@ export default function GitOpsPanel() {
           {/* ── left: table ─────────────────────────────────────────────── */}
           <div className="flex flex-col overflow-y-auto" style={{ width: '65%' }}>
             {filtered.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-600 py-16">
+              <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-500 dark:text-slate-600 py-16">
                 <p className="text-xs font-bold">No resources match</p>
               </div>
             ) : (
@@ -618,14 +618,14 @@ export default function GitOpsPanel() {
                   <col style={{ width: '90px' }} />
                 </colgroup>
                 <thead>
-                  <tr className="border-b border-white/[0.05]">
+                  <tr className="border-b border-slate-200 dark:border-white/[0.05]">
                     <th className="pl-5 pr-2 py-2.5" />
                     {['Name', 'Kind', 'Namespace', 'Source', 'Rev', 'Status'].map(h => (
-                      <th key={h} className="px-3 py-2.5 text-[9px] font-black uppercase tracking-[0.12em] text-slate-600 text-left">{h}</th>
+                      <th key={h} className="px-3 py-2.5 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-600 text-left">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/[0.03]">
+                <tbody className="divide-y divide-slate-100 dark:divide-white/[0.03]">
                   {filtered.map(r => (
                     <TableRow
                       key={`${r.kind}/${r.namespace}/${r.name}`}
@@ -642,7 +642,7 @@ export default function GitOpsPanel() {
           </div>
 
           {/* ── right: detail or overview ───────────────────────────────── */}
-          <div className="border-l border-white/[0.05] overflow-hidden" style={{ width: '35%' }}>
+          <div className="border-l border-slate-200 dark:border-white/[0.05] overflow-hidden" style={{ width: '35%' }}>
             {selected ? (
               <DetailPanel r={selected} onClose={() => setSelected(null)} />
             ) : (

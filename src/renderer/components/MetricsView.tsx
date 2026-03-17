@@ -180,9 +180,9 @@ export default function MetricsView(): JSX.Element {
                     }, 0)
 
                     return (
-                      <div key={nm.metadata.name} className="glass-card glass-light p-6 space-y-6 hover:scale-[1.02] transition-all group border-white/5">
+                      <div key={nm.metadata.name} className="glass-card p-6 space-y-6 hover:scale-[1.02] transition-all group border-slate-200 dark:border-white/5 shadow-sm">
                         <div className="flex items-center justify-between min-w-0">
-                          <p className="text-[14px] font-black text-white font-mono truncate tracking-tight">{nm.metadata.name}</p>
+                          <p className="text-[14px] font-black text-slate-800 dark:text-white font-mono truncate tracking-tight">{nm.metadata.name}</p>
                           {overcommittedCpu > cpuCapM && (
                             <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-500 text-[8px] font-black uppercase tracking-widest animate-pulse">
                               Overcommitted
@@ -251,7 +251,7 @@ export default function MetricsView(): JSX.Element {
                             <td className="px-6 py-5">
                               <div className="flex flex-col gap-2">
                                 <div className="flex justify-between items-baseline">
-                                  <span className={`text-[11px] font-black font-mono ${cpu > limCpu && limCpu > 0 ? 'text-red-500' : 'text-slate-700 dark:text-slate-300'}`}>
+                                  <span className={`text-[11px] font-black font-mono ${cpu > limCpu && limCpu > 0 ? 'text-red-500' : 'text-slate-700 dark:text-slate-200'}`}>
                                     {Math.round(cpu)}m
                                   </span>
                                   <div className="flex gap-2">
@@ -283,7 +283,7 @@ export default function MetricsView(): JSX.Element {
                             <td className="px-6 py-5">
                               <div className="flex flex-col gap-2">
                                 <div className="flex justify-between items-baseline">
-                                  <span className={`text-[11px] font-black font-mono ${mem > limMem && limMem > 0 ? 'text-red-500' : 'text-slate-700 dark:text-slate-300'}`}>
+                                  <span className={`text-[11px] font-black font-mono ${mem > limMem && limMem > 0 ? 'text-red-500' : 'text-slate-700 dark:text-slate-200'}`}>
                                     {mem >= 1024 ? `${(mem / 1024).toFixed(1)}Gi` : `${Math.round(mem)}Mi`}
                                   </span>
                                   <div className="flex gap-2">
@@ -328,8 +328,8 @@ export default function MetricsView(): JSX.Element {
               </section>
             </>
           ) : !loadingResources ? (
-            <div className="glass-panel p-12 flex flex-col items-center text-center gap-6 border-dashed border-2">
-              <div className="w-16 h-16 rounded-3xl bg-slate-50 dark:bg-slate-900 flex items-center justify-center text-slate-300 dark:text-slate-700 shadow-inner">
+            <div className="glass-panel p-12 flex flex-col items-center text-center gap-6 border-dashed border-2 border-slate-200 dark:border-white/10">
+              <div className="w-16 h-16 rounded-3xl bg-slate-50 dark:bg-slate-900 flex items-center justify-center text-slate-400 dark:text-slate-600 shadow-inner">
                 <Cpu className="w-8 h-8" />
               </div>
               <div className="max-w-md">
@@ -337,8 +337,8 @@ export default function MetricsView(): JSX.Element {
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
                   To enable real-time resource monitoring, you must install the metrics-server in your cluster.
                 </p>
-                <div className="mt-8 p-4 bg-slate-950 rounded-xl border border-white/5 font-mono group relative">
-                  <code className="text-[10px] text-blue-400 break-all leading-relaxed">
+                <div className="mt-8 p-4 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-white/5 font-mono group relative">
+                  <code className="text-[10px] text-blue-600 dark:text-blue-400 break-all leading-relaxed">
                     kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
                   </code>
                 </div>

@@ -84,26 +84,26 @@ function NavItem({
       className={`relative flex items-center gap-2.5 w-full px-2.5 py-2 text-[12px] font-semibold
                   transition-all duration-200 group rounded-xl
         ${isActive
-          ? 'bg-blue-600/15 text-blue-400 active-glow'
-          : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
+          ? 'bg-blue-600/15 text-blue-600 dark:text-blue-400'
+          : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.04]'
         }`}
     >
       {isActive && (
-        <span className="absolute left-[-4px] top-2 bottom-2 w-[4px] bg-blue-500 rounded-r-full shadow-[0_0_8px_#3b82f6]" />
+        <span className="absolute left-[-4px] top-2 bottom-2 w-[4px] bg-blue-600 dark:bg-blue-500 rounded-r-full shadow-[0_0_8px_#3b82f6]" />
       )}
       {icon && (
         <Icon
           path={icon}
           size={14}
-          className={`shrink-0 transition-colors duration-200 ${isActive ? 'text-blue-400' : 'text-slate-500 group-hover:text-slate-300'}`}
+          className={`shrink-0 transition-colors duration-200 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-500 group-hover:text-slate-900 dark:group-hover:text-slate-300'}`}
         />
       )}
       <span className="flex-1 text-left truncate leading-none">{label}</span>
       {badge !== undefined && badge > 0 && (
         <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-md font-extrabold leading-none
           ${isActive
-            ? 'bg-blue-500 text-white shadow-sm shadow-blue-500/50'
-            : 'bg-white/10 text-slate-500 group-hover:bg-white/15 group-hover:text-slate-400'}`}>
+            ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/50'
+            : 'bg-slate-100 dark:bg-white/10 text-slate-500 group-hover:bg-slate-200 dark:group-hover:bg-white/15 group-hover:text-slate-700 dark:group-hover:text-slate-400'}`}>
           {badge > 999 ? '999+' : badge}
         </span>
       )}
@@ -135,8 +135,8 @@ function RailBtn({
       {/* Tooltip */}
       <div className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-4 z-50
                       opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-[-10px] group-hover:translate-x-0">
-        <div className="bg-slate-900/90 backdrop-blur-md text-slate-100 text-[11px] font-bold px-3 py-2 rounded-xl
-                        shadow-2xl border border-white/10 whitespace-nowrap">
+        <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md text-slate-900 dark:text-slate-100 text-[11px] font-bold px-3 py-2 rounded-xl
+                        shadow-2xl border border-slate-200 dark:border-white/10 whitespace-nowrap">
           {label}
         </div>
       </div>
@@ -192,7 +192,7 @@ export default function Sidebar(): JSX.Element {
 
       {/* ── Icon Rail ──────────────────────────────────────────────────────── */}
       <div
-        className="flex flex-col items-center w-[72px] shrink-0 surface-elevated border-r border-white/5 h-full shadow-2xl z-20"
+        className="flex flex-col items-center w-[72px] shrink-0 bg-slate-100 dark:surface-elevated border-r border-slate-200 dark:border-white/5 h-full shadow-2xl z-20"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         {/* Spacer for macOS traffic lights (hiddenInset titlebar) */}
@@ -210,7 +210,7 @@ export default function Sidebar(): JSX.Element {
         </div>
 
         {/* Separator */}
-        <div className="w-8 h-[1px] bg-white/5 mb-6 shrink-0" />
+        <div className="w-8 h-[1px] bg-slate-200 dark:bg-white/5 mb-6 shrink-0" />
 
         {/* Hotbar cluster avatars */}
         <div
@@ -271,7 +271,7 @@ export default function Sidebar(): JSX.Element {
 
       {/* ── Nav Panel ─────────────────────────────────────────────────────── */}
       <div
-        className="relative flex flex-col shrink-0 glass-panel dark:bg-[hsl(var(--sidebar-dark),_0.8)] border-r border-white/5 h-full z-10"
+        className="relative flex flex-col shrink-0 bg-white dark:bg-[hsl(var(--sidebar-dark),_0.8)] border-r border-slate-200 dark:border-white/5 h-full z-10"
         style={{ width: `${navWidth}px` }}
       >
         {/* Resize Handle */}
@@ -284,19 +284,19 @@ export default function Sidebar(): JSX.Element {
         <div className="h-10 w-full shrink-0" />
 
         {/* Cluster header */}
-        <div className="px-5 pt-2 pb-5 shrink-0 border-b border-white/5"
+        <div className="px-5 pt-2 pb-5 shrink-0 border-b border-slate-100 dark:border-white/5"
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
           <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Connected</p>
           {selectedContext ? (
             <div className="min-w-0">
               <div className="flex items-center gap-2.5 min-w-0">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${contextSwitchStatus ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.7)] animate-pulse' : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)] animate-pulse'}`} />
-                <span className="text-[13px] font-bold text-slate-100 truncate leading-none">
+                <span className="text-[13px] font-bold text-slate-700 dark:text-slate-100 truncate leading-none">
                   {selectedContext}
                 </span>
               </div>
               {contextSwitchStatus && (
-                <p className="text-[10px] text-amber-400/80 font-medium mt-1 ml-4.5 truncate">{contextSwitchStatus}</p>
+                <p className="text-[10px] text-amber-600 dark:text-amber-400/80 font-medium mt-1 ml-4.5 truncate">{contextSwitchStatus}</p>
               )}
             </div>
           ) : (
@@ -307,7 +307,7 @@ export default function Sidebar(): JSX.Element {
 
         {/* Namespace selector */}
         <div
-          className="px-4 py-4 shrink-0 border-b border-white/5 bg-white/[0.01]"
+          className="px-4 py-4 shrink-0 border-b border-slate-100 dark:border-white/5 bg-slate-50 dark:bg-white/[0.01]"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           {loadingNamespaces ? (
@@ -320,11 +320,11 @@ export default function Sidebar(): JSX.Element {
               <select
                 value={selectedNamespace ?? ''}
                 onChange={e => selectNamespace(e.target.value)}
-                className="w-full bg-white/[0.06] text-slate-300 text-[11px] font-medium
-                           rounded-lg px-2.5 py-1.5 pr-6 border border-white/[0.08]
+                className="w-full bg-slate-100/50 dark:bg-white/[0.06] text-slate-700 dark:text-slate-300 text-[11px] font-medium
+                           rounded-lg px-2.5 py-1.5 pr-6 border border-slate-200 dark:border-white/[0.08]
                            focus:outline-none focus:ring-1 focus:ring-blue-500/40 focus:border-blue-500/40
                            appearance-none cursor-pointer transition-colors
-                           hover:bg-white/[0.09] hover:border-white/[0.12]"
+                           hover:bg-slate-200/50 dark:hover:bg-white/[0.09] hover:border-slate-300 dark:hover:border-white/[0.12]"
               >
                 {!selectedContext && <option value="" disabled>Select cluster first</option>}
                 {selectedContext && namespaces.length === 0 && <option value="" disabled>No namespaces</option>}
@@ -495,8 +495,8 @@ function ClusterAvatar({
       <button
         ref={btnRef}
         onClick={openMenu}
-        className="absolute -right-2 -top-1 w-5 h-5 rounded-full bg-slate-800 border border-white/10
-                   items-center justify-center hidden group-hover:flex transition-all hover:bg-slate-700 hover:scale-110 z-10 shadow-lg"
+        className="absolute -right-2 -top-1 w-5 h-5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10
+                   items-center justify-center hidden group-hover:flex transition-all hover:bg-slate-50 dark:hover:bg-slate-700 hover:scale-110 z-10 shadow-lg"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-slate-300">
@@ -508,8 +508,8 @@ function ClusterAvatar({
       {!showMenu && (
         <div className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-5 z-50
                         opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-[-10px] group-hover:translate-x-0">
-          <div className="bg-slate-900/90 backdrop-blur-md text-white text-[11px] font-black px-3.5 py-2.5 rounded-xl
-                          shadow-2xl border border-white/10 whitespace-nowrap max-w-[180px] truncate leading-none">
+          <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md text-slate-900 dark:text-white text-[11px] font-black px-3.5 py-2.5 rounded-xl
+                          shadow-2xl border border-slate-200 dark:border-white/10 whitespace-nowrap max-w-[180px] truncate leading-none">
             {name}
           </div>
         </div>
