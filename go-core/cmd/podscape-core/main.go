@@ -110,9 +110,27 @@ func main() {
 	http.HandleFunc("/helm/repos/refresh", handlers.HandleHelmRepoRefresh)
 	http.HandleFunc("/helm/install", handlers.HandleHelmInstall)
 
-	// Build the middleware chain (innermost → outermost):
-	//   mux → [token auth] → CORS
-	// CORS is outermost so every response, including auth rejections, gets the header.
+	// Node operations
+	http.HandleFunc("/node/cordon", handlers.HandleCordonNode)
+	http.HandleFunc("/node/drain", handlers.HandleDrainNode)
+
+	// TLS Certificate Dashboard
+	http.HandleFunc("/tls-certs", handlers.HandleTLSCerts)
+
+	// GitOps Panel
+	http.HandleFunc("/gitops", handlers.HandleGitOps)
+
+	// Provider detection (Istio, Traefik, Nginx)
+	http.HandleFunc("/providers", handlers.HandleProviders)
+
+	// Generic CRD resource lister (Istio, Traefik, Nginx, etc.)
+	http.HandleFunc("/customresource", handlers.HandleCustomResource)
+
+	// Build the middleware chain: mux → [token auth]
+	// CORS headers are intentionally omitted — the sidecar binds to 127.0.0.1
+	// and is only accessed by the Electron renderer (file:// / localhost origin).
+	// A wildcard CORS header would allow any webpage the user visits to send
+	// requests to the sidecar, defeating the token-auth layer.
 	var handler http.Handler = http.DefaultServeMux
 	if *token != "" {
 		tok := *token
@@ -127,11 +145,10 @@ func main() {
 			inner.ServeHTTP(w, r)
 		})
 	}
-	withCORS := handler
-	handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		withCORS.ServeHTTP(w, r)
-	})
+
+	// Initialize the portforward manager early (with nil clients) so handlers
+	// like HandleSwitchContext can safely call Manager.StopAll() immediately.
+	portforward.Init(nil, nil)
 
 	// Try to build the k8s client from the kubeconfig file.
 	// If the file is missing (fresh install, CI, new machine), run in no-kubeconfig
@@ -178,10 +195,8 @@ func main() {
 	store.Store.ActiveCache = initialCache
 	store.Store.Unlock()
 
-	// Init portforward manager BEFORE the HTTP server starts accepting
-	// connections — HandleSwitchContext calls Manager.StopAll() and panics
-	// with a nil dereference if the server is up before Init() runs.
-	portforward.Init(clientset, config)
+	// Update the portforward manager with valid clients now that we have them.
+	portforward.Manager.UpdateClients(clientset, config)
 
 	// Start the HTTP server — /health returns 503 until informers sync, so
 	// startSidecar() keeps polling. portforward is already initialised above.

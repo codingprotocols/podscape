@@ -60,11 +60,26 @@ export class KubectlProvider {
       'events': 'events'
     }
 
-    const endpoint = sidecarMap[kind.toLowerCase()] || kind
-    const url = `/${endpoint}${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`
+    const mappedEndpoint = sidecarMap[kind.toLowerCase()]
+    let url: string
+    if (mappedEndpoint) {
+      url = `/${mappedEndpoint}${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`
+    } else {
+      // Unmapped kind — treat as a CRD plural name (e.g. "virtualservices.networking.istio.io")
+      // and route through the generic dynamic-client handler.
+      const params = new URLSearchParams({ crd: kind })
+      if (namespace) params.set('namespace', namespace)
+      url = `/customresource?${params.toString()}`
+    }
     const res = await sidecarFetch(url)
     if (res.ok) {
       return await res.json() as any[]
+    }
+    // For custom resources, surface the sidecar error so the panel can display it.
+    // For built-in resources, preserve the existing silent-empty behavior.
+    if (!mappedEndpoint) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`Failed to load ${kind}: ${text || res.statusText}`)
     }
     return []
   }
@@ -91,6 +106,12 @@ export class KubectlProvider {
   async createDebugPod(_context: string, namespace: string, image: string, name: string): Promise<void> {
     const url = `/debugpod/create?namespace=${namespace}&image=${encodeURIComponent(image)}&name=${encodeURIComponent(name)}`
     await checkedSidecarFetch(url, { method: 'POST' })
+  }
+
+  async getProviders(): Promise<unknown> {
+    const res = await sidecarFetch('/providers')
+    if (res.ok) return await res.json()
+    return {}
   }
 
   async getSecretValue(context: string, namespace: string, name: string, key: string): Promise<string> {
@@ -129,6 +150,14 @@ export class KubectlProvider {
     const res = await sidecarFetch(url)
     if (res.ok) return await res.json()
     return []
+  }
+
+  async cordonNode(name: string, unschedulable: boolean): Promise<void> {
+    await checkedSidecarFetch(`/node/cordon?name=${encodeURIComponent(name)}&unschedulable=${unschedulable}`, { method: 'POST' })
+  }
+
+  async drainNode(name: string): Promise<void> {
+    await checkedSidecarFetch(`/node/drain?name=${encodeURIComponent(name)}`, { method: 'POST' })
   }
 
   async deleteResource(_context: string, namespace: string | null, kind: string, name: string): Promise<string> {
@@ -219,6 +248,13 @@ async function getTopology(ns: string): Promise<any> {
 
 const activeStreams = new Map<string, any>()
 
+export function cancelAllLogStreams(): void {
+  for (const [id, ws] of activeStreams) {
+    try { ws.close() } catch {}
+    activeStreams.delete(id)
+  }
+}
+
 export function registerKubectlHandlers(): void {
   const provider = new KubectlProvider()
 
@@ -257,6 +293,7 @@ export function registerKubectlHandlers(): void {
   ipcMain.handle('kubectl:getCRDs', (_e, ctx) => provider.getResources(ctx, undefined, 'customresourcedefinitions'))
   ipcMain.handle('kubectl:getEvents', (_e, ctx, ns) => provider.getResources(ctx, ns, 'events'))
   ipcMain.handle('kubectl:getCustomResource', (_e, ctx, ns, crdName: string) => provider.getResources(ctx, ns, crdName))
+  ipcMain.handle('kubectl:getProviders', () => provider.getProviders())
   ipcMain.handle('kubectl:getPodMetrics', (_e, ctx, ns) => provider.getPodMetrics(ctx, ns))
   ipcMain.handle('kubectl:getNodeMetrics', (_e, ctx) => provider.getNodeMetrics(ctx))
   ipcMain.handle('kubectl:createDebugPod', (_e, ctx, ns, image, name) => provider.createDebugPod(ctx, ns, image, name))
@@ -266,6 +303,8 @@ export function registerKubectlHandlers(): void {
   ipcMain.handle('kubectl:rolloutUndo', (_e, ctx, ns, kind, name, rev) => provider.rolloutUndo(ctx, ns, kind, name, rev))
   ipcMain.handle('kubectl:getResourceEvents', (_e, ctx, ns, kind, name) => provider.getResourceEvents(ctx, ns, kind, name))
   ipcMain.handle('kubectl:rolloutRestart', (_e, ctx, ns, kind, name) => provider.rolloutRestart(ctx, ns, kind, name))
+  ipcMain.handle('kubectl:cordonNode', (_e, _ctx, name, unschedulable) => provider.cordonNode(name, unschedulable))
+  ipcMain.handle('kubectl:drainNode', (_e, _ctx, name) => provider.drainNode(name))
   ipcMain.handle('kubectl:deleteResource', (_e, ctx, ns, kind, name) => provider.deleteResource(ctx, ns, kind, name))
   ipcMain.handle('kubectl:getYAML', (_e, ctx, ns, kind, name) => provider.getYAML(ctx, ns, kind, name))
   ipcMain.handle('kubectl:getSecretValue', (_e, ctx, ns, name, key) => provider.getSecretValue(ctx, ns, name, key))
@@ -307,10 +346,14 @@ export function registerKubectlHandlers(): void {
   })
 
   ipcMain.handle('kubectl:stopLogs', async (_e, streamId) => {
-    if (activeStreams.has(streamId)) { 
+    if (activeStreams.has(streamId)) {
       activeStreams.get(streamId)!.close()
       activeStreams.delete(streamId)
     }
+  })
+
+  ipcMain.handle('kubectl:cancelAllStreams', () => {
+    cancelAllLogStreams()
   })
 
   ipcMain.handle('kubectl:getTopology', (_e, ns) => getTopology(ns))
@@ -492,4 +535,17 @@ export function registerKubectlHandlers(): void {
     const res = await checkedSidecarFetch(`/owner-chain?${params}`)
     return res.json()
   })
+
+  ipcMain.handle('kubectl:getTLSCerts', async (_e, namespace?: string) => {
+    const url = namespace ? `/tls-certs?namespace=${encodeURIComponent(namespace)}` : '/tls-certs'
+    const res = await checkedSidecarFetch(url)
+    return res.json()
+  })
+
+  ipcMain.handle('kubectl:getGitOps', async (_e, namespace?: string) => {
+    const url = namespace ? `/gitops?namespace=${encodeURIComponent(namespace)}` : '/gitops'
+    const res = await checkedSidecarFetch(url)
+    return res.json()
+  })
+
 }

@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+
 import { useAppStore } from '../store'
+import PageHeader from './PageHeader'
 import type { KubePod, KubeService } from '../types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -118,28 +120,28 @@ function StepRow({ step }: { step: DiagStep }) {
             <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
                     <span className={color}>{icon}</span>
-                    <span className="text-xs font-bold text-slate-300">{step.label}</span>
+                    <span className="text-xs font-bold text-slate-600 dark:text-slate-300">{step.label}</span>
                     {step.status !== 'idle' && step.status !== 'running' && step.durationMs > 0 && (
-                        <span className="text-[10px] text-slate-600 font-mono">{step.durationMs}ms</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-600 font-mono">{step.durationMs}ms</span>
                     )}
                     {step.status === 'running' && (
                         <span className="text-[10px] text-blue-400 animate-pulse">running…</span>
                     )}
                     {step.status === 'skipped' && (
-                        <span className="text-[10px] text-slate-600">DNS failed — skipped</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-600">DNS failed — skipped</span>
                     )}
                 </div>
                 {hasOutput && (
                     <button
                         onClick={() => setExpanded(e => !e)}
-                        className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors font-bold uppercase tracking-wider"
+                        className="text-[10px] text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 transition-colors font-bold uppercase tracking-wider"
                     >
                         {expanded ? 'Hide' : 'Output'}
                     </button>
                 )}
             </div>
             {hasOutput && expanded && (
-                <pre className="mt-2 text-[10px] leading-relaxed text-slate-400 whitespace-pre-wrap break-all bg-black/30 rounded-lg p-3 max-h-40 overflow-y-auto">
+                <pre className="mt-2 text-[10px] leading-relaxed text-slate-600 dark:text-slate-400 whitespace-pre-wrap break-all bg-slate-100 dark:bg-black/30 rounded-lg p-3 max-h-40 overflow-y-auto">
                     {step.output.trim()}
                 </pre>
             )}
@@ -160,13 +162,13 @@ function DiagRunCard({ run }: { run: DiagRun }) {
     }
 
     return (
-        <div className="rounded-xl border border-slate-800 bg-slate-900/60 overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/80">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80">
                 <div className="flex items-center gap-2 min-w-0">
                     <span className={`w-2 h-2 rounded-full shrink-0 ${allDone ? (allSuccess ? 'bg-emerald-500' : anyFailed ? 'bg-red-400' : 'bg-slate-500') : 'bg-blue-400 animate-pulse'}`} />
-                    <span className="text-[10px] font-bold text-slate-400 truncate font-mono">{run.from}</span>
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0 text-slate-600"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
-                    <span className="text-[10px] font-bold text-slate-300 truncate font-mono">{run.to}</span>
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 truncate font-mono">{run.from}</span>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0 text-slate-400 dark:text-slate-600"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                    <span className="text-[10px] font-bold text-slate-800 dark:text-slate-300 truncate font-mono">{run.to}</span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                     <span className="text-[10px] text-slate-600 font-mono">{run.timestamp.toLocaleTimeString()}</span>
@@ -198,13 +200,13 @@ function ManualRunCard({ run }: { run: ManualRun }) {
                     <code className="text-[10px] text-slate-400 font-mono truncate">{run.cmd.join(' ')}</code>
                 </div>
                 <div className="flex items-center gap-3 shrink-0 ml-2">
-                    <span className="text-[10px] text-slate-600 font-mono">{run.timestamp.toLocaleTimeString()}</span>
-                    <button onClick={copy} className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors" title="Copy output">
+                    <span className="text-[10px] text-slate-400 dark:text-slate-600 font-mono">{run.timestamp.toLocaleTimeString()}</span>
+                    <button onClick={copy} className="text-[10px] text-slate-400 hover:text-slate-900 dark:text-slate-500 dark:hover:text-slate-300 transition-colors" title="Copy output">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
                     </button>
                 </div>
             </div>
-            <pre className="px-4 py-3 text-[10px] leading-relaxed text-slate-300 whitespace-pre-wrap break-all max-h-60 overflow-y-auto">
+            <pre className="px-4 py-3 text-[10px] leading-relaxed text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-all max-h-60 overflow-y-auto">
                 {run.output.trim() || '(no output)'}
             </pre>
         </div>
@@ -423,18 +425,12 @@ export default function ConnectivityTester() {
     // ─────────────────────────────────────────────────────────────────────────
 
     return (
-        <div className="flex-1 flex flex-col h-full bg-[hsl(var(--bg-dark))] overflow-hidden">
+        <div className="flex-1 flex flex-col h-full bg-slate-50 dark:bg-[hsl(var(--bg-dark))] overflow-hidden transition-colors duration-200">
 
-            {/* Header */}
-            <div className="px-8 py-6 border-b border-white/5 shrink-0 flex items-center gap-4">
-                <div className="w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>
-                </div>
-                <div>
-                    <h1 className="text-lg font-black text-white tracking-tight">Connectivity Tester</h1>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Debug pod network & DNS from inside the cluster</p>
-                </div>
-            </div>
+            <PageHeader
+        title="Connectivity Tester"
+        subtitle="Diagnostic network troubleshooting and latency analysis"
+      />
 
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
 
@@ -442,13 +438,13 @@ export default function ConnectivityTester() {
                 <div className="grid grid-cols-2 gap-4">
 
                     {/* Source pod */}
-                    <div className="rounded-2xl border border-white/5 bg-white/[0.03] p-5 space-y-4">
+                    <div className="rounded-2xl border border-slate-200 dark:border-white/5 bg-white dark:bg-white/[0.03] p-5 space-y-4">
                         <div className="flex items-center gap-2">
                             <div className="w-6 h-6 rounded-lg bg-indigo-500/10 flex items-center justify-center">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="3" /><path d="M9 9h6M9 12h6M9 15h4" /></svg>
                             </div>
-                            <h2 className="text-[11px] font-black text-slate-300 uppercase tracking-widest">Source Pod</h2>
-                            <span className="ml-auto text-[10px] text-slate-600 font-mono">{filteredPods.length} running</span>
+                            <h2 className="text-[11px] font-black text-slate-800 dark:text-slate-300 uppercase tracking-widest">Source Pod</h2>
+                            <span className="ml-auto text-[10px] text-slate-400 dark:text-slate-600 font-mono">{filteredPods.length} running</span>
                         </div>
 
                         {/* Pod search */}
@@ -459,7 +455,7 @@ export default function ConnectivityTester() {
                                 placeholder="Filter pods…"
                                 value={searchPod}
                                 onChange={e => setSearchPod(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2 bg-white/5 border border-white/5 rounded-xl text-xs font-mono text-slate-300 placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/10 transition-all"
+                                className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-xl text-xs font-mono text-slate-900 dark:text-slate-300 placeholder-slate-400 dark:placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/10 transition-all"
                             />
                         </div>
 
@@ -472,8 +468,8 @@ export default function ConnectivityTester() {
                                     key={pod.metadata.uid}
                                     onClick={() => handleSelectPod(pod)}
                                     className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-all ${selectedPod?.metadata.uid === pod.metadata.uid
-                                        ? 'border-blue-500/50 bg-blue-500/10 text-blue-300'
-                                        : 'border-white/5 hover:border-white/10 bg-white/[0.02] text-slate-400 hover:text-slate-200'
+                                        ? 'border-blue-500/50 bg-blue-500/10 text-blue-600 dark:text-blue-300 shadow-sm shadow-blue-500/10'
+                                        : 'border-slate-100 dark:border-white/5 hover:border-slate-200 dark:hover:border-white/10 bg-white dark:bg-white/[0.02] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 shadow-sm'
                                         }`}
                                 >
                                     <span className="text-xs font-mono font-bold truncate">{pod.metadata.name}</span>
@@ -494,7 +490,7 @@ export default function ConnectivityTester() {
                                 <select
                                     value={selectedContainer}
                                     onChange={e => setSelectedContainer(e.target.value)}
-                                    className="w-full px-3 py-2 bg-white/5 border border-white/5 rounded-xl text-xs font-mono text-slate-300 focus:outline-none focus:border-blue-500/50 transition-all"
+                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-xl text-xs font-mono text-slate-900 dark:text-slate-300 focus:outline-none focus:border-blue-500/50 transition-all"
                                 >
                                     {containers.map(c => <option key={c} value={c}>{c}</option>)}
                                 </select>
@@ -503,23 +499,23 @@ export default function ConnectivityTester() {
                     </div>
 
                     {/* Target */}
-                    <div className="rounded-2xl border border-white/5 bg-white/[0.03] p-5 space-y-4">
+                    <div className="rounded-2xl border border-slate-200 dark:border-white/5 bg-white dark:bg-white/[0.03] p-5 space-y-4 shadow-sm">
                         <div className="flex items-center gap-2">
                             <div className="w-6 h-6 rounded-lg bg-emerald-500/10 flex items-center justify-center">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="4" /><line x1="12" y1="2" x2="12" y2="4" /><line x1="12" y1="20" x2="12" y2="22" /><line x1="2" y1="12" x2="4" y2="12" /><line x1="20" y1="12" x2="22" y2="12" /></svg>
                             </div>
-                            <h2 className="text-[11px] font-black text-slate-300 uppercase tracking-widest">Target</h2>
+                            <h2 className="text-[11px] font-black text-slate-800 dark:text-slate-300 uppercase tracking-widest">Target</h2>
                         </div>
 
                         {/* Picker tab toggle */}
-                        <div className="flex rounded-lg border border-white/5 bg-white/[0.03] p-0.5 gap-0.5">
+                        <div className="flex rounded-lg border border-slate-100 dark:border-white/5 bg-slate-50 dark:bg-white/[0.03] p-0.5 gap-0.5">
                             {(['services', 'pods'] as const).map(tab => (
                                 <button
                                     key={tab}
                                     onClick={() => setTargetPickerTab(tab)}
                                     className={`flex-1 py-1 text-[10px] font-black uppercase tracking-widest rounded-md transition-all ${targetPickerTab === tab
-                                        ? 'bg-white/10 text-white'
-                                        : 'text-slate-500 hover:text-slate-300'
+                                        ? 'bg-white dark:bg-white/10 text-slate-900 dark:text-white shadow-sm dark:shadow-none'
+                                        : 'text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
                                         }`}
                                 >
                                     {tab === 'services' ? 'Services' : 'Pods'}
@@ -537,15 +533,15 @@ export default function ConnectivityTester() {
                                         placeholder="Filter services…"
                                         value={searchSvc}
                                         onChange={e => setSearchSvc(e.target.value)}
-                                        className="w-full pl-9 pr-4 py-2 bg-white/5 border border-white/5 rounded-xl text-xs font-mono text-slate-300 placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/10 transition-all"
+                                        className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-xl text-xs font-mono text-slate-900 dark:text-slate-300 placeholder-slate-400 dark:placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/10 transition-all"
                                     />
                                 </div>
                                 <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
                                     {filteredSvcs.map(svc => {
                                         const ports = svc.spec.ports ?? []
                                         return (
-                                            <div key={svc.metadata.uid} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-white/5 bg-white/[0.02] hover:border-white/10 transition-all group">
-                                                <span className="text-xs font-mono text-slate-400 group-hover:text-slate-200 truncate flex-1 transition-colors">{svc.metadata.name}</span>
+                                            <div key={svc.metadata.uid} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-100 dark:border-white/5 bg-white dark:bg-white/[0.02] hover:border-slate-200 dark:hover:border-white/10 transition-all group shadow-sm">
+                                                <span className="text-xs font-mono text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-slate-200 truncate flex-1 transition-colors">{svc.metadata.name}</span>
                                                 {svc.metadata.namespace && selectedNamespace === '_all' && (
                                                     <span className="text-[9px] text-slate-600 font-mono shrink-0">{svc.metadata.namespace}</span>
                                                 )}
@@ -589,7 +585,7 @@ export default function ConnectivityTester() {
                                         placeholder="Filter pods…"
                                         value={searchTargetPod}
                                         onChange={e => setSearchTargetPod(e.target.value)}
-                                        className="w-full pl-9 pr-4 py-2 bg-white/5 border border-white/5 rounded-xl text-xs font-mono text-slate-300 placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/10 transition-all"
+                                        className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-xl text-xs font-mono text-slate-900 dark:text-slate-300 placeholder-slate-400 dark:placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/10 transition-all"
                                     />
                                 </div>
                                 <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
@@ -600,10 +596,10 @@ export default function ConnectivityTester() {
                                         const hostname = buildPodDnsName(pod)
                                         const ports = podContainerPorts(pod)
                                         return (
-                                            <div key={pod.metadata.uid} className="px-3 py-2 rounded-xl border border-white/5 bg-white/[0.02] hover:border-white/10 transition-all">
+                                            <div key={pod.metadata.uid} className="px-3 py-2 rounded-xl border border-slate-100 dark:border-white/5 bg-white dark:bg-white/[0.02] hover:border-slate-200 dark:hover:border-white/10 transition-all shadow-sm">
                                                 <div className="flex items-center gap-2 mb-1.5">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                                                    <span className="text-[11px] font-mono font-bold text-slate-300 truncate flex-1">{pod.metadata.name}</span>
+                                                    <span className="text-[11px] font-mono font-bold text-slate-800 dark:text-slate-300 truncate flex-1">{pod.metadata.name}</span>
                                                     {pod.metadata.namespace && selectedNamespace === '_all' && (
                                                         <span className="text-[9px] text-slate-600 font-mono shrink-0">{pod.metadata.namespace}</span>
                                                     )}
@@ -642,11 +638,11 @@ export default function ConnectivityTester() {
                                         )
                                     })}
                                 </div>
-                                <p className="mt-1.5 text-[9px] text-slate-700 font-mono">format: &lt;pod-ip-dashes&gt;.&lt;ns&gt;.pod.cluster.local</p>
+                                <p className="mt-1.5 text-[9px] text-slate-400 dark:text-slate-700 font-mono">format: &lt;pod-ip-dashes&gt;.&lt;ns&gt;.pod.cluster.local</p>
                             </div>
                         )}
 
-                        <div className="border-t border-white/5 pt-4 space-y-3">
+                        <div className="border-t border-slate-100 dark:border-white/5 pt-4 space-y-3">
                             {/* Manual host + port */}
                             <div className="grid grid-cols-3 gap-2">
                                 <div className="col-span-2">
@@ -656,7 +652,7 @@ export default function ConnectivityTester() {
                                         placeholder="e.g. my-svc.ns.svc.cluster.local"
                                         value={targetHost}
                                         onChange={e => setTargetHost(e.target.value)}
-                                        className="w-full px-3 py-2 bg-white/5 border border-white/5 rounded-xl text-xs font-mono text-slate-300 placeholder-slate-600 focus:outline-none focus:border-blue-500/50 transition-all"
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-xl text-xs font-mono text-slate-900 dark:text-slate-300 placeholder-slate-400 dark:placeholder-slate-600 focus:outline-none focus:border-blue-500/50 transition-all"
                                     />
                                 </div>
                                 <div>
@@ -667,7 +663,7 @@ export default function ConnectivityTester() {
                                         value={targetPort}
                                         onChange={e => setTargetPort(e.target.value)}
                                         disabled={mode === 'manual' && protocol === 'ping'}
-                                        className="w-full px-3 py-2 bg-white/5 border border-white/5 rounded-xl text-xs font-mono text-slate-300 placeholder-slate-600 focus:outline-none focus:border-blue-500/50 transition-all disabled:opacity-40"
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-xl text-xs font-mono text-slate-900 dark:text-slate-300 placeholder-slate-400 dark:placeholder-slate-600 focus:outline-none focus:border-blue-500/50 transition-all disabled:opacity-40"
                                     />
                                 </div>
                             </div>
@@ -681,7 +677,7 @@ export default function ConnectivityTester() {
                                         placeholder="/healthz"
                                         value={targetPath}
                                         onChange={e => setTargetPath(e.target.value)}
-                                        className="w-full px-3 py-2 bg-white/5 border border-white/5 rounded-xl text-xs font-mono text-slate-300 placeholder-slate-600 focus:outline-none focus:border-blue-500/50 transition-all"
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-xl text-xs font-mono text-slate-900 dark:text-slate-300 placeholder-slate-400 dark:placeholder-slate-600 focus:outline-none focus:border-blue-500/50 transition-all"
                                     />
                                 </div>
                             )}
@@ -696,8 +692,8 @@ export default function ConnectivityTester() {
                                                 key={p}
                                                 onClick={() => setProtocol(p)}
                                                 className={`flex-1 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-all ${protocol === p
-                                                    ? 'border-blue-500/60 bg-blue-500/15 text-blue-300'
-                                                    : 'border-white/5 text-slate-500 hover:text-slate-300 hover:border-white/10'
+                                                    ? 'border-blue-500/60 bg-blue-500/15 text-blue-600 dark:text-blue-300'
+                                                    : 'border-slate-100 dark:border-white/5 text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 hover:border-slate-200 dark:hover:border-white/10'
                                                     }`}
                                             >
                                                 {p}
@@ -712,26 +708,26 @@ export default function ConnectivityTester() {
 
                 {/* FROM → TO bar */}
                 {fromLabel && toLabel && (
-                    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.03] border border-white/5 text-xs font-mono">
-                        <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest shrink-0">From</span>
-                        <span className="text-blue-300 truncate">{fromLabel}</span>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-600 shrink-0"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
-                        <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest shrink-0">To</span>
-                        <span className="text-emerald-300 truncate">{toLabel}</span>
+                    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/5 text-xs font-mono shadow-sm">
+                        <span className="text-slate-400 dark:text-slate-500 text-[10px] font-black uppercase tracking-widest shrink-0">From</span>
+                        <span className="text-blue-600 dark:text-blue-300 truncate">{fromLabel}</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-300 dark:text-slate-600 shrink-0"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                        <span className="text-slate-400 dark:text-slate-500 text-[10px] font-black uppercase tracking-widest shrink-0">To</span>
+                        <span className="text-emerald-600 dark:text-emerald-300 truncate">{toLabel}</span>
                     </div>
                 )}
 
                 {/* Mode + Run */}
                 <div className="flex items-center gap-3">
                     {/* Mode toggle */}
-                    <div className="flex rounded-xl border border-white/5 bg-white/[0.03] p-1 gap-1">
+                    <div className="flex rounded-xl border border-slate-200 dark:border-white/5 bg-slate-100 dark:bg-white/[0.03] p-1 gap-1">
                         {(['diagnose', 'manual'] as Mode[]).map(m => (
                             <button
                                 key={m}
                                 onClick={() => setMode(m)}
                                 className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${mode === m
-                                    ? 'bg-white/10 text-white'
-                                    : 'text-slate-500 hover:text-slate-300'
+                                    ? 'bg-white dark:bg-white/10 text-slate-900 dark:text-white shadow-sm dark:shadow-none'
+                                    : 'text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
                                     }`}
                             >
                                 {m === 'diagnose' ? '⚡ Diagnose' : '⌨ Manual'}
@@ -757,24 +753,24 @@ export default function ConnectivityTester() {
 
                 {/* Command preview */}
                 {previewCmd && (
-                    <div className="flex items-start gap-2 px-4 py-2.5 rounded-xl bg-black/30 border border-white/[0.04]">
-                        <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest shrink-0 mt-0.5">CMD</span>
-                        <code className="text-[10px] text-slate-400 font-mono break-all leading-relaxed">{previewCmd}</code>
+                    <div className="flex items-start gap-2 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-black/30 border border-slate-200 dark:border-white/[0.04]">
+                        <span className="text-[10px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-widest shrink-0 mt-0.5">CMD</span>
+                        <code className="text-[10px] text-slate-600 dark:text-slate-400 font-mono break-all leading-relaxed">{previewCmd}</code>
                     </div>
                 )}
 
                 {/* Mode description */}
                 {!fromLabel && !toLabel && (
-                    <div className="rounded-xl border border-white/5 bg-white/[0.02] px-5 py-4">
+                    <div className="rounded-xl border border-slate-200 dark:border-white/5 bg-white dark:bg-white/[0.02] px-5 py-4 shadow-sm">
                         {mode === 'diagnose' ? (
                             <div className="space-y-2">
-                                <p className="text-xs font-bold text-slate-300">Diagnose mode runs three checks in sequence:</p>
+                                <p className="text-xs font-bold text-slate-800 dark:text-slate-300">Diagnose mode runs three checks in sequence:</p>
                                 <div className="space-y-1 text-[11px] text-slate-500">
-                                    <div className="flex items-center gap-2"><span className="text-slate-600 font-mono w-4">1.</span> <strong className="text-slate-400">DNS</strong> — nslookup resolves the hostname</div>
-                                    <div className="flex items-center gap-2"><span className="text-slate-600 font-mono w-4">2.</span> <strong className="text-slate-400">TCP</strong> — nc checks if the port is open</div>
-                                    <div className="flex items-center gap-2"><span className="text-slate-600 font-mono w-4">3.</span> <strong className="text-slate-400">HTTP</strong> — curl checks the HTTP response code</div>
+                                    <div className="flex items-center gap-2"><span className="text-slate-400 dark:text-slate-600 font-mono w-4">1.</span> <strong className="text-slate-600 dark:text-slate-400">DNS</strong> — nslookup resolves the hostname</div>
+                                    <div className="flex items-center gap-2"><span className="text-slate-400 dark:text-slate-600 font-mono w-4">2.</span> <strong className="text-slate-600 dark:text-slate-400">TCP</strong> — nc checks if the port is open</div>
+                                    <div className="flex items-center gap-2"><span className="text-slate-400 dark:text-slate-600 font-mono w-4">3.</span> <strong className="text-slate-600 dark:text-slate-400">HTTP</strong> — curl checks the HTTP response code</div>
                                 </div>
-                                <p className="text-[10px] text-slate-600">Pick a pod, click a service port, then hit Diagnose.</p>
+                                <p className="text-[10px] text-slate-400 dark:text-slate-600">Pick a pod, click a service port, then hit Diagnose.</p>
                             </div>
                         ) : (
                             <p className="text-xs text-slate-500">Manual mode runs a single command (curl / nc / ping) and shows the full output. Useful when you need verbose details.</p>

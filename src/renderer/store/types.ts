@@ -7,9 +7,10 @@ import {
     KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
     KubeNode, KubeEvent, KubeCRD,
     NodeMetrics, PodMetrics, ResourceKind, AnyKubeResource, PortForwardEntry,
-    HelmRelease, DebugPodEntry, AppGroup, OwnerChainResponse
+    HelmRelease, DebugPodEntry, AppGroup, OwnerChainResponse, ProviderSet
 } from '../types'
 import { AnalysisSlice } from './slices/analysisSlice'
+import { ProvidersSlice } from './slices/providersSlice'
 
 declare global {
     interface Window {
@@ -55,6 +56,8 @@ declare global {
             rolloutHistory: (context: string, namespace: string, kind: string, name: string) => Promise<string>
             rolloutUndo: (context: string, namespace: string, kind: string, name: string, revision?: number) => Promise<string>
             getResourceEvents: (context: string, namespace: string, kind: string, name: string) => Promise<KubeEvent[]>
+            cordonNode: (context: string, name: string, unschedulable: boolean) => Promise<void>
+            drainNode: (context: string, name: string) => Promise<void>
             deleteResource: (context: string, namespace: string | null, kind: string, name: string) => Promise<string>
             getYAML: (context: string, namespace: string | null, kind: string, name: string) => Promise<string>
             getSecretValue: (context: string, namespace: string, name: string, key: string) => Promise<string>
@@ -67,6 +70,7 @@ declare global {
                 onChunk: (chunk: string) => void, onEnd: () => void
             ) => Promise<string>
             stopLogs: (streamId: string) => Promise<void>
+            cancelAllStreams: () => Promise<void>
             portForward: (context: string, namespace: string, type: string, name: string, localPort: number, remotePort: number, id: string) => Promise<string>
             stopPortForward: (id: string) => Promise<void>
             onPortForwardReady: (id: string, cb: (msg: string) => void) => () => void
@@ -79,6 +83,9 @@ declare global {
             prometheusStatus: (url?: string) => Promise<{ available: boolean; error?: string }>
             prometheusQueryBatch: (queries: Array<{ query: string; label: string }>, start: number, end: number) => Promise<Array<{ label: string; points: Array<{ t: number; v: number }>; error?: string }>>
             getOwnerChain: (kind: string, name: string, namespace: string) => Promise<OwnerChainResponse>
+            getTLSCerts: (namespace?: string) => Promise<any[]>
+            getGitOps: (namespace?: string) => Promise<any>
+            getProviders: () => Promise<ProviderSet>
         }
         helm: {
             list: (context: string) => Promise<HelmRelease[]>
@@ -140,7 +147,7 @@ export interface ExecTarget {
     namespace: string
 }
 
-export interface AppStore extends AnalysisSlice {
+export interface AppStore extends AnalysisSlice, ProvidersSlice {
     // Navigation
     section: ResourceKind
     setSection: (s: ResourceKind) => void
@@ -170,6 +177,7 @@ export interface AppStore extends AnalysisSlice {
     prodContexts: string[]
     setProdContexts: (contexts: string[]) => Promise<void>
     isProduction: boolean
+    contextSwitchStatus: string | null
     resourceHistory: AnyKubeResource[]
     apps: AppGroup[]
 
@@ -262,6 +270,7 @@ export interface AppStore extends AnalysisSlice {
     prometheusActivePreset: '1h' | '6h' | '24h' | '7d'
     setPrometheusTimeRange: (range: { start: number; end: number }, preset?: '1h' | '6h' | '24h' | '7d') => void
     probePrometheus: () => Promise<void>
+    disconnectPrometheus: () => void
 
     // Owner chains — keyed by resource UID
     ownerChains: Record<string, OwnerChainResponse>

@@ -1,45 +1,20 @@
-import React, { useState } from 'react'
+import React from 'react'
 import type { KubeHPA } from '../types'
 import { formatAge } from '../types'
-import { useAppStore } from '../store'
 import { FileCode, X, Activity, Cpu, Target, History } from 'lucide-react'
 import YAMLViewer from './YAMLViewer'
+import { useYAMLEditor } from '../hooks/useYAMLEditor'
 
 interface Props { hpa: KubeHPA }
 
 export default function HPADetail({ hpa }: Props): JSX.Element {
-  const { getYAML, applyYAML, refresh } = useAppStore()
-  const [yaml, setYaml] = useState<string | null>(null)
-  const [yamlLoading, setYamlLoading] = useState(false)
-  const [yamlError, setYamlError] = useState<string | null>(null)
+  const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
 
   const current = hpa.status.currentReplicas
   const desired = hpa.status.desiredReplicas
   const max = hpa.spec.maxReplicas
   const min = hpa.spec.minReplicas ?? 1
   const scalePct = max > min ? Math.round(((current - min) / (max - min)) * 100) : 0
-
-  const handleViewYAML = async () => {
-    setYaml(null); setYamlError(null); setYamlLoading(true)
-    try {
-      const content = await getYAML('hpa', hpa.metadata.name, false, hpa.metadata.namespace)
-      setYaml(content)
-    } catch (err) {
-      setYamlError((err as Error).message ?? 'Failed to fetch YAML')
-    } finally {
-      setYamlLoading(false)
-    }
-  }
-
-  const handleApplyYAML = async (newYaml: string) => {
-    try {
-      await applyYAML(newYaml)
-      refresh()
-      setYaml(null)
-    } catch (err) {
-      throw err
-    }
-  }
 
   return (
     <div className="flex flex-col w-full h-full relative">
@@ -52,7 +27,7 @@ export default function HPADetail({ hpa }: Props): JSX.Element {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={handleViewYAML}
+              onClick={() => openYAML('hpa', hpa.metadata.name, false, hpa.metadata.namespace)}
               disabled={yamlLoading}
               className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
             >
@@ -163,7 +138,7 @@ export default function HPADetail({ hpa }: Props): JSX.Element {
               </div>
               <button
                 type="button"
-                onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }}
+                onClick={closeYAML}
                 className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors focus:outline-none"
               >
                 <X size={20} strokeWidth={2.5} />
@@ -183,9 +158,9 @@ export default function HPADetail({ hpa }: Props): JSX.Element {
                   <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
               ) : yaml !== null ? (
-                <YAMLViewer
+                <YAMLViewer editable
                   content={yaml}
-                  onSave={handleApplyYAML}
+                  onSave={applyYAML}
                 />
               ) : null}
             </div>

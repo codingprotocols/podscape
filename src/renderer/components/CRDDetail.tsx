@@ -4,6 +4,7 @@ import { KubeCRD } from '../types'
 import { formatAge } from '../types'
 import { FileCode, X, Activity, Database, Info, Layers } from 'lucide-react'
 import YAMLViewer from './YAMLViewer'
+import { useYAMLEditor } from '../hooks/useYAMLEditor'
 
 interface CRDInstance {
   metadata: {
@@ -16,7 +17,8 @@ interface CRDInstance {
 }
 
 export default function CRDDetail({ crd }: { crd: KubeCRD }) {
-  const { selectedContext: ctx, selectedNamespace: ns, getYAML, applyYAML, refresh } = useAppStore()
+  const { selectedContext: ctx, selectedNamespace: ns, getYAML } = useAppStore()
+  const { apply: applyYAML } = useYAMLEditor()
   const [instances, setInstances] = useState<CRDInstance[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -64,16 +66,6 @@ export default function CRDDetail({ crd }: { crd: KubeCRD }) {
       setYamlError((err as Error).message ?? 'Failed to fetch YAML')
     } finally {
       setYamlLoading(false)
-    }
-  }
-
-  const handleApplyYAML = async (newYaml: string) => {
-    try {
-      await applyYAML(newYaml)
-      refresh()
-      setYaml(null)
-    } catch (err) {
-      throw err
     }
   }
 
@@ -207,9 +199,9 @@ export default function CRDDetail({ crd }: { crd: KubeCRD }) {
                   <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
               ) : yaml !== null ? (
-                <YAMLViewer
+                <YAMLViewer editable
                   content={yaml}
-                  onSave={handleApplyYAML}
+                  onSave={async (newYaml) => { await applyYAML(newYaml); setYaml(null) }}
                 />
               ) : null}
             </div>

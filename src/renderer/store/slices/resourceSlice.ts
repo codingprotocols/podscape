@@ -1,4 +1,4 @@
-import { StoreSlice, ExecTarget, CustomScanOptions } from '../types'
+import { StoreSlice, AppStore, ExecTarget, CustomScanOptions } from '../types'
 import { extractWorkloadImages } from '../../utils/security/extractImages'
 import {
     KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet,
@@ -284,7 +284,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
 
         // Namespace-scoped sections need a selected namespace
         if (config.namespaced && !ns) {
-            set({ [config.stateKey]: [] } as any)
+            set({ [config.stateKey]: [] } as Partial<AppStore>)
             return
         }
 
@@ -293,7 +293,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             const data = await config.fetch(ctx, fetchNs)
             // Discard results if the context switched while we were fetching.
             if (get().selectedContext !== snapshotCtx) return
-            set({ [config.stateKey]: Array.isArray(data) ? data : [], loadingResources: false } as any)
+            set({ [config.stateKey]: Array.isArray(data) ? data : [], loadingResources: false } as Partial<AppStore>)
         } catch (err) {
             if (get().selectedContext !== snapshotCtx) return
             set({ error: (err as Error).message, loadingResources: false })
@@ -412,12 +412,12 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         const updates: Record<string, any[]> = {}
         results.forEach((r, i) => {
             if (r.status === 'fulfilled') {
-                updates[keys[i]] = r.value as any[]
+                updates[keys[i]] = r.value as AnyKubeResource[]
             } else {
                 console.warn(`[preload] ${keys[i]} failed:`, r.reason)
             }
         })
-        if (Object.keys(updates).length > 0) set(updates as any)
+        if (Object.keys(updates).length > 0) set(updates as Partial<AppStore>)
     },
 
     scanSecurity: async (options?: CustomScanOptions) => {
@@ -539,7 +539,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         await get().loadSection(section)
         const stateKey = SECTION_CONFIG[section]?.stateKey
         if (!stateKey) return
-        const resources: AnyKubeResource[] = (get() as any)[stateKey] ?? []
+        const resources: AnyKubeResource[] = (get() as Record<string, AnyKubeResource[]>)[stateKey] ?? []
         const found = resources.find((r: AnyKubeResource) =>
             r.metadata.name === name && (r.metadata.namespace === namespace || !namespace)
         )

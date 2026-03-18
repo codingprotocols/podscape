@@ -1,5 +1,7 @@
 import React, { useState, useRef } from 'react'
+import { Search, Terminal, Plus, Trash2, Play, Power, Box, Cpu, Database, AlertCircle, X, RefreshCw, ChevronRight } from 'lucide-react'
 import { useAppStore } from '../store'
+import PageHeader from './PageHeader'
 import type { DebugPodEntry } from '../types'
 
 const DEBUG_IMAGES = [
@@ -153,16 +155,10 @@ export default function DebugPodLauncher() {
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[hsl(var(--bg-dark))] overflow-hidden">
-      {/* Header */}
-      <div className="px-8 py-6 border-b border-white/5 shrink-0 flex items-center gap-4">
-        <div className="w-9 h-9 rounded-xl bg-amber-500/10 flex items-center justify-center">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9 12l2 2 4-4" /></svg>
-        </div>
-        <div>
-          <h1 className="text-lg font-black text-white tracking-tight">Debug Pod Launcher</h1>
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Launch ephemeral pods with network debugging tools</p>
-        </div>
-      </div>
+      <PageHeader
+        title="Debug Pod Launcher"
+        subtitle="Launch ephemeral pods with network debugging tools & interactive shells"
+      />
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6 max-w-3xl mx-auto w-full">
 

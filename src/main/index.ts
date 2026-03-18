@@ -1,8 +1,8 @@
 import { app, shell, BrowserWindow, dialog, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { registerKubectlHandlers } from './kubectl'
-import { registerTerminalHandlers } from './terminal'
+import { registerKubectlHandlers, cancelAllLogStreams } from './kubectl'
+import { registerTerminalHandlers, cancelAllExecStreams } from './terminal'
 import { registerSettingsHandlers } from './settings'
 import { registerHelmHandlers } from './helm'
 import { registerDialogHandlers } from './dialog'
@@ -68,9 +68,18 @@ function createWindow(onReady: () => void): void {
     onReady()
   })
 
+  mainWindow.webContents.on('destroyed', () => {
+    cancelAllLogStreams()
+    cancelAllExecStreams()
+  })
+
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
+  })
+
+  ipcMain.handle('shell:openExternal', (_event, url: string) => {
+    shell.openExternal(url)
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -103,6 +112,9 @@ app.whenReady().then(async () => {
     createWindow(() => splash.destroy())
   } catch (err: any) {
     splash.destroy()
+    // If the user quit while the sidecar was still starting up, the SIGTERM we
+    // sent produces a spurious rejection — suppress it; the quit is already underway.
+    if (isQuitting) return
     console.error('[Main] Failed to start sidecar:', err)
     dialog.showErrorBox(
       'Sidecar Connection Failed',

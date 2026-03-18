@@ -11,6 +11,7 @@ import { activeSidecarPort, setActiveSidecarPort } from './runtime'
 
 let sidecarProcess: ChildProcess | null = null
 let startupComplete = false
+let shuttingDown = false
 
 async function findFreePort(preferred: number): Promise<number> {
   return new Promise((resolve) => {
@@ -30,6 +31,7 @@ async function findFreePort(preferred: number): Promise<number> {
 }
 
 export async function startSidecar(): Promise<void> {
+  shuttingDown = false
   if (sidecarProcess) {
     await stopSidecar()
   }
@@ -101,6 +103,12 @@ export async function startSidecar(): Promise<void> {
     }
 
     const exitHandler = (code: number | null, signal: string | null) => {
+      if (shuttingDown) {
+        // Intentional shutdown — resolve silently so the caller's catch block
+        // doesn't surface a spurious "failed to start" error dialog.
+        resolve()
+        return
+      }
       reject(new Error(`Sidecar exited during startup. Code: ${code}, Signal: ${signal}`))
     }
 
@@ -148,6 +156,7 @@ export async function stopSidecar(): Promise<void> {
 
   return new Promise((resolve) => {
     startupComplete = false  // suppress crash notification on intentional stop
+    shuttingDown = true      // suppress startup-failure dialog on intentional stop
     sidecarProcess = null
 
     console.log(`[Sidecar] Stopping sidecar (pid: ${proc.pid})...`)

@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { useAppStore } from '../store'
 import { useShallow } from 'zustand/react/shallow'
 import { SECTION_CONFIG } from '../store/slices/resourceSlice'
@@ -15,6 +16,9 @@ import ScaleDialog from './ScaleDialog'
 import DeleteConfirm from './DeleteConfirm'
 import YAMLViewer from './YAMLViewer'
 import { kindLabel } from '../store/slices/resourceSlice'
+import { Layers } from 'lucide-react'
+
+
 
 // ─── Section → resource selector ─────────────────────────────────────────────
 // Derived from SECTION_CONFIG so adding a new resource type only requires one
@@ -27,7 +31,7 @@ function useResources(): AnyKubeResource[] {
   })
 }
 
-const SECTION_LABELS: Record<string, string> = {
+export const SECTION_LABELS: Record<string, string> = {
   pods: 'Pods', deployments: 'Deployments', daemonsets: 'DaemonSets',
   statefulsets: 'StatefulSets', replicasets: 'ReplicaSets', jobs: 'Jobs', cronjobs: 'CronJobs',
   hpas: 'HorizontalPodAutoscalers', pdbs: 'PodDisruptionBudgets',
@@ -42,7 +46,7 @@ const SECTION_LABELS: Record<string, string> = {
 
 // ─── Row renderers ────────────────────────────────────────────────────────────
 
-function PodRow({ pod }: { pod: KubePod }) {
+const PodRow = React.memo(function PodRow({ pod }: { pod: KubePod }) {
   const phase = pod.status.phase ?? 'Unknown'
   const restarts = totalRestarts(pod)
   return (
@@ -60,9 +64,9 @@ function PodRow({ pod }: { pod: KubePod }) {
       <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(pod.metadata.creationTimestamp)}</td>
     </>
   )
-}
+})
 
-function DeploymentRow({ d }: { d: KubeDeployment }) {
+const DeploymentRow = React.memo(function DeploymentRow({ d }: { d: KubeDeployment }) {
   const desired = d.spec.replicas ?? 0
   const ready = d.status.readyReplicas ?? 0
   const ok = ready >= desired
@@ -76,7 +80,7 @@ function DeploymentRow({ d }: { d: KubeDeployment }) {
       <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(d.metadata.creationTimestamp)}</td>
     </>
   )
-}
+})
 
 function StatefulSetRow({ s }: { s: KubeStatefulSet }) {
   const desired = s.spec.replicas ?? 0
@@ -140,7 +144,7 @@ function CronJobRow({ cj }: { cj: KubeCronJob }) {
   )
 }
 
-function ServiceRow({ svc }: { svc: KubeService }) {
+const ServiceRow = React.memo(function ServiceRow({ svc }: { svc: KubeService }) {
   const lbIp = svc.status.loadBalancer?.ingress?.[0]?.ip ?? svc.status.loadBalancer?.ingress?.[0]?.hostname ?? ''
   return (
     <>
@@ -153,7 +157,7 @@ function ServiceRow({ svc }: { svc: KubeService }) {
       </td>
     </>
   )
-}
+})
 
 function IngressRow({ ing }: { ing: KubeIngress }) {
   const hosts = (ing.spec.rules ?? []).map(r => r.host ?? '*').join(', ')
@@ -168,7 +172,7 @@ function IngressRow({ ing }: { ing: KubeIngress }) {
   )
 }
 
-function ConfigMapRow({ cm }: { cm: KubeConfigMap }) {
+const ConfigMapRow = React.memo(function ConfigMapRow({ cm }: { cm: KubeConfigMap }) {
   const keyCount = Object.keys(cm.data ?? {}).length
   return (
     <>
@@ -177,9 +181,9 @@ function ConfigMapRow({ cm }: { cm: KubeConfigMap }) {
       <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(cm.metadata.creationTimestamp)}</td>
     </>
   )
-}
+})
 
-function SecretRow({ sec }: { sec: KubeSecret }) {
+const SecretRow = React.memo(function SecretRow({ sec }: { sec: KubeSecret }) {
   const keyCount = Object.keys(sec.data ?? {}).length
   return (
     <>
@@ -189,9 +193,9 @@ function SecretRow({ sec }: { sec: KubeSecret }) {
       <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(sec.metadata.creationTimestamp)}</td>
     </>
   )
-}
+})
 
-function NodeRow({ node }: { node: KubeNode }) {
+const NodeRow = React.memo(function NodeRow({ node }: { node: KubeNode }) {
   const ready = getNodeReady(node)
   const internalIP = (node.status.addresses ?? []).find(a => a.type === 'InternalIP')?.address ?? '—'
   return (
@@ -207,7 +211,7 @@ function NodeRow({ node }: { node: KubeNode }) {
       <td className="px-6 py-3 text-xs font-bold text-slate-600 dark:text-slate-300 font-mono">{internalIP}</td>
     </>
   )
-}
+})
 
 function NamespaceRow({ ns }: { ns: KubeNamespace }) {
   return (
@@ -546,26 +550,24 @@ function CustomCheckbox({ checked, onChange, partiallyChecked = false }: { check
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function ResourceList(): JSX.Element {
-  const { section, selectedResource, selectResource, loadingResources, refresh,
-    selectedNamespace, selectedContext, deleteResource, getYAML, applyYAML, rolloutRestart, openExec,
-    scaleStatefulSet, startPortForward } = useAppStore(useShallow(s => ({
-    section: s.section,
-    selectedResource: s.selectedResource,
-    selectResource: s.selectResource,
-    loadingResources: s.loadingResources,
-    refresh: s.refresh,
-    selectedNamespace: s.selectedNamespace,
-    selectedContext: s.selectedContext,
-    deleteResource: s.deleteResource,
-    getYAML: s.getYAML,
-    applyYAML: s.applyYAML,
-    rolloutRestart: s.rolloutRestart,
-    openExec: s.openExec,
-    scaleStatefulSet: s.scaleStatefulSet,
-    startPortForward: s.startPortForward,
-  })))
+  // Data fields — subscribed via shallow equality so any change triggers a re-render.
+  const { section, selectedResource, loadingResources, selectedNamespace, selectedContext, searchQuery } =
+    useAppStore(useShallow(s => ({
+      section: s.section,
+      selectedResource: s.selectedResource,
+      loadingResources: s.loadingResources,
+      selectedNamespace: s.selectedNamespace,
+      selectedContext: s.selectedContext,
+      searchQuery: s.searchQuery,
+    })))
+
+  // Action functions — stable refs created once; read directly from the store
+  // without subscribing so they never cause re-renders.
+  const {
+    selectResource, refresh, deleteResource, getYAML, applyYAML,
+    rolloutRestart, openExec, scaleStatefulSet, startPortForward,
+  } = useAppStore.getState()
   const resources = useResources()
-  const [search, setSearch] = useState('')
   const [scaleTarget, setScaleTarget] = useState<KubeDeployment | null>(null)
   const [stsScaleTarget, setStsScaleTarget] = useState<KubeStatefulSet | null>(null)
   const [stsScaleVal, setStsScaleVal] = useState('')
@@ -596,17 +598,18 @@ export default function ResourceList(): JSX.Element {
   const [sortCol, setSortCol] = useState<string | null>(null)
   const [sortAsc, setSortAsc] = useState(true)
 
-  const handleSort = (col: string) => {
+  const handleSort = useCallback((col: string) => {
     if (sortCol === col) {
-      setSortAsc(!sortAsc)
+      setSortAsc(prev => !prev)
     } else {
       setSortCol(col)
       setSortAsc(true)
     }
-  }
+  }, [sortCol])
 
   const filtered = useMemo(() => {
-    let result = resources.filter(r => r.metadata.name.toLowerCase().includes(search.toLowerCase()))
+    const q = searchQuery.toLowerCase()
+    let result = resources.filter(r => r.metadata.name.toLowerCase().includes(q))
     
     if (sortCol) {
       result = [...result].sort((a, b) => {
@@ -623,7 +626,7 @@ export default function ResourceList(): JSX.Element {
       })
     }
     return result
-  }, [resources, search, sortCol, sortAsc, section])
+  }, [resources, searchQuery, sortCol, sortAsc, section])
 
   // Clear selection and sorting if section changes
   useEffect(() => {
@@ -631,6 +634,27 @@ export default function ResourceList(): JSX.Element {
     setSortCol(null)
     setSortAsc(true)
   }, [section])
+
+  // ── Virtualization ────────────────────────────────────────────────────────
+  // Renders only the visible rows (overscan: 5 above/below) via padding <tr>
+  // spacers so the native <table> structure and all <td> row renderers remain
+  // unchanged. Row height is estimated at 45 px; the virtualizer measures
+  // actual heights after mount via measureElement.
+
+  const tableContainerRef = useRef<HTMLDivElement>(null)
+
+  const rowVirtualizer = useVirtualizer({
+    count: filtered.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => 45,
+    overscan: 5,
+  })
+
+  const virtualItems = rowVirtualizer.getVirtualItems()
+  const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0
+  const paddingBottom = virtualItems.length > 0
+    ? rowVirtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end
+    : 0
 
   const allSelected = filtered.length > 0 && selectedUids.size === filtered.length
   const toggleSelectAll = () => {
@@ -806,65 +830,32 @@ export default function ResourceList(): JSX.Element {
         </div>
       )}
       {/* Header */}
-      <div className="flex items-center justify-between px-8 py-7 border-b border-slate-200 dark:border-white/5 shrink-0 bg-white/5 backdrop-blur-md">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight leading-none">{SECTION_LABELS[section] ?? section}</h2>
-          <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mt-2.5 flex items-center gap-2">
-            <span className="w-1 h-1 rounded-full bg-slate-400 dark:bg-slate-600" />
-            {clusterScoped ? 'cluster-wide' : selectedNamespace === '_all' ? 'all namespaces' : (selectedNamespace ?? 'no namespace')}
-          </p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="relative group">
-            <input
-              type="text"
-              placeholder="Filter resources..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] font-bold rounded-xl px-4 py-2.5 pl-10
-                         border border-transparent focus:border-blue-500/50 focus:outline-none focus:ring-4 focus:ring-blue-500/10 
-                         w-64 transition-all placeholder-slate-400 dark:placeholder-slate-600"
-            />
-            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
-            </div>
-          </div>
 
-          <button
-            onClick={refresh}
-            disabled={loadingResources}
-            className="flex items-center gap-2 px-5 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300
-                       glass-panel hover:bg-white/10 dark:hover:bg-white/5 rounded-xl shadow-sm
-                       disabled:opacity-50 active:scale-95"
-          >
-            <span className={`transition-transform duration-700 ${loadingResources ? 'animate-spin' : ''}`}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6m12 6a9 9 0 0 1-15-6.7L3 16" /></svg>
-            </span>
-            Sync
-          </button>
-        </div>
-      </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto">
+      <div ref={tableContainerRef} className="flex-1 overflow-auto">
         {loadingResources ? (
           <div className="flex items-center justify-center py-24">
             <LoadingAnimation />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-3 text-slate-400">
-            <div className="w-12 h-12 rounded-full bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
-              <span className="text-2xl">◻</span>
+          <div className="flex flex-col items-center justify-center py-32 gap-6 animate-in fade-in duration-700">
+            <div className="w-20 h-20 rounded-[28px] bg-slate-50 dark:bg-white/[0.03] border border-dashed border-slate-200 dark:border-white/10 flex items-center justify-center text-slate-200 dark:text-slate-800 shadow-inner">
+               <Layers size={32} />
             </div>
-            <p className="text-xs font-bold uppercase tracking-widest">
-              {resources.length === 0 ? `No ${SECTION_LABELS[section]?.toLowerCase() ?? 'resources'} found` : 'No matches'}
-            </p>
+            <div className="text-center space-y-2">
+              <p className="text-[11px] font-black uppercase tracking-[0.4em] text-slate-400 dark:text-slate-600">
+                {resources.length === 0 ? `No ${SECTION_LABELS[section]?.toLowerCase() ?? 'resources'} found` : 'No matches found'}
+              </p>
+              <p className="text-[10px] font-bold text-slate-300 dark:text-slate-700 uppercase tracking-widest">Check filters or selected namespace</p>
+            </div>
           </div>
         ) : (
+          <>
           <table className="w-full text-sm border-collapse">
-            <thead className="sticky top-0 bg-white/70 dark:bg-[hsl(var(--bg-dark),_0.7)] backdrop-blur-xl z-20">
-              <tr className="border-b border-slate-100 dark:border-white/5">
-                <th className="w-12 px-6 py-5 text-center">
+            <thead className="sticky top-0 bg-white/80 dark:bg-[hsl(var(--bg-dark),_0.8)] backdrop-blur-xl z-20">
+              <tr className="border-b border-slate-100 dark:border-white/5 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                <th className="w-16 px-6 py-6 text-center">
                   <CustomCheckbox 
                     checked={allSelected} 
                     partiallyChecked={selectedUids.size > 0 && !allSelected}
@@ -875,7 +866,7 @@ export default function ResourceList(): JSX.Element {
                   <th 
                     key={col} 
                     onClick={() => handleSort(col)}
-                    className="text-left px-8 py-5 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.15em] cursor-pointer hover:text-slate-600 dark:hover:text-slate-300 transition-colors select-none group"
+                    className="text-left pl-8 py-5 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.15em] cursor-pointer hover:text-slate-600 dark:hover:text-slate-300 transition-colors select-none group"
                   >
                     <div className="flex items-center gap-1.5">
                       {col}
@@ -888,7 +879,7 @@ export default function ResourceList(): JSX.Element {
                 {showNsCol && (
                   <th 
                     onClick={() => handleSort('Namespace')}
-                    className="text-left px-8 py-5 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.15em] cursor-pointer hover:text-slate-600 dark:hover:text-slate-300 transition-colors select-none group"
+                    className="text-left pl-8 py-5 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.15em] cursor-pointer hover:text-slate-600 dark:hover:text-slate-300 transition-colors select-none group"
                   >
                     <div className="flex items-center gap-1.5">
                       Namespace
@@ -902,7 +893,12 @@ export default function ResourceList(): JSX.Element {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50 dark:divide-slate-900">
-              {filtered.map(resource => {
+              {/* Top spacer — represents rows scrolled above the viewport */}
+              {paddingTop > 0 && (
+                <tr><td style={{ height: paddingTop }} colSpan={cols.length + 3} /></tr>
+              )}
+              {virtualItems.map(virtualRow => {
+                const resource = filtered[virtualRow.index]
                 const uid = resource.metadata.uid
                 const isSelected = selectedResource?.metadata.uid === uid
                 return (
@@ -917,9 +913,9 @@ export default function ResourceList(): JSX.Element {
                   >
                     <td className="px-6 py-3 text-center" onClick={e => e.stopPropagation()}>
                       <div className={`transition-all duration-200 ${selectedUids.has(uid) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                        <CustomCheckbox 
-                          checked={selectedUids.has(uid)} 
-                          onChange={() => toggleSelect(uid)} 
+                        <CustomCheckbox
+                          checked={selectedUids.has(uid)}
+                          onChange={() => toggleSelect(uid)}
                         />
                       </div>
                     </td>
@@ -940,8 +936,13 @@ export default function ResourceList(): JSX.Element {
                   </tr>
                 )
               })}
+              {/* Bottom spacer — represents rows below the viewport */}
+              {paddingBottom > 0 && (
+                <tr><td style={{ height: paddingBottom }} colSpan={cols.length + 3} /></tr>
+              )}
             </tbody>
           </table>
+          </>
         )}
       </div>
 

@@ -4,20 +4,18 @@ import type { KubeReplicaSet, KubeEvent } from '../types'
 import { formatAge } from '../types'
 import { FileCode, X, Activity, Layers, Info, History } from 'lucide-react'
 import YAMLViewer from './YAMLViewer'
+import { useYAMLEditor } from '../hooks/useYAMLEditor'
 
 interface Props {
   replicaSet: KubeReplicaSet
 }
 
 export default function ReplicaSetDetail({ replicaSet: rs }: Props): JSX.Element {
-  const { selectedContext, getYAML, applyYAML, refresh } = useAppStore()
+  const { selectedContext } = useAppStore()
+  const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const [events, setEvents] = useState<KubeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
   const [tab, setTab] = useState<'overview' | 'events'>('overview')
-
-  const [yaml, setYaml] = useState<string | null>(null)
-  const [yamlLoading, setYamlLoading] = useState(false)
-  const [yamlError, setYamlError] = useState<string | null>(null)
 
   const desired = rs.spec.replicas ?? 0
   const ready = rs.status.readyReplicas ?? 0
@@ -36,28 +34,6 @@ export default function ReplicaSetDetail({ replicaSet: rs }: Props): JSX.Element
       .finally(() => setEventsLoading(false))
   }, [tab, rs.metadata.uid, selectedContext])
 
-  const handleViewYAML = async () => {
-    setYaml(null); setYamlError(null); setYamlLoading(true)
-    try {
-      const content = await getYAML('replicaset', rs.metadata.name, false, rs.metadata.namespace)
-      setYaml(content)
-    } catch (err) {
-      setYamlError((err as Error).message ?? 'Failed to fetch YAML')
-    } finally {
-      setYamlLoading(false)
-    }
-  }
-
-  const handleApplyYAML = async (newYaml: string) => {
-    try {
-      await applyYAML(newYaml)
-      refresh()
-      setYaml(null)
-    } catch (err) {
-      throw err
-    }
-  }
-
   return (
     <div className="flex flex-col w-full h-full relative font-sans">
       {/* Header */}
@@ -69,7 +45,7 @@ export default function ReplicaSetDetail({ replicaSet: rs }: Props): JSX.Element
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={handleViewYAML}
+              onClick={() => openYAML('replicaset', rs.metadata.name, false, rs.metadata.namespace)}
               disabled={yamlLoading}
               className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
             >
@@ -193,7 +169,7 @@ export default function ReplicaSetDetail({ replicaSet: rs }: Props): JSX.Element
               </div>
               <button
                 type="button"
-                onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }}
+                onClick={closeYAML}
                 className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors focus:outline-none"
               >
                 <X size={20} strokeWidth={2.5} />
@@ -213,9 +189,9 @@ export default function ReplicaSetDetail({ replicaSet: rs }: Props): JSX.Element
                   <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
               ) : yaml !== null ? (
-                <YAMLViewer
+                <YAMLViewer editable
                   content={yaml}
-                  onSave={handleApplyYAML}
+                  onSave={applyYAML}
                 />
               ) : null}
             </div>

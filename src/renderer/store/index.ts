@@ -5,6 +5,7 @@ import { createClusterSlice } from './slices/clusterSlice'
 import { createResourceSlice } from './slices/resourceSlice'
 import { createOperationSlice } from './slices/operationSlice'
 import { createAnalysisSlice } from './slices/analysisSlice'
+import { createProvidersSlice } from './slices/providersSlice'
 import { KubeContextEntry } from '../types'
 
 export const useAppStore = create<AppStore>()((...a) => ({
@@ -13,6 +14,7 @@ export const useAppStore = create<AppStore>()((...a) => ({
     ...createResourceSlice(...a),
     ...createOperationSlice(...a),
     ...createAnalysisSlice(...a),
+    ...createProvidersSlice(...a),
 
     // ── Combined actions (init) ────────────────────────────────────────────────
     init: async () => {

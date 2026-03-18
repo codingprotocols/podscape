@@ -4,6 +4,7 @@ import type { KubeRole, KubeClusterRole, PolicyRule, KubeEvent } from '../types'
 import { formatAge } from '../types'
 import { FileCode, X, Activity, Shield, Info, History, Key } from 'lucide-react'
 import YAMLViewer from './YAMLViewer'
+import { useYAMLEditor } from '../hooks/useYAMLEditor'
 
 const VERB_COLORS: Record<string, string> = {
   get: 'bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20',
@@ -32,14 +33,11 @@ interface Props {
 }
 
 export default function RoleDetail({ role, clusterScoped = false }: Props): JSX.Element {
-  const { selectedContext, getYAML, applyYAML, refresh } = useAppStore()
+  const { selectedContext } = useAppStore()
+  const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const [events, setEvents] = useState<KubeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
   const [tab, setTab] = useState<'rules' | 'events'>('rules')
-
-  const [yaml, setYaml] = useState<string | null>(null)
-  const [yamlLoading, setYamlLoading] = useState(false)
-  const [yamlError, setYamlError] = useState<string | null>(null)
 
   const rules: PolicyRule[] = role.rules ?? []
 
@@ -54,29 +52,6 @@ export default function RoleDetail({ role, clusterScoped = false }: Props): JSX.
       .finally(() => setEventsLoading(false))
   }, [tab, role.metadata.uid, selectedContext])
 
-  const handleViewYAML = async () => {
-    setYaml(null); setYamlError(null); setYamlLoading(true)
-    try {
-      const kind = clusterScoped ? 'clusterrole' : 'role'
-      const content = await getYAML(kind, role.metadata.name, false, role.metadata.namespace)
-      setYaml(content)
-    } catch (err) {
-      setYamlError((err as Error).message ?? 'Failed to fetch YAML')
-    } finally {
-      setYamlLoading(false)
-    }
-  }
-
-  const handleApplyYAML = async (newYaml: string) => {
-    try {
-      await applyYAML(newYaml)
-      refresh()
-      setYaml(null)
-    } catch (err) {
-      throw err
-    }
-  }
-
   return (
     <div className="flex flex-col w-full h-full relative font-sans">
       {/* Header */}
@@ -90,7 +65,7 @@ export default function RoleDetail({ role, clusterScoped = false }: Props): JSX.
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={handleViewYAML}
+              onClick={() => openYAML(clusterScoped ? 'clusterrole' : 'role', role.metadata.name, false, role.metadata.namespace)}
               disabled={yamlLoading}
               className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
             >
@@ -256,7 +231,7 @@ export default function RoleDetail({ role, clusterScoped = false }: Props): JSX.
               </div>
               <button
                 type="button"
-                onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }}
+                onClick={closeYAML}
                 className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors focus:outline-none"
               >
                 <X size={20} strokeWidth={2.5} />
@@ -276,9 +251,9 @@ export default function RoleDetail({ role, clusterScoped = false }: Props): JSX.
                   <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
               ) : yaml !== null ? (
-                <YAMLViewer
+                <YAMLViewer editable
                   content={yaml}
-                  onSave={handleApplyYAML}
+                  onSave={applyYAML}
                 />
               ) : null}
             </div>

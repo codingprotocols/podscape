@@ -84,6 +84,15 @@ export const setupMocks = () => {
             scanKubesecBatch: vi.fn().mockResolvedValue([]),
             scanTrivyImages: vi.fn().mockResolvedValue({ Resources: [] }),
             onSecurityProgress: vi.fn(() => vi.fn()),
+            prometheusStatus: vi.fn(),
+            getProviders: vi.fn(),
+            cancelAllStreams: vi.fn().mockResolvedValue(undefined),
+            streamLogs: vi.fn().mockResolvedValue('stream-1'),
+            stopLogs: vi.fn().mockResolvedValue(undefined),
+        },
+        settings: {
+            get: vi.fn().mockResolvedValue({ shellPath: '', theme: 'dark', kubeconfigPath: '', prodContexts: [], prometheusUrls: {} }),
+            set: vi.fn().mockResolvedValue(undefined),
         },
         plugins: {
             list: vi.fn(),

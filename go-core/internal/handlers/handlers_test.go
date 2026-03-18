@@ -689,6 +689,72 @@ func TestHandleKubesecBatch_PerResourceErrorIsolation(t *testing.T) {
 	}
 }
 
+// ── kindGVR alias table ───────────────────────────────────────────────────────
+
+func TestKindGVR_AliasesPresent(t *testing.T) {
+	// These aliases were added to fix getYAML/delete returning 400 for renderer
+	// components that use short kind names. Regression guard: changing a key or
+	// forgetting to add a new alias must fail this test immediately.
+	cases := []struct {
+		kind     string
+		resource string
+		group    string
+	}{
+		// Short alias → same GVR as canonical name
+		{"hpa", "horizontalpodautoscalers", "autoscaling"},
+		{"persistentvolume", "persistentvolumes", ""},
+		{"persistentvolumeclaim", "persistentvolumeclaims", ""},
+		// Canonical names must also resolve
+		{"horizontalpodautoscaler", "horizontalpodautoscalers", "autoscaling"},
+		{"pv", "persistentvolumes", ""},
+		{"pvc", "persistentvolumeclaims", ""},
+		// A sample of other well-known kinds
+		{"pod", "pods", ""},
+		{"deployment", "deployments", "apps"},
+		{"node", "nodes", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.kind, func(t *testing.T) {
+			gvr, ok := kindGVR[tc.kind]
+			if !ok {
+				t.Fatalf("kindGVR[%q] is missing", tc.kind)
+			}
+			if gvr.Resource != tc.resource {
+				t.Errorf("kindGVR[%q].Resource = %q, want %q", tc.kind, gvr.Resource, tc.resource)
+			}
+			if gvr.Group != tc.group {
+				t.Errorf("kindGVR[%q].Group = %q, want %q", tc.kind, gvr.Group, tc.group)
+			}
+		})
+	}
+}
+
+func TestKindGVR_HPAAliasMatchesCanonical(t *testing.T) {
+	hpa := kindGVR["hpa"]
+	canonical := kindGVR["horizontalpodautoscaler"]
+	if hpa != canonical {
+		t.Errorf("hpa alias GVR %+v does not match canonical %+v", hpa, canonical)
+	}
+}
+
+func TestKindGVR_PVAliasMatchesCanonical(t *testing.T) {
+	pv := kindGVR["persistentvolume"]
+	canonical := kindGVR["pv"]
+	if pv != canonical {
+		t.Errorf("persistentvolume alias GVR %+v does not match canonical pv %+v", pv, canonical)
+	}
+}
+
+func TestClusterScopedKinds_PVPresent(t *testing.T) {
+	// persistentvolume must be cluster-scoped so getYAML omits the namespace param.
+	if !clusterScopedKinds["persistentvolume"] {
+		t.Error("persistentvolume must be in clusterScopedKinds")
+	}
+	if !clusterScopedKinds["pv"] {
+		t.Error("pv must be in clusterScopedKinds")
+	}
+}
+
 // ── HandleHelmRollback input validation ───────────────────────────────────────
 
 func TestHandleHelmRollback_InvalidRevision(t *testing.T) {

@@ -164,9 +164,8 @@ export default function PDBDetail({ pdb }: { pdb: KubePDB }) {
                                     <div className="w-8 h-8 border-2 border-slate-700 border-t-amber-500 rounded-full animate-spin" />
                                 </div>
                             ) : yaml !== null ? (
-                                <YAMLViewer
+                                <YAMLViewer editable
                                     content={yaml}
-                                    editable
                                     onSave={async (updated) => {
                                         await applyYAML(updated)
                                         refresh()

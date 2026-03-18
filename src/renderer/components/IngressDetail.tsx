@@ -6,10 +6,132 @@ import YAMLViewer from './YAMLViewer'
 
 interface Props { ingress: KubeIngress }
 
-type Tab = 'rules' | 'events'
+const NGINX_ANNOTATION_GROUPS: Record<string, string[]> = {
+  'SSL / TLS': [
+    'nginx.ingress.kubernetes.io/ssl-redirect',
+    'nginx.ingress.kubernetes.io/force-ssl-redirect',
+    'nginx.ingress.kubernetes.io/ssl-passthrough',
+    'nginx.ingress.kubernetes.io/backend-protocol',
+    'nginx.ingress.kubernetes.io/secure-backends',
+  ],
+  'Proxy': [
+    'nginx.ingress.kubernetes.io/proxy-body-size',
+    'nginx.ingress.kubernetes.io/proxy-connect-timeout',
+    'nginx.ingress.kubernetes.io/proxy-read-timeout',
+    'nginx.ingress.kubernetes.io/proxy-send-timeout',
+    'nginx.ingress.kubernetes.io/proxy-buffer-size',
+    'nginx.ingress.kubernetes.io/proxy-buffering',
+    'nginx.ingress.kubernetes.io/proxy-next-upstream',
+  ],
+  'Rate Limiting': [
+    'nginx.ingress.kubernetes.io/limit-rps',
+    'nginx.ingress.kubernetes.io/limit-rpm',
+    'nginx.ingress.kubernetes.io/limit-connections',
+    'nginx.ingress.kubernetes.io/limit-burst-multiplier',
+    'nginx.ingress.kubernetes.io/limit-whitelist',
+  ],
+  'Auth': [
+    'nginx.ingress.kubernetes.io/auth-type',
+    'nginx.ingress.kubernetes.io/auth-secret',
+    'nginx.ingress.kubernetes.io/auth-realm',
+    'nginx.ingress.kubernetes.io/auth-url',
+    'nginx.ingress.kubernetes.io/auth-method',
+    'nginx.ingress.kubernetes.io/auth-response-headers',
+  ],
+  'CORS': [
+    'nginx.ingress.kubernetes.io/enable-cors',
+    'nginx.ingress.kubernetes.io/cors-allow-origin',
+    'nginx.ingress.kubernetes.io/cors-allow-methods',
+    'nginx.ingress.kubernetes.io/cors-allow-headers',
+    'nginx.ingress.kubernetes.io/cors-allow-credentials',
+    'nginx.ingress.kubernetes.io/cors-max-age',
+  ],
+  'Rewrites': [
+    'nginx.ingress.kubernetes.io/rewrite-target',
+    'nginx.ingress.kubernetes.io/use-regex',
+    'nginx.ingress.kubernetes.io/app-root',
+    'nginx.ingress.kubernetes.io/permanent-redirect',
+    'nginx.ingress.kubernetes.io/temporal-redirect',
+  ],
+  'Load Balancing': [
+    'nginx.ingress.kubernetes.io/load-balance',
+    'nginx.ingress.kubernetes.io/upstream-hash-by',
+    'nginx.ingress.kubernetes.io/affinity',
+    'nginx.ingress.kubernetes.io/session-cookie-name',
+    'nginx.ingress.kubernetes.io/session-cookie-path',
+  ],
+  'Snippets': [
+    'nginx.ingress.kubernetes.io/configuration-snippet',
+    'nginx.ingress.kubernetes.io/server-snippet',
+  ],
+}
+
+function NginxAnnotationsView({ annotations }: { annotations: Record<string, string> }) {
+  const nginxAnnotations = Object.entries(annotations).filter(
+    ([k]) => k.startsWith('nginx.ingress.kubernetes.io/') || k.startsWith('ingress.kubernetes.io/')
+  )
+
+  if (nginxAnnotations.length === 0) {
+    return (
+      <p className="text-xs text-slate-500 dark:text-slate-400 text-center py-8">
+        No nginx annotations on this Ingress
+      </p>
+    )
+  }
+
+  const shown = new Set<string>()
+  const grouped: Array<{ group: string; entries: [string, string][] }> = []
+
+  for (const [group, keys] of Object.entries(NGINX_ANNOTATION_GROUPS)) {
+    const entries = keys
+      .map(k => [k, annotations[k]] as [string, string])
+      .filter(([, v]) => v !== undefined)
+    if (entries.length > 0) {
+      grouped.push({ group, entries })
+      entries.forEach(([k]) => shown.add(k))
+    }
+  }
+
+  const other = nginxAnnotations.filter(([k]) => !shown.has(k))
+  if (other.length > 0) grouped.push({ group: 'Other', entries: other })
+
+  return (
+    <div className="space-y-5">
+      {grouped.map(({ group, entries }) => (
+        <div key={group}>
+          <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">{group}</h4>
+          <div className="rounded-xl border border-slate-100 dark:border-white/[0.06] overflow-hidden">
+            {entries.map(([key, value], i) => {
+              const shortKey = key
+                .replace('nginx.ingress.kubernetes.io/', '')
+                .replace('ingress.kubernetes.io/', '')
+              const isLast = i === entries.length - 1
+              return (
+                <div
+                  key={key}
+                  className={`flex items-start gap-3 px-4 py-2.5 text-xs ${isLast ? '' : 'border-b border-slate-100 dark:border-white/[0.04]'}`}
+                >
+                  <span
+                    className="w-48 shrink-0 text-slate-500 font-medium truncate"
+                    title={key}
+                  >
+                    {shortKey}
+                  </span>
+                  <span className="font-mono text-slate-700 dark:text-slate-300 break-all">{value}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+type Tab = 'rules' | 'events' | 'nginx'
 
 export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
-  const { getYAML, selectedContext, selectedNamespace } = useAppStore()
+  const { getYAML, applyYAML, selectedContext, selectedNamespace, providers } = useAppStore()
   const [tab, setTab] = useState<Tab>('rules')
   const [yaml, setYaml] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
@@ -36,6 +158,12 @@ export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
     } finally {
       setYamlLoading(false)
     }
+  }
+
+  const handleApplyYAML = async (updated: string) => {
+    await applyYAML(updated)
+    const refreshed = await getYAML('ingress', ing.metadata.name, false, ing.metadata.namespace)
+    setYaml(refreshed)
   }
 
   const loadEvents = async () => {
@@ -124,6 +252,13 @@ export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
             {t}
           </button>
         ))}
+        {providers.nginxCommunity && (
+          <button key="nginx" onClick={() => setTab('nginx')}
+            className={`px-4 py-2 text-xs font-medium capitalize transition-colors ${tab === 'nginx' ? 'text-blue-400 border-b-2 border-blue-500' : 'text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:text-slate-300'
+              }`}>
+            NGINX Config
+          </button>
+        )}
       </div>
 
       {tab === 'rules' && (
@@ -213,6 +348,12 @@ export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
         </div>
       )}
 
+      {tab === 'nginx' && (
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <NginxAnnotationsView annotations={ing.metadata.annotations ?? {}} />
+        </div>
+      )}
+
       {(yamlLoading || yaml !== null || yamlError !== null) && (
         <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden">
@@ -230,7 +371,7 @@ export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
                 <div className="flex items-center justify-center h-full">
                   <div className="w-8 h-8 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
-              ) : yaml !== null ? <YAMLViewer content={yaml} /> : null}
+              ) : yaml !== null ? <YAMLViewer content={yaml} editable onSave={handleApplyYAML} /> : null}
             </div>
           </div>
         </div>
