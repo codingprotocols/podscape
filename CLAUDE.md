@@ -16,7 +16,7 @@ cd go-core && go build ./cmd/podscape-core/   # Build the Go binary
 cd go-core && go test ./...                    # Run Go tests
 
 # Distribution
-npm run build:mac        # Build macOS DMG + zip
+npm run build:mac        # Build macOS DMG + zip (signs + notarizes via afterSign hook)
 npm run build:win        # Build Windows NSIS installer
 npm run build:linux      # Build AppImage + deb
 ```
@@ -39,6 +39,8 @@ The sidecar is a standalone HTTP server compiled as `podscape-core`. It is the s
 
 - **Entry:** `go-core/cmd/podscape-core/main.go` — registers all HTTP routes, starts informers, binds to `--port` (default 5050)
 - **Handlers:** `go-core/internal/handlers/handlers.go` — one handler per resource type and operation
+- **Custom resources:** `go-core/internal/handlers/customresource.go` — generic CRD lister via dynamic client; handles `/customresource?crd=<plural>.<group>&namespace=<ns>`
+- **Provider detection:** `go-core/internal/handlers/providers.go` + `go-core/internal/providers/detect.go` — detects Istio/Traefik/Nginx via discovery API and IngressClass controller field; handles `/providers`
 - **Informers:** `go-core/internal/informers/informers.go` — k8s shared informers cache resource lists in-memory for fast reads
 - **Store:** `go-core/internal/store/store.go` — singleton holding the k8s `Clientset` and `Config`
 - **Port forward:** `go-core/internal/portforward/portforward.go` — manages active tunnels, streams events over WebSocket
@@ -49,6 +51,8 @@ In **dev**, the sidecar binary is expected at `go-core/podscape-core`. In **prod
 
 The Electron main process starts the sidecar on app launch (`src/main/sidecar.ts`) and polls `/health` until it responds. If the sidecar fails to start, the app shows an error dialog and quits. The renderer retries sidecar fetch calls up to 20× with 500 ms delays (`src/main/api.ts`).
 
+**Sidecar shutdown:** `sidecar.ts` tracks a `shuttingDown` flag set by `stopSidecar()`. The startup `exitHandler` resolves (not rejects) when `shuttingDown` is true, preventing a spurious "failed to start" dialog when the user quits during the splash screen. `index.ts` also guards the catch block with `if (isQuitting) return` as a second line of defence.
+
 ### Main Process (`src/main/`)
 
 Handles operations that require Node.js or native access:
@@ -56,19 +60,21 @@ Handles operations that require Node.js or native access:
 | File | Responsibility |
 |------|----------------|
 | `index.ts` | App bootstrap, spawns sidecar, creates BrowserWindow |
-| `sidecar.ts` | Launch/kill the Go binary subprocess |
-| `kubectl.ts` | IPC handlers for log streaming, port-forward, file copy (kubectl cp) |
+| `sidecar.ts` | Launch/kill the Go binary subprocess; `shuttingDown` flag prevents false startup-failure dialogs |
+| `kubectl.ts` | IPC handlers for all k8s operations; unmapped resource kinds route to `/customresource?crd=<name>` |
 | `terminal.ts` | PTY terminal sessions via `node-pty` |
 | `helm.ts` | Helm CLI IPC handlers (wraps `helm` binary) |
 | `settings.ts` | Settings IPC — reads/writes `~/.podscape/settings.json` |
 | `dialog.ts` | Native file open/save dialogs |
 | `kubeProvider.ts` | Kubeconfig path resolution and management |
 
+**`getResources()` routing in `kubectl.ts`:** built-in k8s resource kinds are mapped via `sidecarMap` to fixed sidecar paths. Any unmapped kind (CRD plural name like `ingressroutes.traefik.io`) is routed to `/customresource?crd=<name>&namespace=<ns>` and throws on non-OK responses so `ProviderResourcePanel` can surface errors.
+
 ### Preload (`src/preload/index.ts`)
 
 Exposes 6 namespaced APIs via `contextBridge`:
 
-- `window.kubectl` — k8s operations + port-forward + log streaming + file copy
+- `window.kubectl` — k8s operations + port-forward + log streaming + file copy + `getCustomResource` + `getProviders`
 - `window.helm` — Helm release operations
 - `window.exec` — PTY exec-into-container sessions
 - `window.settings` — read/write app settings
@@ -79,13 +85,50 @@ Exposes 6 namespaced APIs via `contextBridge`:
 
 ### Renderer (`src/renderer/`)
 
-- **`store.ts`** — single Zustand store (`useAppStore`) holding context/namespace selection, all resource arrays, navigation state (`section: ResourceKind`), exec modal state, port-forward state, and Grafana URL
-- **`components/`** — one detail component per resource kind; `ResourceList.tsx` is the generic table for all 27+ resource types
-- **`App.tsx`** — top-level layout; reads `section` from store to render the active panel
+- **`store.ts`** — single Zustand store (`useAppStore`) holding context/namespace selection, all resource arrays, navigation state (`section: ResourceKind`), exec modal state, port-forward state, Grafana URL, and provider detection state
+- **`components/`** — one detail component per resource kind; `ResourceList.tsx` is the generic table for all 27+ resource types; `ProviderResourcePanel.tsx` handles all Istio/Traefik/Nginx sections
+- **`App.tsx`** — top-level layout; reads `section` from store to render the active panel; provider sections (prefixed `istio-`, `traefik-`, `nginx-`) render `ProviderResourcePanel`
+
+### Provider detection (Istio / Traefik / Nginx)
+
+On every successful context switch, `clusterSlice` calls `get().fetchProviders()` (fire-and-forget). `providersSlice` hits `/providers` on the sidecar, which uses the k8s discovery API to detect installed providers:
+
+| Provider | Detection method |
+|----------|-----------------|
+| Istio | API group `networking.istio.io` present |
+| Traefik v3 | API group `traefik.io` present |
+| Traefik v2 | API group `traefik.containo.us` present |
+| NGINX Inc | API group `k8s.nginx.org` present |
+| NGINX Community | IngressClass controller field contains `ingress-nginx` |
+
+The `providers` store value drives conditional Sidebar groups. `fetchProviders` captures the context at call time and discards results if the context changed while the request was in-flight (stale-context guard, same pattern as `probePrometheus`).
+
+**Context switch reset:** `clusterSlice.selectContext` resets `providers` to all-false and, if the active `section` is a provider-specific section (prefixed `istio-`, `traefik-`, `nginx-`), navigates back to `dashboard` to prevent `ProviderResourcePanel` from firing a fetch against a cluster that may lack those CRDs.
+
+### `ProviderResourcePanel` (`src/renderer/components/ProviderResourcePanel.tsx`)
+
+Handles all 15 provider sections. Maps `ResourceKind` → CRD plural name via `SECTION_TO_CRD`. For Traefik v2, `resolvedCrdName()` replaces `.traefik.io` with `.traefik.containo.us`. Loads via `window.kubectl.getCustomResource(ctx, ns, crdName)` → IPC → `getResources()` → `/customresource?crd=...`. Dispatches to typed detail components:
+
+- **Traefik:** `TraefikIngressRouteDetail`, `TraefikMiddlewareDetail`, `TraefikServiceDetail`, `TraefikTLSOptionDetail`
+- **Nginx:** `NginxVirtualServerDetail`, `NginxPolicyDetail`, `NginxTransportServerDetail`
+- **Istio:** `IstioVirtualServiceDetail`, `IstioDestinationRuleDetail`, `IstioGatewayDetail`, `IstioServiceEntryDetail`, `IstioPeerAuthDetail`, `IstioAuthPolicyDetail`
 
 ### Key constants
 
 `src/common/constants.ts` holds `SIDECAR_HOST`, `SIDECAR_PORT` (5050), `SIDECAR_BASE_URL`, and `SIDECAR_WS_URL`. All renderer-to-sidecar fetch calls go through `sidecarFetch()` / `checkedSidecarFetch()` in `src/main/api.ts`.
+
+### Navigation sections (`ResourceKind`)
+
+**Namespace-scoped:** `pods` | `deployments` | `statefulsets` | `replicasets` | `jobs` | `cronjobs` | `daemonsets` | `hpas` | `pdbs` | `services` | `ingresses` | `networkpolicies` | `endpoints` | `pvcs` | `configmaps` | `secrets` | `serviceaccounts` | `roles` | `rolebindings`
+
+**Cluster-scoped:** `nodes` | `namespaces` | `crds` | `ingressclasses` | `pvs` | `storageclasses` | `clusterroles` | `clusterrolebindings`
+
+**Panel-only:** `dashboard` | `events` | `metrics` | `unifiedlogs` | `portforwards` | `helm` | `security` | `tls` | `gitops` | `network` | `connectivity` | `debugpod` | `settings`
+
+**Provider sections (conditional on cluster):**
+- Istio: `istio-virtualservices` | `istio-destinationrules` | `istio-gateways` | `istio-serviceentries` | `istio-peerauth` | `istio-authpolicies`
+- Traefik: `traefik-ingressroutes` | `traefik-ingressroutestcp` | `traefik-ingressroutesudp` | `traefik-middlewares` | `traefik-services` | `traefik-tlsoptions`
+- NGINX Inc: `nginx-virtualservers` | `nginx-policies` | `nginx-transportservers`
 
 ### Build notes
 
@@ -93,6 +136,34 @@ Exposes 6 namespaced APIs via `contextBridge`:
 - The Go binary must be built separately before `npm run dev` if it doesn't exist
 - `node-pty` is native; rebuilt by `electron-builder install-app-deps` (postinstall). On macOS the prebuilt `spawn-helper` may lack execute permission — postinstall applies `chmod +x` automatically
 - Stale preload builds can cause `window.kubectl.*` to appear as `undefined` — restart `npm run dev` if this happens
+- **Custom resource handler** (`/customresource`) uses `dynClientFactory` — a package-level injectable var in `customresource.go` — so tests can inject a fake dynamic client without a real API server
+
+### Release / notarization
+
+Releases are triggered by pushing a `v*` tag. The GitHub Actions workflow (`.github/workflows/release.yml`) builds for macOS (arm64 + x64), Windows, and Linux in parallel.
+
+**macOS signing + notarization** requires these repository secrets:
+
+| Secret | Description |
+|--------|-------------|
+| `CSC_LINK` | Base64-encoded `.p12` certificate (Developer ID Application) |
+| `CSC_KEY_PASSWORD` | Password for the `.p12` |
+| `APPLE_ID` | Apple ID email |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password from appleid.apple.com |
+| `APPLE_TEAM_ID` | 10-char Apple Team ID |
+| `GH_TOKEN` | GitHub PAT with `repo` scope (for publishing the release) |
+
+The `afterSign` hook in `package.json` calls `scripts/notarize.js`, which uses `@electron/notarize` with `notarytool`. Notarization is skipped automatically when `APPLE_ID` is not set (Linux/Windows CI).
+
+To encode the `.p12`:
+```bash
+base64 -i /path/to/Certificates.p12 | pbcopy
+```
+
+To trigger a release:
+```bash
+git tag v2.0.0 && git push origin v2.0.0
+```
 
 ---
 
