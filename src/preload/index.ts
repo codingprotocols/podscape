@@ -133,6 +133,9 @@ const kubectl = {
   getTopology: (namespace: string) =>
     ipcRenderer.invoke('kubectl:getTopology', namespace),
 
+  getProviders: () =>
+    ipcRenderer.invoke('kubectl:getProviders'),
+
   // Port Forwarding
   portForward: (context: string, namespace: string, type: string, name: string, localPort: number, remotePort: number, id: string) =>
     ipcRenderer.invoke('kubectl:portForward', context, namespace, type, name, localPort, remotePort, id),

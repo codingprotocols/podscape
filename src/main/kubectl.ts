@@ -60,11 +60,26 @@ export class KubectlProvider {
       'events': 'events'
     }
 
-    const endpoint = sidecarMap[kind.toLowerCase()] || kind
-    const url = `/${endpoint}${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`
+    const mappedEndpoint = sidecarMap[kind.toLowerCase()]
+    let url: string
+    if (mappedEndpoint) {
+      url = `/${mappedEndpoint}${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`
+    } else {
+      // Unmapped kind — treat as a CRD plural name (e.g. "virtualservices.networking.istio.io")
+      // and route through the generic dynamic-client handler.
+      const params = new URLSearchParams({ crd: kind })
+      if (namespace) params.set('namespace', namespace)
+      url = `/customresource?${params.toString()}`
+    }
     const res = await sidecarFetch(url)
     if (res.ok) {
       return await res.json() as any[]
+    }
+    // For custom resources, surface the sidecar error so the panel can display it.
+    // For built-in resources, preserve the existing silent-empty behavior.
+    if (!mappedEndpoint) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`Failed to load ${kind}: ${text || res.statusText}`)
     }
     return []
   }
@@ -91,6 +106,12 @@ export class KubectlProvider {
   async createDebugPod(_context: string, namespace: string, image: string, name: string): Promise<void> {
     const url = `/debugpod/create?namespace=${namespace}&image=${encodeURIComponent(image)}&name=${encodeURIComponent(name)}`
     await checkedSidecarFetch(url, { method: 'POST' })
+  }
+
+  async getProviders(): Promise<unknown> {
+    const res = await sidecarFetch('/providers')
+    if (res.ok) return await res.json()
+    return {}
   }
 
   async getSecretValue(context: string, namespace: string, name: string, key: string): Promise<string> {
@@ -272,6 +293,7 @@ export function registerKubectlHandlers(): void {
   ipcMain.handle('kubectl:getCRDs', (_e, ctx) => provider.getResources(ctx, undefined, 'customresourcedefinitions'))
   ipcMain.handle('kubectl:getEvents', (_e, ctx, ns) => provider.getResources(ctx, ns, 'events'))
   ipcMain.handle('kubectl:getCustomResource', (_e, ctx, ns, crdName: string) => provider.getResources(ctx, ns, crdName))
+  ipcMain.handle('kubectl:getProviders', () => provider.getProviders())
   ipcMain.handle('kubectl:getPodMetrics', (_e, ctx, ns) => provider.getPodMetrics(ctx, ns))
   ipcMain.handle('kubectl:getNodeMetrics', (_e, ctx) => provider.getNodeMetrics(ctx))
   ipcMain.handle('kubectl:createDebugPod', (_e, ctx, ns, image, name) => provider.createDebugPod(ctx, ns, image, name))

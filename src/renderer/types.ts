@@ -690,6 +690,35 @@ export type ResourceKind =
   | 'tls'
   | 'gitops'
   | 'helm'
+  // Istio service mesh
+  | 'istio-virtualservices'
+  | 'istio-destinationrules'
+  | 'istio-gateways'
+  | 'istio-serviceentries'
+  | 'istio-peerauth'
+  | 'istio-authpolicies'
+  // Traefik
+  | 'traefik-ingressroutes'
+  | 'traefik-ingressroutestcp'
+  | 'traefik-ingressroutesudp'
+  | 'traefik-middlewares'
+  | 'traefik-services'
+  | 'traefik-tlsoptions'
+  // NGINX Inc (kubernetes-ingress, CRD-based)
+  | 'nginx-virtualservers'
+  | 'nginx-policies'
+  | 'nginx-transportservers'
+
+// ─── Provider detection ───────────────────────────────────────────────────────
+
+export interface ProviderSet {
+  istio: boolean
+  istioVersion?: string
+  traefik: boolean
+  traefikVersion?: string // "v2" | "v3"
+  nginxInc: boolean       // kubernetes-ingress (NGINX Inc, CRD-based)
+  nginxCommunity: boolean // ingress-nginx (community, annotation-based)
+}
 
 export type AnyKubeResource =
   | KubePod

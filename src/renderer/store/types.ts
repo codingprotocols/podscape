@@ -7,9 +7,10 @@ import {
     KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
     KubeNode, KubeEvent, KubeCRD,
     NodeMetrics, PodMetrics, ResourceKind, AnyKubeResource, PortForwardEntry,
-    HelmRelease, DebugPodEntry, AppGroup, OwnerChainResponse
+    HelmRelease, DebugPodEntry, AppGroup, OwnerChainResponse, ProviderSet
 } from '../types'
 import { AnalysisSlice } from './slices/analysisSlice'
+import { ProvidersSlice } from './slices/providersSlice'
 
 declare global {
     interface Window {
@@ -84,6 +85,7 @@ declare global {
             getOwnerChain: (kind: string, name: string, namespace: string) => Promise<OwnerChainResponse>
             getTLSCerts: (namespace?: string) => Promise<any[]>
             getGitOps: (namespace?: string) => Promise<any>
+            getProviders: () => Promise<ProviderSet>
         }
         helm: {
             list: (context: string) => Promise<HelmRelease[]>
@@ -145,7 +147,7 @@ export interface ExecTarget {
     namespace: string
 }
 
-export interface AppStore extends AnalysisSlice {
+export interface AppStore extends AnalysisSlice, ProvidersSlice {
     // Navigation
     section: ResourceKind
     setSection: (s: ResourceKind) => void

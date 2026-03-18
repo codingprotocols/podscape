@@ -120,6 +120,12 @@ func main() {
 	// GitOps Panel
 	http.HandleFunc("/gitops", handlers.HandleGitOps)
 
+	// Provider detection (Istio, Traefik, Nginx)
+	http.HandleFunc("/providers", handlers.HandleProviders)
+
+	// Generic CRD resource lister (Istio, Traefik, Nginx, etc.)
+	http.HandleFunc("/customresource", handlers.HandleCustomResource)
+
 	// Build the middleware chain: mux → [token auth]
 	// CORS headers are intentionally omitted — the sidecar binds to 127.0.0.1
 	// and is only accessed by the Electron renderer (file:// / localhost origin).

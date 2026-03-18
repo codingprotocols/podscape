@@ -118,6 +118,14 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
         const mySeq = ++contextSwitchSeq
         const previousContext = get().selectedContext
         const isProd = get().prodContexts.includes(name)
+        // If the user is viewing a provider-specific section (Istio/Traefik/Nginx),
+        // navigate back to dashboard before the context flips. This prevents
+        // ProviderResourcePanel from firing a getCustomResource fetch against a
+        // cluster that may not have the same providers installed.
+        const currentSection = get().section as string
+        const isProviderSection = currentSection.startsWith('istio-') ||
+            currentSection.startsWith('traefik-') ||
+            currentSection.startsWith('nginx-')
         set({
             selectedContext: name, isProduction: isProd, loadingNamespaces: true, loadingResources: true,
             namespaces: [], selectedNamespace: null, selectedResource: null, error: null,
@@ -130,6 +138,12 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             helmReleases: [],
             prometheusAvailable: null,
             prometheusProbeError: null,
+            // Reset provider detection so stale flags from the old cluster don't
+            // briefly show sidebar groups that don't exist in the new cluster.
+            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false },
+            // Navigate away from provider-specific sections so ProviderResourcePanel
+            // doesn't attempt a fetch against a cluster that may lack those CRDs.
+            ...(isProviderSection ? { section: 'dashboard' as const } : {}),
             ...sectionClearState,
         })
         try {
@@ -173,6 +187,7 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             if (chosen) {
                 await get().loadSection(get().section)
                 get().preloadSearchResources() // background, fire-and-forget
+                get().fetchProviders()          // background, fire-and-forget
                 // Prometheus is opt-in — only probe when the user clicks
                 // "Detect Now" in Settings. Auto-probing on every context
                 // switch causes false positives or spurious error messages.

@@ -14,6 +14,7 @@ describe('clusterSlice', () => {
             section: 'pods',
             selectedContext: null,
             loadSection: vi.fn(),
+            fetchProviders: vi.fn(),
             hotbarContexts: [],
             prodContexts: [],
         }
@@ -218,5 +219,61 @@ describe('clusterSlice', () => {
         expect(state.namespaces).toEqual(nsB)
         expect(state.loadSection).toHaveBeenCalledTimes(1)
         expect(state.loadSection).toHaveBeenCalledWith(state.section)
+    })
+
+    // ── Provider section navigation on context switch ─────────────────────────
+
+    it('navigates away from traefik provider section on context switch', async () => {
+        state.section = 'traefik-ingressroutes'
+        windowMock.kubectl.switchContext.mockResolvedValue(undefined)
+        windowMock.kubectl.getNamespaces.mockResolvedValue([{ name: 'ns1' }])
+        state.preloadSearchResources = vi.fn()
+
+        const slice = createClusterSlice(set, get, {} as any)
+        await slice.selectContext('new-ctx')
+
+        // The first set call (state reset) should include section: 'dashboard'
+        const firstSetCall = set.mock.calls[0][0]
+        expect(firstSetCall).toMatchObject({ section: 'dashboard' })
+    })
+
+    it('does NOT navigate away from non-provider section on context switch', async () => {
+        state.section = 'pods'
+        windowMock.kubectl.switchContext.mockResolvedValue(undefined)
+        windowMock.kubectl.getNamespaces.mockResolvedValue([{ name: 'ns1' }])
+        state.preloadSearchResources = vi.fn()
+
+        const slice = createClusterSlice(set, get, {} as any)
+        await slice.selectContext('new-ctx')
+
+        // The first set call (state reset) must NOT include a section key
+        const firstSetCall = set.mock.calls[0][0]
+        expect(firstSetCall).not.toHaveProperty('section')
+    })
+
+    it('navigates away from istio section on context switch', async () => {
+        state.section = 'istio-virtualservices'
+        windowMock.kubectl.switchContext.mockResolvedValue(undefined)
+        windowMock.kubectl.getNamespaces.mockResolvedValue([{ name: 'ns1' }])
+        state.preloadSearchResources = vi.fn()
+
+        const slice = createClusterSlice(set, get, {} as any)
+        await slice.selectContext('new-ctx')
+
+        const firstSetCall = set.mock.calls[0][0]
+        expect(firstSetCall).toMatchObject({ section: 'dashboard' })
+    })
+
+    it('navigates away from nginx section on context switch', async () => {
+        state.section = 'nginx-virtualservers'
+        windowMock.kubectl.switchContext.mockResolvedValue(undefined)
+        windowMock.kubectl.getNamespaces.mockResolvedValue([{ name: 'ns1' }])
+        state.preloadSearchResources = vi.fn()
+
+        const slice = createClusterSlice(set, get, {} as any)
+        await slice.selectContext('new-ctx')
+
+        const firstSetCall = set.mock.calls[0][0]
+        expect(firstSetCall).toMatchObject({ section: 'dashboard' })
     })
 })
