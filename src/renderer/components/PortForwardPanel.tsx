@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { useAppStore } from '../store'
 import type { PortForwardEntry, KubePod, KubeService } from '../types'
+import { Plus, Search } from 'lucide-react'
+import PageHeader from './PageHeader'
 
 // ─── Port detection helpers ───────────────────────────────────────────────────
 
@@ -385,45 +387,44 @@ export default function PortForwardPanel() {
 
   return (
     <div className="flex flex-col flex-1 min-w-0 bg-white dark:bg-[hsl(var(--bg-dark))] h-full transition-colors duration-300">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 dark:border-slate-800 shrink-0">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Port Forwards</h2>
-          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">
-            {portForwards.filter(p => p.status === 'active').length} active
-          </p>
-        </div>
+      <PageHeader
+        title="Port Forwards"
+        subtitle="Manage local access to cluster services and pods"
+      >
         <div className="flex items-center gap-4">
-          {portForwards.length > 0 && (
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <div className="relative group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
               <input
                 type="text"
                 placeholder="Search Forwards..."
                 value={filter}
                 onChange={e => setFilter(e.target.value)}
-                className="w-48 text-[11px] font-bold bg-white/5 text-slate-100 rounded-xl px-4 py-2 border border-white/5 focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder-slate-600 transition-all uppercase tracking-widest"
+                className="pl-9 pr-4 py-2 text-[11px] font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl
+                           focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all w-48"
               />
-              <select
-                value={sortBy}
-                onChange={e => setSortBy(e.target.value as SortKey)}
-                className="text-[11px] font-black bg-white/5 text-slate-100 rounded-xl px-4 py-2 border border-white/5 focus:outline-none focus:ring-2 focus:ring-blue-500/40 appearance-none uppercase tracking-widest cursor-pointer hover:bg-white/10 transition-all"
-              >
-                <option value="name">NAME</option>
-                <option value="namespace">NAMESPACE</option>
-                <option value="localPort">PORT</option>
-              </select>
             </div>
-          )}
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value as SortKey)}
+              className="text-[11px] font-black bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 rounded-xl px-4 py-2 border border-slate-200 dark:border-slate-800 
+                         focus:outline-none focus:ring-2 focus:ring-blue-500/40 appearance-none uppercase tracking-widest cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition-all"
+            >
+              <option value="name">NAME</option>
+              <option value="namespace">NAMESPACE</option>
+              <option value="localPort">PORT</option>
+            </select>
+          </div>
           <button
             onClick={() => setShowDialog(true)}
             disabled={!selectedContext}
-            className="flex items-center gap-2 px-5 py-2 text-[11px] font-black text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-[0_0_20px_rgba(59,130,246,0.2)] transition-all active:scale-95 disabled:opacity-50 uppercase tracking-[0.1em]"
+            className="flex items-center gap-2 px-5 py-2.5 text-[11px] font-black text-white premium-gradient rounded-xl shadow-lg shadow-blue-500/20 transition-all active:scale-95 disabled:opacity-50 uppercase tracking-[0.1em]"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12h14" /></svg>
+            <Plus className="w-4 h-4" />
             New Forward
           </button>
         </div>
-      </div>
+      </PageHeader>
 
       {/* List */}
       <div className="flex-1 overflow-auto">

@@ -1,39 +1,14 @@
-import React, { useState } from 'react'
+import React from 'react'
 import type { KubeJob } from '../types'
 import { formatAge } from '../types'
-import { useAppStore } from '../store'
 import { Play, CheckCircle2, Circle, Clock, FileCode, X, Activity, History } from 'lucide-react'
 import YAMLViewer from './YAMLViewer'
+import { useYAMLEditor } from '../hooks/useYAMLEditor'
 
 interface Props { job: KubeJob }
 
 export default function JobDetail({ job }: Props): JSX.Element {
-  const { refresh, applyYAML, getYAML } = useAppStore()
-  const [yaml, setYaml] = useState<string | null>(null)
-  const [yamlLoading, setYamlLoading] = useState(false)
-  const [yamlError, setYamlError] = useState<string | null>(null)
-
-  const handleViewYAML = async () => {
-    setYaml(null); setYamlError(null); setYamlLoading(true)
-    try {
-      const content = await getYAML('job', job.metadata.name, false, job.metadata.namespace)
-      setYaml(content)
-    } catch (err) {
-      setYamlError((err as Error).message ?? 'Failed to fetch YAML')
-    } finally {
-      setYamlLoading(false)
-    }
-  }
-
-  const handleApplyYAML = async (newYaml: string) => {
-    try {
-      await applyYAML(newYaml)
-      refresh()
-      setYaml(null)
-    } catch (err) {
-      throw err
-    }
-  }
+  const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
 
   const conditions = job.status.conditions ?? []
   const startTime = job.status.startTime
@@ -49,7 +24,7 @@ export default function JobDetail({ job }: Props): JSX.Element {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={handleViewYAML}
+              onClick={() => openYAML('job', job.metadata.name, false, job.metadata.namespace)}
               disabled={yamlLoading}
               className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
             >
@@ -155,7 +130,7 @@ export default function JobDetail({ job }: Props): JSX.Element {
               </div>
               <button
                 type="button"
-                onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }}
+                onClick={closeYAML}
                 className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors focus:outline-none"
               >
                 <X size={20} strokeWidth={2.5} />
@@ -175,9 +150,9 @@ export default function JobDetail({ job }: Props): JSX.Element {
                   <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
               ) : yaml !== null ? (
-                <YAMLViewer
+                <YAMLViewer editable
                   content={yaml}
-                  onSave={handleApplyYAML}
+                  onSave={applyYAML}
                 />
               ) : null}
             </div>

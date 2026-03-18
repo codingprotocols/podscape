@@ -4,7 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"log"
@@ -12,6 +15,7 @@ import (
 	osexec "os/exec"
 	"path"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -91,11 +95,15 @@ var kindGVR = map[string]schema.GroupVersionResource{
 	"node":                    {Group: "", Version: "v1", Resource: "nodes"},
 	"namespace":               {Group: "", Version: "v1", Resource: "namespaces"},
 	"crd":                     {Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"},
+	// Aliases — renderer components use both short and full names
+	"hpa":                     {Group: "autoscaling", Version: "v1", Resource: "horizontalpodautoscalers"},
+	"persistentvolumeclaim":   {Group: "", Version: "v1", Resource: "persistentvolumeclaims"},
+	"persistentvolume":        {Group: "", Version: "v1", Resource: "persistentvolumes"},
 }
 
 // clusterScopedKinds are not namespace-scoped; calls must omit the namespace.
 var clusterScopedKinds = map[string]bool{
-	"pv": true, "storageclass": true, "ingressclass": true,
+	"pv": true, "persistentvolume": true, "storageclass": true, "ingressclass": true,
 	"clusterrole": true, "clusterrolebinding": true,
 	"node": true, "namespace": true, "crd": true,
 }
@@ -468,7 +476,12 @@ func HandleHelmStatus(w http.ResponseWriter, r *http.Request) {
 	namespace := r.URL.Query().Get("namespace")
 	release := r.URL.Query().Get("release")
 
-	status, err := helm.GetReleaseStatus(namespace, release)
+	store.Store.RLock()
+	kubeconfig := store.Store.Kubeconfig
+	context := store.Store.ActiveContextName
+	store.Store.RUnlock()
+
+	status, err := helm.GetReleaseStatus(kubeconfig, context, namespace, release)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -483,7 +496,12 @@ func HandleHelmValues(w http.ResponseWriter, r *http.Request) {
 	release := r.URL.Query().Get("release")
 	all := r.URL.Query().Get("all") == "true"
 
-	values, err := helm.GetReleaseValues(namespace, release, all)
+	store.Store.RLock()
+	kubeconfig := store.Store.Kubeconfig
+	context := store.Store.ActiveContextName
+	store.Store.RUnlock()
+
+	values, err := helm.GetReleaseValues(kubeconfig, context, namespace, release, all)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -497,7 +515,12 @@ func HandleHelmHistory(w http.ResponseWriter, r *http.Request) {
 	namespace := r.URL.Query().Get("namespace")
 	release := r.URL.Query().Get("release")
 
-	history, err := helm.GetReleaseHistory(namespace, release)
+	store.Store.RLock()
+	kubeconfig := store.Store.Kubeconfig
+	context := store.Store.ActiveContextName
+	store.Store.RUnlock()
+
+	history, err := helm.GetReleaseHistory(kubeconfig, context, namespace, release)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1274,7 +1297,12 @@ func HandleHelmRollback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = helm.RollbackRelease(namespace, releaseName, revision); err != nil {
+	store.Store.RLock()
+	kubeconfig := store.Store.Kubeconfig
+	context := store.Store.ActiveContextName
+	store.Store.RUnlock()
+
+	if err = helm.RollbackRelease(kubeconfig, context, namespace, releaseName, revision); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1378,7 +1406,12 @@ func HandleHelmUninstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := helm.UninstallRelease(namespace, releaseName)
+	store.Store.RLock()
+	kubeconfig := store.Store.Kubeconfig
+	context := store.Store.ActiveContextName
+	store.Store.RUnlock()
+
+	_, err := helm.UninstallRelease(kubeconfig, context, namespace, releaseName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -2205,4 +2238,331 @@ func HandleHelmInstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sseEvent(w, flusher, "result", "ok")
+}
+
+// ─── TLS Certificate Dashboard ────────────────────────────────────────────────
+
+type TLSCertInfo struct {
+	SecretName     string    `json:"secretName"`
+	Namespace      string    `json:"namespace"`
+	CommonName     string    `json:"commonName"`
+	DNSNames       []string  `json:"dnsNames"`
+	Issuer         string    `json:"issuer"`
+	NotBefore      time.Time `json:"notBefore"`
+	NotAfter       time.Time `json:"notAfter"`
+	DaysLeft       int       `json:"daysLeft"`
+	IsExpired      bool      `json:"isExpired"`
+	IsExpiringSoon bool      `json:"isExpiringSoon"` // within 30 days
+	Error          string    `json:"error,omitempty"`
+}
+
+func HandleTLSCerts(w http.ResponseWriter, r *http.Request) {
+	c := store.Store.ActiveCache
+	if c == nil {
+		http.Error(w, "cluster not connected", http.StatusServiceUnavailable)
+		return
+	}
+
+	ns := r.URL.Query().Get("namespace")
+	var certs []TLSCertInfo
+
+	c.RLock()
+	secrets := make(map[string]interface{}, len(c.Secrets))
+	for k, v := range c.Secrets {
+		secrets[k] = v
+	}
+	c.RUnlock()
+
+	for _, raw := range secrets {
+		secret, ok := raw.(*corev1.Secret)
+		if !ok {
+			continue
+		}
+		if ns != "" && secret.Namespace != ns {
+			continue
+		}
+		if secret.Type != "kubernetes.io/tls" {
+			continue
+		}
+
+		info := TLSCertInfo{
+			SecretName: secret.Name,
+			Namespace:  secret.Namespace,
+		}
+
+		certData, ok := secret.Data["tls.crt"]
+		if !ok || len(certData) == 0 {
+			info.Error = "missing tls.crt"
+			certs = append(certs, info)
+			continue
+		}
+
+		// Attempt PEM decode; fall back to base64 then PEM
+		var certBytes []byte
+		if block, _ := pem.Decode(certData); block != nil {
+			certBytes = certData
+		} else {
+			decoded, err := base64.StdEncoding.DecodeString(string(certData))
+			if err == nil {
+				certBytes = decoded
+			} else {
+				certBytes = certData
+			}
+		}
+
+		block, _ := pem.Decode(certBytes)
+		if block == nil {
+			info.Error = "invalid PEM"
+			certs = append(certs, info)
+			continue
+		}
+
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			info.Error = "parse error: " + err.Error()
+			certs = append(certs, info)
+			continue
+		}
+
+		daysLeft := int(time.Until(cert.NotAfter).Hours() / 24)
+		info.CommonName = cert.Subject.CommonName
+		info.DNSNames = cert.DNSNames
+		info.Issuer = cert.Issuer.CommonName
+		info.NotBefore = cert.NotBefore
+		info.NotAfter = cert.NotAfter
+		info.DaysLeft = daysLeft
+		info.IsExpired = daysLeft < 0
+		info.IsExpiringSoon = daysLeft >= 0 && daysLeft <= 30
+
+		certs = append(certs, info)
+	}
+
+	if certs == nil {
+		certs = []TLSCertInfo{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(certs)
+}
+
+// ─── GitOps Panel ─────────────────────────────────────────────────────────────
+
+type GitOpsResource struct {
+	Kind      string            `json:"kind"`
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+	Status    string            `json:"status"`
+	Ready     bool              `json:"ready"`
+	Labels    map[string]string `json:"labels,omitempty"`
+	Source    string            `json:"source,omitempty"`
+	Revision  string            `json:"revision,omitempty"`
+	Message   string            `json:"message,omitempty"`
+}
+
+type GitOpsResponse struct {
+	FluxDetected bool             `json:"fluxDetected"`
+	ArgoDetected bool             `json:"argoDetected"`
+	Resources    []GitOpsResource `json:"resources"`
+}
+
+var gitopsGVRs = []schema.GroupVersionResource{
+	// Flux v2
+	{Group: "kustomize.toolkit.fluxcd.io", Version: "v1", Resource: "kustomizations"},
+	{Group: "kustomize.toolkit.fluxcd.io", Version: "v1beta2", Resource: "kustomizations"},
+	{Group: "helm.toolkit.fluxcd.io", Version: "v2", Resource: "helmreleases"},
+	{Group: "helm.toolkit.fluxcd.io", Version: "v2beta1", Resource: "helmreleases"},
+	{Group: "source.toolkit.fluxcd.io", Version: "v1", Resource: "gitrepositories"},
+	{Group: "source.toolkit.fluxcd.io", Version: "v1beta2", Resource: "helmrepositories"},
+	// Argo CD
+	{Group: "argoproj.io", Version: "v1alpha1", Resource: "applications"},
+	{Group: "argoproj.io", Version: "v1alpha1", Resource: "appprojects"},
+}
+
+func HandleGitOps(w http.ResponseWriter, r *http.Request) {
+	_, cfg := store.Store.ActiveClientset()
+	if cfg == nil {
+		http.Error(w, "cluster not connected", http.StatusServiceUnavailable)
+		return
+	}
+
+	dynClient, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		http.Error(w, "failed to create dynamic client: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	ctx := r.Context()
+	ns := r.URL.Query().Get("namespace")
+
+	resp := GitOpsResponse{Resources: []GitOpsResource{}}
+
+	for _, gvr := range gitopsGVRs {
+		var list *unstructured.UnstructuredList
+		var listErr error
+
+		if ns != "" {
+			list, listErr = dynClient.Resource(gvr).Namespace(ns).List(ctx, metav1.ListOptions{})
+		} else {
+			list, listErr = dynClient.Resource(gvr).Namespace("").List(ctx, metav1.ListOptions{})
+		}
+		if listErr != nil {
+			// Resource type doesn't exist in this cluster — skip silently
+			continue
+		}
+
+		group := gvr.Group
+		if strings.Contains(group, "fluxcd.io") {
+			resp.FluxDetected = true
+		} else if strings.Contains(group, "argoproj.io") {
+			resp.ArgoDetected = true
+		}
+
+		for _, item := range list.Items {
+			gr := GitOpsResource{
+				Kind:      item.GetKind(),
+				Name:      item.GetName(),
+				Namespace: item.GetNamespace(),
+				Labels:    item.GetLabels(),
+			}
+
+			// Extract status conditions
+			conditions, _, _ := unstructured.NestedSlice(item.Object, "status", "conditions")
+			for _, cond := range conditions {
+				c, ok := cond.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				condType, _ := c["type"].(string)
+				condStatus, _ := c["status"].(string)
+				msg, _ := c["message"].(string)
+				if condType == "Ready" || condType == "ReconcileSucceeded" || condType == "Healthy" {
+					gr.Ready = condStatus == "True"
+					gr.Message = msg
+					if gr.Ready {
+						gr.Status = "Ready"
+					} else {
+						gr.Status = "NotReady"
+					}
+				}
+			}
+
+			// Argo CD health
+			healthStatus, _, _ := unstructured.NestedString(item.Object, "status", "health", "status")
+			if healthStatus != "" {
+				gr.Status = healthStatus
+				gr.Ready = healthStatus == "Healthy"
+			}
+			syncStatus, _, _ := unstructured.NestedString(item.Object, "status", "sync", "status")
+			if syncStatus != "" && gr.Status == "" {
+				gr.Status = syncStatus
+			}
+
+			// Source ref
+			sourceRef, _, _ := unstructured.NestedMap(item.Object, "spec", "sourceRef")
+			if name, ok := sourceRef["name"].(string); ok {
+				gr.Source = name
+			}
+			repoURL, _, _ := unstructured.NestedString(item.Object, "spec", "url")
+			if repoURL != "" && gr.Source == "" {
+				gr.Source = repoURL
+			}
+
+			// Revision
+			revision, _, _ := unstructured.NestedString(item.Object, "status", "lastAppliedRevision")
+			if revision == "" {
+				revision, _, _ = unstructured.NestedString(item.Object, "status", "observedRevision")
+			}
+			gr.Revision = revision
+
+			if gr.Status == "" {
+				gr.Status = "Unknown"
+			}
+			resp.Resources = append(resp.Resources, gr)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// HandleCordonNode cordons (unschedulable=true) or uncordons (unschedulable=false) a node.
+// Query params: name (required), unschedulable (true|false, default true)
+func HandleCordonNode(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		http.Error(w, "missing name", http.StatusBadRequest)
+		return
+	}
+	unschedulable := r.URL.Query().Get("unschedulable") != "false"
+
+	cs, _ := store.Store.ActiveClientset()
+	if cs == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
+	patch := []byte(fmt.Sprintf(`{"spec":{"unschedulable":%v}}`, unschedulable))
+	if _, err := cs.CoreV1().Nodes().Patch(r.Context(), name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// HandleDrainNode cordons the node then deletes all evictable pods (skips DaemonSet-owned and mirror pods).
+func HandleDrainNode(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		http.Error(w, "missing name", http.StatusBadRequest)
+		return
+	}
+
+	cs, _ := store.Store.ActiveClientset()
+	if cs == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
+	// 1. Cordon the node first.
+	cordonPatch := []byte(`{"spec":{"unschedulable":true}}`)
+	if _, err := cs.CoreV1().Nodes().Patch(r.Context(), name, types.MergePatchType, cordonPatch, metav1.PatchOptions{}); err != nil {
+		http.Error(w, "cordon failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// 2. List all pods scheduled on this node.
+	pods, err := cs.CoreV1().Pods("").List(r.Context(), metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("spec.nodeName=%s", name),
+	})
+	if err != nil {
+		http.Error(w, "list pods failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// 3. Delete evictable pods (skip DaemonSet-owned and mirror/static pods).
+	var errs []string
+	for _, pod := range pods.Items {
+		isDaemonSet := false
+		for _, ref := range pod.OwnerReferences {
+			if ref.Kind == "DaemonSet" {
+				isDaemonSet = true
+				break
+			}
+		}
+		if isDaemonSet {
+			continue
+		}
+		if _, isMirror := pod.Annotations["kubernetes.io/config.mirror"]; isMirror {
+			continue
+		}
+		if delErr := cs.CoreV1().Pods(pod.Namespace).Delete(r.Context(), pod.Name, metav1.DeleteOptions{}); delErr != nil && !errors.IsNotFound(delErr) {
+			errs = append(errs, fmt.Sprintf("%s/%s: %v", pod.Namespace, pod.Name, delErr))
+		}
+	}
+
+	if len(errs) > 0 {
+		http.Error(w, "drain partial failure: "+strings.Join(errs, "; "), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }

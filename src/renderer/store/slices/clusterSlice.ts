@@ -18,6 +18,7 @@ export interface ClusterSlice {
     prodContexts: string[]
     setProdContexts: (contexts: string[]) => Promise<void>
     isProduction: boolean
+    contextSwitchStatus: string | null
     selectContext: (name: string) => Promise<void>
     selectNamespace: (name: string) => void
     prometheusAvailable: boolean | null
@@ -69,6 +70,7 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
         await window.settings.set({ ...s, prodContexts: contexts })
     },
     isProduction: false,
+    contextSwitchStatus: null,
     prometheusAvailable: null,
     prometheusProbeError: null,
     prometheusTimeRange: defaultTimeRange(),
@@ -82,13 +84,14 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             let prometheusUrl: string | undefined
             try {
                 const s = await window.settings.get()
-                prometheusUrl = (s as any).prometheusUrls?.[probeCtx ?? ''] || undefined
+                prometheusUrl = s.prometheusUrls?.[probeCtx ?? ''] || undefined
             } catch { /* ignore — fall back to auto-discovery */ }
             const data = await window.kubectl.prometheusStatus(prometheusUrl)
             if (get().selectedContext !== probeCtx) return // switched away, discard
+            const d = data as { available?: boolean; error?: string }
             set({
-                prometheusAvailable: !!(data as any).available,
-                prometheusProbeError: (data as any).error || null,
+                prometheusAvailable: !!d.available,
+                prometheusProbeError: d.error || null,
             })
         } catch {
             if (get().selectedContext !== probeCtx) return
@@ -101,17 +104,28 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
         const ctx = get().selectedContext
         if (ctx) {
             window.settings.get().then(s => {
-                const urls = { ...((s as any).prometheusUrls ?? {}) }
+                const urls = { ...(s.prometheusUrls ?? {}) }
                 delete urls[ctx]
-                window.settings.set({ ...s, prometheusUrls: urls } as any)
-            }).catch(() => {})
+                return window.settings.set({ ...s, prometheusUrls: urls })
+            }).catch(err => {
+                console.error('[disconnectPrometheus] Failed to clear Prometheus URL from settings:', err)
+            })
         }
     },
     ownerChains: {},
 
     selectContext: async (name) => {
         const mySeq = ++contextSwitchSeq
+        const previousContext = get().selectedContext
         const isProd = get().prodContexts.includes(name)
+        // If the user is viewing a provider-specific section (Istio/Traefik/Nginx),
+        // navigate back to dashboard before the context flips. This prevents
+        // ProviderResourcePanel from firing a getCustomResource fetch against a
+        // cluster that may not have the same providers installed.
+        const currentSection = get().section as string
+        const isProviderSection = currentSection.startsWith('istio-') ||
+            currentSection.startsWith('traefik-') ||
+            currentSection.startsWith('nginx-')
         set({
             selectedContext: name, isProduction: isProd, loadingNamespaces: true, loadingResources: true,
             namespaces: [], selectedNamespace: null, selectedResource: null, error: null,
@@ -124,33 +138,61 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             helmReleases: [],
             prometheusAvailable: null,
             prometheusProbeError: null,
+            // Reset provider detection so stale flags from the old cluster don't
+            // briefly show sidebar groups that don't exist in the new cluster.
+            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false },
+            // Navigate away from provider-specific sections so ProviderResourcePanel
+            // doesn't attempt a fetch against a cluster that may lack those CRDs.
+            ...(isProviderSection ? { section: 'dashboard' as const } : {}),
             ...sectionClearState,
         })
         try {
             const timeout = new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error(`Cannot reach cluster "${name}" — timed out after 30s`)), 30000)
+                setTimeout(() => reject(new Error(`Cannot reach cluster "${name}" — timed out after 15s`)), 15000)
             )
+            set({ contextSwitchStatus: 'Connecting…' })
+            // Cancel any in-flight log/exec streams from the previous context before
+            // switching, so stale data doesn't arrive after the switch completes.
+            try { await window.kubectl.cancelAllStreams() } catch {}
             // Tell the sidecar to switch its clientset + informer cache to the new
             // context BEFORE fetching any data. Without this the sidecar keeps
             // serving the previous context's cache.
             await Promise.race([window.kubectl.switchContext(name), timeout])
             if (mySeq !== contextSwitchSeq) return
 
-            // Sidecar handlers fall back to direct k8s API calls while informers
-            // warm up in the background, so data is available immediately — no
-            // need to poll /health before fetching.
-            const nsList = await Promise.race([window.kubectl.getNamespaces(name), timeout])
+            set({ contextSwitchStatus: 'Loading namespaces…' })
+            // Connectivity check — getNamespaces is the first real API call.
+            // If the cluster is unreachable (VPN down, expired creds, wrong endpoint)
+            // this throws immediately instead of letting all resource fetches fail.
+            let nsList: any[]
+            try {
+                nsList = await Promise.race([window.kubectl.getNamespaces(name), timeout])
+            } catch (connectErr) {
+                if (mySeq !== contextSwitchSeq) return
+                // Rollback: restore previous context in the sidecar and in the store.
+                if (previousContext) {
+                    try { await window.kubectl.switchContext(previousContext) } catch {}
+                    set({ selectedContext: previousContext, isProduction: get().prodContexts.includes(previousContext) })
+                }
+                const msg = (connectErr as Error).message
+                const friendly = msg.includes('timed out')
+                    ? `Cannot reach "${name}" — cluster did not respond in time. Check VPN and credentials.`
+                    : `Cannot reach "${name}" — ${msg}`
+                set({ error: friendly, loadingNamespaces: false, loadingResources: false, contextSwitchStatus: null })
+                return
+            }
             if (mySeq !== contextSwitchSeq) return
             const chosen = nsList.length > 0 ? '_all' : null
-            set({ namespaces: nsList, selectedNamespace: chosen })
+            set({ namespaces: nsList, selectedNamespace: chosen, contextSwitchStatus: 'Loading resources…' })
             if (chosen) {
                 await get().loadSection(get().section)
                 get().preloadSearchResources() // background, fire-and-forget
+                get().fetchProviders()          // background, fire-and-forget
                 // Prometheus is opt-in — only probe when the user clicks
                 // "Detect Now" in Settings. Auto-probing on every context
                 // switch causes false positives or spurious error messages.
             }
-            set({ loadingNamespaces: false })
+            set({ loadingNamespaces: false, contextSwitchStatus: null })
         } catch (err) {
             if (mySeq !== contextSwitchSeq) return
             set({ error: (err as Error).message, loadingNamespaces: false })

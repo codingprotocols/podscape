@@ -73,6 +73,10 @@ const kubectl = {
     ipcRenderer.invoke('kubectl:rolloutUndo', context, namespace, kind, name, revision),
   getResourceEvents: (context: string, namespace: string, kind: string, name: string) =>
     ipcRenderer.invoke('kubectl:getResourceEvents', context, namespace, kind, name),
+  cordonNode: (context: string, name: string, unschedulable: boolean): Promise<void> =>
+    ipcRenderer.invoke('kubectl:cordonNode', context, name, unschedulable),
+  drainNode: (context: string, name: string): Promise<void> =>
+    ipcRenderer.invoke('kubectl:drainNode', context, name),
   deleteResource: (context: string, namespace: string | null, kind: string, name: string) =>
     ipcRenderer.invoke('kubectl:deleteResource', context, namespace, kind, name),
   getYAML: (context: string, namespace: string | null, kind: string, name: string) =>
@@ -129,6 +133,9 @@ const kubectl = {
   getTopology: (namespace: string) =>
     ipcRenderer.invoke('kubectl:getTopology', namespace),
 
+  getProviders: () =>
+    ipcRenderer.invoke('kubectl:getProviders'),
+
   // Port Forwarding
   portForward: (context: string, namespace: string, type: string, name: string, localPort: number, remotePort: number, id: string) =>
     ipcRenderer.invoke('kubectl:portForward', context, namespace, type, name, localPort, remotePort, id),
@@ -180,6 +187,7 @@ const kubectl = {
     return ipcRenderer.invoke('kubectl:streamLogs', context, namespace, pod, container)
   },
   stopLogs: (streamId: string) => ipcRenderer.invoke('kubectl:stopLogs', streamId),
+  cancelAllStreams: (): Promise<void> => ipcRenderer.invoke('kubectl:cancelAllStreams'),
 
   // File transfer (kubectl cp)
   copyToContainer: (
@@ -211,6 +219,15 @@ const kubectl = {
   // Owner chain
   getOwnerChain: (kind: string, name: string, namespace: string) =>
     ipcRenderer.invoke('kubectl:getOwnerChain', kind, name, namespace),
+
+  // TLS Certificate Dashboard
+  getTLSCerts: (namespace?: string) =>
+    ipcRenderer.invoke('kubectl:getTLSCerts', namespace),
+
+  // GitOps Panel
+  getGitOps: (namespace?: string) =>
+    ipcRenderer.invoke('kubectl:getGitOps', namespace),
+
 }
 
 // ─── dialog API ───────────────────────────────────────────────────────────────
@@ -334,7 +351,10 @@ const sidecar = {
 
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
+    contextBridge.exposeInMainWorld('electron', {
+      ...electronAPI,
+      shell: { openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url) },
+    })
     contextBridge.exposeInMainWorld('kubectl', kubectl)
     contextBridge.exposeInMainWorld('helm', helm)
     contextBridge.exposeInMainWorld('exec', exec)
@@ -347,7 +367,10 @@ if (process.contextIsolated) {
   }
 } else {
   // @ts-ignore
-  window.electron = electronAPI
+  window.electron = {
+    ...electronAPI,
+    shell: { openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url) },
+  }
   // @ts-ignore
   window.kubectl = kubectl
   // @ts-ignore

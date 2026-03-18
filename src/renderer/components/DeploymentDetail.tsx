@@ -6,6 +6,7 @@ import ScaleDialog from './ScaleDialog'
 import YAMLViewer from './YAMLViewer'
 import AnalysisView from './AnalysisView'
 import { FileCode, X, Activity, Layers, History, Settings, Zap, RefreshCw } from 'lucide-react'
+import { useYAMLEditor } from '../hooks/useYAMLEditor'
 import OwnerChain from './OwnerChain'
 import TimeSeriesChart, { PrometheusTimeRangeBar } from './TimeSeriesChart'
 import { deploymentCpuQuery, deploymentMemoryQuery } from '../utils/prometheusQueries'
@@ -15,11 +16,9 @@ interface Props { deployment: KubeDeployment }
 type Tab = 'overview' | 'history' | 'events' | 'analysis'
 
 export default function DeploymentDetail({ deployment: d }: Props): JSX.Element {
-  const { rolloutRestart, getYAML, applyYAML, refresh, selectedContext, selectedNamespace, scanResource, scanResults, isScanning, prometheusAvailable } = useAppStore()
+  const { rolloutRestart, selectedContext, selectedNamespace, scanResource, scanResults, isScanning, prometheusAvailable } = useAppStore()
+  const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const [showScale, setShowScale] = useState(false)
-  const [yaml, setYaml] = useState<string | null>(null)
-  const [yamlLoading, setYamlLoading] = useState(false)
-  const [yamlError, setYamlError] = useState<string | null>(null)
   const [restartMsg, setRestartMsg] = useState('')
   const [tab, setTab] = useState<Tab>('overview')
 
@@ -46,28 +45,6 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
     await rolloutRestart('deployment', d.metadata.name, d.metadata.namespace)
     setRestartMsg('Restart triggered')
     setTimeout(() => setRestartMsg(''), 5000)
-  }
-
-  const handleViewYAML = async () => {
-    setYaml(null); setYamlError(null); setYamlLoading(true)
-    try {
-      const content = await getYAML('deployment', d.metadata.name, false, d.metadata.namespace)
-      setYaml(content)
-    } catch (err) {
-      setYamlError((err as Error).message ?? 'Failed to fetch YAML')
-    } finally {
-      setYamlLoading(false)
-    }
-  }
-
-  const handleApplyYAML = async (newYaml: string) => {
-    try {
-      await applyYAML(newYaml)
-      refresh()
-      setYaml(null)
-    } catch (err) {
-      throw err
-    }
   }
 
   const loadHistory = async () => {
@@ -132,7 +109,7 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={handleViewYAML}
+              onClick={() => openYAML('deployment', d.metadata.name, false, d.metadata.namespace)}
               disabled={yamlLoading}
               className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
             >
@@ -370,7 +347,7 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
               </div>
               <button
                 type="button"
-                onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }}
+                onClick={closeYAML}
                 className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors focus:outline-none"
               >
                 <X size={20} strokeWidth={2.5} />
@@ -390,9 +367,9 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
                   <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
               ) : yaml !== null ? (
-                <YAMLViewer
+                <YAMLViewer editable
                   content={yaml}
-                  onSave={handleApplyYAML}
+                  onSave={applyYAML}
                 />
               ) : null}
             </div>

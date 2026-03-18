@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '../store'
 import { Shield } from 'lucide-react'
+import PageHeader from './PageHeader'
 import type { ResourceKind } from '../types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1122,6 +1123,15 @@ export default function NetworkPanel(): JSX.Element {
     return { nodes, edges, namespaces: nss }
   }, [rawGraph, visibleKinds])
 
+  // O(n) single-pass count map so KindPill badges don't each scan rawGraph.nodes
+  const kindCounts = useMemo(() =>
+    rawGraph.nodes.reduce((acc, n) => {
+      acc[n.kind] = (acc[n.kind] ?? 0) + 1
+      return acc
+    }, {} as Record<NodeKind, number>),
+    [rawGraph.nodes]
+  )
+
   const toggleKind = (kind: NodeKind) => {
     setVisibleKinds(prev => {
       const next = new Set(prev)
@@ -1133,7 +1143,7 @@ export default function NetworkPanel(): JSX.Element {
 
   const handleNodeClick = useCallback((node: GraphNode) => {
     const section = KIND_TO_SECTION[node.kind]
-    // For now, we don't have the full resource object in the topology node 
+    // For now, we don't have the full resource object in the topology node
     // unless we enrich it or do another fetch.
     // Let's at least navigate to the section.
     setSection(section)
@@ -1142,19 +1152,10 @@ export default function NetworkPanel(): JSX.Element {
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0 bg-white dark:bg-[hsl(var(--bg-dark))] transition-colors duration-200">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200/60 dark:border-white/5 shrink-0 sticky top-0 z-20 backdrop-blur-xl bg-white/70 dark:bg-[hsl(var(--bg-dark),_0.7)]">
-        <div>
-          <h1 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">Network Map</h1>
-          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1.5 uppercase tracking-wider">
-            <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800/50">{graph.nodes.length} nodes</span>
-            <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800/50">{graph.edges.length} edges</span>
-            {graph.namespaces.length > 1 && (
-              <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800/50">{graph.namespaces.length} namespaces</span>
-            )}
-          </p>
-        </div>
-
+      <PageHeader
+        title="Network Map"
+        subtitle={<span className="text-slate-400 dark:text-slate-500">Visualizing real-time traffic, security policies, and resource dependencies</span>}
+      >
         <div className="flex items-center gap-2">
           {/* Namespace dropdown */}
           <div className="relative">
@@ -1180,7 +1181,7 @@ export default function NetworkPanel(): JSX.Element {
             title="Fit to screen"
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg
                        bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700
-                       text-slate-600 dark:text-slate-300 transition-colors disabled:opacity-40">
+                       text-slate-600 dark:text-slate-300 transition-colors disabled:opacity-40 leading-none h-[30px]">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
             </svg>
@@ -1191,7 +1192,7 @@ export default function NetworkPanel(): JSX.Element {
           <button onClick={() => load(panelNs)} disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg
                        bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700
-                       text-slate-600 dark:text-slate-300 transition-colors disabled:opacity-50">
+                       text-slate-600 dark:text-slate-300 transition-colors disabled:opacity-50 leading-none h-[30px]">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
               className={loading ? 'animate-spin' : ''}>
               <path d="M23 4v6h-6M1 20v-6h6" />
@@ -1200,10 +1201,11 @@ export default function NetworkPanel(): JSX.Element {
             Refresh
           </button>
         </div>
-      </div>
+
+      </PageHeader>
 
       {/* Tab bar + controls */}
-      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-white/5 px-6 shrink-0 flex-wrap">
+      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-white/5 pl-8 pr-6 shrink-0 flex-wrap bg-white/5 backdrop-blur-md">
         {/* Tabs */}
         <div className="flex shrink-0">
           {(['topology', 'map'] as const).map(t => (
@@ -1219,7 +1221,7 @@ export default function NetworkPanel(): JSX.Element {
         <div className="flex items-center gap-1.5 pl-3 border-l border-slate-200 dark:border-slate-700 py-2">
           {KIND_DEFS.map(({ kind, color, label }) => (
             <KindPill key={kind} color={color} label={label}
-              count={rawGraph.nodes.filter(n => n.kind === kind).length}
+              count={kindCounts[kind] ?? 0}
               active={visibleKinds.has(kind)}
               onToggle={() => toggleKind(kind)}
             />

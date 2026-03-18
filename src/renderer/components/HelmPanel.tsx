@@ -5,6 +5,7 @@ import { formatAge } from '../types'
 import YAMLViewer from './YAMLViewer'
 import HelmRepoBrowser from './HelmRepoBrowser'
 import { FileCode, X, Activity, HardDrive, History, Trash2, Clock, Globe, Shield, RefreshCw, Package } from 'lucide-react'
+import PageHeader from './PageHeader'
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ function ReleaseDrawer({
   const [valuesError, setValuesError] = useState<string | null>(null)
   const [history, setHistory] = useState<HelmHistoryEntry[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null)
   const [rollingBack, setRollingBack] = useState(false)
   const [rbError, setRbError] = useState<string | null>(null)
@@ -52,9 +54,10 @@ function ReleaseDrawer({
   useEffect(() => {
     if (tab === 'history' && history.length === 0) {
       setLoadingHistory(true)
+      setHistoryError(null)
       window.helm.history(context, release.namespace, release.name)
         .then(raw => setHistory(raw as HelmHistoryEntry[]))
-        .catch(() => setHistory([]))
+        .catch(err => setHistoryError((err as Error)?.message ?? 'Failed to load release history'))
         .finally(() => setLoadingHistory(false))
     }
   }, [tab])
@@ -91,16 +94,16 @@ function ReleaseDrawer({
   return (
     <div className="flex flex-col w-[520px] min-w-[420px] border-l border-slate-100 dark:border-white/5 glass-heavy h-full shadow-2xl scale-in origin-right z-30">
       {/* Header */}
-      <div className="px-6 py-6 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
+      <div className="px-6 py-6 border-b border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-white/5 shrink-0">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-black text-slate-900 dark:text-white font-mono truncate tracking-tight uppercase tracking-widest">{release.name}</h3>
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <StatusBadge status={release.status} />
-              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none mt-1">{release.namespace} · REV {release.revision}</span>
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest leading-none mt-1">{release.namespace} · REV {release.revision}</span>
             </div>
           </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 transition-colors">
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 dark:text-slate-500 transition-colors">
             <X size={18} />
           </button>
         </div>
@@ -123,12 +126,12 @@ function ReleaseDrawer({
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-100 dark:border-white/5 shrink-0 bg-white/5">
+      <div className="flex border-b border-slate-200 dark:border-white/5 shrink-0 bg-slate-50 dark:bg-white/5">
         {(['overview', 'history'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-8 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all relative ${tab === t
-              ? 'text-blue-400'
-              : 'text-slate-500 hover:text-slate-300'
+              ? 'text-blue-500 dark:text-blue-400'
+              : 'text-slate-400 hover:text-slate-900 dark:text-slate-500 dark:hover:text-slate-300'
               }`}>
             {t}
             {tab === t && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />}
@@ -180,6 +183,8 @@ function ReleaseDrawer({
               <div className="flex items-center justify-center py-20">
                 <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
               </div>
+            ) : historyError ? (
+              <p className="text-xs text-red-400 italic text-center py-20 uppercase tracking-widest opacity-60">{historyError}</p>
             ) : history.length === 0 ? (
               <p className="text-xs text-slate-500 italic text-center py-20 uppercase tracking-widest opacity-40">No history available</p>
             ) : (
@@ -265,12 +270,12 @@ function ReleaseDrawer({
               <button
                 type="button"
                 onClick={() => { setValues(null); setValuesError(null); setLoadingValues(false) }}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors focus:outline-none"
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors focus:outline-none"
               >
                 <X size={20} strokeWidth={2.5} />
               </button>
             </div>
-            <div className="flex-1 min-h-0 bg-slate-950">
+            <div className="flex-1 min-h-0 bg-slate-100 dark:bg-slate-950">
               {valuesError ? (
                 <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
                   <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center mb-2">
@@ -359,19 +364,18 @@ export default function HelmPanel(): JSX.Element {
       {/* List */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
         {/* Toolbar */}
-        <div className="flex items-center justify-between px-8 py-7 border-b border-slate-200 dark:border-white/5 shrink-0 bg-white/5 backdrop-blur-md">
+        <PageHeader
+          title={activeTab === 'releases' ? 'Helm Releases' : 'Repository Browser'}
+          subtitle={
+            activeTab === 'releases' && !loading ? (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6]" />
+                {filtered.length} installed
+              </>
+            ) : undefined
+          }
+        >
           <div className="flex items-center gap-6">
-            <div>
-              <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight leading-none uppercase">
-                {activeTab === 'releases' ? 'Helm Releases' : 'Repository Browser'}
-              </h2>
-              {activeTab === 'releases' && !loading && (
-                <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[.25em] mt-2.5 flex items-center gap-2 leading-none">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6]" />
-                  {filtered.length} installed
-                </p>
-              )}
-            </div>
             {/* Tab switcher */}
             <div className="flex items-center gap-1 bg-slate-100 dark:bg-white/5 rounded-xl p-1">
               <button
@@ -399,8 +403,8 @@ export default function HelmPanel(): JSX.Element {
             </div>
           </div>
 
-          {activeTab === 'releases' && (
-            <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4">
+            {activeTab === 'releases' && (
               <div className="relative group">
                 <input
                   type="text"
@@ -415,17 +419,17 @@ export default function HelmPanel(): JSX.Element {
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
                 </div>
               </div>
+            )}
 
-              <button onClick={load} disabled={loading}
-                className="flex items-center gap-2 px-5 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300
-                           glass-panel hover:bg-white/10 dark:hover:bg-white/5 rounded-xl shadow-sm
-                           disabled:opacity-50 active:scale-95 leading-none">
-                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                Sync
-              </button>
-            </div>
-          )}
-        </div>
+            <button onClick={load} disabled={loading}
+              className="flex items-center gap-2 px-5 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300
+                         glass-panel hover:bg-white/10 dark:hover:bg-white/5 rounded-xl shadow-sm
+                         disabled:opacity-50 active:scale-95 leading-none">
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              Sync
+            </button>
+          </div>
+        </PageHeader>
 
         {/* Content */}
         {activeTab === 'browser' ? (
@@ -470,7 +474,7 @@ export default function HelmPanel(): JSX.Element {
               <thead className="sticky top-0 bg-white/70 dark:bg-[hsl(var(--bg-dark),_0.7)] backdrop-blur-xl z-20">
                 <tr className="border-b border-slate-100 dark:border-white/5">
                   {['Name', 'Namespace', 'Chart', 'Version', 'Status', 'Updated'].map(h => (
-                    <th key={h} className="text-left px-8 py-5 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest whitespace-nowrap">
+                    <th key={h} className="text-left pl-8 py-5 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest whitespace-nowrap">
                       {h}
                     </th>
                   ))}
