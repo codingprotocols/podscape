@@ -156,6 +156,7 @@ export default function Sidebar(): JSX.Element {
     navWidth, setNavWidth,
     prodContexts, setProdContexts,
     contextSwitchStatus,
+    providers,
   } = useAppStore()
 
   const [isResizing, setIsResizing] = useState(false)
@@ -416,6 +417,35 @@ export default function Sidebar(): JSX.Element {
             <NavItem label="Helm Charts" section="helm" icon={ICONS.helm} />
             <NavItem label="GitOps" section="gitops" icon={ICONS.deploy} />
           </NavGroup>
+
+          {providers.istio && (
+            <NavGroup title="Service Mesh">
+              <NavItem label="Virtual Services" section="istio-virtualservices" icon={ICONS.route} />
+              <NavItem label="Destination Rules" section="istio-destinationrules" icon={ICONS.netpol} />
+              <NavItem label="Gateways" section="istio-gateways" icon={ICONS.ingress} />
+              <NavItem label="Service Entries" section="istio-serviceentries" icon={ICONS.endpoints} />
+              <NavItem label="Peer Auth" section="istio-peerauth" icon={ICONS.pdb} />
+              <NavItem label="Authorization Policies" section="istio-authpolicies" icon={ICONS.role} />
+            </NavGroup>
+          )}
+
+          {providers.traefik && (
+            <NavGroup title="Traefik">
+              <NavItem label="Ingress Routes" section="traefik-ingressroutes" icon={ICONS.ingress} />
+              <NavItem label="Ingress Routes TCP/UDP" section="traefik-ingressroutestcp" icon={ICONS.portforward} />
+              <NavItem label="Middlewares" section="traefik-middlewares" icon={ICONS.middleware} />
+              <NavItem label="Traefik Services" section="traefik-services" icon={ICONS.service} />
+              <NavItem label="TLS Options" section="traefik-tlsoptions" icon={ICONS.secret} />
+            </NavGroup>
+          )}
+
+          {providers.nginxInc && (
+            <NavGroup title="NGINX">
+              <NavItem label="Virtual Servers" section="nginx-virtualservers" icon={ICONS.ingress} />
+              <NavItem label="Policies" section="nginx-policies" icon={ICONS.netpol} />
+              <NavItem label="Transport Servers" section="nginx-transportservers" icon={ICONS.portforward} />
+            </NavGroup>
+          )}
 
         </nav>
 

@@ -22,6 +22,7 @@ import DebugPodLauncher from './components/DebugPodLauncher'
 import KubeConfigOnboarding from './components/KubeConfigOnboarding'
 import ExecPanel from './components/ExecPanel'
 import CommandPalette from './components/CommandPalette'
+import ProviderResourcePanel from './components/ProviderResourcePanel'
 
 // Error boundary for individual sections to prevent one failing fetch from crashing the entire app
 class ErrorBoundary extends React.Component<{ children: React.ReactNode; resetKey?: string }, { error: Error | null }> {
@@ -191,6 +192,8 @@ export default function App(): JSX.Element {
               <ConnectivityTester />
             ) : section === 'debugpod' ? (
               <DebugPodLauncher />
+            ) : (section as string).startsWith('istio-') || (section as string).startsWith('traefik-') || (section as string).startsWith('nginx-') ? (
+              <ProviderResourcePanel section={section} />
             ) : (LIST_SECTIONS as string[]).includes(section) ? (
               <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden">
                 <PageHeader

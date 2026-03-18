@@ -85,6 +85,7 @@ export const setupMocks = () => {
             scanTrivyImages: vi.fn().mockResolvedValue({ Resources: [] }),
             onSecurityProgress: vi.fn(() => vi.fn()),
             prometheusStatus: vi.fn(),
+            getProviders: vi.fn(),
             cancelAllStreams: vi.fn().mockResolvedValue(undefined),
             streamLogs: vi.fn().mockResolvedValue('stream-1'),
             stopLogs: vi.fn().mockResolvedValue(undefined),

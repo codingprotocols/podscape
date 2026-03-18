@@ -112,6 +112,9 @@ app.whenReady().then(async () => {
     createWindow(() => splash.destroy())
   } catch (err: any) {
     splash.destroy()
+    // If the user quit while the sidecar was still starting up, the SIGTERM we
+    // sent produces a spurious rejection — suppress it; the quit is already underway.
+    if (isQuitting) return
     console.error('[Main] Failed to start sidecar:', err)
     dialog.showErrorBox(
       'Sidecar Connection Failed',
