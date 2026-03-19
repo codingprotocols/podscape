@@ -6,9 +6,13 @@ import PageHeader from './PageHeader'
 import { RefreshCw, X } from 'lucide-react'
 import TraefikIngressRouteDetail from './TraefikIngressRouteDetail'
 import TraefikMiddlewareDetail from './TraefikMiddlewareDetail'
+import TraefikMiddlewareTCPDetail from './TraefikMiddlewareTCPDetail'
 import TraefikServiceDetail from './TraefikServiceDetail'
 import TraefikTLSOptionDetail from './TraefikTLSOptionDetail'
+import TraefikTLSStoreDetail from './TraefikTLSStoreDetail'
+import TraefikServersTransportTCPDetail from './TraefikServersTransportTCPDetail'
 import NginxVirtualServerDetail from './NginxVirtualServerDetail'
+import NginxVirtualServerRouteDetail from './NginxVirtualServerRouteDetail'
 import NginxPolicyDetail from './NginxPolicyDetail'
 import NginxTransportServerDetail from './NginxTransportServerDetail'
 import IstioVirtualServiceDetail from './IstioVirtualServiceDetail'
@@ -17,6 +21,7 @@ import IstioGatewayDetail from './IstioGatewayDetail'
 import IstioServiceEntryDetail from './IstioServiceEntryDetail'
 import IstioPeerAuthDetail from './IstioPeerAuthDetail'
 import IstioAuthPolicyDetail from './IstioAuthPolicyDetail'
+import IstioRequestAuthDetail from './IstioRequestAuthDetail'
 
 // Maps the ResourceKind value to the Kubernetes CRD plural resource name used
 // by getCustomResource (which passes it as the endpoint path to the sidecar).
@@ -28,17 +33,22 @@ const SECTION_TO_CRD: Partial<Record<ResourceKind, string>> = {
     'istio-serviceentries':   'serviceentries.networking.istio.io',
     'istio-peerauth':         'peerauthentications.security.istio.io',
     'istio-authpolicies':     'authorizationpolicies.security.istio.io',
+    'istio-requestauth':      'requestauthentications.security.istio.io',
     // Traefik
-    'traefik-ingressroutes':    'ingressroutes.traefik.io',
-    'traefik-ingressroutestcp': 'ingressroutetcps.traefik.io',
-    'traefik-ingressroutesudp': 'ingressrouteudps.traefik.io',
-    'traefik-middlewares':      'middlewares.traefik.io',
-    'traefik-services':         'traefikservices.traefik.io',
-    'traefik-tlsoptions':       'tlsoptions.traefik.io',
+    'traefik-ingressroutes':         'ingressroutes.traefik.io',
+    'traefik-ingressroutestcp':      'ingressroutetcps.traefik.io',
+    'traefik-ingressroutesudp':      'ingressrouteudps.traefik.io',
+    'traefik-middlewares':           'middlewares.traefik.io',
+    'traefik-middlewaretcps':        'middlewaretcps.traefik.io',
+    'traefik-services':              'traefikservices.traefik.io',
+    'traefik-tlsoptions':            'tlsoptions.traefik.io',
+    'traefik-tlsstores':             'tlsstores.traefik.io',
+    'traefik-serverstransporttcps':  'serverstransporttcps.traefik.io',
     // NGINX Inc
-    'nginx-virtualservers':     'virtualservers.k8s.nginx.org',
-    'nginx-policies':           'policies.k8s.nginx.org',
-    'nginx-transportservers':   'transportservers.k8s.nginx.org',
+    'nginx-virtualservers':       'virtualservers.k8s.nginx.org',
+    'nginx-virtualserverroutes':  'virtualserverroutes.k8s.nginx.org',
+    'nginx-policies':             'policies.k8s.nginx.org',
+    'nginx-transportservers':     'transportservers.k8s.nginx.org',
 }
 
 const SECTION_LABELS: Partial<Record<ResourceKind, string>> = {
@@ -48,15 +58,20 @@ const SECTION_LABELS: Partial<Record<ResourceKind, string>> = {
     'istio-serviceentries':   'Service Entries',
     'istio-peerauth':         'Peer Authentications',
     'istio-authpolicies':     'Authorization Policies',
-    'traefik-ingressroutes':    'Ingress Routes',
-    'traefik-ingressroutestcp': 'Ingress Routes TCP/UDP',
-    'traefik-ingressroutesudp': 'Ingress Routes UDP',
-    'traefik-middlewares':      'Middlewares',
-    'traefik-services':         'Traefik Services',
-    'traefik-tlsoptions':       'TLS Options',
-    'nginx-virtualservers':     'Virtual Servers',
-    'nginx-policies':           'Policies',
-    'nginx-transportservers':   'Transport Servers',
+    'istio-requestauth':      'Request Authentications',
+    'traefik-ingressroutes':         'Ingress Routes',
+    'traefik-ingressroutestcp':      'Ingress Routes TCP',
+    'traefik-ingressroutesudp':      'Ingress Routes UDP',
+    'traefik-middlewares':           'Middlewares',
+    'traefik-middlewaretcps':        'Middlewares TCP',
+    'traefik-services':              'Traefik Services',
+    'traefik-tlsoptions':            'TLS Options',
+    'traefik-tlsstores':             'TLS Stores',
+    'traefik-serverstransporttcps':  'Servers Transports TCP',
+    'nginx-virtualservers':      'Virtual Servers',
+    'nginx-virtualserverroutes': 'Virtual Server Routes',
+    'nginx-policies':            'Policies',
+    'nginx-transportservers':    'Transport Servers',
 }
 
 function age(ts: string): string {
@@ -138,6 +153,20 @@ function itemSummary(section: ResourceKind, item: any): string {
             return spec.mtls?.mode ?? 'UNSET'
         case 'istio-authpolicies':
             return spec.action ?? 'ALLOW'
+        case 'istio-requestauth': {
+            const n = (spec.jwtRules ?? []).length
+            return `${n} JWT rule${n !== 1 ? 's' : ''}`
+        }
+        case 'traefik-middlewaretcps':
+            return (spec.ipAllowList?.sourceRange ?? []).length > 0 ? 'IP Allow List' : '—'
+        case 'traefik-tlsstores':
+            return spec.defaultCertificate?.secretName ?? (spec.defaultGeneratedCert ? 'Generated' : '—')
+        case 'traefik-serverstransporttcps':
+            return spec.tls?.serverName ?? (spec.dialTimeout ? `dial ${spec.dialTimeout}` : '—')
+        case 'nginx-virtualserverroutes': {
+            const n = (spec.subroutes ?? []).length
+            return n > 0 ? `${n} subroute${n !== 1 ? 's' : ''}` : (spec.host ?? '—')
+        }
         default:
             return ''
     }
@@ -172,6 +201,16 @@ function DetailPanel({ section, item }: { section: ResourceKind; item: any }) {
             return <IstioPeerAuthDetail item={item} />
         case 'istio-authpolicies':
             return <IstioAuthPolicyDetail item={item} />
+        case 'istio-requestauth':
+            return <IstioRequestAuthDetail item={item} />
+        case 'traefik-middlewaretcps':
+            return <TraefikMiddlewareTCPDetail item={item} />
+        case 'traefik-tlsstores':
+            return <TraefikTLSStoreDetail item={item} />
+        case 'traefik-serverstransporttcps':
+            return <TraefikServersTransportTCPDetail item={item} />
+        case 'nginx-virtualserverroutes':
+            return <NginxVirtualServerRouteDetail item={item} />
         default:
             // Generic YAML viewer for all other sections (istio, nginx, TCP/UDP routes…)
             return (
@@ -247,6 +286,18 @@ export default function ProviderResourcePanel({ section }: { section: ResourceKi
     }, [load])
 
     // Resize handle mouse handlers
+    const resizeListeners = useRef<{ move: (e: MouseEvent) => void; up: () => void } | null>(null)
+
+    useEffect(() => {
+        return () => {
+            if (resizeListeners.current) {
+                window.removeEventListener('mousemove', resizeListeners.current.move)
+                window.removeEventListener('mouseup', resizeListeners.current.up)
+                resizeListeners.current = null
+            }
+        }
+    }, [])
+
     const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
         e.preventDefault()
         dragStartX.current = e.clientX
@@ -263,7 +314,9 @@ export default function ProviderResourcePanel({ section }: { section: ResourceKi
             dragStartX.current = null
             window.removeEventListener('mousemove', onMouseMove)
             window.removeEventListener('mouseup', onMouseUp)
+            resizeListeners.current = null
         }
+        resizeListeners.current = { move: onMouseMove, up: onMouseUp }
         window.addEventListener('mousemove', onMouseMove)
         window.addEventListener('mouseup', onMouseUp)
     }, [detailWidth])
@@ -271,9 +324,13 @@ export default function ProviderResourcePanel({ section }: { section: ResourceKi
     const hasSummaryColumn = [
         'traefik-ingressroutes',
         'traefik-middlewares',
+        'traefik-middlewaretcps',
         'traefik-services',
         'traefik-tlsoptions',
+        'traefik-tlsstores',
+        'traefik-serverstransporttcps',
         'nginx-virtualservers',
+        'nginx-virtualserverroutes',
         'nginx-policies',
         'nginx-transportservers',
         'istio-virtualservices',
@@ -282,6 +339,7 @@ export default function ProviderResourcePanel({ section }: { section: ResourceKi
         'istio-serviceentries',
         'istio-peerauth',
         'istio-authpolicies',
+        'istio-requestauth',
     ].includes(section)
 
     return (
@@ -388,21 +446,25 @@ export default function ProviderResourcePanel({ section }: { section: ResourceKi
 
                         {/* Detail content */}
                         <div
-                            className="shrink-0 border-l border-slate-100 dark:border-white/5 flex flex-col overflow-hidden relative"
+                            className="shrink-0 border-l border-slate-100 dark:border-white/5 flex flex-col overflow-hidden"
                             style={{ width: detailWidth }}
                         >
-                            {/* Close button */}
-                            <button
-                                onClick={() => setSelectedItem(null)}
-                                className="absolute top-3 right-3 z-10 w-6 h-6 flex items-center justify-center rounded-full
-                                           bg-slate-100 dark:bg-white/[0.06] hover:bg-slate-200 dark:hover:bg-white/10
-                                           text-slate-500 dark:text-slate-400 transition-colors"
-                                title="Close"
-                            >
-                                <X size={12} strokeWidth={2.5} />
-                            </button>
+                            {/* Close button row — sits above the detail header so it never overlaps content */}
+                            <div className="flex justify-end px-3 pt-2 pb-0 shrink-0">
+                                <button
+                                    onClick={() => setSelectedItem(null)}
+                                    className="w-6 h-6 flex items-center justify-center rounded-full
+                                               bg-slate-100 dark:bg-white/[0.06] hover:bg-slate-200 dark:hover:bg-white/10
+                                               text-slate-500 dark:text-slate-400 transition-colors"
+                                    title="Close"
+                                >
+                                    <X size={12} strokeWidth={2.5} />
+                                </button>
+                            </div>
 
-                            <DetailPanel section={section} item={selectedItem} />
+                            <div className="flex-1 min-h-0 overflow-hidden">
+                                <DetailPanel section={section} item={selectedItem} />
+                            </div>
                         </div>
                     </>
                 )}

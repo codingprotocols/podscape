@@ -590,6 +590,19 @@ export default function ResourceList(): JSX.Element {
   const [pfRemotePort, setPfRemotePort] = useState('')
   const [pfLoading, setPfLoading] = useState(false)
   const [restartError, setRestartError] = useState<string | null>(null)
+  const restartErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const setRestartErrorWithTimeout = useCallback((msg: string) => {
+    if (restartErrorTimer.current) clearTimeout(restartErrorTimer.current)
+    setRestartError(msg)
+    restartErrorTimer.current = setTimeout(() => setRestartError(null), 5000)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (restartErrorTimer.current) clearTimeout(restartErrorTimer.current)
+    }
+  }, [])
 
   const clusterScoped = ['nodes', 'namespaces', 'crds', 'ingressclasses', 'pvs', 'storageclasses', 'clusterroles', 'clusterrolebindings'].includes(section)
   const showNsCol = selectedNamespace === '_all' && !clusterScoped
@@ -708,8 +721,7 @@ export default function ResourceList(): JSX.Element {
       await rolloutRestart(kind, resource.metadata.name, resource.metadata.namespace)
       refresh()
     } catch (err) {
-      setRestartError((err as Error).message ?? 'Restart failed')
-      setTimeout(() => setRestartError(null), 5000)
+      setRestartErrorWithTimeout((err as Error).message ?? 'Restart failed')
     }
   }
 
@@ -731,9 +743,7 @@ export default function ResourceList(): JSX.Element {
     setSelectedUids(new Set())
     
     if (firstError) {
-      setRestartError(`Bulk delete error: ${firstError}`)
-      // Auto clear error after 5s
-      setTimeout(() => setRestartError(null), 5000)
+      setRestartErrorWithTimeout(`Bulk delete error: ${firstError}`)
     }
     refresh()
   }

@@ -52,13 +52,6 @@ import (
 // needing a live Kubernetes cluster.
 var syncInformersFunc = informers.SyncInformers
 
-// connectivityCheckFunc verifies that the target cluster API server is
-// reachable before committing to the context switch.  Extracted as a variable
-// so tests can inject a stub without needing a real server.
-var connectivityCheckFunc = func(cs kubernetes.Interface, ctx context.Context) error {
-	_, err := cs.CoreV1().Namespaces().List(ctx, metav1.ListOptions{Limit: 1})
-	return err
-}
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
@@ -1220,34 +1213,24 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 		oldCache.Unlock()
 	}
 
-	// 5. Quick connectivity check (5s).
-	checkCtx, checkCancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer checkCancel()
-	if err := connectivityCheckFunc(clientset, checkCtx); err != nil {
-		log.Printf("[SwitchContext] cluster %q unreachable (%v) — rolling back", contextName, err)
+	// NOTE: No blocking connectivity check here. Switching context is always
+	// committed immediately (same behaviour as kubectl config use-context).
+	// If the target cluster is temporarily unreachable (e.g. VPN settling,
+	// AWS token refresh, DNS flux), the informers will retry automatically and
+	// the UI will surface errors through normal resource-load failures rather
+	// than rejecting the switch and leaving the user stuck on the old — possibly
+	// equally unreachable — context.
 
-		// Rollback: restore old active cache and restart its informers.
-		store.Store.Lock()
-		store.Store.ActiveCache = oldCache
-		store.Store.Unlock()
-
-		if oldCache != nil {
-			portforward.Manager.UpdateClients(oldCache.Clientset, oldCache.Config)
-			go informers.RestartInformers(oldCache)
-		}
-		http.Error(w, fmt.Sprintf("cluster %q unreachable — reverted to previous context", contextName), http.StatusServiceUnavailable)
-		return
-	}
+	// 5. Commit the switch.
+	store.Store.Lock()
+	store.Store.ActiveContextName = contextName
+	store.Store.ActiveCache = newCache
+	store.Store.Unlock()
 
 	// 6a. If we have cached data for this context, instant switch.
 	newCache.RLock()
 	hasData := newCache.HasData
 	newCache.RUnlock()
-
-	store.Store.Lock()
-	store.Store.ActiveContextName = contextName
-	store.Store.ActiveCache = newCache
-	store.Store.Unlock()
 
 	// Stop all port-forwards from the previous context — their local port
 	// bindings (e.g. 127.0.0.1:9090) would otherwise keep responding and cause
