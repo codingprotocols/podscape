@@ -83,18 +83,18 @@ export default function UnifiedLogs(): JSX.Element {
     }
   }, [])
 
-  // Issue 3 fix: clear selected pods and stop all streams when context changes
+  // Clear selected pods and stop all streams when context changes
   useEffect(() => {
     const cleanup = async () => {
       for (const sid of Object.values(streamIds.current)) {
-        await window.kubectl.stopLogs(sid)
+        await window.kubectl.stopLogs(sid).catch(() => {/* sidecar may be down during context switch */})
       }
       streamIds.current = {}
       setSelectedPods([])
       setLogs([])
       setIsStreaming(false)
     }
-    cleanup()
+    cleanup().catch(err => console.error('[UnifiedLogs] cleanup failed:', err))
   }, [selectedContext])
 
   useEffect(() => {
@@ -108,13 +108,13 @@ export default function UnifiedLogs(): JSX.Element {
         // Stop streams for removed pods
         for (const name of removedPods) {
           if (streamIds.current[name]) {
-            await window.kubectl.stopLogs(streamIds.current[name])
+            await window.kubectl.stopLogs(streamIds.current[name]).catch(() => {})
             delete streamIds.current[name]
           }
         }
       }
     }
-    syncPods()
+    syncPods().catch(err => console.error('[UnifiedLogs] syncPods failed:', err))
   }, [pods])
 
   const stopAllStreams = async () => {

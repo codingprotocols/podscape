@@ -150,7 +150,7 @@ export default function Sidebar(): JSX.Element {
     contexts, selectedContext, starredContext, setStarredContext,
     namespaces, selectedNamespace,
     loadingContexts, loadingNamespaces,
-    selectContext, selectNamespace, error, clearError,
+    selectContext, selectNamespace,
     section, setSection,
     pods, deployments, events,
     navWidth, setNavWidth,
@@ -426,22 +426,28 @@ export default function Sidebar(): JSX.Element {
               <NavItem label="Service Entries" section="istio-serviceentries" icon={ICONS.endpoints} />
               <NavItem label="Peer Auth" section="istio-peerauth" icon={ICONS.pdb} />
               <NavItem label="Authorization Policies" section="istio-authpolicies" icon={ICONS.role} />
+              <NavItem label="Request Auth" section="istio-requestauth" icon={ICONS.secret} />
             </NavGroup>
           )}
 
           {providers.traefik && (
             <NavGroup title="Traefik">
               <NavItem label="Ingress Routes" section="traefik-ingressroutes" icon={ICONS.ingress} />
-              <NavItem label="Ingress Routes TCP/UDP" section="traefik-ingressroutestcp" icon={ICONS.portforward} />
+              <NavItem label="Ingress Routes TCP" section="traefik-ingressroutestcp" icon={ICONS.portforward} />
+              <NavItem label="Ingress Routes UDP" section="traefik-ingressroutesudp" icon={ICONS.portforward} />
               <NavItem label="Middlewares" section="traefik-middlewares" icon={ICONS.middleware} />
+              <NavItem label="Middlewares TCP" section="traefik-middlewaretcps" icon={ICONS.middleware} />
               <NavItem label="Traefik Services" section="traefik-services" icon={ICONS.service} />
               <NavItem label="TLS Options" section="traefik-tlsoptions" icon={ICONS.secret} />
+              <NavItem label="TLS Stores" section="traefik-tlsstores" icon={ICONS.secret} />
+              <NavItem label="Servers Transports TCP" section="traefik-serverstransporttcps" icon={ICONS.portforward} />
             </NavGroup>
           )}
 
           {providers.nginxInc && (
             <NavGroup title="NGINX">
               <NavItem label="Virtual Servers" section="nginx-virtualservers" icon={ICONS.ingress} />
+              <NavItem label="Virtual Server Routes" section="nginx-virtualserverroutes" icon={ICONS.route} />
               <NavItem label="Policies" section="nginx-policies" icon={ICONS.netpol} />
               <NavItem label="Transport Servers" section="nginx-transportservers" icon={ICONS.portforward} />
             </NavGroup>
@@ -449,16 +455,6 @@ export default function Sidebar(): JSX.Element {
 
         </nav>
 
-        {/* Error banner */}
-        {error && (
-          <div className="mx-2 mb-3 px-2.5 py-2 bg-red-500/10 border border-red-500/25 rounded-lg shrink-0"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-red-400 text-[10px] font-medium leading-relaxed">{error}</p>
-              <button onClick={clearError} className="text-red-500 hover:text-red-300 text-xs shrink-0 mt-px">✕</button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

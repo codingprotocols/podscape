@@ -55,13 +55,11 @@ func resetStore(t *testing.T, origActiveCache *store.ContextCache, origKubeconfi
 		store.Store.Kubeconfig = origKubeconfig
 		store.Store.Unlock()
 		syncInformersFunc = realSyncFn
-		connectivityCheckFunc = realConnectFn
 	})
 }
 
-// realSyncFn / realConnectFn hold the original injectable values so tests can restore them.
+// realSyncFn holds the original injectable value so tests can restore it.
 var realSyncFn = syncInformersFunc
-var realConnectFn = connectivityCheckFunc
 
 // noopSync immediately returns true (synced) without touching any informers.
 func noopSync(_ *store.ContextCache, _ <-chan struct{}, _ time.Duration) bool {
@@ -163,8 +161,7 @@ func TestHandleSwitchContext_Success(t *testing.T) {
 
 	portforward.Init(fakeClientset, origConfig)
 
-	// Connectivity check and informer sync are both no-ops in tests.
-	connectivityCheckFunc = func(_ kubernetes.Interface, _ context.Context) error { return nil }
+	// Informer sync is a no-op in tests.
 	syncInformersFunc = noopSync
 
 	kubeconfigPath := writeTestKubeconfig(t, map[string]string{
@@ -205,7 +202,11 @@ func TestHandleSwitchContext_Success(t *testing.T) {
 	}
 }
 
-func TestHandleSwitchContext_ConnectivityFailureRollback(t *testing.T) {
+// TestHandleSwitchContext_AlwaysCommits verifies that switching contexts always
+// succeeds (200 OK) even when the target cluster would be unreachable — matching
+// kubectl's own behaviour. Connectivity errors surface later through normal
+// resource-load failures in the UI, not by blocking the switch itself.
+func TestHandleSwitchContext_AlwaysCommits(t *testing.T) {
 	fakeClientset := fake.NewSimpleClientset()
 	origConfig := &rest.Config{Host: "http://original:6443"}
 
@@ -218,10 +219,7 @@ func TestHandleSwitchContext_ConnectivityFailureRollback(t *testing.T) {
 
 	portforward.Init(fakeClientset, origConfig)
 
-	// Connectivity check fails — simulates an unreachable cluster.
-	connectivityCheckFunc = func(_ kubernetes.Interface, _ context.Context) error {
-		return fmt.Errorf("connection refused")
-	}
+	// Informer sync is a no-op — simulates a cluster that may be unreachable.
 	syncInformersFunc = noopSync
 
 	kubeconfigPath := writeTestKubeconfig(t, map[string]string{
@@ -239,19 +237,20 @@ func TestHandleSwitchContext_ConnectivityFailureRollback(t *testing.T) {
 	rr := httptest.NewRecorder()
 	HandleSwitchContext(rr, req)
 
-	if rr.Code != http.StatusServiceUnavailable {
-		t.Errorf("expected 503 on connectivity failure, got %d (body: %s)", rr.Code, rr.Body.String())
+	// Switch must always return 200 — never reject due to connectivity.
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d (body: %s)", rr.Code, rr.Body.String())
 	}
 
-	// Give the rollback goroutine a moment to complete.
+	// Give the background goroutine a moment to complete.
 	time.Sleep(50 * time.Millisecond)
 
 	store.Store.RLock()
-	currentCache := store.Store.ActiveCache
+	currentContext := store.Store.ActiveContextName
 	store.Store.RUnlock()
 
-	if currentCache != origCache {
-		t.Error("expected store.ActiveCache to be restored to original after rollback")
+	if currentContext != "ctx-b" {
+		t.Errorf("expected ActiveContextName=ctx-b after switch, got %q", currentContext)
 	}
 }
 
