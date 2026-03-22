@@ -5,6 +5,13 @@ import { activeSidecarPort } from './runtime'
 import { sidecarToken } from './auth'
 import { SIDECAR_HOST } from '../common/constants'
 
+export class RBACDeniedError extends Error {
+  constructor(public readonly kind: string) {
+    super(`RBAC_DENIED:${kind}`)
+    this.name = 'RBACDeniedError'
+  }
+}
+
 export class KubectlProvider {
   async getContexts(): Promise<unknown[]> {
     const res = await checkedSidecarFetch('/config/contexts')
@@ -73,11 +80,19 @@ export class KubectlProvider {
     }
     const res = await sidecarFetch(url)
     if (res.ok) {
+      // Sidecar signals RBAC denial with a 200 + empty array + this header.
+      // Throw a typed error so the renderer store can distinguish "denied" from "empty".
+      if (mappedEndpoint && res.headers.get('X-Podscape-Denied') === 'true') {
+        throw new RBACDeniedError(kind)
+      }
       return await res.json() as any[]
     }
     // For custom resources, surface the sidecar error so the panel can display it.
     // For built-in resources, preserve the existing silent-empty behavior.
     if (!mappedEndpoint) {
+      // 404 means the CRD exists but its API is not currently served (e.g. operator
+      // not running, served:false). Treat as an empty list — not an error.
+      if (res.status === 404) return []
       const text = await res.text().catch(() => '')
       throw new Error(`Failed to load ${kind}: ${text || res.statusText}`)
     }
@@ -546,6 +561,16 @@ export function registerKubectlHandlers(): void {
     const url = namespace ? `/gitops?namespace=${encodeURIComponent(namespace)}` : '/gitops'
     const res = await checkedSidecarFetch(url)
     return res.json()
+  })
+
+  ipcMain.handle('kubectl:reconcileGitOps', async (_e, kind: string, name: string, namespace: string) => {
+    const params = new URLSearchParams({ kind, name, namespace })
+    await checkedSidecarFetch(`/gitops/reconcile?${params}`, { method: 'POST' })
+  })
+
+  ipcMain.handle('kubectl:suspendGitOps', async (_e, kind: string, name: string, namespace: string, suspend: boolean) => {
+    const params = new URLSearchParams({ kind, name, namespace, suspend: String(suspend) })
+    await checkedSidecarFetch(`/gitops/suspend?${params}`, { method: 'POST' })
   })
 
 }

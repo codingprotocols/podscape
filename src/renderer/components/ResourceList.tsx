@@ -16,7 +16,7 @@ import ScaleDialog from './ScaleDialog'
 import DeleteConfirm from './DeleteConfirm'
 import YAMLViewer from './YAMLViewer'
 import { kindLabel } from '../store/slices/resourceSlice'
-import { Layers } from 'lucide-react'
+import { Layers, ShieldOff } from 'lucide-react'
 
 
 
@@ -551,7 +551,7 @@ function CustomCheckbox({ checked, onChange, partiallyChecked = false }: { check
 
 export default function ResourceList(): JSX.Element {
   // Data fields — subscribed via shallow equality so any change triggers a re-render.
-  const { section, selectedResource, loadingResources, selectedNamespace, selectedContext, searchQuery } =
+  const { section, selectedResource, loadingResources, selectedNamespace, selectedContext, searchQuery, deniedSections } =
     useAppStore(useShallow(s => ({
       section: s.section,
       selectedResource: s.selectedResource,
@@ -559,6 +559,7 @@ export default function ResourceList(): JSX.Element {
       selectedNamespace: s.selectedNamespace,
       selectedContext: s.selectedContext,
       searchQuery: s.searchQuery,
+      deniedSections: s.deniedSections,
     })))
 
   // Action functions — stable refs created once; read directly from the store
@@ -590,12 +591,25 @@ export default function ResourceList(): JSX.Element {
   const [pfRemotePort, setPfRemotePort] = useState('')
   const [pfLoading, setPfLoading] = useState(false)
   const [restartError, setRestartError] = useState<string | null>(null)
+  const restartErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const setRestartErrorWithTimeout = useCallback((msg: string) => {
+    if (restartErrorTimer.current) clearTimeout(restartErrorTimer.current)
+    setRestartError(msg)
+    restartErrorTimer.current = setTimeout(() => setRestartError(null), 5000)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (restartErrorTimer.current) clearTimeout(restartErrorTimer.current)
+    }
+  }, [])
 
   const clusterScoped = ['nodes', 'namespaces', 'crds', 'ingressclasses', 'pvs', 'storageclasses', 'clusterroles', 'clusterrolebindings'].includes(section)
   const showNsCol = selectedNamespace === '_all' && !clusterScoped
   const cols = COLUMNS[section] ?? ['Name']
 
-  const [sortCol, setSortCol] = useState<string | null>(null)
+  const [sortCol, setSortCol] = useState<string | null>('Name')
   const [sortAsc, setSortAsc] = useState(true)
 
   const handleSort = useCallback((col: string) => {
@@ -631,7 +645,7 @@ export default function ResourceList(): JSX.Element {
   // Clear selection and sorting if section changes
   useEffect(() => {
     setSelectedUids(new Set())
-    setSortCol(null)
+    setSortCol('Name')
     setSortAsc(true)
   }, [section])
 
@@ -708,8 +722,7 @@ export default function ResourceList(): JSX.Element {
       await rolloutRestart(kind, resource.metadata.name, resource.metadata.namespace)
       refresh()
     } catch (err) {
-      setRestartError((err as Error).message ?? 'Restart failed')
-      setTimeout(() => setRestartError(null), 5000)
+      setRestartErrorWithTimeout((err as Error).message ?? 'Restart failed')
     }
   }
 
@@ -731,9 +744,7 @@ export default function ResourceList(): JSX.Element {
     setSelectedUids(new Set())
     
     if (firstError) {
-      setRestartError(`Bulk delete error: ${firstError}`)
-      // Auto clear error after 5s
-      setTimeout(() => setRestartError(null), 5000)
+      setRestartErrorWithTimeout(`Bulk delete error: ${firstError}`)
     }
     refresh()
   }
@@ -837,6 +848,20 @@ export default function ResourceList(): JSX.Element {
         {loadingResources ? (
           <div className="flex items-center justify-center py-24">
             <LoadingAnimation />
+          </div>
+        ) : deniedSections.has(section as ResourceKind) ? (
+          <div className="flex flex-col items-center justify-center py-32 gap-6 animate-in fade-in duration-700">
+            <div className="w-20 h-20 rounded-[28px] bg-amber-500/5 border border-dashed border-amber-500/20 flex items-center justify-center text-amber-500/40 shadow-inner">
+              <ShieldOff size={32} />
+            </div>
+            <div className="text-center space-y-2">
+              <p className="text-[11px] font-black uppercase tracking-[0.4em] text-amber-500/70">
+                Access denied
+              </p>
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">
+                Your RBAC role does not allow listing {SECTION_LABELS[section]?.toLowerCase() ?? 'this resource'}
+              </p>
+            </div>
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-32 gap-6 animate-in fade-in duration-700">

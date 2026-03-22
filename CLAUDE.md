@@ -37,12 +37,13 @@ Renderer (React/TS)
 
 The sidecar is a standalone HTTP server compiled as `podscape-core`. It is the source of truth for all Kubernetes and Helm data.
 
-- **Entry:** `go-core/cmd/podscape-core/main.go` — registers all HTTP routes, starts informers, binds to `--port` (default 5050)
-- **Handlers:** `go-core/internal/handlers/handlers.go` — one handler per resource type and operation
+- **Entry:** `go-core/cmd/podscape-core/main.go` — registers all HTTP routes, runs RBAC probe, starts informers, binds to `--port` (default 5050)
+- **Handlers:** `go-core/internal/handlers/handlers.go` — one handler per resource type and operation; `MakeHandler(resource, ...)` factory injects an RBAC guard that returns `200 []` + `X-Podscape-Denied: true` for denied resources
+- **RBAC:** `go-core/internal/rbac/rbac.go` — concurrent `SelfSubjectAccessReview` probe; `CheckAccess(ctx, clientset)` returns `map[string]bool` (nil on error = permissive); `AllResources` descriptor table (28 resource types); injectable `CheckAccessFunc` var for test isolation
 - **Custom resources:** `go-core/internal/handlers/customresource.go` — generic CRD lister via dynamic client; handles `/customresource?crd=<plural>.<group>&namespace=<ns>`
 - **Provider detection:** `go-core/internal/handlers/providers.go` + `go-core/internal/providers/detect.go` — detects Istio/Traefik/Nginx via discovery API and IngressClass controller field; handles `/providers`
-- **Informers:** `go-core/internal/informers/informers.go` — k8s shared informers cache resource lists in-memory for fast reads
-- **Store:** `go-core/internal/store/store.go` — singleton holding the k8s `Clientset` and `Config`
+- **Informers:** `go-core/internal/informers/informers.go` — k8s shared informers cache resource lists in-memory for fast reads; reads `ContextCache.AllowedResources` and skips informers for denied resources; HPA informer uses `autoscaling/v2`
+- **Store:** `go-core/internal/store/store.go` — singleton holding the k8s `Clientset` and `Config`; `ContextCache.AllowedResources map[string]bool` carries RBAC probe result (`nil` = permissive, empty = all denied, populated = probed)
 - **Port forward:** `go-core/internal/portforward/portforward.go` — manages active tunnels, streams events over WebSocket
 - **Exec:** `go-core/internal/exec/exec.go` — WebSocket-based container exec
 - **Logs:** `go-core/internal/logs/logs.go` — WebSocket-based log streaming
@@ -61,14 +62,14 @@ Handles operations that require Node.js or native access:
 |------|----------------|
 | `index.ts` | App bootstrap, spawns sidecar, creates BrowserWindow |
 | `sidecar.ts` | Launch/kill the Go binary subprocess; `shuttingDown` flag prevents false startup-failure dialogs |
-| `kubectl.ts` | IPC handlers for all k8s operations; unmapped resource kinds route to `/customresource?crd=<name>` |
+| `kubectl.ts` | IPC handlers for all k8s operations; `RBACDeniedError` thrown when sidecar returns `X-Podscape-Denied: true`; unmapped resource kinds route to `/customresource?crd=<name>` |
 | `terminal.ts` | PTY terminal sessions via `node-pty` |
 | `helm.ts` | Helm CLI IPC handlers (wraps `helm` binary) |
 | `settings.ts` | Settings IPC — reads/writes `~/.podscape/settings.json` |
 | `dialog.ts` | Native file open/save dialogs |
 | `kubeProvider.ts` | Kubeconfig path resolution and management |
 
-**`getResources()` routing in `kubectl.ts`:** built-in k8s resource kinds are mapped via `sidecarMap` to fixed sidecar paths. Any unmapped kind (CRD plural name like `ingressroutes.traefik.io`) is routed to `/customresource?crd=<name>&namespace=<ns>` and throws on non-OK responses so `ProviderResourcePanel` can surface errors.
+**`getResources()` routing in `kubectl.ts`:** built-in k8s resource kinds are mapped via `sidecarMap` to fixed sidecar paths. Any unmapped kind (CRD plural name like `ingressroutes.traefik.io`) is routed to `/customresource?crd=<name>&namespace=<ns>` and throws on non-OK responses so `ProviderResourcePanel` can surface errors. For built-in resources, `getResources` additionally checks the `X-Podscape-Denied: true` response header and throws `RBACDeniedError` so the renderer store can track denied sections separately from generic errors.
 
 ### Preload (`src/preload/index.ts`)
 
@@ -85,8 +86,8 @@ Exposes 6 namespaced APIs via `contextBridge`:
 
 ### Renderer (`src/renderer/`)
 
-- **`store.ts`** — single Zustand store (`useAppStore`) holding context/namespace selection, all resource arrays, navigation state (`section: ResourceKind`), exec modal state, port-forward state, Grafana URL, and provider detection state
-- **`components/`** — one detail component per resource kind; `ResourceList.tsx` is the generic table for all 27+ resource types; `ProviderResourcePanel.tsx` handles all Istio/Traefik/Nginx sections
+- **`store.ts`** — single Zustand store (`useAppStore`) split into slices: cluster, navigation, resource, operation, providers. Holds context/namespace selection, all resource arrays, navigation state (`section: ResourceKind`), exec modal state, port-forward state, Grafana URL, provider detection state, and `deniedSections: Set<ResourceKind>` (sections the current user cannot list — populated from `X-Podscape-Denied` responses, cleared on context switch)
+- **`components/`** — one detail component per resource kind; `ResourceList.tsx` is the generic table for all 27+ resource types (renders an amber "Access denied" banner for sections in `deniedSections`); `ProviderResourcePanel.tsx` handles all Istio/Traefik/Nginx sections
 - **`App.tsx`** — top-level layout; reads `section` from store to render the active panel; provider sections (prefixed `istio-`, `traefik-`, `nginx-`) render `ProviderResourcePanel`
 
 ### Provider detection (Istio / Traefik / Nginx)

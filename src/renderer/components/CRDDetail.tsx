@@ -29,6 +29,7 @@ export default function CRDDetail({ crd }: { crd: KubeCRD }) {
   const [yamlContextName, setYamlContextName] = useState<string>('')
 
   const plural = crd.spec.names.plural
+  const crdFullName = `${crd.spec.names.plural}.${crd.spec.group}`
   const isNamespaced = crd.spec.scope === 'Namespaced'
   const nsArg = isNamespaced ? (ns === '_all' ? null : ns) : null
 
@@ -36,11 +37,11 @@ export default function CRDDetail({ crd }: { crd: KubeCRD }) {
     if (!ctx) return
     setLoading(true)
     setError(null)
-    window.kubectl.getCustomResource(ctx, nsArg, plural)
+    window.kubectl.getCustomResource(ctx, nsArg, crdFullName)
       .then(items => setInstances(items as CRDInstance[]))
-      .catch(e => setError((e as Error).message))
+      .catch(e => setError((e as Error).message ?? 'Unknown error'))
       .finally(() => setLoading(false))
-  }, [ctx, ns, plural])
+  }, [ctx, ns, crdFullName])
 
   const handleViewDefinitionYAML = async () => {
     setYaml(null); setYamlError(null); setYamlLoading(true)
@@ -60,7 +61,7 @@ export default function CRDDetail({ crd }: { crd: KubeCRD }) {
     setYamlContextName(`Instance: ${instance.metadata.name}`)
     try {
       const nsForYAML = isNamespaced ? (instance.metadata.namespace ?? null) : null
-      const content = await window.kubectl.getYAML(ctx!, nsForYAML, plural, instance.metadata.name)
+      const content = await window.kubectl.getYAML(ctx!, nsForYAML, crdFullName, instance.metadata.name)
       setYaml(content)
     } catch (err) {
       setYamlError((err as Error).message ?? 'Failed to fetch YAML')

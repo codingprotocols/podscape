@@ -6,6 +6,20 @@ The Go sidecar listens on `127.0.0.1:5050` by default. All endpoints except `/he
 X-Podscape-Token: <token>   # injected automatically by checkedSidecarFetch
 ```
 
+### RBAC denial header
+
+Resource-list endpoints (`/pods`, `/deployments`, `/crds`, etc.) always return `200 OK`. When the current user lacks `list`/`watch` permission for a resource, the response body is `[]` and the following header is set:
+
+```
+X-Podscape-Denied: true
+```
+
+The main-process `getResources` IPC handler detects this header and throws `RBACDeniedError` so the renderer store can differentiate "permission denied" from a genuinely empty namespace. The `deniedSections` Zustand store field tracks which sections are denied; `ResourceList` renders an "Access denied" banner for them.
+
+### HPA version
+
+`/hpas` returns `autoscaling/v2` objects (requires Kubernetes ≥ 1.23). The response includes `spec.metrics` and `status.currentMetrics` arrays used by `HPADetail` to render target-vs-current metric comparisons.
+
 ---
 
 ## Health

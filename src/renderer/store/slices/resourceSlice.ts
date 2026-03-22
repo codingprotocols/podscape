@@ -1,4 +1,4 @@
-import { StoreSlice, AppStore, ExecTarget, CustomScanOptions } from '../types'
+import { StoreSlice, AppStore, ExecTarget, ExecSession, CustomScanOptions } from '../types'
 import { extractWorkloadImages } from '../../utils/security/extractImages'
 import {
     KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet,
@@ -53,11 +53,12 @@ export const SECTION_CONFIG: Partial<Record<ResourceKind, SectionConfig>> = {
     clusterrolebindings: { stateKey: 'clusterrolebindings', fetch: (c, _)  => window.kubectl.getClusterRoleBindings(c),        namespaced: false },
 }
 
-// Pre-computed empty-array reset object for all resource sections.
+// Pre-computed reset object for all resource sections (empty arrays + cleared denied set).
 // Import this in clusterSlice to clear resources on context switch.
-export const sectionClearState: Record<string, any[]> = Object.fromEntries(
-    Object.values(SECTION_CONFIG).map(c => [c!.stateKey, []])
-)
+export const sectionClearState: Record<string, any> = {
+    ...Object.fromEntries(Object.values(SECTION_CONFIG).map(c => [c!.stateKey, []])),
+    deniedSections: new Set<ResourceKind>(),
+}
 
 export interface ResourceSlice {
     pods: KubePod[]
@@ -100,12 +101,16 @@ export interface ResourceSlice {
     selectedResource: AnyKubeResource | null
     loadingResources: boolean
     error: string | null
-    execTarget: ExecTarget | null
+    execSessions: ExecSession[]
+    activeExecId: string | null
     selectResource: (r: AnyKubeResource | null) => void
     setError: (err: string | null) => void
     clearError: () => void
     openExec: (target: ExecTarget) => void
+    setActiveExecId: (id: string) => void
+    closeExecTab: (id: string) => void
     closeExec: () => void
+    deniedSections: Set<ResourceKind>
     loadSection: (section: ResourceKind) => Promise<void>
     loadDashboard: () => Promise<void>
     refresh: () => Promise<void>
@@ -154,6 +159,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     portForwards: [],
     helmReleases: [],
     debugPods: [],
+    deniedSections: new Set<ResourceKind>(),
     securityScanResults: null,
     securityScanning: false,
     securityScanProgressLines: [],
@@ -164,7 +170,8 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     selectedResource: null,
     loadingResources: false,
     error: null,
-    execTarget: null,
+    execSessions: [],
+    activeExecId: null,
 
     selectResource: (r) => {
         if (r && !r.kind) {
@@ -185,8 +192,23 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     },
     setError: (err) => set({ error: err }),
     clearError: () => set({ error: null }),
-    openExec: (target) => set({ execTarget: target }),
-    closeExec: () => set({ execTarget: null }),
+    openExec: (target) => {
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+        const session: ExecSession = { id, target }
+        set(s => ({ execSessions: [...s.execSessions, session], activeExecId: id }))
+    },
+    closeExecTab: (id) => set(s => {
+        const remaining = s.execSessions.filter(sess => sess.id !== id)
+        let nextActive = s.activeExecId
+        if (s.activeExecId === id) {
+            const idx = s.execSessions.findIndex(sess => sess.id === id)
+            const next = s.execSessions[idx + 1] ?? s.execSessions[idx - 1]
+            nextActive = next?.id ?? null
+        }
+        return { execSessions: remaining, activeExecId: nextActive }
+    }),
+    setActiveExecId: (id) => set({ activeExecId: id }),
+    closeExec: () => set({ execSessions: [], activeExecId: null }),
     addDebugPod: (pod) => set(s => ({ debugPods: [pod, ...s.debugPods] })),
     removeDebugPod: (name) => set(s => ({ debugPods: s.debugPods.filter(p => p.name !== name) })),
     updateDebugPod: (name, updates) => set(s => ({ debugPods: s.debugPods.map(p => p.name === name ? { ...p, ...updates } : p) })),
@@ -296,7 +318,17 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             set({ [config.stateKey]: Array.isArray(data) ? data : [], loadingResources: false } as Partial<AppStore>)
         } catch (err) {
             if (get().selectedContext !== snapshotCtx) return
-            set({ error: (err as Error).message, loadingResources: false })
+            // Sidecar signals RBAC denial via RBACDeniedError (thrown by the main process IPC handler).
+            // Mark the section as denied so the UI can show "Access denied" instead of an error.
+            if (err instanceof Error && err.message.startsWith('RBAC_DENIED:')) {
+                set(s => ({
+                    [config.stateKey]: [],
+                    deniedSections: new Set([...s.deniedSections, section]),
+                    loadingResources: false,
+                } as Partial<AppStore>))
+            } else {
+                set({ error: (err as Error).message, loadingResources: false })
+            }
         }
     },
 

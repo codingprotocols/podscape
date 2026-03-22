@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { useAppStore } from '../store'
 import { ICONS, Icon } from './Icons'
 import { ResourceKind, AnyKubeResource } from '../types'
+import { isMac } from '../utils/platform'
 
 // Section navigation shortcuts — ordered by frequency of use
 const SECTION_SHORTCUTS: Array<{ label: string; section: ResourceKind; icon: string; keywords: string[] }> = [
@@ -288,7 +289,7 @@ export default function CommandPalette() {
                   <span className="text-[10px] text-slate-600">navigate</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <kbd className="bg-white/5 text-slate-400 font-black px-1 py-0.5 rounded border border-white/10 text-[10px]">⌘K</kbd>
+                  <kbd className="bg-white/5 text-slate-400 font-black px-1 py-0.5 rounded border border-white/10 text-[10px]">{isMac ? '⌘K' : 'Ctrl+K'}</kbd>
                   <span className="text-[10px] text-slate-600">toggle</span>
                 </div>
               </div>
@@ -387,7 +388,7 @@ export default function CommandPalette() {
               <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">navigate</span>
             </div>
           </div>
-          <p className="text-[9px] text-slate-600 font-black uppercase tracking-[0.2em]">⌘K Quick Find</p>
+          <p className="text-[9px] text-slate-600 font-black uppercase tracking-[0.2em]">{isMac ? '⌘K' : 'Ctrl+K'} Quick Find</p>
         </div>
       </div>
     </div>

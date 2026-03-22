@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -78,6 +79,13 @@ func HandleCustomResource(w http.ResponseWriter, r *http.Request) {
 
 	list, err := ri.List(r.Context(), metav1.ListOptions{})
 	if err != nil {
+		// Return 404 for "resource not served" conditions — the CRD exists in the
+		// registry but its API endpoint is unavailable (e.g. operator not running,
+		// all versions have served:false). The frontend treats 404 as an empty list.
+		if k8serrors.IsNotFound(err) || k8serrors.IsMethodNotSupported(err) {
+			http.Error(w, fmt.Sprintf("list failed: %v", err), http.StatusNotFound)
+			return
+		}
 		log.Printf("[customresource] list %s/%s (ns=%q) failed: %v", group, resource, namespace, err)
 		http.Error(w, fmt.Sprintf("list failed: %v", err), http.StatusInternalServerError)
 		return

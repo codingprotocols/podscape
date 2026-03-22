@@ -41,11 +41,11 @@ npm run dev          # Start Electron + Vite dev server with hot reload
 ## Running Tests
 
 ```bash
-# Frontend (Vitest) — 134 tests
+# Frontend (Vitest)
 npm run test
 npm run test:watch   # watch mode
 
-# Go sidecar
+# Go sidecar (handlers, rbac, helm, portforward, prometheus, ownerchain)
 cd go-core && go test ./...
 ```
 
