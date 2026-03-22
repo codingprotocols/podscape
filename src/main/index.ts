@@ -78,10 +78,6 @@ function createWindow(onReady: () => void): void {
     return { action: 'deny' }
   })
 
-  ipcMain.handle('shell:openExternal', (_event, url: string) => {
-    shell.openExternal(url)
-  })
-
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -103,6 +99,10 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('sidecar:restart', async () => {
     await startSidecar()
+  })
+
+  ipcMain.handle('shell:openExternal', (_event, url: string) => {
+    shell.openExternal(url)
   })
 
   const splash = await createSplashWindow()

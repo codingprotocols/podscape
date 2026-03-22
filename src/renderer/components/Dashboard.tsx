@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react'
 import { useAppStore } from '../store'
 import { useShallow } from 'zustand/react/shallow'
-import type { KubeNode, KubeEvent, NodeMetrics } from '../types'
+import type { KubeNode, KubeEvent, NodeMetrics, KubePod, KubeDeployment } from '../types'
 import {
   getNodeReady, formatAge,
   parseCpuMillicores, parseMemoryMiB
@@ -15,7 +15,8 @@ import {
   Database,
   AlertTriangle,
   LayoutGrid,
-  Cpu
+  Cpu,
+  CheckCircle2
 } from 'lucide-react'
 
 // ─── Ring chart (SVG donut) ───────────────────────────────────────────────────
@@ -110,13 +111,14 @@ function UsageBar({ pct, label, value }: { pct: number; label: string; value: st
 }
 
 function StatCard({
-  label, value, sub, accent = 'blue', icon: Icon
+  label, value, sub, accent = 'blue', icon: Icon, onClick
 }: {
   label: string
   value: string | number
   sub?: string
   accent?: 'green' | 'yellow' | 'red' | 'blue' | 'gray'
   icon?: React.ElementType
+  onClick?: () => void
 }) {
   const accentStyles = {
     green:  'text-emerald-400 bg-emerald-500/10 border-emerald-500/20 shadow-emerald-500/5',
@@ -127,8 +129,13 @@ function StatCard({
   }
   const style = accentStyles[accent]
 
+  const Tag = onClick ? 'button' : 'div'
+
   return (
-    <div className="flex flex-col gap-4 p-6 rounded-3xl bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] shadow-xl group hover:bg-slate-50 dark:hover:bg-white/[0.04] hover:border-slate-300 dark:hover:border-white/[0.1] transition-all duration-300 relative overflow-hidden">
+    <Tag
+      onClick={onClick}
+      className={`flex flex-col gap-4 p-6 rounded-3xl bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] shadow-xl group hover:bg-slate-50 dark:hover:bg-white/[0.04] hover:border-slate-300 dark:hover:border-white/[0.1] transition-all duration-300 relative overflow-hidden text-left w-full ${onClick ? 'cursor-pointer active:scale-[0.98]' : ''}`}
+    >
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">{label}</span>
         {Icon && (
@@ -147,7 +154,7 @@ function StatCard({
       </div>
       {/* Subtle background glow */}
       <div className={`absolute -right-4 -bottom-4 w-12 h-12 blur-2xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700 ${style.split(' ')[1]}`} />
-    </div>
+    </Tag>
   )
 }
 
@@ -293,6 +300,60 @@ function EventRow({ event: e }: { event: KubeEvent }) {
   )
 }
 
+// ─── Health helpers ───────────────────────────────────────────────────────────
+
+interface PodHealthRow {
+  pod: KubePod
+  restarts: number
+  crashLooping: boolean
+  notReady: boolean
+  failed: boolean
+}
+
+function podTotalRestarts(pod: KubePod): number {
+  return (pod.status.containerStatuses ?? []).reduce((s, cs) => s + cs.restartCount, 0)
+}
+
+function derivedHealth(pods: KubePod[], deployments: KubeDeployment[]) {
+  const problemPods: PodHealthRow[] = []
+  let running = 0
+
+  for (const pod of pods) {
+    if (pod.status.phase === 'Running') running++
+    const restarts = podTotalRestarts(pod)
+    const crashLooping = (pod.status.containerStatuses ?? []).some(
+      cs => cs.state.waiting?.reason === 'CrashLoopBackOff'
+    )
+    const notReady =
+      pod.status.phase === 'Running' &&
+      (pod.status.containerStatuses ?? []).some(cs => !cs.ready)
+    const failed = pod.status.phase === 'Failed'
+
+    if (crashLooping || failed || notReady) {
+      problemPods.push({ pod, restarts, crashLooping, notReady, failed })
+    }
+  }
+
+  problemPods.sort((a, b) => {
+    const score = (r: PodHealthRow) =>
+      (r.crashLooping ? 1000 : 0) + (r.failed ? 500 : 0) + (r.notReady ? 100 : 0) + r.restarts
+    return score(b) - score(a)
+  })
+
+  const degradedDeployments = deployments.filter(
+    d => (d.status.readyReplicas ?? 0) < (d.spec.replicas ?? 0)
+  )
+
+  return { problemPods: problemPods.slice(0, 20), degradedDeployments }
+}
+
+function PodStatusBadge({ row }: { row: PodHealthRow }) {
+  if (row.crashLooping) return <span className="px-1.5 py-0.5 text-[9px] font-black rounded-full bg-red-500/15 text-red-500 uppercase tracking-wider">CrashLoop</span>
+  if (row.failed)       return <span className="px-1.5 py-0.5 text-[9px] font-black rounded-full bg-orange-500/15 text-orange-500 uppercase tracking-wider">Failed</span>
+  if (row.notReady)     return <span className="px-1.5 py-0.5 text-[9px] font-black rounded-full bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 uppercase tracking-wider">Not Ready</span>
+  return <span className="px-1.5 py-0.5 text-[9px] font-black rounded-full bg-slate-500/10 text-slate-500 uppercase tracking-wider">High Restarts</span>
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function Dashboard(): JSX.Element {
@@ -300,7 +361,7 @@ export default function Dashboard(): JSX.Element {
     loadingResources,
     pods, deployments, namespaces,
     nodes, nodeMetrics, events,
-    prometheusAvailable,
+    prometheusAvailable, navigateToResource,
   } = useAppStore(useShallow(s => ({
     loadingResources: s.loadingResources,
     pods: s.pods,
@@ -310,17 +371,23 @@ export default function Dashboard(): JSX.Element {
     nodeMetrics: s.nodeMetrics,
     events: s.events,
     prometheusAvailable: s.prometheusAvailable,
+    navigateToResource: s.navigateToResource,
   })))
 
+  // ── Derived health data ───────────────────────────────────────────────────
+  const { problemPods, degradedDeployments } = useMemo(
+    () => derivedHealth(pods, deployments),
+    [pods, deployments]
+  )
+
   // Pre-calculate timestamps and derive stats memoized
-  const { 
-    runningPods, readyNodes, warnEvents, readyDeploys, 
-    recentEvents, processedEvents, metricsById 
+  const {
+    runningPods, readyNodes, readyDeploys,
+    recentEvents, processedEvents, metricsById
   } = useMemo(() => {
     // Stats calculation
     const runningPods = pods.filter(p => p.status.phase === 'Running').length
     const readyNodes = nodes.filter(getNodeReady).length
-    const warnEvents = events.filter(e => e.type === 'Warning').length
     const readyDeploys = deployments.filter(
       d => (d.status.readyReplicas ?? 0) >= (d.spec.replicas ?? 0) && (d.spec.replicas ?? 0) > 0
     ).length
@@ -351,7 +418,7 @@ export default function Dashboard(): JSX.Element {
       return 0
     })
 
-    return { runningPods, readyNodes, warnEvents, readyDeploys, recentEvents: sortedEvents, processedEvents, metricsById }
+    return { runningPods, readyNodes, readyDeploys, recentEvents: sortedEvents, processedEvents, metricsById }
   }, [pods, deployments, nodes, events, nodeMetrics])
 
   return (
@@ -370,7 +437,7 @@ export default function Dashboard(): JSX.Element {
                 <span className="w-6 h-px bg-slate-200 dark:bg-white/5" />
                 Cluster Overview
               </h2>
-              <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-5 gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard
                   label="Pods active"
                   value={pods.length}
@@ -398,13 +465,6 @@ export default function Dashboard(): JSX.Element {
                   sub="Active environments"
                   accent="blue"
                   icon={LayoutGrid}
-                />
-                <StatCard
-                  label="Warning Alerts"
-                  value={warnEvents}
-                  sub={warnEvents > 0 ? 'Urgent attention' : 'Stable performance'}
-                  accent={warnEvents > 0 ? 'red' : 'gray'}
-                  icon={AlertTriangle}
                 />
               </div>
             </section>
@@ -434,6 +494,90 @@ export default function Dashboard(): JSX.Element {
                     </div>
                     <TimeSeriesChart queries={[clusterMemoryQuery()]} title="" unit=" GiB" />
                   </div>
+                </div>
+              </section>
+            )}
+
+            {/* ── Pod health problems ─────────────────────────────────────────── */}
+            {(problemPods.length > 0 || degradedDeployments.length > 0) && (
+              <section>
+                <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-6 flex items-center gap-3">
+                  <span className="w-6 h-px bg-slate-200 dark:bg-white/5" />
+                  Cluster Health Issues
+                </h2>
+                <div className={`grid gap-6 ${degradedDeployments.length > 0 && problemPods.length > 0 ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'}`}>
+
+                  {/* Problem pods table */}
+                  {problemPods.length > 0 && (
+                    <div className="bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 rounded-[28px] overflow-hidden shadow-xl">
+                      <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-white/5">
+                        <AlertTriangle size={14} className="text-rose-500" />
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Pods with Restarts or Problems</span>
+                        <span className="ml-auto px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-500 text-[9px] font-black">{problemPods.length}</span>
+                      </div>
+                      <div className="divide-y divide-slate-100 dark:divide-white/5">
+                        {problemPods.map(row => (
+                          <button
+                            key={row.pod.metadata.uid}
+                            onClick={() => navigateToResource('Pod', row.pod.metadata.name, row.pod.metadata.namespace ?? '')}
+                            className="w-full flex items-center gap-4 px-6 py-3 hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors text-left"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-slate-800 dark:text-white font-mono truncate">{row.pod.metadata.name}</p>
+                              <p className="text-[10px] text-slate-400 mt-0.5">{row.pod.metadata.namespace}</p>
+                            </div>
+                            <PodStatusBadge row={row} />
+                            {row.restarts > 0 && (
+                              <span className="text-[10px] font-black text-red-500 tabular-nums shrink-0">
+                                ×{row.restarts}
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Degraded deployments table */}
+                  {degradedDeployments.length > 0 && (
+                    <div className="bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 rounded-[28px] overflow-hidden shadow-xl">
+                      <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-white/5">
+                        <Layers size={14} className="text-amber-500" />
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Degraded Deployments</span>
+                        <span className="ml-auto px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 text-[9px] font-black">{degradedDeployments.length}</span>
+                      </div>
+                      <div className="divide-y divide-slate-100 dark:divide-white/5">
+                        {degradedDeployments.map(d => (
+                          <button
+                            key={d.metadata.uid}
+                            onClick={() => navigateToResource('Deployment', d.metadata.name, d.metadata.namespace ?? '')}
+                            className="w-full flex items-center gap-4 px-6 py-3 hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors text-left"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-slate-800 dark:text-white font-mono truncate">{d.metadata.name}</p>
+                              <p className="text-[10px] text-slate-400 mt-0.5">{d.metadata.namespace}</p>
+                            </div>
+                            <span className="text-[11px] font-black tabular-nums shrink-0">
+                              <span className="text-amber-500">{d.status.readyReplicas ?? 0}</span>
+                              <span className="text-slate-400"> / {d.spec.replicas ?? 0}</span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* ── All-healthy banner ───────────────────────────────────────────── */}
+            {problemPods.length === 0 && degradedDeployments.length === 0 && pods.length > 0 && (
+              <section>
+                <div className="flex items-center gap-4 px-8 py-5 bg-emerald-500/5 border border-emerald-500/20 rounded-[28px]">
+                  <CheckCircle2 size={20} className="text-emerald-500 shrink-0" />
+                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                    All pods and deployments are healthy — no restarts or degraded workloads detected.
+                  </span>
                 </div>
               </section>
             )}

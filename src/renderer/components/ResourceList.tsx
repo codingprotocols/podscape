@@ -608,7 +608,7 @@ export default function ResourceList(): JSX.Element {
   const showNsCol = selectedNamespace === '_all' && !clusterScoped
   const cols = COLUMNS[section] ?? ['Name']
 
-  const [sortCol, setSortCol] = useState<string | null>(null)
+  const [sortCol, setSortCol] = useState<string | null>('Name')
   const [sortAsc, setSortAsc] = useState(true)
 
   const handleSort = useCallback((col: string) => {
@@ -644,7 +644,7 @@ export default function ResourceList(): JSX.Element {
   // Clear selection and sorting if section changes
   useEffect(() => {
     setSelectedUids(new Set())
-    setSortCol(null)
+    setSortCol('Name')
     setSortAsc(true)
   }, [section])
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { isMac } from '../utils/platform'
 import Editor from '@monaco-editor/react'
 import { useAppStore } from '../store'
 import { Save, CheckCircle, Monitor, Terminal, FileCode, Activity } from 'lucide-react'
@@ -279,6 +280,39 @@ export default function SettingsPanel(): JSX.Element {
             </div>
           </section>
 
+          {/* ── Keyboard Shortcuts ────────────────────────────────────────── */}
+          <section className="space-y-6">
+            <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] flex items-center gap-3">
+              <Activity size={14} />
+              Keyboard Productivity
+              <span className="flex-1 h-px bg-slate-100 dark:bg-white/5" />
+            </h3>
+            <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-3xl p-8 shadow-sm font-mono">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <ShortcutItem 
+                  keys={[isMac ? 'CMD' : 'CTRL', 'T']} 
+                  label="Open Shell" 
+                  desc="Directly exec into a selected pod"
+                />
+                <ShortcutItem 
+                  keys={[isMac ? 'CMD' : 'CTRL', 'L']} 
+                  label="Pod Logs" 
+                  desc="Open fullscreen logs for selected pod"
+                />
+                <ShortcutItem 
+                  keys={[isMac ? 'CMD' : 'CTRL', 'D']} 
+                  label="Exit/Close" 
+                  desc="Quickly dismiss terminal or log panel"
+                />
+                <ShortcutItem 
+                  keys={['ESC']} 
+                  label="Dismiss" 
+                  desc="Close detail panels or active modals"
+                />
+              </div>
+            </div>
+          </section>
+
           {/* ── Prometheus ──────────────────────────────────────────────────── */}
           <section className="space-y-6 pb-20">
             <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] flex items-center gap-3">
@@ -350,6 +384,27 @@ export default function SettingsPanel(): JSX.Element {
 
         </div>
       </div>
+    </div>
+  )
+}
+
+function ShortcutItem({ keys, label, desc }: { keys: string[]; label: string; desc: string }) {
+  return (
+    <div className="flex flex-col gap-2 group/item">
+      <div className="flex items-center gap-2">
+        <div className="flex gap-1 font-mono">
+          {keys.map((k, i) => (
+            <React.Fragment key={k}>
+              <span className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-white/10 text-slate-800 dark:text-white text-[9px] font-black border border-slate-300 dark:border-white/10 shadow-sm">
+                {k}
+              </span>
+              {i < keys.length - 1 && <span className="text-slate-400 text-[9px] font-black">+</span>}
+            </React.Fragment>
+          ))}
+        </div>
+        <span className="text-[10px] font-black uppercase tracking-widest text-slate-900 dark:text-slate-200 group-hover/item:text-blue-400 transition-colors shrink-0">{label}</span>
+      </div>
+      <p className="text-[10px] font-medium text-slate-500 leading-relaxed">{desc}</p>
     </div>
   )
 }

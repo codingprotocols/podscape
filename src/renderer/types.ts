@@ -649,6 +649,7 @@ export interface AppGroup {
 
 export type ResourceKind =
   | 'unifiedlogs'
+  | 'multi-terminal'
   | 'apps'
   | 'dashboard'
   | 'helm'

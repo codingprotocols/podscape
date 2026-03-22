@@ -147,6 +147,11 @@ export interface ExecTarget {
     namespace: string
 }
 
+export interface ExecSession {
+    id: string
+    target: ExecTarget
+}
+
 export interface AppStore extends AnalysisSlice, ProvidersSlice {
     // Navigation
     section: ResourceKind
@@ -226,9 +231,11 @@ export interface AppStore extends AnalysisSlice, ProvidersSlice {
     removeDebugPod: (name: string) => void
     updateDebugPod: (name: string, updates: Partial<DebugPodEntry>) => void
 
-    // Exec modal
-    execTarget: ExecTarget | null
+    // Terminal session
+    execSessions: ExecSession[]
+    activeExecId: string | null
     openExec: (target: ExecTarget) => void
+    setActiveExecId: (id: string) => void
     closeExec: () => void
 
     // Loading / errors

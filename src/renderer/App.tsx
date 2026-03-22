@@ -87,8 +87,7 @@ export default function App(): JSX.Element {
     error,
     clearError,
     kubeconfigOk,
-    execTarget,
-    closeExec,
+    execSessions,
     isProduction,
   } = useAppStore(useShallow(s => ({
     init: s.init,
@@ -102,8 +101,7 @@ export default function App(): JSX.Element {
     error: s.error,
     clearError: s.clearError,
     kubeconfigOk: s.kubeconfigOk,
-    execTarget: s.execTarget,
-    closeExec: s.closeExec,
+    execSessions: s.execSessions,
     isProduction: s.isProduction,
   })))
 
@@ -180,6 +178,15 @@ export default function App(): JSX.Element {
               <NetworkPanel />
             ) : section === 'portforwards' ? (
               <PortForwardPanel />
+            ) : section === 'multi-terminal' ? (
+              <div className="flex flex-col flex-1 h-full animate-in fade-in duration-500">
+                <PageHeader title="Multi-Terminal" subtitle="Manage multiple sessions" />
+                <div className="flex-1 min-h-0 bg-[#0a0c10] p-6">
+                   <div className="h-full w-full rounded-3xl overflow-hidden border border-white/5 shadow-2xl relative">
+                      <ExecPanel embedded />
+                   </div>
+                </div>
+              </div>
             ) : section === 'helm' ? (
               <HelmPanel />
             ) : section === 'security' ? (
@@ -246,9 +253,9 @@ export default function App(): JSX.Element {
         )}
       </div>
 
-      {/* Exec overlay */}
-      {execTarget && (
-        <ExecPanel target={execTarget} onClose={closeExec} />
+      {/* Terminal Overlay */}
+      {execSessions.length > 0 && (
+        <ExecPanel />
       )}
       {/* Error Toast */}
       {error && (

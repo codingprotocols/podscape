@@ -31,6 +31,7 @@ import (
 	"github.com/podscape/go-core/internal/topology"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -399,7 +400,6 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleCRDs             = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.CRDs })
 	HandleServiceAccounts = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.ServiceAccounts },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.CoreV1().ServiceAccounts(ns).List(ctx, metav1.ListOptions{})
@@ -449,6 +449,47 @@ var (
 			return listToIface(list.Items), nil
 		})
 )
+
+// HandleCRDs serves CRDs from the informer cache, falling back to a direct
+// apiextensions API call whenever the cache is empty. The CRD informer uses a
+// separate factory (apiextinformers) and may finish syncing after HasData is
+// already true, so we cannot rely on HasData alone to gate the fallback.
+func HandleCRDs(w http.ResponseWriter, r *http.Request) {
+	store.Store.RLock()
+	ac := store.Store.ActiveCache
+	store.Store.RUnlock()
+
+	if ac == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Snapshot the cache and the apiextensions client under one lock.
+	ac.RLock()
+	apiextClient := ac.ApiextensionsClientset
+	data := ac.CRDs
+	snapshot := make([]interface{}, 0, len(data))
+	for _, v := range data {
+		snapshot = append(snapshot, v)
+	}
+	ac.RUnlock()
+
+	// If the cache is empty and we have the apiextensions client, do a direct
+	// API call. This covers both cold start and the gap between HasData=true
+	// and the CRD informer completing its first LIST/WATCH sync.
+	if len(snapshot) == 0 && apiextClient != nil {
+		list, err := apiextClient.ApiextensionsV1().CustomResourceDefinitions().List(r.Context(), metav1.ListOptions{})
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(listToIface(list.Items))
+			return
+		}
+		log.Printf("[Handler] CRD direct fallback failed, serving cache: %v", err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(snapshot)
+}
 
 func HandleHelmList(w http.ResponseWriter, r *http.Request) {
 	kubeconfig := r.URL.Query().Get("kubeconfig")
@@ -1198,6 +1239,11 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 
 	// 3. Get or create the cache for this context.
 	newCache, isNew := store.Store.GetOrCreateCache(contextName, clientset, restConfig)
+	if apiextClient, err := apiextensionsclientset.NewForConfig(restConfig); err == nil {
+		newCache.Lock()
+		newCache.ApiextensionsClientset = apiextClient
+		newCache.Unlock()
+	}
 
 	// 4. Snapshot old active cache and stop its informers.
 	store.Store.RLock()
@@ -1577,15 +1623,18 @@ func undoDeploymentRollout(ctx context.Context, namespace, name string, targetRe
 
 type wsStream struct {
 	conn *websocket.Conn
+	buf  bytes.Buffer
 }
 
 func (s *wsStream) Read(p []byte) (n int, err error) {
-	_, message, err := s.conn.ReadMessage()
-	if err != nil {
-		return 0, err
+	if s.buf.Len() == 0 {
+		_, msg, err := s.conn.ReadMessage()
+		if err != nil {
+			return 0, err
+		}
+		s.buf.Write(msg)
 	}
-	copy(p, message)
-	return len(message), nil
+	return s.buf.Read(p)
 }
 
 func (s *wsStream) Write(p []byte) (n int, err error) {

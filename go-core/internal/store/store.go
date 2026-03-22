@@ -5,6 +5,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
@@ -13,8 +14,9 @@ import (
 // stop channel, readiness flags, and the 28 resource maps.
 type ContextCache struct {
 	sync.RWMutex
-	Clientset  kubernetes.Interface
-	Config     *rest.Config
+	Clientset             kubernetes.Interface
+	ApiextensionsClientset apiextensionsclientset.Interface
+	Config                *rest.Config
 	StopCh     chan struct{}
 	CacheReady bool // true once critical informers have synced at least once for this cache
 	HasData    bool // set true after first successful background sync; never reset to false

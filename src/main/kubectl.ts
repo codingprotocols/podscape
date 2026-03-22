@@ -78,6 +78,9 @@ export class KubectlProvider {
     // For custom resources, surface the sidecar error so the panel can display it.
     // For built-in resources, preserve the existing silent-empty behavior.
     if (!mappedEndpoint) {
+      // 404 means the CRD exists but its API is not currently served (e.g. operator
+      // not running, served:false). Treat as an empty list — not an error.
+      if (res.status === 404) return []
       const text = await res.text().catch(() => '')
       throw new Error(`Failed to load ${kind}: ${text || res.statusText}`)
     }

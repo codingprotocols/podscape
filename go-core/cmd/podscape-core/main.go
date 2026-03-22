@@ -10,6 +10,7 @@ import (
 	"github.com/podscape/go-core/internal/informers"
 	"github.com/podscape/go-core/internal/portforward"
 	"github.com/podscape/go-core/internal/store"
+	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
@@ -178,6 +179,11 @@ func main() {
 		log.Fatalf("Error creating kubernetes client: %v", err)
 	}
 
+	apiextClient, err := apiextensionsclientset.NewForConfig(config)
+	if err != nil {
+		log.Fatalf("Error creating apiextensions client: %v", err)
+	}
+
 	// Determine the active context name for the initial cache key.
 	kubeconfigData, err := clientcmd.LoadFromFile(*kubeconfig)
 	activeCtxName := ""
@@ -190,6 +196,9 @@ func main() {
 
 	// Bootstrap the initial context cache and set it as active.
 	initialCache, _ := store.Store.GetOrCreateCache(activeCtxName, clientset, config)
+	initialCache.Lock()
+	initialCache.ApiextensionsClientset = apiextClient
+	initialCache.Unlock()
 	store.Store.Lock()
 	store.Store.ActiveContextName = activeCtxName
 	store.Store.ActiveCache = initialCache

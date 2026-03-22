@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useAppStore } from '../store'
 import PageHeader from './PageHeader'
 import type { KubePod, KubeService } from '../types'
+import { isMac } from '../utils/platform'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -748,7 +749,7 @@ export default function ConnectivityTester() {
                         {running ? 'Running…' : mode === 'diagnose' ? 'Diagnose' : 'Run'}
                     </button>
 
-                    <span className="text-[10px] text-slate-600 ml-auto">⌘↵ to run</span>
+                    <span className="text-[10px] text-slate-600 ml-auto">{isMac ? '⌘' : 'Ctrl+'}↵ to run</span>
                 </div>
 
                 {/* Command preview */}

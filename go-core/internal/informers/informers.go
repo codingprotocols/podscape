@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/podscape/go-core/internal/store"
+	apiextinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	k8sinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 )
@@ -26,7 +27,7 @@ func InitInformers(c *store.ContextCache, stopCh <-chan struct{}) {
 
 	// Start everything else without blocking startup.
 	go func() {
-		registerBackgroundInformers(factory, c)
+		registerBackgroundInformers(factory, c, stopCh)
 		factory.Start(stopCh) // no-op for already-started informers; starts new ones
 		c.Lock()
 		c.HasData = true
@@ -59,7 +60,7 @@ func SyncInformers(c *store.ContextCache, stopCh <-chan struct{}, timeout time.D
 	}
 
 	go func() {
-		registerBackgroundInformers(factory, c)
+		registerBackgroundInformers(factory, c, stopCh)
 		factory.Start(stopCh)
 		c.Lock()
 		c.HasData = true
@@ -75,7 +76,7 @@ func SyncInformers(c *store.ContextCache, stopCh <-chan struct{}, timeout time.D
 func StartInformers(c *store.ContextCache, stopCh <-chan struct{}) {
 	factory := k8sinformers.NewSharedInformerFactory(c.Clientset, time.Minute*10)
 	registerCriticalInformers(factory, c)
-	registerBackgroundInformers(factory, c)
+	registerBackgroundInformers(factory, c, stopCh)
 	factory.Start(stopCh)
 }
 
@@ -103,7 +104,7 @@ func registerCriticalInformers(factory k8sinformers.SharedInformerFactory, c *st
 
 // registerBackgroundInformers registers everything else. These start after the
 // critical path so they don't delay startup.
-func registerBackgroundInformers(factory k8sinformers.SharedInformerFactory, c *store.ContextCache) {
+func registerBackgroundInformers(factory k8sinformers.SharedInformerFactory, c *store.ContextCache, stopCh <-chan struct{}) {
 	// Workloads
 	setupInformer(factory.Apps().V1().DaemonSets().Informer(), c.DaemonSets, &c.RWMutex, true)
 	setupInformer(factory.Apps().V1().StatefulSets().Informer(), c.StatefulSets, &c.RWMutex, true)
@@ -133,6 +134,16 @@ func registerBackgroundInformers(factory k8sinformers.SharedInformerFactory, c *
 	setupInformer(factory.Rbac().V1().ClusterRoles().Informer(), c.ClusterRoles, &c.RWMutex, false)
 	setupInformer(factory.Rbac().V1().RoleBindings().Informer(), c.RoleBindings, &c.RWMutex, true)
 	setupInformer(factory.Rbac().V1().ClusterRoleBindings().Informer(), c.ClusterRoleBindings, &c.RWMutex, false)
+
+	// CRDs — requires the separate apiextensions client
+	c.RLock()
+	apiextClient := c.ApiextensionsClientset
+	c.RUnlock()
+	if apiextClient != nil {
+		apiextFactory := apiextinformers.NewSharedInformerFactory(apiextClient, time.Minute*10)
+		setupInformer(apiextFactory.Apiextensions().V1().CustomResourceDefinitions().Informer(), c.CRDs, &c.RWMutex, false)
+		apiextFactory.Start(stopCh)
+	}
 }
 
 // setupInformer registers Add/Update/Delete event handlers that write to
