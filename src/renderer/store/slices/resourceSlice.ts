@@ -336,7 +336,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         const { selectedContext: ctx, lastDashboardLoadedAt } = get()
         if (!ctx) return
         // Skip re-fetch if dashboard data is < 30s old (navigation back to dashboard).
-        // The explicit refresh() action calls loadSection which bypasses this via direct call.
+        // refresh() resets lastDashboardLoadedAt to 0 before calling loadSection, bypassing this guard.
         if (Date.now() - lastDashboardLoadedAt < 30_000) return
         // Snapshot context to detect mid-fetch context switches and discard stale results.
         const snapshotCtx = ctx
@@ -421,7 +421,10 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         set({ apps: Object.values(groups).sort((a, b) => a.name.localeCompare(b.name)), loadingResources: false, lastDashboardLoadedAt: Date.now() })
     },
 
-    refresh: () => get().loadSection(get().section),
+    refresh: () => {
+        set({ lastDashboardLoadedAt: 0 })
+        return get().loadSection(get().section)
+    },
 
     preloadSearchResources: async () => {
         const { selectedContext: ctx, lastPreloadedAt } = get()
