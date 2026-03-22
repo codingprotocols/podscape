@@ -16,7 +16,7 @@ import ScaleDialog from './ScaleDialog'
 import DeleteConfirm from './DeleteConfirm'
 import YAMLViewer from './YAMLViewer'
 import { kindLabel } from '../store/slices/resourceSlice'
-import { Layers } from 'lucide-react'
+import { Layers, ShieldOff } from 'lucide-react'
 
 
 
@@ -551,7 +551,7 @@ function CustomCheckbox({ checked, onChange, partiallyChecked = false }: { check
 
 export default function ResourceList(): JSX.Element {
   // Data fields — subscribed via shallow equality so any change triggers a re-render.
-  const { section, selectedResource, loadingResources, selectedNamespace, selectedContext, searchQuery } =
+  const { section, selectedResource, loadingResources, selectedNamespace, selectedContext, searchQuery, deniedSections } =
     useAppStore(useShallow(s => ({
       section: s.section,
       selectedResource: s.selectedResource,
@@ -559,6 +559,7 @@ export default function ResourceList(): JSX.Element {
       selectedNamespace: s.selectedNamespace,
       selectedContext: s.selectedContext,
       searchQuery: s.searchQuery,
+      deniedSections: s.deniedSections,
     })))
 
   // Action functions — stable refs created once; read directly from the store
@@ -847,6 +848,20 @@ export default function ResourceList(): JSX.Element {
         {loadingResources ? (
           <div className="flex items-center justify-center py-24">
             <LoadingAnimation />
+          </div>
+        ) : deniedSections.has(section as ResourceKind) ? (
+          <div className="flex flex-col items-center justify-center py-32 gap-6 animate-in fade-in duration-700">
+            <div className="w-20 h-20 rounded-[28px] bg-amber-500/5 border border-dashed border-amber-500/20 flex items-center justify-center text-amber-500/40 shadow-inner">
+              <ShieldOff size={32} />
+            </div>
+            <div className="text-center space-y-2">
+              <p className="text-[11px] font-black uppercase tracking-[0.4em] text-amber-500/70">
+                Access denied
+              </p>
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">
+                Your RBAC role does not allow listing {SECTION_LABELS[section]?.toLowerCase() ?? 'this resource'}
+              </p>
+            </div>
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-32 gap-6 animate-in fade-in duration-700">

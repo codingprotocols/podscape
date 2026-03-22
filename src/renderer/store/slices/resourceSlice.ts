@@ -53,11 +53,12 @@ export const SECTION_CONFIG: Partial<Record<ResourceKind, SectionConfig>> = {
     clusterrolebindings: { stateKey: 'clusterrolebindings', fetch: (c, _)  => window.kubectl.getClusterRoleBindings(c),        namespaced: false },
 }
 
-// Pre-computed empty-array reset object for all resource sections.
+// Pre-computed reset object for all resource sections (empty arrays + cleared denied set).
 // Import this in clusterSlice to clear resources on context switch.
-export const sectionClearState: Record<string, any[]> = Object.fromEntries(
-    Object.values(SECTION_CONFIG).map(c => [c!.stateKey, []])
-)
+export const sectionClearState: Record<string, any> = {
+    ...Object.fromEntries(Object.values(SECTION_CONFIG).map(c => [c!.stateKey, []])),
+    deniedSections: new Set<ResourceKind>(),
+}
 
 export interface ResourceSlice {
     pods: KubePod[]
@@ -109,6 +110,7 @@ export interface ResourceSlice {
     setActiveExecId: (id: string) => void
     closeExecTab: (id: string) => void
     closeExec: () => void
+    deniedSections: Set<ResourceKind>
     loadSection: (section: ResourceKind) => Promise<void>
     loadDashboard: () => Promise<void>
     refresh: () => Promise<void>
@@ -157,6 +159,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     portForwards: [],
     helmReleases: [],
     debugPods: [],
+    deniedSections: new Set<ResourceKind>(),
     securityScanResults: null,
     securityScanning: false,
     securityScanProgressLines: [],
@@ -315,7 +318,17 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             set({ [config.stateKey]: Array.isArray(data) ? data : [], loadingResources: false } as Partial<AppStore>)
         } catch (err) {
             if (get().selectedContext !== snapshotCtx) return
-            set({ error: (err as Error).message, loadingResources: false })
+            // Sidecar signals RBAC denial via RBACDeniedError (thrown by the main process IPC handler).
+            // Mark the section as denied so the UI can show "Access denied" instead of an error.
+            if (err instanceof Error && err.message.startsWith('RBAC_DENIED:')) {
+                set(s => ({
+                    [config.stateKey]: [],
+                    deniedSections: new Set([...s.deniedSections, section]),
+                    loadingResources: false,
+                } as Partial<AppStore>))
+            } else {
+                set({ error: (err as Error).message, loadingResources: false })
+            }
         }
     },
 

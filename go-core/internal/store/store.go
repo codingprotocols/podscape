@@ -23,6 +23,13 @@ type ContextCache struct {
 	//   false = never fully synced → use direct-API fallback
 	//   true  = stale data ok → serve cache, restart informers in background
 
+	// AllowedResources is the result of the SelfSubjectAccessReview probe run
+	// before informers start. Three states:
+	//   nil            — probe not yet run (or failed); all resources treated as allowed
+	//   empty map      — probe ran, everything denied
+	//   populated map  — probe ran; check map[plural] for individual access
+	AllowedResources map[string]bool
+
 	// Resource maps
 	Nodes               map[string]interface{}
 	Pods                map[string]interface{}

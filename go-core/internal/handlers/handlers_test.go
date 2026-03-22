@@ -55,11 +55,15 @@ func resetStore(t *testing.T, origActiveCache *store.ContextCache, origKubeconfi
 		store.Store.Kubeconfig = origKubeconfig
 		store.Store.Unlock()
 		syncInformersFunc = realSyncFn
+		rbacCheckFunc = realRBACFn
 	})
 }
 
 // realSyncFn holds the original injectable value so tests can restore it.
 var realSyncFn = syncInformersFunc
+
+// realRBACFn holds the original injectable value so tests can restore it.
+var realRBACFn = rbacCheckFunc
 
 // noopSync immediately returns true (synced) without touching any informers.
 func noopSync(_ *store.ContextCache, _ <-chan struct{}, _ time.Duration) bool {
@@ -69,6 +73,11 @@ func noopSync(_ *store.ContextCache, _ <-chan struct{}, _ time.Duration) bool {
 // timeoutSync immediately returns false (timed out) without touching any informers.
 func timeoutSync(_ *store.ContextCache, _ <-chan struct{}, _ time.Duration) bool {
 	return false
+}
+
+// noopRBAC immediately returns all-allowed without hitting the API server.
+func noopRBAC(_ context.Context, _ kubernetes.Interface) (map[string]bool, error) {
+	return nil, nil // nil = permissive (probe "not run")
 }
 
 // newTestCache creates a ContextCache backed by the given fake clientset.
@@ -161,8 +170,9 @@ func TestHandleSwitchContext_Success(t *testing.T) {
 
 	portforward.Init(fakeClientset, origConfig)
 
-	// Informer sync is a no-op in tests.
+	// Informer sync and RBAC probe are no-ops in tests.
 	syncInformersFunc = noopSync
+	rbacCheckFunc = noopRBAC
 
 	kubeconfigPath := writeTestKubeconfig(t, map[string]string{
 		"ctx-a": "http://fake-a:6443",
@@ -219,8 +229,9 @@ func TestHandleSwitchContext_AlwaysCommits(t *testing.T) {
 
 	portforward.Init(fakeClientset, origConfig)
 
-	// Informer sync is a no-op — simulates a cluster that may be unreachable.
+	// Informer sync and RBAC probe are no-ops — simulates a cluster that may be unreachable.
 	syncInformersFunc = noopSync
+	rbacCheckFunc = noopRBAC
 
 	kubeconfigPath := writeTestKubeconfig(t, map[string]string{
 		"ctx-a": "http://fake-a:6443",

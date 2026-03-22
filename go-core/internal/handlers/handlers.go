@@ -27,6 +27,7 @@ import (
 	"github.com/podscape/go-core/internal/ownerchain"
 	"github.com/podscape/go-core/internal/portforward"
 	"github.com/podscape/go-core/internal/prometheus"
+	"github.com/podscape/go-core/internal/rbac"
 	"github.com/podscape/go-core/internal/store"
 	"github.com/podscape/go-core/internal/topology"
 	appsv1 "k8s.io/api/apps/v1"
@@ -52,6 +53,10 @@ import (
 // context switch. It is a variable so tests can substitute a no-op without
 // needing a live Kubernetes cluster.
 var syncInformersFunc = informers.SyncInformers
+
+// rbacCheckFunc is the function used to probe RBAC permissions before starting
+// informers. It is a variable so tests can substitute a stub.
+var rbacCheckFunc = rbac.CheckAccess
 
 
 var upgrader = websocket.Upgrader{
@@ -116,7 +121,14 @@ func listToIface[T any](items []T) []interface{} {
 // informer cache. An optional listFn provides a direct k8s API fallback used
 // when HasData is false, giving kubectl-like cold-start speed while informers
 // warm up in the background.
+//
+// resource is the lowercase plural name used to look up RBAC permission in the
+// cache (e.g. "pods", "deployments"). When the RBAC probe has run and this
+// resource is denied, the handler returns 200 with an empty JSON array and the
+// X-Podscape-Denied: true response header so the UI can show a "no permission"
+// state instead of an empty list.
 func MakeHandler(
+	resource string,
 	mapFn func(c *store.ContextCache) map[string]interface{},
 	listFn ...func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error),
 ) http.HandlerFunc {
@@ -133,6 +145,18 @@ func MakeHandler(
 
 		if ac == nil {
 			http.Error(w, "no active context", http.StatusServiceUnavailable)
+			return
+		}
+
+		// RBAC guard: if the probe ran and explicitly denied this resource,
+		// return an empty list rather than attempting a cache read or live call.
+		ac.RLock()
+		allowedResources := ac.AllowedResources
+		ac.RUnlock()
+		if allowedResources != nil && !allowedResources[resource] {
+			w.Header().Set("X-Podscape-Denied", "true")
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte("[]"))
 			return
 		}
 
@@ -224,7 +248,7 @@ func HandleHealth(w http.ResponseWriter, r *http.Request) {
 // CRDs are omitted from the fallback — they require the apiextensions client
 // which is not stored in the ContextCache Clientset.
 var (
-	HandleNodes = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Nodes },
+	HandleNodes = MakeHandler("nodes", func(c *store.ContextCache) map[string]interface{} { return c.Nodes },
 		func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
 			list, err := cs.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -232,7 +256,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandlePods = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Pods },
+	HandlePods = MakeHandler("pods", func(c *store.ContextCache) map[string]interface{} { return c.Pods },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -240,7 +264,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleDeployments = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Deployments },
+	HandleDeployments = MakeHandler("deployments", func(c *store.ContextCache) map[string]interface{} { return c.Deployments },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.AppsV1().Deployments(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -250,7 +274,7 @@ var (
 		})
 
 	// Workloads
-	HandleDaemonSets = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.DaemonSets },
+	HandleDaemonSets = MakeHandler("daemonsets", func(c *store.ContextCache) map[string]interface{} { return c.DaemonSets },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.AppsV1().DaemonSets(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -258,7 +282,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleStatefulSets = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.StatefulSets },
+	HandleStatefulSets = MakeHandler("statefulsets", func(c *store.ContextCache) map[string]interface{} { return c.StatefulSets },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.AppsV1().StatefulSets(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -266,7 +290,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleReplicaSets = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.ReplicaSets },
+	HandleReplicaSets = MakeHandler("replicasets", func(c *store.ContextCache) map[string]interface{} { return c.ReplicaSets },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.AppsV1().ReplicaSets(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -274,7 +298,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleJobs = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Jobs },
+	HandleJobs = MakeHandler("jobs", func(c *store.ContextCache) map[string]interface{} { return c.Jobs },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.BatchV1().Jobs(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -282,7 +306,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleCronJobs = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.CronJobs },
+	HandleCronJobs = MakeHandler("cronjobs", func(c *store.ContextCache) map[string]interface{} { return c.CronJobs },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.BatchV1().CronJobs(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -290,7 +314,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleHPAs = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.HPAs },
+	HandleHPAs = MakeHandler("horizontalpodautoscalers", func(c *store.ContextCache) map[string]interface{} { return c.HPAs },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.AutoscalingV1().HorizontalPodAutoscalers(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -298,7 +322,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandlePDBs = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.PDBs },
+	HandlePDBs = MakeHandler("poddisruptionbudgets", func(c *store.ContextCache) map[string]interface{} { return c.PDBs },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.PolicyV1().PodDisruptionBudgets(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -308,7 +332,7 @@ var (
 		})
 
 	// Networking
-	HandleServices = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Services },
+	HandleServices = MakeHandler("services", func(c *store.ContextCache) map[string]interface{} { return c.Services },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.CoreV1().Services(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -316,7 +340,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleIngresses = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Ingresses },
+	HandleIngresses = MakeHandler("ingresses", func(c *store.ContextCache) map[string]interface{} { return c.Ingresses },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.NetworkingV1().Ingresses(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -324,7 +348,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleIngressClasses = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.IngressClasses },
+	HandleIngressClasses = MakeHandler("ingressclasses", func(c *store.ContextCache) map[string]interface{} { return c.IngressClasses },
 		func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
 			list, err := cs.NetworkingV1().IngressClasses().List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -332,7 +356,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleNetworkPolicies = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.NetworkPolicies },
+	HandleNetworkPolicies = MakeHandler("networkpolicies", func(c *store.ContextCache) map[string]interface{} { return c.NetworkPolicies },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.NetworkingV1().NetworkPolicies(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -340,7 +364,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleEndpoints = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Endpoints },
+	HandleEndpoints = MakeHandler("endpoints", func(c *store.ContextCache) map[string]interface{} { return c.Endpoints },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.CoreV1().Endpoints(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -350,7 +374,7 @@ var (
 		})
 
 	// Config & Storage
-	HandleConfigMaps = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.ConfigMaps },
+	HandleConfigMaps = MakeHandler("configmaps", func(c *store.ContextCache) map[string]interface{} { return c.ConfigMaps },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.CoreV1().ConfigMaps(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -358,7 +382,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleSecrets = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Secrets },
+	HandleSecrets = MakeHandler("secrets", func(c *store.ContextCache) map[string]interface{} { return c.Secrets },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.CoreV1().Secrets(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -366,7 +390,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandlePVCs = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.PVCs },
+	HandlePVCs = MakeHandler("persistentvolumeclaims", func(c *store.ContextCache) map[string]interface{} { return c.PVCs },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.CoreV1().PersistentVolumeClaims(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -374,7 +398,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandlePVs = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.PVs },
+	HandlePVs = MakeHandler("persistentvolumes", func(c *store.ContextCache) map[string]interface{} { return c.PVs },
 		func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
 			list, err := cs.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -382,7 +406,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleStorageClasses = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.StorageClasses },
+	HandleStorageClasses = MakeHandler("storageclasses", func(c *store.ContextCache) map[string]interface{} { return c.StorageClasses },
 		func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
 			list, err := cs.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -392,7 +416,7 @@ var (
 		})
 
 	// Cluster & RBAC
-	HandleNamespaces = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Namespaces },
+	HandleNamespaces = MakeHandler("namespaces", func(c *store.ContextCache) map[string]interface{} { return c.Namespaces },
 		func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
 			list, err := cs.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -400,7 +424,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleServiceAccounts = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.ServiceAccounts },
+	HandleServiceAccounts = MakeHandler("serviceaccounts", func(c *store.ContextCache) map[string]interface{} { return c.ServiceAccounts },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.CoreV1().ServiceAccounts(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -408,7 +432,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleRoles = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Roles },
+	HandleRoles = MakeHandler("roles", func(c *store.ContextCache) map[string]interface{} { return c.Roles },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.RbacV1().Roles(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -416,7 +440,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleClusterRoles = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.ClusterRoles },
+	HandleClusterRoles = MakeHandler("clusterroles", func(c *store.ContextCache) map[string]interface{} { return c.ClusterRoles },
 		func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
 			list, err := cs.RbacV1().ClusterRoles().List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -424,7 +448,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleRoleBindings = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.RoleBindings },
+	HandleRoleBindings = MakeHandler("rolebindings", func(c *store.ContextCache) map[string]interface{} { return c.RoleBindings },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.RbacV1().RoleBindings(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -432,7 +456,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleClusterRoleBindings = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.ClusterRoleBindings },
+	HandleClusterRoleBindings = MakeHandler("clusterrolebindings", func(c *store.ContextCache) map[string]interface{} { return c.ClusterRoleBindings },
 		func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
 			list, err := cs.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -440,7 +464,7 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleEvents = MakeHandler(func(c *store.ContextCache) map[string]interface{} { return c.Events },
+	HandleEvents = MakeHandler("events", func(c *store.ContextCache) map[string]interface{} { return c.Events },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.CoreV1().Events(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -461,6 +485,17 @@ func HandleCRDs(w http.ResponseWriter, r *http.Request) {
 
 	if ac == nil {
 		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
+	// RBAC guard — same semantics as MakeHandler.
+	ac.RLock()
+	allowedResources := ac.AllowedResources
+	ac.RUnlock()
+	if allowedResources != nil && !allowedResources["customresourcedefinitions"] {
+		w.Header().Set("X-Podscape-Denied", "true")
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
 		return
 	}
 
@@ -1202,6 +1237,33 @@ func HandleGetCurrentContext(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(ctxName))
 }
 
+// runRBACProbe probes access permissions for the given context and stores the
+// result in the cache. It runs under a 10-second deadline so a slow API server
+// cannot delay informer startup by more than that. On failure, AllowedResources
+// is left nil (permissive: all informers start).
+func runRBACProbe(cache *store.ContextCache, ctxName string, cs kubernetes.Interface) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	allowed, err := rbacCheckFunc(ctx, cs)
+	if err != nil {
+		log.Printf("[SwitchContext] RBAC probe failed for %q, proceeding without restriction: %v", ctxName, err)
+		return
+	}
+	cache.Lock()
+	cache.AllowedResources = allowed
+	cache.Unlock()
+
+	denied := 0
+	for _, ok := range allowed {
+		if !ok {
+			denied++
+		}
+	}
+	log.Printf("[SwitchContext] RBAC probe complete for %q: %d/%d resources accessible",
+		ctxName, len(allowed)-denied, len(allowed))
+}
+
 func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 	contextName := r.URL.Query().Get("context")
 	if contextName == "" {
@@ -1291,6 +1353,7 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 		// Known context: serve stale cache immediately, refresh in background.
 		log.Printf("[SwitchContext] instant switch to %q (cached) — refreshing informers in background", contextName)
 		go func() {
+			runRBACProbe(newCache, contextName, clientset)
 			informers.RestartInformers(newCache)
 			newCache.Lock()
 			newCache.CacheReady = true
@@ -1304,6 +1367,7 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 		newCache.StopCh = newStopCh
 		newCache.Unlock()
 		go func() {
+			runRBACProbe(newCache, contextName, clientset)
 			syncInformersFunc(newCache, newStopCh, 60*time.Second)
 			newCache.Lock()
 			newCache.CacheReady = true
@@ -2380,15 +2444,17 @@ func HandleTLSCerts(w http.ResponseWriter, r *http.Request) {
 // ─── GitOps Panel ─────────────────────────────────────────────────────────────
 
 type GitOpsResource struct {
-	Kind      string            `json:"kind"`
-	Name      string            `json:"name"`
-	Namespace string            `json:"namespace"`
-	Status    string            `json:"status"`
-	Ready     bool              `json:"ready"`
-	Labels    map[string]string `json:"labels,omitempty"`
-	Source    string            `json:"source,omitempty"`
-	Revision  string            `json:"revision,omitempty"`
-	Message   string            `json:"message,omitempty"`
+	Kind       string            `json:"kind"`
+	Name       string            `json:"name"`
+	Namespace  string            `json:"namespace"`
+	Status     string            `json:"status"`
+	Ready      bool              `json:"ready"`
+	Suspended  bool              `json:"suspended"`
+	SyncStatus string            `json:"syncStatus,omitempty"`
+	Labels     map[string]string `json:"labels,omitempty"`
+	Source     string            `json:"source,omitempty"`
+	Revision   string            `json:"revision,omitempty"`
+	Message    string            `json:"message,omitempty"`
 }
 
 type GitOpsResponse struct {
@@ -2410,6 +2476,17 @@ var gitopsGVRs = []schema.GroupVersionResource{
 	{Group: "argoproj.io", Version: "v1alpha1", Resource: "appprojects"},
 }
 
+// gitopsKindGVR maps the Kind name to its canonical GVR for reconcile/suspend operations.
+// Flux v1beta2 variants fall back to v1 if not found — that's acceptable for patching.
+var gitopsKindGVR = map[string]schema.GroupVersionResource{
+	"Kustomization":  {Group: "kustomize.toolkit.fluxcd.io", Version: "v1", Resource: "kustomizations"},
+	"HelmRelease":    {Group: "helm.toolkit.fluxcd.io", Version: "v2", Resource: "helmreleases"},
+	"GitRepository":  {Group: "source.toolkit.fluxcd.io", Version: "v1", Resource: "gitrepositories"},
+	"HelmRepository": {Group: "source.toolkit.fluxcd.io", Version: "v1beta2", Resource: "helmrepositories"},
+	"Application":    {Group: "argoproj.io", Version: "v1alpha1", Resource: "applications"},
+	"AppProject":     {Group: "argoproj.io", Version: "v1alpha1", Resource: "appprojects"},
+}
+
 func HandleGitOps(w http.ResponseWriter, r *http.Request) {
 	_, cfg := store.Store.ActiveClientset()
 	if cfg == nil {
@@ -2428,7 +2505,20 @@ func HandleGitOps(w http.ResponseWriter, r *http.Request) {
 
 	resp := GitOpsResponse{Resources: []GitOpsResource{}}
 
+	// Track which (group, resource) pairs we have already listed successfully so
+	// that preferred versions (v1, v2) suppress their deprecated fallbacks
+	// (v1beta2, v2beta1) and avoid triggering client-go deprecation warnings.
+	// The key is marked seen only AFTER a successful list so that if a preferred
+	// version fails (CRD not installed), its deprecated fallback can still attempt
+	// to list. gitopsGVRs is ordered preferred-first for this to work correctly.
+	seenGroupResource := map[string]bool{}
+
 	for _, gvr := range gitopsGVRs {
+		key := gvr.Group + "/" + gvr.Resource
+		if seenGroupResource[key] {
+			continue
+		}
+
 		var list *unstructured.UnstructuredList
 		var listErr error
 
@@ -2441,6 +2531,7 @@ func HandleGitOps(w http.ResponseWriter, r *http.Request) {
 			// Resource type doesn't exist in this cluster — skip silently
 			continue
 		}
+		seenGroupResource[key] = true
 
 		group := gvr.Group
 		if strings.Contains(group, "fluxcd.io") {
@@ -2488,6 +2579,7 @@ func HandleGitOps(w http.ResponseWriter, r *http.Request) {
 			if syncStatus != "" && gr.Status == "" {
 				gr.Status = syncStatus
 			}
+			gr.SyncStatus = syncStatus
 
 			// Source ref
 			sourceRef, _, _ := unstructured.NestedMap(item.Object, "spec", "sourceRef")
@@ -2506,6 +2598,13 @@ func HandleGitOps(w http.ResponseWriter, r *http.Request) {
 			}
 			gr.Revision = revision
 
+			// Suspended — Flux resources carry spec.suspend; Argo CD uses an annotation.
+			suspended, _, _ := unstructured.NestedBool(item.Object, "spec", "suspend")
+			gr.Suspended = suspended
+			if item.GetAnnotations()["argocd.argoproj.io/skip-reconcile"] == "true" {
+				gr.Suspended = true
+			}
+
 			if gr.Status == "" {
 				gr.Status = "Unknown"
 			}
@@ -2515,6 +2614,139 @@ func HandleGitOps(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// HandleGitOpsReconcile triggers an immediate reconcile for a Flux or Argo CD resource.
+//
+// Flux: patches the reconcile.fluxcd.io/requestedAt annotation with the current timestamp.
+// Argo CD Application: patches the operation field to initiate a sync.
+//
+// Query params: kind, name, namespace (all required for namespaced resources).
+func HandleGitOpsReconcile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	kind := r.URL.Query().Get("kind")
+	name := r.URL.Query().Get("name")
+	ns := r.URL.Query().Get("namespace")
+	if kind == "" || name == "" {
+		http.Error(w, "kind and name are required", http.StatusBadRequest)
+		return
+	}
+	gvr, ok := gitopsKindGVR[kind]
+	if !ok {
+		http.Error(w, "unsupported kind: "+kind, http.StatusBadRequest)
+		return
+	}
+	_, cfg := store.Store.ActiveClientset()
+	if cfg == nil {
+		http.Error(w, "cluster not connected", http.StatusServiceUnavailable)
+		return
+	}
+	dynClient, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	ctx := r.Context()
+	ri := dynClient.Resource(gvr).Namespace(ns)
+
+	var patchObj interface{}
+	if gvr.Group == "argoproj.io" && kind == "Application" {
+		// Argo CD: trigger sync via operation field.
+		patchObj = map[string]interface{}{
+			"operation": map[string]interface{}{
+				"sync": map[string]interface{}{"prune": false, "dryRun": false},
+			},
+		}
+	} else {
+		// Flux: request reconcile via annotation timestamp.
+		patchObj = map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"annotations": map[string]string{
+					"reconcile.fluxcd.io/requestedAt": time.Now().UTC().Format(time.RFC3339Nano),
+				},
+			},
+		}
+	}
+	patch, err := json.Marshal(patchObj)
+	if err != nil {
+		http.Error(w, "failed to build patch: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if _, err = ri.Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// HandleGitOpsSuspend suspends or resumes a Flux or Argo CD resource.
+//
+// Flux: patches spec.suspend to true/false.
+// Argo CD: sets/clears the argocd.argoproj.io/skip-reconcile annotation.
+//
+// Query params: kind, name, namespace (required); suspend=true|false (default true).
+func HandleGitOpsSuspend(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	kind := r.URL.Query().Get("kind")
+	name := r.URL.Query().Get("name")
+	ns := r.URL.Query().Get("namespace")
+	suspend := r.URL.Query().Get("suspend") != "false"
+	if kind == "" || name == "" {
+		http.Error(w, "kind and name are required", http.StatusBadRequest)
+		return
+	}
+	gvr, ok := gitopsKindGVR[kind]
+	if !ok {
+		http.Error(w, "unsupported kind: "+kind, http.StatusBadRequest)
+		return
+	}
+	_, cfg := store.Store.ActiveClientset()
+	if cfg == nil {
+		http.Error(w, "cluster not connected", http.StatusServiceUnavailable)
+		return
+	}
+	dynClient, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	ctx := r.Context()
+	ri := dynClient.Resource(gvr).Namespace(ns)
+
+	var patchObj interface{}
+	if gvr.Group == "argoproj.io" {
+		val := "false"
+		if suspend {
+			val = "true"
+		}
+		patchObj = map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"annotations": map[string]string{
+					"argocd.argoproj.io/skip-reconcile": val,
+				},
+			},
+		}
+	} else {
+		patchObj = map[string]interface{}{
+			"spec": map[string]interface{}{"suspend": suspend},
+		}
+	}
+	patch, err := json.Marshal(patchObj)
+	if err != nil {
+		http.Error(w, "failed to build patch: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if _, err = ri.Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // HandleCordonNode cordons (unschedulable=true) or uncordons (unschedulable=false) a node.

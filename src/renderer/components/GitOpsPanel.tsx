@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAppStore } from '../store'
 import {
-  Activity, GitBranch, Box, Layers, ExternalLink, RefreshCw, Search, X, Info, Shield, AlertTriangle, CheckCircle, Clock, LayoutGrid, ListFilter
+  Activity, GitBranch, Box, Layers, ExternalLink, RefreshCw, Search, X, Info, Shield, AlertTriangle, CheckCircle, Clock, LayoutGrid, ListFilter, PauseCircle, PlayCircle, RotateCw, GitPullRequest
 } from 'lucide-react'
 import PageHeader from './PageHeader'
 
@@ -12,6 +12,8 @@ interface GitOpsResource {
   namespace: string
   status: string
   ready: boolean
+  suspended?: boolean
+  syncStatus?: string
   labels?: Record<string, string>
   source?: string
   revision?: string
@@ -58,6 +60,7 @@ function statusColor(r: GitOpsResource) {
 }
 
 function PulseDot({ r }: { r: GitOpsResource }) {
+  if (r.suspended) return <PauseCircle className="w-3.5 h-3.5 text-slate-500" />
   if (r.status === 'Unknown' || r.status === '') return <span className="w-1.5 h-1.5 rounded-full bg-slate-600 inline-block" />
   if (isHealthy(r)) return (
     <span className="relative inline-flex shrink-0">
@@ -83,6 +86,8 @@ function KindPill({ kind }: { kind: string }) {
     </span>
   )
 }
+
+const resourceKey = (r: GitOpsResource) => `${r.kind}/${r.namespace}/${r.name}`
 
 // ── overview panel (shown when nothing is selected) ──────────────────────────
 
@@ -230,12 +235,23 @@ function OverviewPanel({ resources, fluxDetected, argoDetected }: {
 
 // ── detail panel ─────────────────────────────────────────────────────────────
 
-function DetailPanel({ r, onClose }: { r: GitOpsResource; onClose: () => void }) {
+function DetailPanel({ r, onClose, onReconcile, onSuspend, actionPending, actionFeedback }: {
+  r: GitOpsResource
+  onClose: () => void
+  onReconcile: (r: GitOpsResource) => void
+  onSuspend: (r: GitOpsResource, suspend: boolean) => void
+  actionPending: string | null
+  actionFeedback: { key: string; msg: string; ok: boolean } | null
+}) {
   const m = kindMeta(r.kind)
   const healthy = isHealthy(r)
   const progressing = isProgressing(r)
   const shortRev = r.revision ? r.revision.slice(0, 12) : null
   const labelEntries = r.labels ? Object.entries(r.labels) : []
+  const key = `${r.kind}/${r.namespace}/${r.name}`
+  const isPending = actionPending === key
+  const feedback = actionFeedback?.key === key ? actionFeedback : null
+  const canSuspend = r.kind !== 'AppProject' // AppProject has no suspend concept
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
@@ -261,20 +277,87 @@ function DetailPanel({ r, onClose }: { r: GitOpsResource; onClose: () => void })
             <KindPill kind={r.kind} />
             {m.tool === 'flux' && <span className="text-[9px] font-black tracking-widest text-sky-500/50 uppercase">Flux</span>}
             {m.tool === 'argo' && <span className="text-[9px] font-black tracking-widest text-orange-500/50 uppercase">Argo</span>}
+            {r.suspended && <span className="text-[9px] font-black tracking-widest text-slate-500 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 uppercase">Suspended</span>}
           </div>
-          <span className={`text-[10px] font-black uppercase tracking-wider mt-0.5 ${statusColor(r)}`}>
-            {r.status || 'Unknown'}
-          </span>
+          <div className="flex flex-col items-end gap-1">
+            <span className={`text-[10px] font-black uppercase tracking-wider ${r.suspended ? 'text-slate-500' : statusColor(r)}`}>
+              {r.suspended ? 'Suspended' : (r.status || 'Unknown')}
+            </span>
+            {r.syncStatus && !r.suspended && (
+              <span className={`text-[9px] font-bold uppercase tracking-wider ${r.syncStatus === 'Synced' ? 'text-emerald-400' : r.syncStatus === 'OutOfSync' ? 'text-amber-400' : 'text-slate-500'}`}>
+                {r.syncStatus === 'OutOfSync' && <GitPullRequest className="inline w-3 h-3 mr-0.5 -mt-0.5" />}
+                {r.syncStatus}
+              </span>
+            )}
+          </div>
         </div>
         <p className="font-mono text-sm font-bold text-slate-900 dark:text-white break-all leading-tight">{r.name}</p>
         {r.namespace && <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{r.namespace}</p>}
-        {r.message && (
+        {r.message && !r.suspended && (
           <p className={`mt-2.5 text-[10px] leading-relaxed rounded-lg px-3 py-2 border ${healthy ? 'text-emerald-400/80 bg-emerald-500/5 border-emerald-500/10'
               : progressing ? 'text-amber-400/80 bg-amber-500/5 border-amber-500/10'
                 : 'text-red-400/80 bg-red-500/5 border-red-500/10'
             }`}>
             {r.message}
           </p>
+        )}
+      </div>
+
+      {/* ── actions ─────────────────────────────────────────────────────── */}
+      <div className="px-4 mb-4">
+        <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400 dark:text-slate-600 mb-2">Actions</p>
+        <div className="flex flex-col gap-2">
+          {/* Reconcile — not available while suspended */}
+          <button
+            disabled={isPending || !!r.suspended}
+            onClick={() => onReconcile(r)}
+            className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-sky-500/20 bg-sky-500/5 hover:bg-sky-500/10 hover:border-sky-500/40 text-sky-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed text-left"
+          >
+            <RotateCw className={`w-3.5 h-3.5 shrink-0 ${isPending ? 'animate-spin' : ''}`} />
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest">Reconcile Now</p>
+              <p className="text-[9px] text-sky-400/60 mt-0.5">
+                {m.tool === 'argo' ? 'Trigger ArgoCD sync' : 'Request immediate Flux reconcile'}
+              </p>
+            </div>
+          </button>
+
+          {/* Suspend / Resume — AppProject has no suspend */}
+          {canSuspend && (
+            r.suspended ? (
+              <button
+                disabled={isPending}
+                onClick={() => onSuspend(r, false)}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500/40 text-emerald-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed text-left"
+              >
+                <PlayCircle className="w-3.5 h-3.5 shrink-0" />
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest">Resume</p>
+                  <p className="text-[9px] text-emerald-400/60 mt-0.5">Re-enable automatic reconciliation</p>
+                </div>
+              </button>
+            ) : (
+              <button
+                disabled={isPending}
+                onClick={() => onSuspend(r, true)}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-slate-500/20 bg-white/[0.02] hover:bg-white/[0.04] hover:border-slate-500/40 text-slate-400 hover:text-slate-300 transition-all disabled:opacity-40 disabled:cursor-not-allowed text-left"
+              >
+                <PauseCircle className="w-3.5 h-3.5 shrink-0" />
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest">Suspend</p>
+                  <p className="text-[9px] text-slate-500 mt-0.5">Pause automatic reconciliation</p>
+                </div>
+              </button>
+            )
+          )}
+        </div>
+
+        {/* action feedback toast */}
+        {feedback && (
+          <div className={`mt-2 flex items-center gap-2 px-3 py-2 rounded-lg text-[10px] font-bold border ${feedback.ok ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
+            {feedback.ok ? <CheckCircle className="w-3 h-3 shrink-0" /> : <AlertTriangle className="w-3 h-3 shrink-0" />}
+            {feedback.msg}
+          </div>
         )}
       </div>
 
@@ -399,19 +482,30 @@ function NoControllersState() {
 
 // ── table row ─────────────────────────────────────────────────────────────────
 
-function TableRow({ r, selected, onClick }: { r: GitOpsResource; selected: boolean; onClick: () => void }) {
+function TableRow({ r, selected, onClick, onReconcile }: {
+  r: GitOpsResource; selected: boolean; onClick: () => void
+  onReconcile: (r: GitOpsResource, e: React.MouseEvent) => void
+}) {
   return (
     <tr
       onClick={onClick}
-      className={`cursor-pointer transition-colors ${selected ? 'bg-sky-500/[0.08]' : 'hover:bg-white/[0.03]'
-        }`}
+      className={`cursor-pointer transition-colors group ${selected ? 'bg-sky-500/[0.08]' : 'hover:bg-white/[0.03]'
+        } ${r.suspended ? 'opacity-60' : ''}`}
     >
       <td className="pl-5 pr-2 py-3">
         <PulseDot r={r} />
       </td>
       <td className="px-3 py-3 max-w-0">
-        <p className="font-mono text-[11px] font-semibold text-slate-200 truncate">{r.name}</p>
-        {r.message && !r.ready && r.status !== 'Unknown' && (
+        <div className="flex items-center gap-1.5 min-w-0">
+          <p className="font-mono text-[11px] font-semibold text-slate-200 truncate">{r.name}</p>
+          {r.suspended && (
+            <span className="shrink-0 text-[9px] font-black uppercase tracking-widest text-slate-500 bg-slate-800 border border-slate-700 rounded px-1 py-0.5">Suspended</span>
+          )}
+          {r.syncStatus === 'OutOfSync' && !r.suspended && (
+            <span className="shrink-0 text-[9px] font-black uppercase tracking-widest text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1 py-0.5">OutOfSync</span>
+          )}
+        </div>
+        {r.message && !r.ready && !r.suspended && r.status !== 'Unknown' && (
           <p className="text-[9px] text-red-400/70 truncate mt-0.5">{r.message}</p>
         )}
       </td>
@@ -434,7 +528,18 @@ function TableRow({ r, selected, onClick }: { r: GitOpsResource; selected: boole
         )}
       </td>
       <td className="px-3 py-3 max-w-0">
-        <span className={`text-[10px] font-bold ${statusColor(r)} truncate block`}>{r.status || '—'}</span>
+        <span className={`text-[10px] font-bold ${r.suspended ? 'text-slate-500' : statusColor(r)} truncate block`}>{r.suspended ? 'Suspended' : (r.status || '—')}</span>
+      </td>
+      <td className="px-3 py-3 whitespace-nowrap">
+        {!r.suspended && (
+          <button
+            onClick={e => onReconcile(r, e)}
+            title="Reconcile now"
+            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-sky-500/10 text-slate-600 hover:text-sky-400 transition-all"
+          >
+            <RotateCw className="w-3 h-3" />
+          </button>
+        )}
       </td>
     </tr>
   )
@@ -450,6 +555,8 @@ export default function GitOpsPanel() {
   const [search, setSearch] = useState('')
   const [kindFilter, setKindFilter] = useState('all')
   const [selected, setSelected] = useState<GitOpsResource | null>(null)
+  const [actionPending, setActionPending] = useState<string | null>(null) // "<kind>/<ns>/<name>"
+  const [actionFeedback, setActionFeedback] = useState<{ key: string; msg: string; ok: boolean } | null>(null)
 
   const load = useCallback(async () => {
     if (!selectedContext) return
@@ -466,8 +573,45 @@ export default function GitOpsPanel() {
     }
   }, [selectedContext, selectedNamespace])
 
+  const handleReconcile = useCallback(async (r: GitOpsResource, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    const key = resourceKey(r)
+    setActionPending(key)
+    setActionFeedback(null)
+    try {
+      await window.kubectl.reconcileGitOps(r.kind, r.name, r.namespace)
+      setActionFeedback({ key, msg: 'Reconcile triggered', ok: true })
+      setTimeout(() => load(), 1500)
+    } catch (err) {
+      setActionFeedback({ key, msg: (err as Error).message, ok: false })
+    } finally {
+      setActionPending(null)
+    }
+  }, [load])
+
+  const handleSuspend = useCallback(async (r: GitOpsResource, suspend: boolean) => {
+    const key = resourceKey(r)
+    setActionPending(key)
+    setActionFeedback(null)
+    try {
+      await window.kubectl.suspendGitOps(r.kind, r.name, r.namespace, suspend)
+      setActionFeedback({ key, msg: suspend ? 'Suspended' : 'Resumed', ok: true })
+      // Optimistically update the selected resource and reload
+      if (selected && resourceKey(selected) === key) setSelected({ ...selected, suspended: suspend })
+      setTimeout(() => load(), 1500)
+    } catch (err) {
+      setActionFeedback({ key, msg: (err as Error).message, ok: false })
+    } finally {
+      setActionPending(null)
+    }
+  }, [load, selected])
+
   useEffect(() => { load() }, [load])
-  useEffect(() => { setSelected(null) }, [selectedContext, selectedNamespace])
+  useEffect(() => {
+    setSelected(null)
+    setActionPending(null)
+    setActionFeedback(null)
+  }, [selectedContext, selectedNamespace])
 
   const resources = data?.resources ?? []
   const kinds = useMemo(() => Array.from(new Set(resources.map(r => r.kind))).sort(), [resources])
@@ -612,28 +756,30 @@ export default function GitOpsPanel() {
                   <col style={{ width: '28px' }} />
                   <col />
                   <col style={{ width: '130px' }} />
+                  <col style={{ width: '120px' }} />
                   <col style={{ width: '130px' }} />
-                  <col style={{ width: '140px' }} />
+                  <col style={{ width: '80px' }} />
                   <col style={{ width: '90px' }} />
-                  <col style={{ width: '90px' }} />
+                  <col style={{ width: '36px' }} />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-white/[0.05]">
                     <th className="pl-5 pr-2 py-2.5" />
-                    {['Name', 'Kind', 'Namespace', 'Source', 'Rev', 'Status'].map(h => (
-                      <th key={h} className="px-3 py-2.5 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-600 text-left">{h}</th>
+                    {['Name', 'Kind', 'Namespace', 'Source', 'Rev', 'Status', ''].map((h, i) => (
+                      <th key={i} className="px-3 py-2.5 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-600 text-left">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-white/[0.03]">
                   {filtered.map(r => (
                     <TableRow
-                      key={`${r.kind}/${r.namespace}/${r.name}`}
+                      key={resourceKey(r)}
                       r={r}
                       selected={selected?.kind === r.kind && selected?.name === r.name && selected?.namespace === r.namespace}
                       onClick={() => setSelected(prev =>
                         prev?.kind === r.kind && prev?.name === r.name && prev?.namespace === r.namespace ? null : r
                       )}
+                      onReconcile={handleReconcile}
                     />
                   ))}
                 </tbody>
@@ -644,7 +790,14 @@ export default function GitOpsPanel() {
           {/* ── right: detail or overview ───────────────────────────────── */}
           <div className="border-l border-slate-200 dark:border-white/[0.05] overflow-hidden" style={{ width: '35%' }}>
             {selected ? (
-              <DetailPanel r={selected} onClose={() => setSelected(null)} />
+              <DetailPanel
+                r={selected}
+                onClose={() => setSelected(null)}
+                onReconcile={handleReconcile}
+                onSuspend={handleSuspend}
+                actionPending={actionPending}
+                actionFeedback={actionFeedback}
+              />
             ) : (
               <OverviewPanel
                 resources={resources}
