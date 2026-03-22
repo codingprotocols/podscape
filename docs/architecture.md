@@ -27,9 +27,10 @@ The sidecar is a standalone HTTP server compiled as `podscape-core`. It is the s
 | Package | Responsibility |
 |---|---|
 | `cmd/podscape-core/main.go` | Route registration, startup, token auth middleware, CORS |
-| `internal/handlers/handlers.go` | One handler per resource type and operation |
-| `internal/informers/` | K8s shared informers — cache resource lists in-memory for fast reads |
+| `internal/handlers/handlers.go` | One handler per resource type and operation; `MakeHandler` factory with RBAC guard |
+| `internal/informers/` | K8s shared informers — cache resource lists in-memory for fast reads; skips informers for denied resources |
 | `internal/store/` | `ClusterStore` singleton: per-context `ContextCache` pool, active context pointer |
+| `internal/rbac/` | `CheckAccess` — concurrent `SelfSubjectAccessReview` probe (list + watch, 8-goroutine pool); `AllResources` descriptor table |
 | `internal/portforward/` | Manages active tunnels, streams events over WebSocket |
 | `internal/exec/` | WebSocket-based container exec (PTY) |
 | `internal/logs/` | WebSocket-based log streaming |
@@ -42,6 +43,16 @@ The sidecar is a standalone HTTP server compiled as `podscape-core`. It is the s
 **No-kubeconfig mode**: if no valid kubeconfig is found at startup, the sidecar still starts the HTTP server and sets `NoKubeconfig = true`. `/health` returns 200 immediately so the renderer can show the `KubeConfigOnboarding` screen instead of an error dialog. After the user sets a kubeconfig path, the sidecar is restarted via `window.sidecar.restart()` IPC.
 
 **Token auth**: the sidecar is launched with a randomly generated `--token` flag. Every request (except `/health`) must include the `X-Podscape-Token` header matching that token. The token is passed to the renderer via IPC and injected by `checkedSidecarFetch`.
+
+**RBAC probe**: at startup and on every context switch, `rbac.CheckAccess` fires concurrent `SelfSubjectAccessReview` requests for all 28 tracked resource types checking both `list` and `watch` verbs. Results are stored in `ContextCache.AllowedResources map[string]bool`:
+
+| Value | Meaning |
+|---|---|
+| `nil` | Probe not yet run or failed — all resources treated as allowed (permissive) |
+| empty map `{}` | All resources denied |
+| populated map | Probed result; `false` = denied for that resource |
+
+Informers only register for resources where `allowed[resource] != false`. Each `MakeHandler`-built HTTP handler checks `AllowedResources` before serving; denied resources return `200 []` + `X-Podscape-Denied: true`. The renderer `getResources` IPC handler detects this header and throws `RBACDeniedError`, which `loadSection` catches to populate `deniedSections: Set<ResourceKind>` in the Zustand store. `ResourceList` renders an amber "Access denied" banner for denied sections instead of the generic empty state.
 
 ### Main Process (`src/main/`)
 
@@ -77,7 +88,11 @@ Exposes six namespaced APIs to the renderer via `contextBridge`:
    ├─ if kubeconfig missing:
    │   sidecar enters no-kubeconfig mode → /health returns 200 immediately
    └─ if kubeconfig found:
-       sidecar loads informers → /health returns 200 once cache synced
+       a. HTTP server starts (binds to 127.0.0.1:<port>)
+       b. rbac.CheckAccess — concurrent SAR probe, 10s deadline
+          → writes AllowedResources into initial ContextCache
+       c. informers.InitInformers — only registers informers for allowed resources
+       d. ContextCache.HasData = true → /health returns 200
 4. createWindow(onReady)
    └─ ready-to-show → splash.destroy(), main window shown
 ```

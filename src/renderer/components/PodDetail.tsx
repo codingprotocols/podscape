@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
+import { isMac } from '../utils/platform'
 import type { KubePod, KubeEvent } from '../types'
 import { podPhaseBg, formatAge } from '../types'
 import { useAppStore } from '../store'
@@ -299,7 +300,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const FullscreenOverlay = logFullscreen ? (
     <div className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-[hsl(var(--bg-dark))] animate-in zoom-in-95 duration-200">
       {/* Fullscreen header */}
-      <div className="flex items-center justify-between px-6 py-4 bg-white/5 backdrop-blur-xl border-b border-slate-100 dark:border-white/5 shrink-0">
+      <div className={`flex items-center justify-between px-6 py-4 bg-white/5 backdrop-blur-xl border-b border-slate-100 dark:border-white/5 shrink-0 ${isMac ? 'pl-20' : ''}`}>
         <div className="flex items-center gap-4">
           <div className="flex flex-col">
             <span className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-tighter">{pod.metadata.name}</span>
@@ -358,7 +359,40 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  // ── Main panel ────────────────────────────────────────────────────────────
+  // Global keyboard shortcuts for selected pod
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if typing in an input
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return
+      
+      const isCmdOrCtrl = isMac ? e.metaKey : e.ctrlKey
+
+      // CMD+T -> Open Shell
+      if (isCmdOrCtrl && e.key === 't') {
+        e.preventDefault()
+        openExec({ pod: pod.metadata.name, container: selectedContainer, namespace: pod.metadata.namespace ?? '' })
+      }
+
+      // CMD+L -> Toggle Logs (Fullscreen)
+      if (isCmdOrCtrl && e.key === 'l') {
+        e.preventDefault()
+        setActiveTab('logs')
+        setLogFullscreen(true)
+      }
+
+      // CMD+D -> Close Fullscreen Logs (if open)
+      if (isCmdOrCtrl && e.key === 'd') {
+        if (logFullscreen) {
+          e.preventDefault()
+          setLogFullscreen(false)
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [pod, selectedContainer, openExec, logFullscreen])
+
+  // ── Events ────────────────────────────────────────────────────────────────
 
   return (
     <>

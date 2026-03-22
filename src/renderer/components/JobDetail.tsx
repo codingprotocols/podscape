@@ -1,14 +1,18 @@
-import React from 'react'
+import React, { useState } from 'react'
 import type { KubeJob } from '../types'
 import { formatAge } from '../types'
-import { Play, CheckCircle2, Circle, Clock, FileCode, X, Activity, History } from 'lucide-react'
+import { Play, CheckCircle2, Circle, Clock, FileCode, X, Activity, History, AlertTriangle, CheckCircle } from 'lucide-react'
 import YAMLViewer from './YAMLViewer'
 import { useYAMLEditor } from '../hooks/useYAMLEditor'
+import { useAppStore } from '../store'
+import { useResourceEvents } from '../hooks/useResourceEvents'
 
 interface Props { job: KubeJob }
 
 export default function JobDetail({ job }: Props): JSX.Element {
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
+  const { selectedContext: ctx } = useAppStore()
+  const { events } = useResourceEvents(ctx, job.metadata.name, 'Job', job.metadata.namespace)
 
   const conditions = job.status.conditions ?? []
   const startTime = job.status.startTime
@@ -38,7 +42,7 @@ export default function JobDetail({ job }: Props): JSX.Element {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
+      <div className="flex-1 overflow-y-auto p-6 scrollbar-hide space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="space-y-6">
             {/* Progress */}
@@ -110,6 +114,39 @@ export default function JobDetail({ job }: Props): JSX.Element {
             </div>
           </section>
         </div>
+
+        {/* Events */}
+        <section>
+          <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+            <Activity size={12} /> Events
+            {events.some(e => e.type === 'Warning') && (
+              <span className="text-[9px] font-black bg-amber-500/20 text-amber-400 rounded-full px-1.5 py-0.5 ml-1">{events.filter(e => e.type === 'Warning').length} warning{events.filter(e => e.type === 'Warning').length > 1 ? 's' : ''}</span>
+            )}
+          </h4>
+          <div className="space-y-2">
+            {events.length === 0 ? (
+              <div className="text-center py-10 bg-slate-50 dark:bg-white/[0.01] rounded-2xl border border-dashed border-slate-200 dark:border-white/10">
+                <p className="text-xs text-slate-400">No events recorded for this Job</p>
+              </div>
+            ) : events.map((e, i) => (
+              <div key={i} className={`flex gap-4 p-4 rounded-2xl border ${e.type === 'Warning' ? 'bg-amber-500/5 border-amber-500/10' : 'bg-white/[0.02] border-white/5'}`}>
+                <div className={`mt-0.5 shrink-0 ${e.type === 'Warning' ? 'text-amber-400' : 'text-slate-500'}`}>
+                  {e.type === 'Warning' ? <AlertTriangle size={14} /> : <CheckCircle size={14} />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{e.reason}</span>
+                    {e.count && e.count > 1 && (
+                      <span className="text-[9px] font-bold bg-slate-700 text-slate-400 rounded-full px-1.5 py-0.5">×{e.count}</span>
+                    )}
+                    <span className="text-[9px] text-slate-500 ml-auto">{formatAge(e.lastTimestamp ?? e.eventTime ?? e.firstTimestamp ?? '')} ago</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-relaxed break-words">{e.message}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
 
       {/* Premium YAML Modal */}

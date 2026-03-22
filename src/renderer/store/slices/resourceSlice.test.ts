@@ -274,4 +274,96 @@ describe('resourceSlice', () => {
             expect(state.securityScanning).toBe(false)
         })
     })
+
+    // ── Exec session state machine ─────────────────────────────────────────────
+
+    describe('exec session actions', () => {
+        const target1 = { pod: 'pod-a', container: 'app', namespace: 'default' }
+        const target2 = { pod: 'pod-b', container: 'sidecar', namespace: 'kube-system' }
+
+        beforeEach(() => {
+            state.execSessions = []
+            state.activeExecId = null
+        })
+
+        it('openExec appends a new session and sets it as active', () => {
+            const slice = createResourceSlice(set, get, {} as any)
+            slice.openExec(target1)
+
+            expect(state.execSessions).toHaveLength(1)
+            expect(state.execSessions[0].target).toEqual(target1)
+            expect(state.activeExecId).toBe(state.execSessions[0].id)
+        })
+
+        it('openExec twice appends two sessions, active is the second', () => {
+            const slice = createResourceSlice(set, get, {} as any)
+            slice.openExec(target1)
+            slice.openExec(target2)
+
+            expect(state.execSessions).toHaveLength(2)
+            expect(state.execSessions[0].target).toEqual(target1)
+            expect(state.execSessions[1].target).toEqual(target2)
+            expect(state.activeExecId).toBe(state.execSessions[1].id)
+        })
+
+        it('closeExec clears all sessions and activeExecId', () => {
+            const slice = createResourceSlice(set, get, {} as any)
+            slice.openExec(target1)
+            slice.openExec(target2)
+            slice.closeExec()
+
+            expect(state.execSessions).toHaveLength(0)
+            expect(state.activeExecId).toBeNull()
+        })
+
+        it('closeExecTab removes the tab and shifts active to next', () => {
+            const slice = createResourceSlice(set, get, {} as any)
+            slice.openExec(target1)
+            slice.openExec(target2)
+            const firstId = state.execSessions[0].id
+            const secondId = state.execSessions[1].id
+
+            // Make first tab active, then close it → should shift to second
+            slice.setActiveExecId(firstId)
+            slice.closeExecTab(firstId)
+
+            expect(state.execSessions).toHaveLength(1)
+            expect(state.execSessions[0].id).toBe(secondId)
+            expect(state.activeExecId).toBe(secondId)
+        })
+
+        it('closeExecTab on the last session leaves execSessions empty and activeExecId null', () => {
+            const slice = createResourceSlice(set, get, {} as any)
+            slice.openExec(target1)
+            const id = state.execSessions[0].id
+            slice.closeExecTab(id)
+
+            expect(state.execSessions).toHaveLength(0)
+            expect(state.activeExecId).toBeNull()
+        })
+
+        it('closeExecTab on a non-active tab leaves active unchanged', () => {
+            const slice = createResourceSlice(set, get, {} as any)
+            slice.openExec(target1)
+            slice.openExec(target2)
+            const firstId = state.execSessions[0].id
+            const secondId = state.execSessions[1].id
+
+            // second tab is active; close first → active stays second
+            slice.closeExecTab(firstId)
+
+            expect(state.execSessions).toHaveLength(1)
+            expect(state.activeExecId).toBe(secondId)
+        })
+
+        it('setActiveExecId switches the active tab', () => {
+            const slice = createResourceSlice(set, get, {} as any)
+            slice.openExec(target1)
+            slice.openExec(target2)
+            const firstId = state.execSessions[0].id
+
+            slice.setActiveExecId(firstId)
+            expect(state.activeExecId).toBe(firstId)
+        })
+    })
 })

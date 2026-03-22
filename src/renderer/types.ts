@@ -649,6 +649,7 @@ export interface AppGroup {
 
 export type ResourceKind =
   | 'unifiedlogs'
+  | 'multi-terminal'
   | 'apps'
   | 'dashboard'
   | 'helm'
@@ -697,15 +698,20 @@ export type ResourceKind =
   | 'istio-serviceentries'
   | 'istio-peerauth'
   | 'istio-authpolicies'
+  | 'istio-requestauth'
   // Traefik
   | 'traefik-ingressroutes'
   | 'traefik-ingressroutestcp'
   | 'traefik-ingressroutesudp'
   | 'traefik-middlewares'
+  | 'traefik-middlewaretcps'
   | 'traefik-services'
   | 'traefik-tlsoptions'
+  | 'traefik-tlsstores'
+  | 'traefik-serverstransporttcps'
   // NGINX Inc (kubernetes-ingress, CRD-based)
   | 'nginx-virtualservers'
+  | 'nginx-virtualserverroutes'
   | 'nginx-policies'
   | 'nginx-transportservers'
 

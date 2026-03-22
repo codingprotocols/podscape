@@ -6,11 +6,17 @@ import (
 	"log"
 	"net/http"
 
+	"context"
+	"time"
+
 	"github.com/podscape/go-core/internal/handlers"
 	"github.com/podscape/go-core/internal/informers"
 	"github.com/podscape/go-core/internal/portforward"
+	"github.com/podscape/go-core/internal/rbac"
 	"github.com/podscape/go-core/internal/store"
+	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 )
@@ -119,6 +125,8 @@ func main() {
 
 	// GitOps Panel
 	http.HandleFunc("/gitops", handlers.HandleGitOps)
+	http.HandleFunc("/gitops/reconcile", handlers.HandleGitOpsReconcile)
+	http.HandleFunc("/gitops/suspend", handlers.HandleGitOpsSuspend)
 
 	// Provider detection (Istio, Traefik, Nginx)
 	http.HandleFunc("/providers", handlers.HandleProviders)
@@ -172,10 +180,19 @@ func main() {
 	// cache sync are not throttled. Lens and kubectl use similar higher limits.
 	config.QPS = 50
 	config.Burst = 100
+	// Suppress client-go API deprecation warnings (e.g. "v1 Endpoints deprecated
+	// in v1.33+") — these are noise in the sidecar log; we handle version fallback
+	// explicitly in the GitOps handler.
+	config.WarningHandler = rest.NoWarnings{}
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		log.Fatalf("Error creating kubernetes client: %v", err)
+	}
+
+	apiextClient, err := apiextensionsclientset.NewForConfig(config)
+	if err != nil {
+		log.Fatalf("Error creating apiextensions client: %v", err)
 	}
 
 	// Determine the active context name for the initial cache key.
@@ -190,6 +207,9 @@ func main() {
 
 	// Bootstrap the initial context cache and set it as active.
 	initialCache, _ := store.Store.GetOrCreateCache(activeCtxName, clientset, config)
+	initialCache.Lock()
+	initialCache.ApiextensionsClientset = apiextClient
+	initialCache.Unlock()
 	store.Store.Lock()
 	store.Store.ActiveContextName = activeCtxName
 	store.Store.ActiveCache = initialCache
@@ -204,6 +224,29 @@ func main() {
 		fmt.Printf("Go sidecar listening on port %s\n", *port)
 		log.Fatal(http.ListenAndServe("127.0.0.1:"+*port, handler))
 	}()
+
+	// Probe RBAC permissions before starting informers so the informer guards
+	// can skip resources the current user cannot access. A 10-second deadline
+	// prevents a slow API server from delaying startup significantly.
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		allowed, err := rbac.CheckAccessFunc(ctx, clientset)
+		cancel()
+		if err != nil {
+			log.Printf("[main] RBAC probe failed, starting all informers: %v", err)
+		} else {
+			denied := 0
+			for _, ok := range allowed {
+				if !ok {
+					denied++
+				}
+			}
+			log.Printf("[main] RBAC probe complete: %d/%d resources accessible", len(allowed)-denied, len(allowed))
+			initialCache.Lock()
+			initialCache.AllowedResources = allowed
+			initialCache.Unlock()
+		}
+	}
 
 	// Block until the critical informers are synced, then mark the sidecar ready.
 	// /health returns 503 until this completes, so startSidecar() keeps polling.
