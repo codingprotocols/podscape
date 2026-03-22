@@ -18,7 +18,7 @@ export function registerTerminalHandlers(): void {
   ipcMain.handle(
     'exec:start',
     (event, _context: string, namespace: string, pod: string, container: string) => {
-      const id = `exec-${Date.now()}`
+      const id = `exec-${Date.now()}-${Math.floor(Math.random() * 10000)}`
       
       const WebSocket = require('ws')
       const ws = new WebSocket(`ws://${SIDECAR_HOST}:${activeSidecarPort}/exec?namespace=${namespace}&pod=${pod}&container=${container}&command=sh`, {
