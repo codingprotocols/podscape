@@ -16,7 +16,8 @@ import {
   AlertTriangle,
   LayoutGrid,
   Cpu,
-  CheckCircle2
+  CheckCircle2,
+  RefreshCw
 } from 'lucide-react'
 
 // ─── Ring chart (SVG donut) ───────────────────────────────────────────────────
@@ -361,7 +362,7 @@ export default function Dashboard(): JSX.Element {
     loadingResources,
     pods, deployments, namespaces,
     nodes, nodeMetrics, events,
-    prometheusAvailable, navigateToResource,
+    prometheusAvailable, navigateToResource, refresh,
   } = useAppStore(useShallow(s => ({
     loadingResources: s.loadingResources,
     pods: s.pods,
@@ -372,6 +373,7 @@ export default function Dashboard(): JSX.Element {
     events: s.events,
     prometheusAvailable: s.prometheusAvailable,
     navigateToResource: s.navigateToResource,
+    refresh: s.refresh,
   })))
 
   // ── Derived health data ───────────────────────────────────────────────────
@@ -433,10 +435,23 @@ export default function Dashboard(): JSX.Element {
           <div className="px-8 py-10 space-y-16 text-slate-900 dark:text-slate-100">
             {/* ── Cluster stats ───────────────────────────────────────────────── */}
             <section>
-              <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-6 flex items-center gap-3">
-                <span className="w-6 h-px bg-slate-200 dark:bg-white/5" />
-                Cluster Overview
-              </h2>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] flex items-center gap-3">
+                  <span className="w-6 h-px bg-slate-200 dark:bg-white/5" />
+                  Cluster Overview
+                </h2>
+                <button
+                  onClick={refresh}
+                  disabled={loadingResources}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider
+                             text-slate-500 hover:text-slate-800 dark:hover:text-slate-200
+                             hover:bg-slate-100 dark:hover:bg-white/[0.06] rounded-xl
+                             disabled:opacity-40 active:scale-95 transition-all border border-slate-200 dark:border-white/[0.06]"
+                >
+                  <RefreshCw className={`w-3 h-3 ${loadingResources ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
+              </div>
               <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard
                   label="Pods active"
@@ -600,7 +615,7 @@ export default function Dashboard(): JSX.Element {
                 <EmptySection message="No compute nodes discovered" />
               ) : (
                 <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {nodes.map(node => (
+                  {[...nodes].sort((a, b) => a.metadata.name.localeCompare(b.metadata.name)).map(node => (
                     <NodeCard
                       key={node.metadata.uid}
                       node={node}
