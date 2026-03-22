@@ -43,7 +43,7 @@ const kubectl = {
   getCRDs: (context: string) => ipcRenderer.invoke('kubectl:getCRDs', context),
 
   // Events
-  getEvents: (context: string, namespace: string | null) =>
+  getEvents: (context: string, namespace: string | null): Promise<import('../renderer/types').KubeEvent[]> =>
     ipcRenderer.invoke('kubectl:getEvents', context, namespace),
 
   // Generic CRD instance fetcher (for Traefik IngressRoute, Istio VirtualService, etc.)
@@ -227,6 +227,10 @@ const kubectl = {
   // GitOps Panel
   getGitOps: (namespace?: string) =>
     ipcRenderer.invoke('kubectl:getGitOps', namespace),
+  reconcileGitOps: (kind: string, name: string, namespace: string): Promise<void> =>
+    ipcRenderer.invoke('kubectl:reconcileGitOps', kind, name, namespace),
+  suspendGitOps: (kind: string, name: string, namespace: string, suspend: boolean): Promise<void> =>
+    ipcRenderer.invoke('kubectl:suspendGitOps', kind, name, namespace, suspend),
 
 }
 

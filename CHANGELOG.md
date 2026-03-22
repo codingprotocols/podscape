@@ -1,5 +1,41 @@
 # Changelog
 
+## [2.1.0] — 2026-03-22
+
+### New features
+
+#### RBAC-aware startup
+- The sidecar now runs a `SelfSubjectAccessReview` probe (concurrent `list`+`watch` checks, 8-goroutine pool, 10 s deadline) at startup and on every context switch before starting informers
+- Informers are only registered for resources the current user can access; inaccessible resources are silently skipped rather than producing watch errors in cluster logs
+- A new `internal/rbac` package (`rbac.go` / `rbac_test.go`) owns the SAR logic and exposes `CheckAccessFunc` — an injectable var used by both `main.go` and `HandleSwitchContext` for test isolation
+- Each `ContextCache` carries an `AllowedResources map[string]bool` field with three-state semantics: `nil` = probe not yet run (permissive), empty map = all denied, populated map = probed result
+- `MakeHandler` factory now accepts a `resource string` parameter; all 27 built-in handlers include an RBAC guard that returns `200 []` + `X-Podscape-Denied: true` header when the resource is denied
+- The renderer detects `X-Podscape-Denied: true` via `RBACDeniedError` (thrown by the main-process `getResources` IPC handler) and stores denied sections in a new `deniedSections: Set<ResourceKind>` store field; `ResourceList` shows an amber "Access denied" banner instead of the generic empty state
+
+#### HPA improvements
+- **v2 metrics**: Informer upgraded from `autoscaling/v1` to `autoscaling/v2`; cached HPA objects now include `spec.metrics` and `status.currentMetrics` so the existing metric parser in `HPADetail` renders resource, container-resource, Pods, and External metrics with target-vs-current comparison
+- **Scale reason**: The most recent `SuccessfulRescale` event message is parsed and displayed as a human-readable "Last scale reason" banner in the replica gauge card
+- **Events tab**: HPA detail now shows a dedicated events section (newest-first, capped at 15) filtered by `involvedObject.name/kind`
+- **Auto-refresh**: Events re-fetch every 30 seconds while the HPA detail panel is open
+
+#### Events in DaemonSet and Job detail views
+- `DaemonSetDetail` gains a new **Events** tab alongside the existing Overview and Analysis tabs; the tab badge shows the count of Warning-type events
+- `JobDetail` gains an **Events** section rendered below the conditions timeline; same amber/gray Warning/Normal visual treatment
+
+### Improvements
+
+- **`getEvents` return type**: `window.kubectl.getEvents` is now properly typed as `Promise<KubeEvent[]>` in the preload, eliminating manual type casts in callers
+- **IPC double-registration fix**: `ipcMain.handle('shell:openExternal', ...)` moved out of `createWindow()` into the `app.whenReady()` block, preventing a crash on macOS `activate` events (window re-creation)
+- **Cross-platform keyboard shortcut labels**: `CommandPalette` and `ConnectivityTester` now display `⌘` on macOS and `Ctrl+` on Windows/Linux via the `isMac` platform utility
+
+### Tests
+
+- New `internal/rbac/rbac_test.go`: `TestCheckAccess_AllAllowed`, `TestCheckAccess_PartialDenied`, `TestCheckAccess_BothVerbsRequired`, `TestCheckAccess_SARAPIUnavailable`, `TestCheckAccess_AllDenied`, `TestCheckAccess_AllResourcesPresent`, `TestRbacAllowed_NilMap_Permissive`, `TestRbacAllowed_EmptyMap_AllDenied`
+- New `internal/handlers/handlers_crd_test.go`: RBAC guard tests for `MakeHandler`, `HandleCRDs`, and `runRBACProbe` (`TestMakeHandler_DeniedResource_ReturnsEmptyArrayWithHeader`, `TestMakeHandler_AllowedResource_ReturnsData`, `TestMakeHandler_NilAllowedResources_Permissive`, `TestHandleCRDs_DeniedByRBAC_ReturnsEmptyArrayWithHeader`, `TestHandleSwitchContext_RBACProbeStored`, `TestHandleSwitchContext_RBACProbeFailed_NilAllowed`)
+- Existing `TestHandleSwitchContext_*` tests updated with a `noopRBAC` stub so they are not affected by the concurrent SAR calls added to `HandleSwitchContext`
+
+---
+
 ## [2.0.0] — 2026-03-19
 
 ### New features

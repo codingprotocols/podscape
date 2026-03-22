@@ -2,20 +2,22 @@ import React, { useState, useEffect } from 'react'
 import type { KubeDaemonSet } from '../types'
 import { formatAge } from '../types'
 import { useAppStore } from '../store'
-import { FileCode, X, Activity, Layers, Settings, Box, Info } from 'lucide-react'
+import { FileCode, X, Activity, Layers, Settings, Box, Info, AlertTriangle, CheckCircle } from 'lucide-react'
 import YAMLViewer from './YAMLViewer'
 import AnalysisView from './AnalysisView'
 import OwnerChain from './OwnerChain'
 import { useYAMLEditor } from '../hooks/useYAMLEditor'
+import { useResourceEvents } from '../hooks/useResourceEvents'
 
 interface Props { daemonSet: KubeDaemonSet }
 
-type Tab = 'overview' | 'analysis'
+type Tab = 'overview' | 'events' | 'analysis'
 
 export default function DaemonSetDetail({ daemonSet: ds }: Props): JSX.Element {
-  const { scanResource, scanResults, isScanning } = useAppStore()
+  const { scanResource, scanResults, isScanning, selectedContext: ctx } = useAppStore()
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const [tab, setTab] = useState<Tab>('overview')
+  const { events } = useResourceEvents(ctx, ds.metadata.name, 'DaemonSet', ds.metadata.namespace)
 
   const desired = ds.status.desiredNumberScheduled
 
@@ -63,6 +65,14 @@ export default function DaemonSetDetail({ daemonSet: ds }: Props): JSX.Element {
           className={`px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all relative ${tab === 'overview' ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}>
           Overview
           {tab === 'overview' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />}
+        </button>
+        <button onClick={() => setTab('events')}
+          className={`px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all relative flex items-center gap-1.5 ${tab === 'events' ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}>
+          Events
+          {events.some(e => e.type === 'Warning') && (
+            <span className="text-[9px] font-black bg-amber-500/20 text-amber-400 rounded-full px-1.5 py-0.5">{events.filter(e => e.type === 'Warning').length}</span>
+          )}
+          {tab === 'events' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />}
         </button>
         <button onClick={() => setTab('analysis')}
           className={`px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all relative flex items-center gap-1.5 ${tab === 'analysis' ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}>
@@ -148,6 +158,32 @@ export default function DaemonSetDetail({ daemonSet: ds }: Props): JSX.Element {
             </section>
           )}
         </div>}
+
+        {tab === 'events' && (
+          <div className="space-y-3">
+            {events.length === 0 ? (
+              <div className="text-center py-20 bg-slate-50 dark:bg-white/[0.01] rounded-2xl border border-dashed border-slate-200 dark:border-white/10">
+                <p className="text-xs text-slate-400">No events recorded for this DaemonSet</p>
+              </div>
+            ) : events.map((e, i) => (
+              <div key={i} className={`flex gap-4 p-4 rounded-2xl border ${e.type === 'Warning' ? 'bg-amber-500/5 border-amber-500/10' : 'bg-white/[0.02] border-white/5'}`}>
+                <div className={`mt-0.5 shrink-0 ${e.type === 'Warning' ? 'text-amber-400' : 'text-slate-500'}`}>
+                  {e.type === 'Warning' ? <AlertTriangle size={14} /> : <CheckCircle size={14} />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{e.reason}</span>
+                    {e.count && e.count > 1 && (
+                      <span className="text-[9px] font-bold bg-slate-700 text-slate-400 rounded-full px-1.5 py-0.5">×{e.count}</span>
+                    )}
+                    <span className="text-[9px] text-slate-500 ml-auto">{formatAge(e.lastTimestamp ?? e.eventTime ?? e.firstTimestamp ?? '')} ago</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-relaxed break-words">{e.message}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {tab === 'analysis' && (
           <div>

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	fakeapiext "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 )
@@ -194,5 +196,155 @@ func TestWsStream_SingleRead_SmallMessage(t *testing.T) {
 	}
 	if string(buf[:n]) != "hi" {
 		t.Errorf("expected %q, got %q", "hi", string(buf[:n]))
+	}
+}
+
+// ── MakeHandler RBAC guard tests ──────────────────────────────────────────────
+
+func TestMakeHandler_DeniedResource_ReturnsEmptyArrayWithHeader(t *testing.T) {
+	ac := store.NewContextCache(fake.NewSimpleClientset(), &rest.Config{})
+	ac.HasData = true
+	ac.AllowedResources = map[string]bool{"pods": false}
+	// Populate the cache to confirm the RBAC guard fires before cache read.
+	ac.Lock()
+	ac.Pods["ns/pod1"] = struct{ Name string }{"pod1"}
+	ac.Unlock()
+	setActiveCache(t, ac)
+
+	req := httptest.NewRequest(http.MethodGet, "/pods", nil)
+	rr := httptest.NewRecorder()
+	HandlePods(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if rr.Header().Get("X-Podscape-Denied") != "true" {
+		t.Error("expected X-Podscape-Denied: true header")
+	}
+	var items []interface{}
+	if err := json.NewDecoder(rr.Body).Decode(&items); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(items) != 0 {
+		t.Errorf("expected empty array, got %d items", len(items))
+	}
+}
+
+func TestMakeHandler_AllowedResource_ReturnsData(t *testing.T) {
+	ac := store.NewContextCache(fake.NewSimpleClientset(), &rest.Config{})
+	ac.HasData = true
+	ac.AllowedResources = map[string]bool{
+		"pods":        true,
+		"deployments": true,
+		// others intentionally absent — only "pods" is checked by HandlePods
+	}
+	setActiveCache(t, ac)
+
+	req := httptest.NewRequest(http.MethodGet, "/pods", nil)
+	rr := httptest.NewRecorder()
+	HandlePods(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if rr.Header().Get("X-Podscape-Denied") != "" {
+		t.Error("expected no X-Podscape-Denied header for allowed resource")
+	}
+}
+
+func TestMakeHandler_NilAllowedResources_Permissive(t *testing.T) {
+	// nil AllowedResources means probe hasn't run — treat as allowed.
+	ac := store.NewContextCache(fake.NewSimpleClientset(), &rest.Config{})
+	ac.HasData = true
+	// AllowedResources is nil by default from NewContextCache
+	setActiveCache(t, ac)
+
+	req := httptest.NewRequest(http.MethodGet, "/pods", nil)
+	rr := httptest.NewRecorder()
+	HandlePods(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if rr.Header().Get("X-Podscape-Denied") != "" {
+		t.Error("nil AllowedResources should be permissive")
+	}
+}
+
+func TestHandleCRDs_DeniedByRBAC_ReturnsEmptyArrayWithHeader(t *testing.T) {
+	ac := store.NewContextCache(fake.NewSimpleClientset(), &rest.Config{})
+	ac.HasData = true
+	ac.AllowedResources = map[string]bool{"customresourcedefinitions": false}
+	// Populate cache and apiext client to confirm guard fires before both.
+	ac.ApiextensionsClientset = fakeapiext.NewSimpleClientset(fakeCRD("foos.example.com"))
+	ac.Lock()
+	ac.CRDs["foos.example.com"] = fakeCRD("foos.example.com")
+	ac.Unlock()
+	setActiveCache(t, ac)
+
+	req := httptest.NewRequest(http.MethodGet, "/crds", nil)
+	rr := httptest.NewRecorder()
+	HandleCRDs(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if rr.Header().Get("X-Podscape-Denied") != "true" {
+		t.Error("expected X-Podscape-Denied: true")
+	}
+	var items []interface{}
+	if err := json.NewDecoder(rr.Body).Decode(&items); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(items) != 0 {
+		t.Errorf("expected empty array, got %d", len(items))
+	}
+}
+
+func TestHandleSwitchContext_RBACProbeStored(t *testing.T) {
+	// Stub rbacCheckFunc to return a fixed map so we can verify it's written
+	// to the cache without requiring a live API server.
+	fakeAllowed := map[string]bool{"pods": true, "secrets": false}
+	orig := rbacCheckFunc
+	rbacCheckFunc = func(_ context.Context, _ kubernetes.Interface) (map[string]bool, error) {
+		return fakeAllowed, nil
+	}
+	t.Cleanup(func() { rbacCheckFunc = orig })
+
+	ac := store.NewContextCache(fake.NewSimpleClientset(), &rest.Config{})
+	runRBACProbe(ac, "test-ctx", fake.NewSimpleClientset())
+
+	ac.RLock()
+	allowed := ac.AllowedResources
+	ac.RUnlock()
+
+	if allowed == nil {
+		t.Fatal("expected AllowedResources to be set")
+	}
+	if !allowed["pods"] {
+		t.Error("expected pods to be allowed")
+	}
+	if allowed["secrets"] {
+		t.Error("expected secrets to be denied")
+	}
+}
+
+func TestHandleSwitchContext_RBACProbeFailed_NilAllowed(t *testing.T) {
+	// When the probe fails, AllowedResources must remain nil (permissive).
+	orig := rbacCheckFunc
+	rbacCheckFunc = func(_ context.Context, _ kubernetes.Interface) (map[string]bool, error) {
+		return nil, context.DeadlineExceeded
+	}
+	t.Cleanup(func() { rbacCheckFunc = orig })
+
+	ac := store.NewContextCache(fake.NewSimpleClientset(), &rest.Config{})
+	runRBACProbe(ac, "test-ctx", fake.NewSimpleClientset())
+
+	ac.RLock()
+	allowed := ac.AllowedResources
+	ac.RUnlock()
+
+	if allowed != nil {
+		t.Errorf("expected nil AllowedResources on probe failure, got %v", allowed)
 	}
 }
