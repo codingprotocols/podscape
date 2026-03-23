@@ -77,6 +77,28 @@ export async function startSidecar(): Promise<void> {
 
   sidecarProcess = child
 
+  // In production stdio is 'pipe'. Drain stdout/stderr so the pipe buffer never
+  // fills up and blocks the sidecar process. Capture the tail of stderr for
+  // richer error messages when startup fails.
+  const stderrLines: string[] = []
+  const MAX_STDERR_LINES = 30
+
+  if (!is.dev) {
+    child.stdout?.on('data', (data: Buffer) => {
+      process.stdout.write(data)
+    })
+    child.stderr?.on('data', (data: Buffer) => {
+      const text = data.toString()
+      process.stderr.write(text)
+      for (const line of text.split('\n')) {
+        if (line.trim()) {
+          stderrLines.push(line)
+          if (stderrLines.length > MAX_STDERR_LINES) stderrLines.shift()
+        }
+      }
+    })
+  }
+
   child.on('error', (err) => {
     console.error('[Sidecar] Failed to start:', err)
   })
@@ -98,8 +120,11 @@ export async function startSidecar(): Promise<void> {
     const maxAttempts = 180  // 180 × 500 ms = 90 s — covers large cluster cache sync
     const interval = 500
 
+    const sidecarDetail = () =>
+      stderrLines.length > 0 ? `\n\nSidecar output:\n${stderrLines.join('\n')}` : ''
+
     const errorHandler = (err: Error) => {
-      reject(new Error(`Sidecar failed to start: ${err.message}`))
+      reject(new Error(`Sidecar failed to start: ${err.message}${sidecarDetail()}`))
     }
 
     const exitHandler = (code: number | null, signal: string | null) => {
@@ -109,7 +134,7 @@ export async function startSidecar(): Promise<void> {
         resolve()
         return
       }
-      reject(new Error(`Sidecar exited during startup. Code: ${code}, Signal: ${signal}`))
+      reject(new Error(`Sidecar exited during startup (code ${code}, signal ${signal}).${sidecarDetail()}`))
     }
 
     child.once('error', errorHandler)
@@ -134,7 +159,7 @@ export async function startSidecar(): Promise<void> {
       if (attempts >= maxAttempts) {
         child.removeListener('error', errorHandler)
         child.removeListener('exit', exitHandler)
-        reject(new Error(`Sidecar failed to become ready after ${maxAttempts * interval / 1000}s — check kubeconfig and cluster connectivity`))
+        reject(new Error(`Sidecar failed to become ready after ${maxAttempts * interval / 1000}s — check kubeconfig and cluster connectivity.${sidecarDetail()}`))
         return
       }
 
