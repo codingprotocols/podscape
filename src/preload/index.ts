@@ -340,6 +340,34 @@ const kubeconfig = {
     ipcRenderer.invoke('kubeconfig:clearPath')
 }
 
+// ─── updater API ──────────────────────────────────────────────────────────────
+
+const updater = {
+  onAvailable: (cb: (info: { version: string }) => void): (() => void) => {
+    const h = (_e: Electron.IpcRendererEvent, info: { version: string }): void => cb(info)
+    ipcRenderer.on('updater:available', h)
+    return () => ipcRenderer.off('updater:available', h)
+  },
+  onProgress: (cb: (p: { percent: number }) => void): (() => void) => {
+    const h = (_e: Electron.IpcRendererEvent, p: { percent: number }): void => cb(p)
+    ipcRenderer.on('updater:progress', h)
+    return () => ipcRenderer.off('updater:progress', h)
+  },
+  onDownloaded: (cb: (info: { version: string }) => void): (() => void) => {
+    const h = (_e: Electron.IpcRendererEvent, info: { version: string }): void => cb(info)
+    ipcRenderer.on('updater:downloaded', h)
+    return () => ipcRenderer.off('updater:downloaded', h)
+  },
+  onError: (cb: (msg: string) => void): (() => void) => {
+    const h = (_e: Electron.IpcRendererEvent, msg: string): void => cb(msg)
+    ipcRenderer.on('updater:error', h)
+    return () => ipcRenderer.off('updater:error', h)
+  },
+  check: (): Promise<void> => ipcRenderer.invoke('updater:check'),
+  download: (): Promise<void> => ipcRenderer.invoke('updater:download'),
+  install: (): Promise<void> => ipcRenderer.invoke('updater:install'),
+}
+
 // ─── sidecar API ──────────────────────────────────────────────────────────────
 
 const sidecar = {
@@ -365,6 +393,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('settings', settings)
     contextBridge.exposeInMainWorld('kubeconfig', kubeconfig)
     contextBridge.exposeInMainWorld('dialog', dialog)
+    contextBridge.exposeInMainWorld('updater', updater)
     contextBridge.exposeInMainWorld('sidecar', sidecar)
   } catch (error) {
     console.error(error)
@@ -387,6 +416,8 @@ if (process.contextIsolated) {
   window.kubeconfig = kubeconfig
   // @ts-ignore
   window.dialog = dialog
+  // @ts-ignore
+  window.updater = updater
   // @ts-ignore
   window.sidecar = sidecar
 }

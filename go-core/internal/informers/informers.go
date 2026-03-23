@@ -13,17 +13,32 @@ import (
 )
 
 // InitInformers starts the critical informers (those needed for the dashboard
-// on first load) and blocks until they are synced, then starts all remaining
-// informers in the background without blocking.
+// on first load) and blocks until they are synced or the timeout elapses, then
+// starts all remaining informers in the background without blocking.
 //
 // This splits a ~30 informer sync into a fast critical path (5 types) plus a
 // background phase, so /health returns 200 as soon as the dashboard has data.
+// The 60-second timeout prevents large/slow clusters from triggering the
+// Electron-side 90-second startup timeout — informers continue syncing in
+// the background and data appears once they complete.
 func InitInformers(c *store.ContextCache, stopCh <-chan struct{}) {
 	factory := k8sinformers.NewSharedInformerFactory(c.Clientset, time.Minute*10)
 
 	registerCriticalInformers(factory, c)
 	factory.Start(stopCh)
-	factory.WaitForCacheSync(stopCh)
+
+	done := make(chan struct{})
+	go func() {
+		factory.WaitForCacheSync(stopCh)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Critical informers synced — dashboard will have data immediately.
+	case <-time.After(60 * time.Second):
+		log.Println("[Informers] critical cache sync timed out after 60s, serving partial data")
+	}
 
 	// Start everything else without blocking startup.
 	go func() {

@@ -53,11 +53,11 @@ export const SECTION_CONFIG: Partial<Record<ResourceKind, SectionConfig>> = {
     clusterrolebindings: { stateKey: 'clusterrolebindings', fetch: (c, _)  => window.kubectl.getClusterRoleBindings(c),        namespaced: false },
 }
 
-// Pre-computed reset object for all resource sections (empty arrays + cleared denied set).
-// Import this in clusterSlice to clear resources on context switch.
+// Pre-computed reset object for all resource sections (empty arrays).
+// Import this in clusterSlice to clear resource lists on context switch.
+// Note: deniedSections is reset separately in clusterSlice alongside other cross-cutting state.
 export const sectionClearState: Record<string, any> = {
     ...Object.fromEntries(Object.values(SECTION_CONFIG).map(c => [c!.stateKey, []])),
-    deniedSections: new Set<ResourceKind>(),
 }
 
 export interface ResourceSlice {

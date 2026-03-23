@@ -1,5 +1,5 @@
 import { StoreSlice } from '../types'
-import { KubeContextEntry, KubeNamespace, OwnerChainResponse } from '../../types'
+import { KubeContextEntry, KubeNamespace, OwnerChainResponse, ResourceKind } from '../../types'
 import { sectionClearState } from './resourceSlice'
 import { defaultTimeRange } from '../../utils/prometheusQueries'
 
@@ -145,6 +145,7 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             // doesn't attempt a fetch against a cluster that may lack those CRDs.
             ...(isProviderSection ? { section: 'dashboard' as const } : {}),
             ...sectionClearState,
+            deniedSections: new Set<ResourceKind>(),
         })
         try {
             const timeout = new Promise<never>((_, reject) =>
