@@ -70,7 +70,8 @@ jobs:
         run: |
           gh release upload "${GITHUB_REF_NAME}" \
             go-core/podscape-mcp-darwin-arm64 \
-            go-core/podscape-mcp-darwin-amd64
+            go-core/podscape-mcp-darwin-amd64 \
+            --repo codingprotocols/podscape-community
 
   # ── Windows ──────────────────────────────────────────────────────────────────
   release-win:
@@ -117,7 +118,7 @@ jobs:
       - name: Upload podscape-mcp Windows binary
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: gh release upload "$env:GITHUB_REF_NAME" go-core/podscape-mcp-windows-amd64.exe
+        run: gh release upload "$env:GITHUB_REF_NAME" go-core/podscape-mcp-windows-amd64.exe --repo codingprotocols/podscape-community
 
   # ── Linux ────────────────────────────────────────────────────────────────────
   release-linux:
@@ -166,4 +167,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           gh release upload "${GITHUB_REF_NAME}" \
-            go-core/podscape-mcp-linux-amd64
+            go-core/podscape-mcp-linux-amd64 \
+            --repo codingprotocols/podscape-community
