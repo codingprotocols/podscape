@@ -109,6 +109,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     setLogs([])
     setLogError(null)
     setSearch('')
+    setEvents([])
     // Trigger scan
     scanResource(pod)
     // Fetch events for timeline

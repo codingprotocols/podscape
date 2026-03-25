@@ -25,6 +25,11 @@ import (
 	"github.com/podscape/go-core/internal/client"
 )
 
+// ErrUnsupportedResource is returned by ListResource and GetResource when the
+// resource type is not handled by the typed switch. Callers can detect this
+// with errors.Is and fall back to the dynamic client.
+var ErrUnsupportedResource = fmt.Errorf("unsupported resource type")
+
 // Scale sets the replica count for a deployment or statefulset.
 func Scale(ctx context.Context, bundle *client.ClientBundle, ns, kind, name string, replicas int32) error {
 	cs := bundle.Clientset
@@ -362,7 +367,7 @@ func ListResource(ctx context.Context, bundle *client.ClientBundle, resource, ns
 		}
 		return l.Items, nil
 	default:
-		return nil, fmt.Errorf("unsupported resource type: %s", resource)
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedResource, resource)
 	}
 }
 
@@ -395,7 +400,7 @@ func GetResource(ctx context.Context, bundle *client.ClientBundle, resource, nam
 	case "ingresses", "ingress":
 		return cs.NetworkingV1().Ingresses(ns).Get(ctx, name, metav1.GetOptions{})
 	default:
-		return nil, fmt.Errorf("unsupported resource type: %s", resource)
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedResource, resource)
 	}
 }
 

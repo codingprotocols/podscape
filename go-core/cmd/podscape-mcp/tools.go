@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -20,6 +22,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/yaml"
 )
@@ -55,6 +59,16 @@ const (
 	// maxLogBytesPerContainer caps per-container log output inside pod_summary.
 	maxLogBytesPerContainer = 32 * 1024 // 32 KB
 )
+
+// crdSummary is a trimmed projection of an apiextensions CRD, used by list_crds.
+type crdSummary struct {
+	Name    string `json:"name"`
+	Group   string `json:"group"`
+	Kind    string `json:"kind"`
+	Plural  string `json:"plural"`
+	Scope   string `json:"scope"`
+	Version string `json:"version"`
+}
 
 // eventSummary is a JSON-friendly projection of corev1.Event, shared across
 // list_events, get_resource_events, pod_summary, and cluster_health.
@@ -109,7 +123,7 @@ func registerTools(s *server.MCPServer) {
 	// --- Read-only tools ---
 
 	s.AddTool(mcp.NewTool("list_resources",
-		mcp.WithDescription("List Kubernetes resources by type"),
+		mcp.WithDescription("List Kubernetes resources by type — supports built-in types (pods, deployments, services, nodes, etc.) and any CRD by plural name (e.g. nodepools, nodeclaims, virtualservices, ingressroutes, kustomizations, applications, helmreleases, gitrepositories)"),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("resource", mcp.Required(), mcp.Description("Resource type: pods, deployments, services, nodes, namespaces, configmaps, secrets, etc.")),
@@ -119,7 +133,7 @@ func registerTools(s *server.MCPServer) {
 	), handleListResources)
 
 	s.AddTool(mcp.NewTool("get_resource",
-		mcp.WithDescription("Get a single Kubernetes resource by name"),
+		mcp.WithDescription("Get a single Kubernetes resource by name — supports built-in types and any CRD by plural name"),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("resource", mcp.Required(), mcp.Description("Resource type")),
@@ -128,7 +142,7 @@ func registerTools(s *server.MCPServer) {
 	), handleGetResource)
 
 	s.AddTool(mcp.NewTool("get_resource_yaml",
-		mcp.WithDescription("Get full YAML manifest of a Kubernetes resource"),
+		mcp.WithDescription("Get full YAML manifest of a Kubernetes resource — supports built-in types and any CRD by plural name"),
 		mcp.WithReadOnlyHintAnnotation(true),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("resource", mcp.Required(), mcp.Description("Resource type")),
@@ -296,6 +310,23 @@ func registerTools(s *server.MCPServer) {
 		mcp.WithString("name", mcp.Required(), mcp.Description("Resource name")),
 		mcp.WithString("namespace", mcp.Description("Namespace (omit for cluster-scoped resources)")),
 	), handleGetResourceEvents)
+
+	// --- Extended tools ---
+
+	s.AddTool(mcp.NewTool("list_crds",
+		mcp.WithDescription("List all CustomResourceDefinitions installed in the cluster"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithString("group", mcp.Description("Filter by API group, e.g. karpenter.sh or traefik.io")),
+	), handleListCRDs)
+
+	s.AddTool(mcp.NewTool("get_metrics",
+		mcp.WithDescription("Get CPU and memory usage metrics for pods or nodes (requires metrics-server)"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithString("kind", mcp.Required(), mcp.Description("Resource kind: pods or nodes")),
+		mcp.WithString("namespace", mcp.Description("Namespace filter for pods (omit for all namespaces)")),
+	), handleGetMetrics)
 }
 
 // stripItems removes verbose fields from a list of k8s objects before returning
@@ -321,6 +352,41 @@ func stripItems(data interface{}) interface{} {
 	return items
 }
 
+// resolveGVR finds the GroupVersionResource for a given plural resource name
+// by walking the server's preferred API resources via discovery.
+func resolveGVR(resource string) (schema.GroupVersionResource, error) {
+	lists, err := bundle.Discovery.ServerPreferredResources()
+	if err != nil && lists == nil {
+		return schema.GroupVersionResource{}, err
+	}
+	for _, list := range lists {
+		gv, err := schema.ParseGroupVersion(list.GroupVersion)
+		if err != nil {
+			continue
+		}
+		for _, r := range list.APIResources {
+			if r.Name == resource {
+				return schema.GroupVersionResource{Group: gv.Group, Version: gv.Version, Resource: r.Name}, nil
+			}
+		}
+	}
+	return schema.GroupVersionResource{}, fmt.Errorf("resource %q not found in cluster API groups", resource)
+}
+
+// listDynamic lists any resource via the dynamic client — fallback for CRDs
+// not covered by the typed switch in ops.ListResource.
+func listDynamic(ctx context.Context, resource, ns string, lo metav1.ListOptions) (interface{}, error) {
+	gvr, err := resolveGVR(resource)
+	if err != nil {
+		return nil, err
+	}
+	list, err := bundle.DynClient.Resource(gvr).Namespace(ns).List(ctx, lo)
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
 func handleListResources(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	resource := argStr(req, "resource")
 	ns := argStr(req, "namespace")
@@ -333,6 +399,9 @@ func handleListResources(ctx context.Context, req mcp.CallToolRequest) (*mcp.Cal
 	defer cancel()
 	lo := metav1.ListOptions{LabelSelector: ls, Limit: limit}
 	data, err := ops.ListResource(apiCtx, bundle, resource, ns, lo)
+	if err != nil && errors.Is(err, ops.ErrUnsupportedResource) {
+		data, err = listDynamic(apiCtx, resource, ns, lo)
+	}
 	if err != nil {
 		return errResult(err), nil
 	}
@@ -358,6 +427,19 @@ func stripSingle(data interface{}) interface{} {
 	return item
 }
 
+// getDynamic fetches a single resource by name via the dynamic client.
+func getDynamic(ctx context.Context, resource, name, ns string) (interface{}, error) {
+	gvr, err := resolveGVR(resource)
+	if err != nil {
+		return nil, err
+	}
+	obj, err := bundle.DynClient.Resource(gvr).Namespace(ns).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return obj.Object, nil
+}
+
 func handleGetResource(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	resource := argStr(req, "resource")
 	name := argStr(req, "name")
@@ -365,6 +447,9 @@ func handleGetResource(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallT
 	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
 	defer cancel()
 	data, err := ops.GetResource(apiCtx, bundle, resource, name, ns)
+	if err != nil && errors.Is(err, ops.ErrUnsupportedResource) {
+		data, err = getDynamic(apiCtx, resource, name, ns)
+	}
 	if err != nil {
 		return errResult(err), nil
 	}
@@ -378,6 +463,9 @@ func handleGetResourceYAML(ctx context.Context, req mcp.CallToolRequest) (*mcp.C
 	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
 	defer cancel()
 	data, err := ops.GetResource(apiCtx, bundle, resource, name, ns)
+	if err != nil && errors.Is(err, ops.ErrUnsupportedResource) {
+		data, err = getDynamic(apiCtx, resource, name, ns)
+	}
 	if err != nil {
 		return errResult(err), nil
 	}
@@ -1007,6 +1095,74 @@ func handleGetResourceEvents(ctx context.Context, req mcp.CallToolRequest) (*mcp
 		"name":   name,
 		"events": events,
 	})
+}
+
+func handleListCRDs(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	group := argStr(req, "group")
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+
+	list, err := bundle.ApiextClient.ApiextensionsV1().CustomResourceDefinitions().List(apiCtx, metav1.ListOptions{})
+	if err != nil {
+		return errResult(err), nil
+	}
+
+	crds := make([]crdSummary, 0, len(list.Items))
+	for _, c := range list.Items {
+		if group != "" && c.Spec.Group != group {
+			continue
+		}
+		ver := ""
+		if len(c.Spec.Versions) > 0 {
+			ver = c.Spec.Versions[0].Name
+		}
+		crds = append(crds, crdSummary{
+			Name:    c.Name,
+			Group:   c.Spec.Group,
+			Kind:    c.Spec.Names.Kind,
+			Plural:  c.Spec.Names.Plural,
+			Scope:   string(c.Spec.Scope),
+			Version: ver,
+		})
+	}
+	return jsonResult(crds)
+}
+
+func handleGetMetrics(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	kind := strings.ToLower(argStr(req, "kind"))
+	ns := argStr(req, "namespace")
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+
+	cs, ok := bundle.Clientset.(*kubernetes.Clientset)
+	if !ok {
+		return errResult(fmt.Errorf("metrics unavailable: clientset does not support REST")), nil
+	}
+
+	var path string
+	switch kind {
+	case "pods":
+		if ns != "" {
+			path = "/apis/metrics.k8s.io/v1beta1/namespaces/" + ns + "/pods"
+		} else {
+			path = "/apis/metrics.k8s.io/v1beta1/pods"
+		}
+	case "nodes":
+		path = "/apis/metrics.k8s.io/v1beta1/nodes"
+	default:
+		return errResult(fmt.Errorf("unsupported kind %q — use pods or nodes", kind)), nil
+	}
+
+	data, err := cs.RESTClient().Get().AbsPath(path).DoRaw(apiCtx)
+	if err != nil {
+		return errResult(fmt.Errorf("metrics unavailable (is metrics-server installed?): %v", err)), nil
+	}
+
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, data, "", "  "); err != nil {
+		return mcp.NewToolResultText(string(data)), nil
+	}
+	return mcp.NewToolResultText(buf.String()), nil
 }
 
 func errResult(err error) *mcp.CallToolResult {

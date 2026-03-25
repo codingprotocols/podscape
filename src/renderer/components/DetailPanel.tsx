@@ -44,7 +44,7 @@ export default function DetailPanel({ resource, section }: DetailPanelProps): JS
 
   let content: JSX.Element | null
   switch (section) {
-    case 'pods': content = <PodDetail pod={resource as KubePod} />; break
+    case 'pods': content = <PodDetail key={resource.metadata.uid} pod={resource as KubePod} />; break
     case 'deployments': content = <DeploymentDetail deployment={resource as KubeDeployment} />; break
     case 'daemonsets': content = <DaemonSetDetail daemonSet={resource as KubeDaemonSet} />; break
     case 'statefulsets': content = <StatefulSetDetail statefulSet={resource as KubeStatefulSet} />; break

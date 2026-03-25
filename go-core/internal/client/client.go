@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	"k8s.io/client-go/discovery"
+	memorycache "k8s.io/client-go/discovery/cached/memory"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -18,6 +21,8 @@ import (
 type ClientBundle struct {
 	Clientset    kubernetes.Interface
 	ApiextClient apiextensionsclientset.Interface
+	DynClient    dynamic.Interface
+	Discovery    discovery.DiscoveryInterface
 	Config       *rest.Config
 	ContextName  string
 	Kubeconfig   string
@@ -48,6 +53,11 @@ func Init(kubeconfig string) (*ClientBundle, error) {
 		return nil, fmt.Errorf("creating apiextensions client: %w", err)
 	}
 
+	dynClient, err := dynamic.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("creating dynamic client: %w", err)
+	}
+
 	// Determine the active context name.
 	contextName := "__default__"
 	if data, loadErr := clientcmd.LoadFromFile(kubeconfig); loadErr == nil && data.CurrentContext != "" {
@@ -57,6 +67,8 @@ func Init(kubeconfig string) (*ClientBundle, error) {
 	return &ClientBundle{
 		Clientset:    clientset,
 		ApiextClient: apiextClient,
+		DynClient:    dynClient,
+		Discovery:    memorycache.NewMemCacheClient(clientset.Discovery()),
 		Config:       config,
 		ContextName:  contextName,
 		Kubeconfig:   kubeconfig,
