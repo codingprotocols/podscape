@@ -15,6 +15,20 @@ go build ./cmd/podscape-mcp/
 
 The binary is produced at `go-core/podscape-mcp`. Pre-built binaries for all platforms are available on every [GitHub Release](https://github.com/codingprotocols/podscape-community/releases/latest).
 
+**Install a pre-built binary (macOS):**
+```bash
+# Apple Silicon
+sudo curl -L https://github.com/codingprotocols/podscape-community/releases/latest/download/podscape-mcp-darwin-arm64 \
+  -o /usr/local/bin/podscape-mcp && sudo chmod +x /usr/local/bin/podscape-mcp
+
+# Intel
+sudo curl -L https://github.com/codingprotocols/podscape-community/releases/latest/download/podscape-mcp-darwin-amd64 \
+  -o /usr/local/bin/podscape-mcp && sudo chmod +x /usr/local/bin/podscape-mcp
+
+# Clear Gatekeeper quarantine (unsigned binary)
+xattr -dr com.apple.quarantine /usr/local/bin/podscape-mcp
+```
+
 ---
 
 ## Usage
@@ -38,12 +52,21 @@ The server communicates over `stdio` and is started automatically by your MCP cl
 ### Claude Code (CLI)
 
 ```bash
-claude mcp add --transport stdio podscape -- /path/to/podscape-mcp
+# Installed binary
+claude mcp add --transport stdio podscape -- /usr/local/bin/podscape-mcp
+
+# During development — point at the locally built binary
+claude mcp add --transport stdio podscape -- $(pwd)/go-core/podscape-mcp
 ```
 
-During development, point directly at the built binary:
+After adding, start a **new Claude Code session** — MCP servers connect on startup:
 ```bash
-claude mcp add --transport stdio podscape -- $(pwd)/go-core/podscape-mcp
+claude
+```
+
+Verify inside the new session:
+```
+/mcp
 ```
 
 ### Claude Desktop

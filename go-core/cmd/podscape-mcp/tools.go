@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -109,13 +110,18 @@ func registerTools(s *server.MCPServer) {
 
 	s.AddTool(mcp.NewTool("list_resources",
 		mcp.WithDescription("List Kubernetes resources by type"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("resource", mcp.Required(), mcp.Description("Resource type: pods, deployments, services, nodes, namespaces, configmaps, secrets, etc.")),
 		mcp.WithString("namespace", mcp.Description("Namespace filter (omit for all namespaces)")),
 		mcp.WithString("label_selector", mcp.Description("Label selector filter, e.g. app=nginx or env=prod,tier=frontend")),
+		mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default 100, 0 = unlimited)")),
 	), handleListResources)
 
 	s.AddTool(mcp.NewTool("get_resource",
 		mcp.WithDescription("Get a single Kubernetes resource by name"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("resource", mcp.Required(), mcp.Description("Resource type")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Resource name")),
 		mcp.WithString("namespace", mcp.Description("Namespace (omit for cluster-scoped resources)")),
@@ -123,6 +129,8 @@ func registerTools(s *server.MCPServer) {
 
 	s.AddTool(mcp.NewTool("get_resource_yaml",
 		mcp.WithDescription("Get full YAML manifest of a Kubernetes resource"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("resource", mcp.Required(), mcp.Description("Resource type")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Resource name")),
 		mcp.WithString("namespace", mcp.Description("Namespace (omit for cluster-scoped resources)")),
@@ -130,43 +138,63 @@ func registerTools(s *server.MCPServer) {
 
 	s.AddTool(mcp.NewTool("get_pod_logs",
 		mcp.WithDescription("Get logs from a pod container"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("pod", mcp.Required(), mcp.Description("Pod name")),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
 		mcp.WithString("container", mcp.Description("Container name")),
-		mcp.WithNumber("tail", mcp.Description("Number of lines (default 100)")),
+		mcp.WithNumber("tail", mcp.Description("Number of lines to return (default 100); ignored when since_minutes is set")),
+		mcp.WithNumber("since_minutes", mcp.Description("Return logs from the last N minutes (overrides tail)")),
 		mcp.WithBoolean("previous", mcp.Description("Return logs from the previously terminated container instance (useful for crash-looping containers)")),
 	), handleGetPodLogs)
 
 	s.AddTool(mcp.NewTool("list_events",
-		mcp.WithDescription("List Kubernetes events"),
-		mcp.WithString("namespace", mcp.Description("Namespace filter")),
+		mcp.WithDescription("List Kubernetes events, sorted by most recent first"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithString("namespace", mcp.Description("Namespace filter (omit for all namespaces)")),
+		mcp.WithString("type", mcp.Description("Event type filter: Warning or Normal (omit for all)")),
+		mcp.WithString("object_name", mcp.Description("Filter events for a specific object name")),
+		mcp.WithNumber("limit", mcp.Description("Maximum number of events to return (default 100)")),
 	), handleListEvents)
 
 	s.AddTool(mcp.NewTool("list_contexts",
 		mcp.WithDescription("List available Kubernetes contexts"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 	), handleListContexts)
 
 	s.AddTool(mcp.NewTool("get_current_context",
 		mcp.WithDescription("Get the current Kubernetes context name"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 	), handleGetCurrentContext)
 
 	s.AddTool(mcp.NewTool("list_namespaces",
 		mcp.WithDescription("List all namespaces in the cluster"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 	), handleListNamespaces)
 
 	s.AddTool(mcp.NewTool("helm_list",
 		mcp.WithDescription("List Helm releases"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("namespace", mcp.Description("Namespace filter")),
 	), handleHelmList)
 
 	s.AddTool(mcp.NewTool("helm_status",
 		mcp.WithDescription("Get status of a Helm release"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("release", mcp.Required(), mcp.Description("Release name")),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
 	), handleHelmStatus)
 
 	s.AddTool(mcp.NewTool("helm_values",
 		mcp.WithDescription("Get values of a Helm release"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("release", mcp.Required(), mcp.Description("Release name")),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
 		mcp.WithBoolean("all", mcp.Description("Include computed values")),
@@ -174,25 +202,32 @@ func registerTools(s *server.MCPServer) {
 
 	s.AddTool(mcp.NewTool("security_scan",
 		mcp.WithDescription("Run a security posture scan on pods in a namespace"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace to scan")),
 	), handleSecurityScan)
 
 	s.AddTool(mcp.NewTool("detect_providers",
 		mcp.WithDescription("Detect installed ingress/mesh providers (Istio, Traefik, Nginx)"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 	), handleDetectProviders)
 
 	// --- Mutating tools ---
 
 	s.AddTool(mcp.NewTool("scale_resource",
 		mcp.WithDescription("Scale a deployment or statefulset replica count"),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithString("kind", mcp.Required(), mcp.Description("Resource kind: deployment or statefulset")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Resource name")),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
-		mcp.WithNumber("replicas", mcp.Required(), mcp.Description("Desired replica count")),
+		mcp.WithNumber("replicas", mcp.Required(), mcp.Description("Desired replica count (must be >= 0)")),
 	), handleScaleResource)
 
 	s.AddTool(mcp.NewTool("delete_resource",
 		mcp.WithDescription("Delete a Kubernetes resource"),
+		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithString("kind", mcp.Required(), mcp.Description("Resource kind (pod, deployment, service, etc.)")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Resource name")),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
@@ -200,6 +235,7 @@ func registerTools(s *server.MCPServer) {
 
 	s.AddTool(mcp.NewTool("rollout_restart",
 		mcp.WithDescription("Trigger a rolling restart of a deployment, daemonset, or statefulset"),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("kind", mcp.Required(), mcp.Description("Resource kind: deployment, daemonset, or statefulset")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Resource name")),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
@@ -207,6 +243,7 @@ func registerTools(s *server.MCPServer) {
 
 	s.AddTool(mcp.NewTool("rollout_undo",
 		mcp.WithDescription("Undo a deployment rollout to a previous revision"),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("kind", mcp.Required(), mcp.Description("Resource kind (currently only deployment)")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Resource name")),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
@@ -215,11 +252,14 @@ func registerTools(s *server.MCPServer) {
 
 	s.AddTool(mcp.NewTool("apply_yaml",
 		mcp.WithDescription("Apply a Kubernetes YAML manifest using server-side apply"),
+		mcp.WithDestructiveHintAnnotation(false),
+		mcp.WithIdempotentHintAnnotation(true),
 		mcp.WithString("yaml", mcp.Required(), mcp.Description("The YAML manifest content")),
 	), handleApplyYAML)
 
 	s.AddTool(mcp.NewTool("helm_rollback",
 		mcp.WithDescription("Roll back a Helm release to a previous revision"),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("release", mcp.Required(), mcp.Description("Release name")),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
 		mcp.WithNumber("revision", mcp.Description("Target revision (0 = previous)")),
@@ -229,6 +269,8 @@ func registerTools(s *server.MCPServer) {
 
 	s.AddTool(mcp.NewTool("pod_summary",
 		mcp.WithDescription("Get a combined summary of a pod's status, container states, recent events, and last N log lines — everything needed to diagnose a failing pod in one call"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("pod", mcp.Required(), mcp.Description("Pod name")),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
 		mcp.WithNumber("tail", mcp.Description("Log lines per container (default 50)")),
@@ -237,10 +279,14 @@ func registerTools(s *server.MCPServer) {
 
 	s.AddTool(mcp.NewTool("cluster_health",
 		mcp.WithDescription("Get a one-call cluster health overview: node ready/total counts, pod counts by phase (Running/Pending/Failed), and Warning events from the last hour"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 	), handleClusterHealth)
 
 	s.AddTool(mcp.NewTool("list_failing_pods",
 		mcp.WithDescription("List all pods not in Running or Succeeded state, with their phase, reason, and container-level failure details — the fastest way to see what's broken in a cluster"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("namespace", mcp.Description("Namespace filter (omit for all namespaces)")),
 	), handleListFailingPods)
 
@@ -252,18 +298,64 @@ func registerTools(s *server.MCPServer) {
 	), handleGetResourceEvents)
 }
 
+// stripItems removes verbose fields from a list of k8s objects before returning
+// them to the AI. managedFields is boilerplate noise; status.images on nodes
+// lists every container image pulled on the node and can be thousands of lines.
+func stripItems(data interface{}) interface{} {
+	b, err := json.Marshal(data)
+	if err != nil {
+		return data
+	}
+	var items []map[string]interface{}
+	if err := json.Unmarshal(b, &items); err != nil {
+		return data
+	}
+	for _, item := range items {
+		if meta, ok := item["metadata"].(map[string]interface{}); ok {
+			delete(meta, "managedFields")
+		}
+		if status, ok := item["status"].(map[string]interface{}); ok {
+			delete(status, "images") // node images list — can be 100+ entries
+		}
+	}
+	return items
+}
+
 func handleListResources(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	resource := argStr(req, "resource")
 	ns := argStr(req, "namespace")
 	ls := argStr(req, "label_selector")
+	limit := int64(100)
+	if l, ok := argFloat(req, "limit"); ok {
+		limit = int64(l)
+	}
 	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
 	defer cancel()
-	lo := metav1.ListOptions{LabelSelector: ls}
+	lo := metav1.ListOptions{LabelSelector: ls, Limit: limit}
 	data, err := ops.ListResource(apiCtx, bundle, resource, ns, lo)
 	if err != nil {
 		return errResult(err), nil
 	}
-	return jsonResult(data)
+	return jsonResult(stripItems(data))
+}
+
+// stripSingle removes verbose fields from a single k8s object.
+func stripSingle(data interface{}) interface{} {
+	b, err := json.Marshal(data)
+	if err != nil {
+		return data
+	}
+	var item map[string]interface{}
+	if err := json.Unmarshal(b, &item); err != nil {
+		return data
+	}
+	if meta, ok := item["metadata"].(map[string]interface{}); ok {
+		delete(meta, "managedFields")
+	}
+	if status, ok := item["status"].(map[string]interface{}); ok {
+		delete(status, "images")
+	}
+	return item
 }
 
 func handleGetResource(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -276,7 +368,7 @@ func handleGetResource(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallT
 	if err != nil {
 		return errResult(err), nil
 	}
-	return jsonResult(data)
+	return jsonResult(stripSingle(data))
 }
 
 func handleGetResourceYAML(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -289,7 +381,7 @@ func handleGetResourceYAML(ctx context.Context, req mcp.CallToolRequest) (*mcp.C
 	if err != nil {
 		return errResult(err), nil
 	}
-	yamlBytes, err := yaml.Marshal(data)
+	yamlBytes, err := yaml.Marshal(stripSingle(data))
 	if err != nil {
 		return errResult(err), nil
 	}
@@ -300,14 +392,26 @@ func handleGetPodLogs(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTo
 	pod := argStr(req, "pod")
 	ns := argStr(req, "namespace")
 	container := argStr(req, "container")
-	tail := int64(100)
-	if t, ok := argFloat(req, "tail"); ok {
-		tail = int64(t)
-	}
 	previous := argBool(req, "previous")
 	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
 	defer cancel()
-	stream, err := logs.StreamLogs(bundle.Clientset, apiCtx, ns, pod, container, tail, false, previous)
+
+	opts := &corev1.PodLogOptions{
+		Container: container,
+		Previous:  previous,
+	}
+	if m, ok := argFloat(req, "since_minutes"); ok && m > 0 {
+		secs := int64(m * 60)
+		opts.SinceSeconds = &secs
+	} else {
+		tail := int64(100)
+		if t, ok := argFloat(req, "tail"); ok {
+			tail = int64(t)
+		}
+		opts.TailLines = &tail
+	}
+
+	stream, err := bundle.Clientset.CoreV1().Pods(ns).GetLogs(pod, opts).Stream(apiCtx)
 	if err != nil {
 		return errResult(err), nil
 	}
@@ -316,14 +420,43 @@ func handleGetPodLogs(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTo
 
 func handleListEvents(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	ns := argStr(req, "namespace")
+	eventType := argStr(req, "type")
+	objectName := argStr(req, "object_name")
+	limit := 100
+	if l, ok := argFloat(req, "limit"); ok && l > 0 {
+		limit = int(l)
+	}
 	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
 	defer cancel()
-	list, err := bundle.Clientset.CoreV1().Events(ns).List(apiCtx, metav1.ListOptions{})
+
+	var fieldSelectors []string
+	if eventType != "" {
+		fieldSelectors = append(fieldSelectors, "type="+eventType)
+	}
+	if objectName != "" {
+		fieldSelectors = append(fieldSelectors, "involvedObject.name="+objectName)
+	}
+	lo := metav1.ListOptions{}
+	if len(fieldSelectors) > 0 {
+		lo.FieldSelector = strings.Join(fieldSelectors, ",")
+	}
+
+	list, err := bundle.Clientset.CoreV1().Events(ns).List(apiCtx, lo)
 	if err != nil {
 		return errResult(err), nil
 	}
-	events := make([]eventSummary, 0, len(list.Items))
-	for _, e := range list.Items {
+
+	// Sort by most recent first.
+	sort.Slice(list.Items, func(i, j int) bool {
+		return list.Items[i].LastTimestamp.After(list.Items[j].LastTimestamp.Time)
+	})
+
+	cap := limit
+	if cap > len(list.Items) {
+		cap = len(list.Items)
+	}
+	events := make([]eventSummary, 0, cap)
+	for _, e := range list.Items[:cap] {
 		events = append(events, summarizeEvent(e))
 	}
 	return jsonResult(events)
@@ -482,10 +615,14 @@ func handleScaleResource(ctx context.Context, req mcp.CallToolRequest) (*mcp.Cal
 	kind := argStr(req, "kind")
 	name := argStr(req, "name")
 	ns := argStr(req, "namespace")
-	replicas := int32(0)
-	if r, ok := argFloat(req, "replicas"); ok {
-		replicas = int32(r)
+	r, ok := argFloat(req, "replicas")
+	if !ok {
+		return errResult(fmt.Errorf("replicas argument is required")), nil
 	}
+	if r < 0 {
+		return errResult(fmt.Errorf("replicas must be >= 0, got %v", r)), nil
+	}
+	replicas := int32(r)
 	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
 	defer cancel()
 	if err := ops.Scale(apiCtx, bundle, ns, kind, name, replicas); err != nil {
@@ -637,11 +774,27 @@ func handlePodSummary(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTo
 	}
 	wg.Wait()
 
+	type condition struct {
+		Type    string `json:"type"`
+		Status  string `json:"status"`
+		Reason  string `json:"reason,omitempty"`
+		Message string `json:"message,omitempty"`
+	}
+	conditions := make([]condition, 0, len(p.Status.Conditions))
+	for _, c := range p.Status.Conditions {
+		conditions = append(conditions, condition{
+			Type:    string(c.Type),
+			Status:  string(c.Status),
+			Reason:  c.Reason,
+			Message: c.Message,
+		})
+	}
+
 	return jsonResult(map[string]interface{}{
 		"pod":            pod,
 		"namespace":      ns,
 		"phase":          string(p.Status.Phase),
-		"conditions":     p.Status.Conditions,
+		"conditions":     conditions,
 		"containers":     containerStates,
 		"events":         recentEvents,
 		"container_logs": containerLogs,
@@ -700,23 +853,46 @@ func handleClusterHealth(ctx context.Context, req mcp.CallToolRequest) (*mcp.Cal
 	}
 
 	cutoff := time.Now().Add(-1 * time.Hour)
-	warnEvents := make([]eventSummary, 0)
+	type healthEvent struct {
+		Namespace string `json:"namespace,omitempty"`
+		Reason    string `json:"reason"`
+		Object    string `json:"object,omitempty"`
+		Message   string `json:"message"`
+		Count     int32  `json:"count"`
+		LastSeen  string `json:"lastSeen"`
+	}
+	const maxHealthEvents = 50
+	warnEvents := make([]healthEvent, 0, maxHealthEvents)
 	if eventList != nil {
 		for _, e := range eventList.Items {
+			if len(warnEvents) >= maxHealthEvents {
+				break
+			}
 			if e.LastTimestamp.After(cutoff) {
-				warnEvents = append(warnEvents, summarizeEvent(e))
+				warnEvents = append(warnEvents, healthEvent{
+					Namespace: e.Namespace,
+					Reason:    e.Reason,
+					Object:    fmt.Sprintf("%s/%s", e.InvolvedObject.Kind, e.InvolvedObject.Name),
+					Message:   e.Message,
+					Count:     e.Count,
+					LastSeen:  e.LastTimestamp.Format(time.RFC3339),
+				})
 			}
 		}
 	}
 
-	return jsonResult(map[string]interface{}{
+	result := map[string]interface{}{
 		"nodes": map[string]int{
 			"ready": nodesReady,
 			"total": nodesTotal,
 		},
 		"pods":           podsByPhase,
 		"warning_events": warnEvents,
-	})
+	}
+	if len(warnEvents) == maxHealthEvents {
+		result["warning_events_truncated"] = true
+	}
+	return jsonResult(result)
 }
 
 func handleListFailingPods(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
