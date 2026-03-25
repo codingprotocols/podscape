@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.1] — 2026-03-25
+
+### Fixes
+
+- **CI:** `gh release upload` for `podscape-mcp` binaries now explicitly targets `codingprotocols/podscape-community` via `--repo` flag — previously the command resolved to the private source repo and failed with a "repository not found" error
+
+---
+
 ## [2.2.0] — 2026-03-25
 
 ### New features
