@@ -168,6 +168,46 @@ The main-process `getResources` IPC handler detects this header and throws `RBAC
 
 ---
 
+## Provider Detection
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/providers` | Detect installed service mesh and ingress providers (Istio, Traefik v2/v3, NGINX Inc, NGINX Community) |
+
+**Response:**
+```json
+{
+  "istio": true,
+  "traefikV3": false,
+  "traefikV2": false,
+  "nginxInc": false,
+  "nginxCommunity": true
+}
+```
+
+Detection methods:
+- **Istio** — `networking.istio.io` API group present
+- **Traefik v3** — `traefik.io` API group present
+- **Traefik v2** — `traefik.containo.us` API group present
+- **NGINX Inc** — `k8s.nginx.org` API group present
+- **NGINX Community** — IngressClass controller field contains `ingress-nginx`
+
+---
+
+## Custom Resources
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/customresource` | List any CRD using the dynamic client |
+
+**Query params:** `?crd=<plural>.<group>&namespace=<ns>`
+
+Example: `?crd=ingressroutes.traefik.io&namespace=default`
+
+Returns a raw JSON array of the matched custom resources. Returns an error (not a silent empty array) when the CRD does not exist or the request fails.
+
+---
+
 ## Owner Chain
 
 | Method | Path | Description |

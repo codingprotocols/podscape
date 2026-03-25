@@ -79,6 +79,28 @@ Exposes six namespaced APIs to the renderer via `contextBridge`:
 | `window.kubeconfig` | Kubeconfig file path selection |
 | `window.sidecar` | Sidecar restart (used by kubeconfig onboarding) |
 
+## Provider Detection (Istio / Traefik / NGINX)
+
+On every successful context switch the renderer fires `fetchProviders()` against the sidecar's `/providers` endpoint. The sidecar uses the Kubernetes discovery API and IngressClass controller fields to detect installed service meshes and ingress controllers:
+
+| Provider | Detection method |
+|---|---|
+| Istio | `networking.istio.io` API group present |
+| Traefik v3 | `traefik.io` API group present |
+| Traefik v2 | `traefik.containo.us` API group present |
+| NGINX Inc | `k8s.nginx.org` API group present |
+| NGINX Community | IngressClass controller field contains `ingress-nginx` |
+
+The `providers` value in the Zustand store drives conditional sidebar groups. `fetchProviders` captures the context at call time and discards results if the context changed while the request was in-flight (stale-context guard). On context switch, all provider flags reset to `false` and any active provider section (prefixed `istio-`, `traefik-`, `nginx-`) auto-navigates to `dashboard` to prevent stale CRD fetches.
+
+## MCP Server (`podscape-mcp`)
+
+`podscape-mcp` is a standalone binary built from `go-core/cmd/podscape-mcp/`. It exposes the Kubernetes cluster as MCP (Model Context Protocol) tools for AI assistants such as Claude and Cursor. It is independent of the Electron app and can be run directly from the command line.
+
+It reuses the `internal/client`, `internal/ops`, and `internal/helm` packages from the sidecar to avoid duplicating Kubernetes client logic.
+
+---
+
 ## Startup Sequence
 
 ```

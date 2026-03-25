@@ -5,7 +5,7 @@
 | Tool | Version | Notes |
 |---|---|---|
 | Node.js | v20+ (v22 recommended) | |
-| Go | v1.25+ | CGO must be enabled |
+| Go | v1.22+ | CGO must be enabled |
 | C compiler | any | Required by CGO — `gcc` on Linux, Xcode CLT on macOS, MinGW on Windows |
 | Trivy CLI | optional | For image vulnerability scanning in Security Hub |
 
@@ -61,7 +61,8 @@ npm run build        # Go sidecar + renderer + main + preload
 
 Individual steps:
 ```bash
-cd go-core && go build ./cmd/podscape-core/   # Go binary only
+cd go-core && go build ./cmd/podscape-core/   # sidecar binary only
+cd go-core && go build ./cmd/podscape-mcp/    # MCP server binary only
 npx electron-vite build                        # Electron assets only
 ```
 
@@ -105,8 +106,8 @@ Each job also uploads a `checksums-<platform>.txt` file to the GitHub release so
 
 ```bash
 # Create and push a release tag
-git tag v1.2.0
-git push origin v1.2.0
+git tag v2.2.2
+git push origin v2.2.2
 ```
 
 Required GitHub secret: `GH_TOKEN` with `contents: write` permission on the repository.

@@ -7,9 +7,14 @@
 - **CI:** `gh release upload` for `podscape-mcp` binaries now explicitly targets `codingprotocols/podscape-community` via `--repo` flag — previously the command resolved to the private source repo and failed with a "repository not found" error
 
 ---
-### Bug fixes
+
+## [2.2.1] — 2026-03-25
+
+### Fixes
 
 - Strip debug symbols (`-s -w`) from all Go release binaries — reduces `podscape-core` from 89 MB to 60 MB and `podscape-mcp` from 82 MB to 56 MB, bringing the macOS DMG back to its expected ~130 MB size
+
+---
 
 ## [2.2.0] — 2026-03-25
 
