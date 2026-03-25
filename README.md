@@ -7,6 +7,29 @@ Manage clusters, stream logs, exec into containers, inspect RBAC, visualise netw
 
 ---
 
+![Podscape Hero Screenshot](docs/images/hero_screenshot.png)
+
+---
+
+## Screenshots
+
+| **Debug Launcher** | **Restart Analyzer** |
+| :---: | :---: |
+| ![Debug Launcher](docs/images/debug_launcher_ui.png) | ![Restart Analyzer](docs/images/restart_analyzer.png) |
+| *One-click ephemeral debug tools* | *Automated CrashLoop diagnosis* |
+
+| **Network Map** | **Onboarding** |
+| :---: | :---: |
+| ![Network Map](docs/images/network_map.png) | ![Splash & Onboarding](docs/images/onboarding.png) |
+| *Visual traffic flow intelligence* | *Sleek glassmorphism UX* |
+
+| **Terminal** | **Unified Log Streaming** |
+| :---: | :---: |
+| ![Terminal](docs/images/terminal.png) | ![Unified Log Streaming](docs/images/unified_log_streaming.webp) |
+| *Built-in PTY terminal* | *Real-time multi-pod log streaming* |
+
+---
+
 ## Features
 
 - **Multi-cluster support** — switch contexts and namespaces instantly; RBAC-aware startup skips resources the current user cannot access
