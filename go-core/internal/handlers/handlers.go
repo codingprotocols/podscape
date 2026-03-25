@@ -631,7 +631,7 @@ func HandleLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stream, err := logs.StreamLogs(cs, r.Context(), namespace, pod, container, tail, true)
+	stream, err := logs.StreamLogs(cs, r.Context(), namespace, pod, container, tail, true, false)
 	if err != nil {
 		log.Printf("[HandleLogs] Failed to start log stream for %s/%s: %v", namespace, pod, err)
 		conn.WriteMessage(websocket.TextMessage, []byte("Error: "+err.Error()))
