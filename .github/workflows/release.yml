@@ -49,9 +49,9 @@ jobs:
       - name: Build podscape-mcp (macOS arm64 + amd64)
         run: |
           cd go-core
-          GOOS=darwin GOARCH=arm64 go build -ldflags="-X main.Version=${GITHUB_REF_NAME}" \
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.Version=${GITHUB_REF_NAME}" \
             -o podscape-mcp-darwin-arm64 ./cmd/podscape-mcp/
-          GOOS=darwin GOARCH=amd64 go build -ldflags="-X main.Version=${GITHUB_REF_NAME}" \
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${GITHUB_REF_NAME}" \
             -o podscape-mcp-darwin-amd64 ./cmd/podscape-mcp/
 
       - name: Package & publish macOS
@@ -106,7 +106,7 @@ jobs:
         run: |
           cd go-core
           $env:GOOS = "windows"; $env:GOARCH = "amd64"; $env:CGO_ENABLED = "0"
-          go build -ldflags="-X main.Version=$env:GITHUB_REF_NAME" `
+          go build -ldflags="-s -w -X main.Version=$env:GITHUB_REF_NAME" `
             -o podscape-mcp-windows-amd64.exe ./cmd/podscape-mcp/
 
       - name: Package & publish Windows
@@ -153,7 +153,7 @@ jobs:
         run: |
           cd go-core
           GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
-            go build -ldflags="-X main.Version=${GITHUB_REF_NAME}" \
+            go build -ldflags="-s -w -X main.Version=${GITHUB_REF_NAME}" \
             -o podscape-mcp-linux-amd64 ./cmd/podscape-mcp/
 
       - name: Package & publish Linux
