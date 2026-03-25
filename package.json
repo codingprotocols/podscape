@@ -1,6 +1,6 @@
 {
   "name": "podscape-electron",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Kubernetes management desktop app — Electron + React + TypeScript",
   "main": "./out/main/index.js",
   "author": "Coding Protocols Private Limited <support@codingprotocols.com>",
@@ -8,7 +8,7 @@
   "scripts": {
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
-    "build": "cd go-core && go build ./cmd/podscape-core/ && cd .. && electron-vite build",
+    "build": "cd go-core && go build -ldflags=\"-s -w\" ./cmd/podscape-core/ && cd .. && electron-vite build",
     "test": "vitest run",
     "test:watch": "vitest",
     "postinstall": "electron-builder install-app-deps",

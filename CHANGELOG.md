@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.2.1] — 2026-03-25
+
+### Bug fixes
+
+- Strip debug symbols (`-s -w`) from all Go release binaries — reduces `podscape-core` from 89 MB to 60 MB and `podscape-mcp` from 82 MB to 56 MB, bringing the macOS DMG back to its expected ~130 MB size
+
 ## [2.2.0] — 2026-03-25
 
 ### New features
