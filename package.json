@@ -4,7 +4,15 @@
   "description": "Kubernetes management desktop app — Electron + React + TypeScript",
   "main": "./out/main/index.js",
   "author": "Coding Protocols Private Limited <support@codingprotocols.com>",
-  "homepage": ".",
+  "homepage": "https://github.com/codingprotocols/podscape",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/codingprotocols/podscape.git"
+  },
+  "bugs": {
+    "url": "https://github.com/codingprotocols/podscape-community/issues"
+  },
+  "license": "Apache-2.0",
   "scripts": {
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
