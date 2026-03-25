@@ -23,6 +23,7 @@ import KubeConfigOnboarding from './components/KubeConfigOnboarding'
 import ExecPanel from './components/ExecPanel'
 import CommandPalette from './components/CommandPalette'
 import ProviderResourcePanel from './components/ProviderResourcePanel'
+import UpdateBanner from './components/UpdateBanner'
 
 // Error boundary for individual sections to prevent one failing fetch from crashing the entire app
 class ErrorBoundary extends React.Component<{ children: React.ReactNode; resetKey?: string }, { error: Error | null }> {
@@ -132,6 +133,7 @@ export default function App(): JSX.Element {
 
   return (
     <div className={`flex h-screen overflow-hidden bg-white dark:bg-[hsl(var(--bg-dark))] text-slate-900 dark:text-slate-100 transition-all duration-300 ${isProduction ? 'ring-inset ring-4 ring-red-500/50' : ''}`}>
+      <UpdateBanner />
       {sidecarCrashed && (
         <div className="fixed inset-x-0 top-0 z-[10001] flex items-center gap-3 px-4 py-2.5 bg-red-600 text-white text-xs font-medium shadow-lg">
           <span className="flex-1">Connection to cluster lost — the backend process exited unexpectedly.</span>

@@ -251,6 +251,7 @@ export interface AppStore extends AnalysisSlice, ProvidersSlice {
     selectContext: (name: string) => Promise<void>
     selectNamespace: (name: string) => void
     selectResource: (r: AnyKubeResource | null) => void
+    deniedSections: Set<ResourceKind>
     loadSection: (section: ResourceKind) => Promise<void>
     loadDashboard: () => Promise<void>
     refresh: () => Promise<void>

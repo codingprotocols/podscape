@@ -9,11 +9,12 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-func StreamLogs(clientset kubernetes.Interface, ctx context.Context, namespace, pod, container string, tail int64, follow bool) (io.ReadCloser, error) {
+func StreamLogs(clientset kubernetes.Interface, ctx context.Context, namespace, pod, container string, tail int64, follow bool, previous bool) (io.ReadCloser, error) {
 	podLogOpts := &corev1.PodLogOptions{
-		Container:  container,
-		Follow:     follow,
-		TailLines:  &tail,
+		Container: container,
+		Follow:    follow,
+		TailLines: &tail,
+		Previous:  previous,
 	}
 
 	req := clientset.CoreV1().Pods(namespace).GetLogs(pod, podLogOpts)
