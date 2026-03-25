@@ -9,16 +9,14 @@ import (
 	"context"
 	"time"
 
+	"github.com/podscape/go-core/internal/client"
 	"github.com/podscape/go-core/internal/handlers"
 	"github.com/podscape/go-core/internal/informers"
 	"github.com/podscape/go-core/internal/portforward"
 	"github.com/podscape/go-core/internal/rbac"
 	"github.com/podscape/go-core/internal/store"
-	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
+
 )
 
 func main() {
@@ -158,11 +156,11 @@ func main() {
 	// like HandleSwitchContext can safely call Manager.StopAll() immediately.
 	portforward.Init(nil, nil)
 
-	// Try to build the k8s client from the kubeconfig file.
+	// Build the k8s client; fail gracefully into setup mode if no valid kubeconfig exists.
 	// If the file is missing (fresh install, CI, new machine), run in no-kubeconfig
 	// mode: start the server immediately so /health returns 200, and let the
 	// renderer show the KubeConfigOnboarding screen instead of crashing.
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	bundle, err := client.Init(*kubeconfig)
 	if err != nil {
 		log.Printf("[sidecar] no valid kubeconfig at %q (%v) — running in setup mode", *kubeconfig, err)
 		store.Store.Lock()
@@ -176,47 +174,18 @@ func main() {
 		select {} // block until Electron kills the process
 	}
 
-	// Raise the default QPS (5) and Burst (10) so informer LIST calls during
-	// cache sync are not throttled. Lens and kubectl use similar higher limits.
-	config.QPS = 50
-	config.Burst = 100
-	// Suppress client-go API deprecation warnings (e.g. "v1 Endpoints deprecated
-	// in v1.33+") — these are noise in the sidecar log; we handle version fallback
-	// explicitly in the GitOps handler.
-	config.WarningHandler = rest.NoWarnings{}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		log.Fatalf("Error creating kubernetes client: %v", err)
-	}
-
-	apiextClient, err := apiextensionsclientset.NewForConfig(config)
-	if err != nil {
-		log.Fatalf("Error creating apiextensions client: %v", err)
-	}
-
-	// Determine the active context name for the initial cache key.
-	kubeconfigData, err := clientcmd.LoadFromFile(*kubeconfig)
-	activeCtxName := ""
-	if err == nil {
-		activeCtxName = kubeconfigData.CurrentContext
-	}
-	if activeCtxName == "" {
-		activeCtxName = "__default__"
-	}
-
 	// Bootstrap the initial context cache and set it as active.
-	initialCache, _ := store.Store.GetOrCreateCache(activeCtxName, clientset, config)
+	initialCache, _ := store.Store.GetOrCreateCache(bundle.ContextName, bundle.Clientset, bundle.Config)
 	initialCache.Lock()
-	initialCache.ApiextensionsClientset = apiextClient
+	initialCache.ApiextensionsClientset = bundle.ApiextClient
 	initialCache.Unlock()
 	store.Store.Lock()
-	store.Store.ActiveContextName = activeCtxName
+	store.Store.ActiveContextName = bundle.ContextName
 	store.Store.ActiveCache = initialCache
 	store.Store.Unlock()
 
 	// Update the portforward manager with valid clients now that we have them.
-	portforward.Manager.UpdateClients(clientset, config)
+	portforward.Manager.UpdateClients(bundle.Clientset, bundle.Config)
 
 	// Start the HTTP server — /health returns 503 until informers sync, so
 	// startSidecar() keeps polling. portforward is already initialised above.
@@ -230,7 +199,7 @@ func main() {
 	// prevents a slow API server from delaying startup significantly.
 	{
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		allowed, err := rbac.CheckAccessFunc(ctx, clientset)
+		allowed, err := rbac.CheckAccessFunc(ctx, bundle.Clientset)
 		cancel()
 		if err != nil {
 			log.Printf("[main] RBAC probe failed, starting all informers: %v", err)
@@ -257,7 +226,7 @@ func main() {
 	initialCache.HasData = true
 	initialCache.Unlock()
 
-	fmt.Printf("Go sidecar ready on port %s (kubeconfig: %s)\n", *port, *kubeconfig)
+	fmt.Printf("Go sidecar ready on port %s (kubeconfig: %s)\n", *port, bundle.Kubeconfig)
 
 	// Block the main goroutine — process lifetime is managed by Electron (SIGTERM).
 	select {}

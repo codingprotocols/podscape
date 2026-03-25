@@ -118,6 +118,8 @@ dist-ssr
 
 # Go
 go-core/podscape-core
+go-core/podscape-mcp
+go-core/podscape
 go-core/vendor/
 go-core/*.exe
 go-core/*.test
