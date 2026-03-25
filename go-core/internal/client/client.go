@@ -1,0 +1,82 @@
+// Package client provides shared Kubernetes client initialization used by all
+// Podscape binaries (sidecar, CLI, MCP server).
+package client
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+
+	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+)
+
+// ClientBundle holds the fully-initialized Kubernetes clients, REST config,
+// and metadata about the active context.
+type ClientBundle struct {
+	Clientset    kubernetes.Interface
+	ApiextClient apiextensionsclientset.Interface
+	Config       *rest.Config
+	ContextName  string
+	Kubeconfig   string
+}
+
+// Init builds a ClientBundle from the given kubeconfig path.
+// Resolution order: explicit path → $KUBECONFIG → ~/.kube/config.
+func Init(kubeconfig string) (*ClientBundle, error) {
+	kubeconfig = resolveKubeconfig(kubeconfig)
+
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	if err != nil {
+		return nil, fmt.Errorf("building kubeconfig from %q: %w", kubeconfig, err)
+	}
+
+	// Match the sidecar's tuning so LIST calls are not throttled.
+	config.QPS = 50
+	config.Burst = 100
+	config.WarningHandler = rest.NoWarnings{}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("creating kubernetes client: %w", err)
+	}
+
+	apiextClient, err := apiextensionsclientset.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("creating apiextensions client: %w", err)
+	}
+
+	// Determine the active context name.
+	contextName := "__default__"
+	if data, loadErr := clientcmd.LoadFromFile(kubeconfig); loadErr == nil && data.CurrentContext != "" {
+		contextName = data.CurrentContext
+	}
+
+	return &ClientBundle{
+		Clientset:    clientset,
+		ApiextClient: apiextClient,
+		Config:       config,
+		ContextName:  contextName,
+		Kubeconfig:   kubeconfig,
+	}, nil
+}
+
+// resolveKubeconfig returns the first valid kubeconfig path from:
+// 1. The explicit argument (if non-empty)
+// 2. $KUBECONFIG environment variable
+// 3. ~/.kube/config
+func resolveKubeconfig(explicit string) string {
+	if explicit != "" {
+		return explicit
+	}
+	if env := os.Getenv("KUBECONFIG"); env != "" {
+		return env
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".kube", "config")
+}

@@ -46,6 +46,14 @@ jobs:
           security list-keychain -d user -s "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -s -k "ci" "$KEYCHAIN_PATH"
 
+      - name: Build podscape-mcp (macOS arm64 + amd64)
+        run: |
+          cd go-core
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-X main.Version=${GITHUB_REF_NAME}" \
+            -o podscape-mcp-darwin-arm64 ./cmd/podscape-mcp/
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-X main.Version=${GITHUB_REF_NAME}" \
+            -o podscape-mcp-darwin-amd64 ./cmd/podscape-mcp/
+
       - name: Package & publish macOS
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
@@ -55,6 +63,14 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run build:mac -- --publish always
+
+      - name: Upload podscape-mcp macOS binaries
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" \
+            go-core/podscape-mcp-darwin-arm64 \
+            go-core/podscape-mcp-darwin-amd64
 
   # ── Windows ──────────────────────────────────────────────────────────────────
   release-win:
@@ -85,11 +101,23 @@ jobs:
       - name: Add MinGW to PATH (required for CGO)
         run: echo "C:\ProgramData\Chocolatey\lib\mingw\tools\install\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
+      - name: Build podscape-mcp (Windows amd64)
+        run: |
+          cd go-core
+          $env:GOOS = "windows"; $env:GOARCH = "amd64"; $env:CGO_ENABLED = "0"
+          go build -ldflags="-X main.Version=$env:GITHUB_REF_NAME" `
+            -o podscape-mcp-windows-amd64.exe ./cmd/podscape-mcp/
+
       - name: Package & publish Windows
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           CGO_ENABLED: '1'
         run: npm run build:win -- --publish always
+
+      - name: Upload podscape-mcp Windows binary
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: gh release upload "$env:GITHUB_REF_NAME" go-core/podscape-mcp-windows-amd64.exe
 
   # ── Linux ────────────────────────────────────────────────────────────────────
   release-linux:
@@ -120,8 +148,22 @@ jobs:
           npm run icon:icns || true
           npm run icon:ico || true
 
+      - name: Build podscape-mcp (Linux amd64)
+        run: |
+          cd go-core
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+            go build -ldflags="-X main.Version=${GITHUB_REF_NAME}" \
+            -o podscape-mcp-linux-amd64 ./cmd/podscape-mcp/
+
       - name: Package & publish Linux
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           CGO_ENABLED: '1'
         run: npm run build:linux -- --publish always
+
+      - name: Upload podscape-mcp Linux binary
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" \
+            go-core/podscape-mcp-linux-amd64

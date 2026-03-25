@@ -1,0 +1,875 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
+	"github.com/podscape/go-core/internal/helm"
+	"github.com/podscape/go-core/internal/logs"
+	"github.com/podscape/go-core/internal/ops"
+	"github.com/podscape/go-core/internal/providers"
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/yaml"
+)
+
+// args extracts the Arguments map from the request.
+func args(req mcp.CallToolRequest) map[string]interface{} {
+	if m, ok := req.Params.Arguments.(map[string]interface{}); ok {
+		return m
+	}
+	return map[string]interface{}{}
+}
+
+func argStr(req mcp.CallToolRequest, key string) string {
+	v, _ := args(req)[key].(string)
+	return v
+}
+
+func argFloat(req mcp.CallToolRequest, key string) (float64, bool) {
+	v, ok := args(req)[key].(float64)
+	return v, ok
+}
+
+func argBool(req mcp.CallToolRequest, key string) bool {
+	v, _ := args(req)[key].(bool)
+	return v
+}
+
+const (
+	// apiTimeout is the standard timeout applied to every Kubernetes API call.
+	apiTimeout = 30 * time.Second
+	// maxLogBytes caps the total log output returned by get_pod_logs to prevent OOM.
+	maxLogBytes = 512 * 1024 // 512 KB
+	// maxLogBytesPerContainer caps per-container log output inside pod_summary.
+	maxLogBytesPerContainer = 32 * 1024 // 32 KB
+)
+
+// eventSummary is a JSON-friendly projection of corev1.Event, shared across
+// list_events, get_resource_events, pod_summary, and cluster_health.
+// Fields are omitempty so each call site only emits fields relevant to its context.
+type eventSummary struct {
+	Namespace string `json:"namespace,omitempty"`
+	Type      string `json:"type,omitempty"`
+	Reason    string `json:"reason"`
+	Object    string `json:"object,omitempty"`
+	Message   string `json:"message"`
+	Count     int32  `json:"count"`
+	LastSeen  string `json:"lastSeen"`
+	Source    string `json:"source,omitempty"`
+}
+
+func summarizeEvent(e corev1.Event) eventSummary {
+	return eventSummary{
+		Namespace: e.Namespace,
+		Type:      e.Type,
+		Reason:    e.Reason,
+		Object:    fmt.Sprintf("%s/%s", e.InvolvedObject.Kind, e.InvolvedObject.Name),
+		Message:   e.Message,
+		Count:     e.Count,
+		LastSeen:  e.LastTimestamp.Format(time.RFC3339),
+		Source:    e.Source.Component,
+	}
+}
+
+// readLogStream drains r into a string, capping output at maxBytes.
+// A truncation suffix is appended when the limit is reached. Scanner errors
+// (e.g. lines exceeding the token buffer) are appended as error lines.
+func readLogStream(r io.ReadCloser, maxBytes int) string {
+	defer r.Close()
+	var sb strings.Builder
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 256*1024), 256*1024) // raise token limit to 256 KB
+	for scanner.Scan() {
+		if sb.Len()+len(scanner.Bytes())+1 > maxBytes {
+			sb.WriteString(fmt.Sprintf("\n[output truncated — %d bytes limit reached]", maxBytes))
+			return sb.String()
+		}
+		sb.WriteString(scanner.Text())
+		sb.WriteByte('\n')
+	}
+	if err := scanner.Err(); err != nil {
+		sb.WriteString(fmt.Sprintf("\n[error reading logs: %v]", err))
+	}
+	return sb.String()
+}
+
+func registerTools(s *server.MCPServer) {
+	// --- Read-only tools ---
+
+	s.AddTool(mcp.NewTool("list_resources",
+		mcp.WithDescription("List Kubernetes resources by type"),
+		mcp.WithString("resource", mcp.Required(), mcp.Description("Resource type: pods, deployments, services, nodes, namespaces, configmaps, secrets, etc.")),
+		mcp.WithString("namespace", mcp.Description("Namespace filter (omit for all namespaces)")),
+		mcp.WithString("label_selector", mcp.Description("Label selector filter, e.g. app=nginx or env=prod,tier=frontend")),
+	), handleListResources)
+
+	s.AddTool(mcp.NewTool("get_resource",
+		mcp.WithDescription("Get a single Kubernetes resource by name"),
+		mcp.WithString("resource", mcp.Required(), mcp.Description("Resource type")),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Resource name")),
+		mcp.WithString("namespace", mcp.Description("Namespace (omit for cluster-scoped resources)")),
+	), handleGetResource)
+
+	s.AddTool(mcp.NewTool("get_resource_yaml",
+		mcp.WithDescription("Get full YAML manifest of a Kubernetes resource"),
+		mcp.WithString("resource", mcp.Required(), mcp.Description("Resource type")),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Resource name")),
+		mcp.WithString("namespace", mcp.Description("Namespace (omit for cluster-scoped resources)")),
+	), handleGetResourceYAML)
+
+	s.AddTool(mcp.NewTool("get_pod_logs",
+		mcp.WithDescription("Get logs from a pod container"),
+		mcp.WithString("pod", mcp.Required(), mcp.Description("Pod name")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
+		mcp.WithString("container", mcp.Description("Container name")),
+		mcp.WithNumber("tail", mcp.Description("Number of lines (default 100)")),
+		mcp.WithBoolean("previous", mcp.Description("Return logs from the previously terminated container instance (useful for crash-looping containers)")),
+	), handleGetPodLogs)
+
+	s.AddTool(mcp.NewTool("list_events",
+		mcp.WithDescription("List Kubernetes events"),
+		mcp.WithString("namespace", mcp.Description("Namespace filter")),
+	), handleListEvents)
+
+	s.AddTool(mcp.NewTool("list_contexts",
+		mcp.WithDescription("List available Kubernetes contexts"),
+	), handleListContexts)
+
+	s.AddTool(mcp.NewTool("get_current_context",
+		mcp.WithDescription("Get the current Kubernetes context name"),
+	), handleGetCurrentContext)
+
+	s.AddTool(mcp.NewTool("list_namespaces",
+		mcp.WithDescription("List all namespaces in the cluster"),
+	), handleListNamespaces)
+
+	s.AddTool(mcp.NewTool("helm_list",
+		mcp.WithDescription("List Helm releases"),
+		mcp.WithString("namespace", mcp.Description("Namespace filter")),
+	), handleHelmList)
+
+	s.AddTool(mcp.NewTool("helm_status",
+		mcp.WithDescription("Get status of a Helm release"),
+		mcp.WithString("release", mcp.Required(), mcp.Description("Release name")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
+	), handleHelmStatus)
+
+	s.AddTool(mcp.NewTool("helm_values",
+		mcp.WithDescription("Get values of a Helm release"),
+		mcp.WithString("release", mcp.Required(), mcp.Description("Release name")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
+		mcp.WithBoolean("all", mcp.Description("Include computed values")),
+	), handleHelmValues)
+
+	s.AddTool(mcp.NewTool("security_scan",
+		mcp.WithDescription("Run a security posture scan on pods in a namespace"),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace to scan")),
+	), handleSecurityScan)
+
+	s.AddTool(mcp.NewTool("detect_providers",
+		mcp.WithDescription("Detect installed ingress/mesh providers (Istio, Traefik, Nginx)"),
+	), handleDetectProviders)
+
+	// --- Mutating tools ---
+
+	s.AddTool(mcp.NewTool("scale_resource",
+		mcp.WithDescription("Scale a deployment or statefulset replica count"),
+		mcp.WithString("kind", mcp.Required(), mcp.Description("Resource kind: deployment or statefulset")),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Resource name")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
+		mcp.WithNumber("replicas", mcp.Required(), mcp.Description("Desired replica count")),
+	), handleScaleResource)
+
+	s.AddTool(mcp.NewTool("delete_resource",
+		mcp.WithDescription("Delete a Kubernetes resource"),
+		mcp.WithString("kind", mcp.Required(), mcp.Description("Resource kind (pod, deployment, service, etc.)")),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Resource name")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
+	), handleDeleteResource)
+
+	s.AddTool(mcp.NewTool("rollout_restart",
+		mcp.WithDescription("Trigger a rolling restart of a deployment, daemonset, or statefulset"),
+		mcp.WithString("kind", mcp.Required(), mcp.Description("Resource kind: deployment, daemonset, or statefulset")),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Resource name")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
+	), handleRolloutRestart)
+
+	s.AddTool(mcp.NewTool("rollout_undo",
+		mcp.WithDescription("Undo a deployment rollout to a previous revision"),
+		mcp.WithString("kind", mcp.Required(), mcp.Description("Resource kind (currently only deployment)")),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Resource name")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
+		mcp.WithNumber("revision", mcp.Description("Target revision (0 = previous)")),
+	), handleRolloutUndo)
+
+	s.AddTool(mcp.NewTool("apply_yaml",
+		mcp.WithDescription("Apply a Kubernetes YAML manifest using server-side apply"),
+		mcp.WithString("yaml", mcp.Required(), mcp.Description("The YAML manifest content")),
+	), handleApplyYAML)
+
+	s.AddTool(mcp.NewTool("helm_rollback",
+		mcp.WithDescription("Roll back a Helm release to a previous revision"),
+		mcp.WithString("release", mcp.Required(), mcp.Description("Release name")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
+		mcp.WithNumber("revision", mcp.Description("Target revision (0 = previous)")),
+	), handleHelmRollback)
+
+	// --- Diagnostic aggregation tools ---
+
+	s.AddTool(mcp.NewTool("pod_summary",
+		mcp.WithDescription("Get a combined summary of a pod's status, container states, recent events, and last N log lines — everything needed to diagnose a failing pod in one call"),
+		mcp.WithString("pod", mcp.Required(), mcp.Description("Pod name")),
+		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
+		mcp.WithNumber("tail", mcp.Description("Log lines per container (default 50)")),
+		mcp.WithBoolean("previous", mcp.Description("Fetch logs from the previously terminated container instance (useful for crash-looping containers)")),
+	), handlePodSummary)
+
+	s.AddTool(mcp.NewTool("cluster_health",
+		mcp.WithDescription("Get a one-call cluster health overview: node ready/total counts, pod counts by phase (Running/Pending/Failed), and Warning events from the last hour"),
+	), handleClusterHealth)
+
+	s.AddTool(mcp.NewTool("list_failing_pods",
+		mcp.WithDescription("List all pods not in Running or Succeeded state, with their phase, reason, and container-level failure details — the fastest way to see what's broken in a cluster"),
+		mcp.WithString("namespace", mcp.Description("Namespace filter (omit for all namespaces)")),
+	), handleListFailingPods)
+
+	s.AddTool(mcp.NewTool("get_resource_events",
+		mcp.WithDescription("Get Kubernetes events for a specific named resource (pod, deployment, node, service, etc.) — equivalent to 'kubectl describe' events section"),
+		mcp.WithString("kind", mcp.Required(), mcp.Description("Resource kind, e.g. Pod, Deployment, Node, Service")),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Resource name")),
+		mcp.WithString("namespace", mcp.Description("Namespace (omit for cluster-scoped resources)")),
+	), handleGetResourceEvents)
+}
+
+func handleListResources(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	resource := argStr(req, "resource")
+	ns := argStr(req, "namespace")
+	ls := argStr(req, "label_selector")
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+	lo := metav1.ListOptions{LabelSelector: ls}
+	data, err := ops.ListResource(apiCtx, bundle, resource, ns, lo)
+	if err != nil {
+		return errResult(err), nil
+	}
+	return jsonResult(data)
+}
+
+func handleGetResource(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	resource := argStr(req, "resource")
+	name := argStr(req, "name")
+	ns := argStr(req, "namespace")
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+	data, err := ops.GetResource(apiCtx, bundle, resource, name, ns)
+	if err != nil {
+		return errResult(err), nil
+	}
+	return jsonResult(data)
+}
+
+func handleGetResourceYAML(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	resource := argStr(req, "resource")
+	name := argStr(req, "name")
+	ns := argStr(req, "namespace")
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+	data, err := ops.GetResource(apiCtx, bundle, resource, name, ns)
+	if err != nil {
+		return errResult(err), nil
+	}
+	yamlBytes, err := yaml.Marshal(data)
+	if err != nil {
+		return errResult(err), nil
+	}
+	return mcp.NewToolResultText(string(yamlBytes)), nil
+}
+
+func handleGetPodLogs(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	pod := argStr(req, "pod")
+	ns := argStr(req, "namespace")
+	container := argStr(req, "container")
+	tail := int64(100)
+	if t, ok := argFloat(req, "tail"); ok {
+		tail = int64(t)
+	}
+	previous := argBool(req, "previous")
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+	stream, err := logs.StreamLogs(bundle.Clientset, apiCtx, ns, pod, container, tail, false, previous)
+	if err != nil {
+		return errResult(err), nil
+	}
+	return mcp.NewToolResultText(readLogStream(stream, maxLogBytes)), nil
+}
+
+func handleListEvents(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	ns := argStr(req, "namespace")
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+	list, err := bundle.Clientset.CoreV1().Events(ns).List(apiCtx, metav1.ListOptions{})
+	if err != nil {
+		return errResult(err), nil
+	}
+	events := make([]eventSummary, 0, len(list.Items))
+	for _, e := range list.Items {
+		events = append(events, summarizeEvent(e))
+	}
+	return jsonResult(events)
+}
+
+func handleListContexts(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	cfg, err := clientcmd.LoadFromFile(bundle.Kubeconfig)
+	if err != nil {
+		return errResult(err), nil
+	}
+	names := make([]string, 0, len(cfg.Contexts))
+	for name := range cfg.Contexts {
+		names = append(names, name)
+	}
+	// bundle.ContextName is what the server actually connected with at startup —
+	// authoritative even if the kubeconfig file was edited after launch.
+	return jsonResult(map[string]interface{}{
+		"contexts": names,
+		"current":  bundle.ContextName,
+	})
+}
+
+func handleGetCurrentContext(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText(bundle.ContextName), nil
+}
+
+func handleListNamespaces(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+	list, err := bundle.Clientset.CoreV1().Namespaces().List(apiCtx, metav1.ListOptions{})
+	if err != nil {
+		return errResult(err), nil
+	}
+	names := make([]string, 0, len(list.Items))
+	for _, ns := range list.Items {
+		names = append(names, ns.Name)
+	}
+	return jsonResult(names)
+}
+
+func handleHelmList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	ns := argStr(req, "namespace")
+	releases, err := helm.ListReleases(bundle.Kubeconfig, bundle.ContextName, ns)
+	if err != nil {
+		return errResult(err), nil
+	}
+	return jsonResult(releases)
+}
+
+func handleHelmStatus(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	release := argStr(req, "release")
+	ns := argStr(req, "namespace")
+	status, err := helm.GetReleaseStatus(bundle.Kubeconfig, bundle.ContextName, ns, release)
+	if err != nil {
+		return errResult(err), nil
+	}
+	return mcp.NewToolResultText(status), nil
+}
+
+func handleHelmValues(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	release := argStr(req, "release")
+	ns := argStr(req, "namespace")
+	all := argBool(req, "all")
+	values, err := helm.GetReleaseValues(bundle.Kubeconfig, bundle.ContextName, ns, release, all)
+	if err != nil {
+		return errResult(err), nil
+	}
+	return mcp.NewToolResultText(values), nil
+}
+
+// securityFinding represents a single security issue found during a pod scan.
+type securityFinding struct {
+	Pod       string `json:"pod"`
+	Container string `json:"container"`
+	Issue     string `json:"issue"`
+	Severity  string `json:"severity"`
+}
+
+// scanPods inspects pod security posture and returns a list of findings.
+// Extracted for testability — handler calls this after fetching pods from the API.
+func scanPods(pods []corev1.Pod) []securityFinding {
+	var findings []securityFinding
+	for _, pod := range pods {
+		psc := pod.Spec.SecurityContext // pod-level context, may be nil
+		for _, c := range pod.Spec.Containers {
+			sc := c.SecurityContext
+			if sc == nil {
+				findings = append(findings, securityFinding{pod.Name, c.Name, "No SecurityContext set", "WARN"})
+				// Still check pod-level for root even without container-level sc.
+				if psc != nil && psc.RunAsUser != nil && *psc.RunAsUser == 0 {
+					findings = append(findings, securityFinding{pod.Name, c.Name, "Running as root (pod-level)", "HIGH"})
+				}
+				continue
+			}
+			if sc.Privileged != nil && *sc.Privileged {
+				findings = append(findings, securityFinding{pod.Name, c.Name, "Privileged container", "CRITICAL"})
+			}
+			// RunAsNonRoot and RunAsUser: container-level overrides pod-level per k8s spec.
+			runAsNonRoot := sc.RunAsNonRoot
+			if runAsNonRoot == nil && psc != nil {
+				runAsNonRoot = psc.RunAsNonRoot
+			}
+			runAsUser := sc.RunAsUser
+			if runAsUser == nil && psc != nil {
+				runAsUser = psc.RunAsUser
+			}
+			if (runAsNonRoot == nil || !*runAsNonRoot) && (runAsUser == nil || *runAsUser == 0) {
+				findings = append(findings, securityFinding{pod.Name, c.Name, "Running as root", "HIGH"})
+			}
+			// Resource limits: flag containers with no CPU or memory limit set.
+			if c.Resources.Limits == nil || (c.Resources.Limits.Cpu().IsZero() && c.Resources.Limits.Memory().IsZero()) {
+				findings = append(findings, securityFinding{pod.Name, c.Name, "No resource limits set", "WARN"})
+			}
+		}
+		if pod.Spec.HostNetwork {
+			findings = append(findings, securityFinding{pod.Name, "*", "Host networking enabled", "HIGH"})
+		}
+		if pod.Spec.HostPID {
+			findings = append(findings, securityFinding{pod.Name, "*", "Host PID namespace enabled", "HIGH"})
+		}
+		if pod.Spec.HostIPC {
+			findings = append(findings, securityFinding{pod.Name, "*", "Host IPC namespace enabled", "HIGH"})
+		}
+	}
+	return findings
+}
+
+func handleSecurityScan(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	ns := argStr(req, "namespace")
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+	pods, err := bundle.Clientset.CoreV1().Pods(ns).List(apiCtx, metav1.ListOptions{})
+	if err != nil {
+		return errResult(err), nil
+	}
+	findings := scanPods(pods.Items)
+	return jsonResult(map[string]interface{}{
+		"namespace": ns, "pods_scanned": len(pods.Items),
+		"findings": findings, "total_issues": len(findings),
+	})
+}
+
+func handleDetectProviders(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+	icList, _ := bundle.Clientset.NetworkingV1().IngressClasses().List(apiCtx, metav1.ListOptions{})
+	var items []networkingv1.IngressClass
+	if icList != nil {
+		items = icList.Items
+	}
+	ps := providers.Detect(bundle.Clientset.Discovery(), items)
+	return jsonResult(ps)
+}
+
+func handleScaleResource(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	kind := argStr(req, "kind")
+	name := argStr(req, "name")
+	ns := argStr(req, "namespace")
+	replicas := int32(0)
+	if r, ok := argFloat(req, "replicas"); ok {
+		replicas = int32(r)
+	}
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+	if err := ops.Scale(apiCtx, bundle, ns, kind, name, replicas); err != nil {
+		return errResult(err), nil
+	}
+	return mcp.NewToolResultText(fmt.Sprintf("Scaled %s/%s to %d replicas in namespace %s", kind, name, replicas, ns)), nil
+}
+
+func handleDeleteResource(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	kind := argStr(req, "kind")
+	name := argStr(req, "name")
+	ns := argStr(req, "namespace")
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+	if err := ops.Delete(apiCtx, bundle, ns, kind, name); err != nil {
+		return errResult(err), nil
+	}
+	return mcp.NewToolResultText(fmt.Sprintf("Deleted %s/%s from namespace %s", kind, name, ns)), nil
+}
+
+func handleRolloutRestart(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	kind := argStr(req, "kind")
+	name := argStr(req, "name")
+	ns := argStr(req, "namespace")
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+	if err := ops.RolloutRestart(apiCtx, bundle, ns, kind, name); err != nil {
+		return errResult(err), nil
+	}
+	return mcp.NewToolResultText(fmt.Sprintf("Restarted %s/%s in namespace %s", kind, name, ns)), nil
+}
+
+func handleRolloutUndo(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	kind := argStr(req, "kind")
+	name := argStr(req, "name")
+	ns := argStr(req, "namespace")
+	revision := int64(0)
+	if r, ok := argFloat(req, "revision"); ok {
+		revision = int64(r)
+	}
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+	if err := ops.RolloutUndo(apiCtx, bundle, ns, kind, name, revision); err != nil {
+		return errResult(err), nil
+	}
+	msg := fmt.Sprintf("Rolled back %s/%s to previous revision in namespace %s", kind, name, ns)
+	if revision > 0 {
+		msg = fmt.Sprintf("Rolled back %s/%s to revision %d in namespace %s", kind, name, revision, ns)
+	}
+	return mcp.NewToolResultText(msg), nil
+}
+
+func handleApplyYAML(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	yamlContent := argStr(req, "yaml")
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+	if err := ops.ApplyYAML(apiCtx, bundle, []byte(yamlContent)); err != nil {
+		return errResult(err), nil
+	}
+	return mcp.NewToolResultText("Applied YAML manifest successfully"), nil
+}
+
+func handleHelmRollback(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	release := argStr(req, "release")
+	ns := argStr(req, "namespace")
+	revision := 0
+	if r, ok := argFloat(req, "revision"); ok {
+		revision = int(r)
+	}
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+	_ = apiCtx // helm SDK manages its own timeout internally; apiCtx provides cancellation
+	if err := helm.RollbackRelease(bundle.Kubeconfig, bundle.ContextName, ns, release, revision); err != nil {
+		return errResult(err), nil
+	}
+	return mcp.NewToolResultText(fmt.Sprintf("Rolled back Helm release %s in namespace %s", release, ns)), nil
+}
+
+func handlePodSummary(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	pod := argStr(req, "pod")
+	ns := argStr(req, "namespace")
+	tail := int64(50)
+	if t, ok := argFloat(req, "tail"); ok {
+		tail = int64(t)
+	}
+	previous := argBool(req, "previous")
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+
+	p, err := bundle.Clientset.CoreV1().Pods(ns).Get(apiCtx, pod, metav1.GetOptions{})
+	if err != nil {
+		return errResult(err), nil
+	}
+
+	type containerState struct {
+		Name    string `json:"name"`
+		Ready   bool   `json:"ready"`
+		State   string `json:"state"`
+		Reason  string `json:"reason,omitempty"`
+		Message string `json:"message,omitempty"`
+	}
+	containerStates := make([]containerState, 0, len(p.Status.ContainerStatuses))
+	for _, cs := range p.Status.ContainerStatuses {
+		s := containerState{Name: cs.Name, Ready: cs.Ready}
+		switch {
+		case cs.State.Running != nil:
+			s.State = "Running"
+		case cs.State.Waiting != nil:
+			s.State = "Waiting"
+			s.Reason = cs.State.Waiting.Reason
+			s.Message = cs.State.Waiting.Message
+		case cs.State.Terminated != nil:
+			s.State = "Terminated"
+			s.Reason = cs.State.Terminated.Reason
+			s.Message = cs.State.Terminated.Message
+		}
+		containerStates = append(containerStates, s)
+	}
+
+	eventList, _ := bundle.Clientset.CoreV1().Events(ns).List(apiCtx, metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.kind=Pod", pod),
+	})
+	recentEvents := make([]eventSummary, 0)
+	if eventList != nil {
+		for _, e := range eventList.Items {
+			recentEvents = append(recentEvents, summarizeEvent(e))
+		}
+	}
+
+	// Fetch logs for all containers concurrently.
+	containerLogs := make(map[string]string, len(p.Spec.Containers))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, c := range p.Spec.Containers {
+		wg.Add(1)
+		go func(containerName string) {
+			defer wg.Done()
+			stream, streamErr := logs.StreamLogs(bundle.Clientset, apiCtx, ns, pod, containerName, tail, false, previous)
+			var output string
+			if streamErr != nil {
+				output = fmt.Sprintf("[error fetching logs: %v]", streamErr)
+			} else {
+				output = readLogStream(stream, maxLogBytesPerContainer)
+			}
+			mu.Lock()
+			containerLogs[containerName] = output
+			mu.Unlock()
+		}(c.Name)
+	}
+	wg.Wait()
+
+	return jsonResult(map[string]interface{}{
+		"pod":            pod,
+		"namespace":      ns,
+		"phase":          string(p.Status.Phase),
+		"conditions":     p.Status.Conditions,
+		"containers":     containerStates,
+		"events":         recentEvents,
+		"container_logs": containerLogs,
+	})
+}
+
+func handleClusterHealth(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+
+	// Fetch nodes, pods, and warning events concurrently — all are independent.
+	var (
+		nodeList  *corev1.NodeList
+		podList   *corev1.PodList
+		eventList *corev1.EventList
+		nodeErr   error
+		podErr    error
+	)
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		nodeList, nodeErr = bundle.Clientset.CoreV1().Nodes().List(apiCtx, metav1.ListOptions{})
+	}()
+	go func() {
+		defer wg.Done()
+		podList, podErr = bundle.Clientset.CoreV1().Pods("").List(apiCtx, metav1.ListOptions{})
+	}()
+	go func() {
+		defer wg.Done()
+		eventList, _ = bundle.Clientset.CoreV1().Events("").List(apiCtx, metav1.ListOptions{
+			FieldSelector: "type=Warning",
+		})
+	}()
+	wg.Wait()
+
+	if nodeErr != nil {
+		return errResult(nodeErr), nil
+	}
+	if podErr != nil {
+		return errResult(podErr), nil
+	}
+
+	nodesReady, nodesTotal := 0, len(nodeList.Items)
+	for _, n := range nodeList.Items {
+		for _, c := range n.Status.Conditions {
+			if c.Type == corev1.NodeReady && c.Status == corev1.ConditionTrue {
+				nodesReady++
+			}
+		}
+	}
+
+	podsByPhase := map[string]int{}
+	for _, p := range podList.Items {
+		podsByPhase[string(p.Status.Phase)]++
+	}
+
+	cutoff := time.Now().Add(-1 * time.Hour)
+	warnEvents := make([]eventSummary, 0)
+	if eventList != nil {
+		for _, e := range eventList.Items {
+			if e.LastTimestamp.After(cutoff) {
+				warnEvents = append(warnEvents, summarizeEvent(e))
+			}
+		}
+	}
+
+	return jsonResult(map[string]interface{}{
+		"nodes": map[string]int{
+			"ready": nodesReady,
+			"total": nodesTotal,
+		},
+		"pods":           podsByPhase,
+		"warning_events": warnEvents,
+	})
+}
+
+func handleListFailingPods(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	ns := argStr(req, "namespace")
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+
+	podList, err := bundle.Clientset.CoreV1().Pods(ns).List(apiCtx, metav1.ListOptions{})
+	if err != nil {
+		return errResult(err), nil
+	}
+
+	type failingContainer struct {
+		Name     string `json:"name"`
+		State    string `json:"state"`
+		Reason   string `json:"reason,omitempty"`
+		Message  string `json:"message,omitempty"`
+		Restarts int32  `json:"restarts"`
+	}
+	type failingPod struct {
+		Name       string             `json:"name"`
+		Namespace  string             `json:"namespace"`
+		Phase      string             `json:"phase"`
+		Reason     string             `json:"reason,omitempty"`
+		Message    string             `json:"message,omitempty"`
+		Containers []failingContainer `json:"containers"`
+		Age        string             `json:"age"`
+	}
+
+	var failing []failingPod
+	for _, p := range podList.Items {
+		phase := string(p.Status.Phase)
+		if phase == "Running" || phase == "Succeeded" {
+			// Still include Running pods with restarting containers.
+			hasProblematic := false
+			for _, cs := range p.Status.ContainerStatuses {
+				if cs.State.Waiting != nil || (!cs.Ready && p.Status.Phase == corev1.PodRunning) {
+					hasProblematic = true
+					break
+				}
+			}
+			if !hasProblematic {
+				continue
+			}
+		}
+
+		fp := failingPod{
+			Name:      p.Name,
+			Namespace: p.Namespace,
+			Phase:     phase,
+			Reason:    p.Status.Reason,
+			Message:   p.Status.Message,
+			Age:       p.CreationTimestamp.Format(time.RFC3339),
+		}
+		for _, cs := range p.Status.ContainerStatuses {
+			fc := failingContainer{Name: cs.Name, Restarts: cs.RestartCount}
+			switch {
+			case cs.State.Waiting != nil:
+				fc.State = "Waiting"
+				fc.Reason = cs.State.Waiting.Reason
+				fc.Message = cs.State.Waiting.Message
+			case cs.State.Terminated != nil:
+				fc.State = "Terminated"
+				fc.Reason = cs.State.Terminated.Reason
+				fc.Message = cs.State.Terminated.Message
+			case cs.State.Running != nil && !cs.Ready:
+				fc.State = "Running/NotReady"
+			}
+			if fc.State != "" {
+				fp.Containers = append(fp.Containers, fc)
+			}
+		}
+		failing = append(failing, fp)
+	}
+
+	return jsonResult(map[string]interface{}{
+		"total_failing": len(failing),
+		"pods":          failing,
+	})
+}
+
+func handleGetResourceEvents(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	kind := argStr(req, "kind")
+	name := argStr(req, "name")
+	ns := argStr(req, "namespace")
+	apiCtx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
+
+	// Capitalise kind for field selector (k8s stores it as e.g. "Pod", "Deployment")
+	if len(kind) > 0 {
+		kind = strings.ToUpper(kind[:1]) + kind[1:]
+	}
+
+	fieldSelector := fmt.Sprintf("involvedObject.name=%s,involvedObject.kind=%s", name, kind)
+	if ns != "" {
+		fieldSelector += fmt.Sprintf(",involvedObject.namespace=%s", ns)
+	}
+
+	list, err := bundle.Clientset.CoreV1().Events(ns).List(apiCtx, metav1.ListOptions{
+		FieldSelector: fieldSelector,
+	})
+	if err != nil {
+		return errResult(err), nil
+	}
+
+	events := make([]eventSummary, 0, len(list.Items))
+	for _, e := range list.Items {
+		events = append(events, summarizeEvent(e))
+	}
+	return jsonResult(map[string]interface{}{
+		"kind":   kind,
+		"name":   name,
+		"events": events,
+	})
+}
+
+func errResult(err error) *mcp.CallToolResult {
+	return mcp.NewToolResultError(err.Error())
+}
+
+// stripManagedFields removes managedFields from marshaled k8s objects to reduce response size.
+// managedFields can account for 60-70% of the JSON payload and are rarely useful to an AI assistant.
+func stripManagedFields(data interface{}) interface{} {
+	b, err := json.Marshal(data)
+	if err != nil {
+		return data
+	}
+	var m interface{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return data
+	}
+	stripManagedFieldsRec(m)
+	return m
+}
+
+func stripManagedFieldsRec(v interface{}) {
+	switch val := v.(type) {
+	case map[string]interface{}:
+		delete(val, "managedFields")
+		for _, child := range val {
+			stripManagedFieldsRec(child)
+		}
+	case []interface{}:
+		for _, item := range val {
+			stripManagedFieldsRec(item)
+		}
+	}
+}
+
+func jsonResult(data interface{}) (*mcp.CallToolResult, error) {
+	b, err := json.MarshalIndent(stripManagedFields(data), "", "  ")
+	if err != nil {
+		return errResult(err), nil
+	}
+	return mcp.NewToolResultText(string(b)), nil
+}

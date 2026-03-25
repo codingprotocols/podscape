@@ -276,4 +276,18 @@ describe('clusterSlice', () => {
         const firstSetCall = set.mock.calls[0][0]
         expect(firstSetCall).toMatchObject({ section: 'dashboard' })
     })
+
+    it('resets deniedSections to an empty Set on context switch', async () => {
+        state.deniedSections = new Set(['pods', 'secrets'])
+        windowMock.kubectl.switchContext.mockResolvedValue(undefined)
+        windowMock.kubectl.getNamespaces.mockResolvedValue([{ name: 'ns1' }])
+        state.preloadSearchResources = vi.fn()
+
+        const slice = createClusterSlice(set, get, {} as any)
+        await slice.selectContext('new-ctx')
+
+        const firstSetCall = set.mock.calls[0][0]
+        expect(firstSetCall.deniedSections).toBeInstanceOf(Set)
+        expect(firstSetCall.deniedSections.size).toBe(0)
+    })
 })

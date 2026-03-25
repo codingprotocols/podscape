@@ -11,7 +11,7 @@ import type {
   KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
   KubeNode, KubeNamespace, KubeCRD, AnyKubeResource, ResourceKind
 } from '../types'
-import { podPhaseBg, totalRestarts, formatAge, getNodeReady } from '../types'
+import { podPhaseBg, totalRestarts, formatAge, getNodeReady, parseCpuMillicores, parseMemoryMiB } from '../types'
 import ScaleDialog from './ScaleDialog'
 import DeleteConfirm from './DeleteConfirm'
 import YAMLViewer from './YAMLViewer'
@@ -195,20 +195,64 @@ const SecretRow = React.memo(function SecretRow({ sec }: { sec: KubeSecret }) {
   )
 })
 
+function getNodeRoles(node: KubeNode): string {
+  const labels = node.metadata.labels ?? {}
+  const roles: string[] = []
+  for (const key of Object.keys(labels)) {
+    const match = key.match(/^node-role\.kubernetes\.io\/(.+)$/)
+    if (match) roles.push(match[1])
+  }
+  if (roles.length === 0 && labels['kubernetes.io/role']) roles.push(labels['kubernetes.io/role'])
+  if (roles.length === 0) roles.push('worker')
+  return roles.join(', ')
+}
+
+function getInstanceType(node: KubeNode): string {
+  const labels = node.metadata.labels ?? {}
+  return labels['node.kubernetes.io/instance-type'] ?? labels['beta.kubernetes.io/instance-type'] ?? '—'
+}
+
 const NodeRow = React.memo(function NodeRow({ node }: { node: KubeNode }) {
   const ready = getNodeReady(node)
+  const cordoned = !!node.spec.unschedulable
   const internalIP = (node.status.addresses ?? []).find(a => a.type === 'InternalIP')?.address ?? '—'
+
+  const cpuAlloc = parseCpuMillicores(node.status.allocatable?.cpu ?? '0')
+  const cpuCap = parseCpuMillicores(node.status.capacity?.cpu ?? '0')
+  const memAllocMiB = parseMemoryMiB(node.status.allocatable?.memory ?? '0Ki')
+  const memCapMiB = parseMemoryMiB(node.status.capacity?.memory ?? '0Ki')
+
+  const fmtCpu = (m: number) => m >= 1000 ? `${(m / 1000).toFixed(1)}` : `${m}m`
+  const fmtMem = (mib: number) => mib >= 1024 ? `${(mib / 1024).toFixed(0)}Gi` : `${Math.round(mib)}Mi`
+
+  const roles = getNodeRoles(node)
+  const instanceType = getInstanceType(node)
+
   return (
     <>
-      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{node.metadata.name}</td>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[200px]">{node.metadata.name}</td>
       <td className="px-6 py-3">
-        <Badge
-          text={ready ? 'Ready' : 'NotReady'}
-          cls={ready ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 outline-emerald-500/20' : 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400 outline-red-500/20'}
-        />
+        <div className="flex items-center gap-1.5">
+          <Badge
+            text={ready ? 'Ready' : 'NotReady'}
+            cls={ready ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 outline-emerald-500/20' : 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400 outline-red-500/20'}
+          />
+          {cordoned && (
+            <Badge text="Cordoned" cls="bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 outline-amber-500/20" />
+          )}
+        </div>
       </td>
-      <td className="px-6 py-3 text-xs text-slate-500 font-medium">{node.status.nodeInfo?.kubeletVersion ?? '—'}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-medium">{roles}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono">{instanceType}</td>
+      <td className="px-6 py-3 text-xs text-slate-600 dark:text-slate-300 font-mono whitespace-nowrap">
+        {cpuAlloc > 0 ? `${fmtCpu(cpuAlloc)} / ${fmtCpu(cpuCap)}` : '—'}
+      </td>
+      <td className="px-6 py-3 text-xs text-slate-600 dark:text-slate-300 font-mono whitespace-nowrap">
+        {memAllocMiB > 0 ? `${fmtMem(memAllocMiB)} / ${fmtMem(memCapMiB)}` : '—'}
+      </td>
       <td className="px-6 py-3 text-xs font-bold text-slate-600 dark:text-slate-300 font-mono">{internalIP}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-medium">{node.status.nodeInfo?.kubeletVersion ?? '—'}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(node.metadata.creationTimestamp)}</td>
     </>
   )
 })
@@ -466,7 +510,7 @@ const COLUMNS: Record<string, string[]> = {
   clusterroles: ['Name', 'Rules', 'Age'],
   rolebindings: ['Name', 'Role', 'Subjects', 'Age'],
   clusterrolebindings: ['Name', 'Role', 'Subjects', 'Age'],
-  nodes: ['Name', 'Status', 'Version', 'IP'],
+  nodes: ['Name', 'Status', 'Roles', 'Instance Type', 'CPU', 'Memory', 'IP', 'Version', 'Age'],
   namespaces: ['Name', 'Status', 'Age'],
   crds: ['Name', 'Group', 'Scope', 'Age']
 }
@@ -1376,6 +1420,10 @@ function getSortValue(resource: any, section: string, col: string): string | num
   if (section === 'nodes') {
     if (col === 'Version') return resource.status?.nodeInfo?.kubeletVersion ?? ''
     if (col === 'IP') return (resource.status?.addresses ?? []).find((a: any) => a.type === 'InternalIP')?.address ?? ''
+    if (col === 'Roles') return getNodeRoles(resource as KubeNode)
+    if (col === 'Instance Type') return getInstanceType(resource as KubeNode)
+    if (col === 'CPU') return parseCpuMillicores(resource.status?.allocatable?.cpu ?? '0')
+    if (col === 'Memory') return parseMemoryMiB(resource.status?.allocatable?.memory ?? '0Ki')
   }
 
   if (section === 'crds') {

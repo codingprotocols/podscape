@@ -1,5 +1,44 @@
 # Changelog
 
+## [2.2.0] — 2026-03-25
+
+### New features
+
+#### Podscape MCP Server (`podscape-mcp`)
+- New standalone binary that exposes your Kubernetes cluster as MCP (Model Context Protocol) tools for AI assistants such as Claude and Cursor
+- Ships as a pre-built binary for macOS (arm64 + amd64), Windows (amd64), and Linux (amd64); published alongside the app on every GitHub Release
+- **20 tools across three categories:**
+  - *Read-only:* `list_resources`, `get_resource`, `get_resource_yaml`, `get_pod_logs`, `list_events`, `list_contexts`, `get_current_context`, `list_namespaces`, `helm_list`, `helm_status`, `helm_values`, `security_scan`, `detect_providers`
+  - *Mutating:* `scale_resource`, `delete_resource`, `rollout_restart`, `rollout_undo`, `apply_yaml`, `helm_rollback`
+  - *Diagnostic aggregation:* `pod_summary` (status + events + logs in one call), `cluster_health` (node/pod counts + recent warnings), `list_failing_pods`, `get_resource_events`
+- Log output is capped (512 KB total / 32 KB per container in `pod_summary`) with explicit truncation messages to prevent OOM in AI contexts
+- `managedFields` stripped from all responses — reduces payload size by 60–70% on large resources
+- Kubeconfig resolution follows the standard order: explicit `--kubeconfig` flag → `$KUBECONFIG` → `~/.kube/config`
+
+#### Shared client package (`internal/client`)
+- New `client.Init()` function and `ClientBundle` struct centralise Kubernetes client initialisation (REST config, clientset, apiextensions client, active context name) for use by both `podscape-core` and `podscape-mcp`
+- QPS (50) and Burst (100) tuning applied consistently across all binaries; API deprecation warnings suppressed uniformly
+
+#### Ops package (`internal/ops`)
+- New `internal/ops` package consolidates Kubernetes write operations shared between the sidecar and MCP server: `ListResource`, `GetResource`, `Scale`, `Delete`, `RolloutRestart`, `RolloutUndo`, `ApplyYAML`
+- All operations accept a `*client.ClientBundle`, making them straightforward to unit-test without a live cluster
+
+### Improvements
+
+- **`podscape-core` startup** simplified — client initialisation now delegates to `client.Init()`, removing ~30 lines of duplicated config/clientset setup from `main.go`
+- **Log streaming** (`internal/logs`): scanner token buffer raised to 256 KB to handle long log lines without silent truncation errors; scanner errors are now propagated to callers
+
+### Tests
+
+- New `go-core/cmd/podscape-mcp/tools_test.go`: arg-extraction helpers (`TestArgStr`, `TestArgFloat`, `TestArgBool`) and security scanner (`TestScanPods_NoSecurityContext`, `TestScanPods_PrivilegedContainer`, `TestScanPods_RunAsRootViaContainerSC`, `TestScanPods_RunAsNonRootSuppressesRootFinding`, `TestScanPods_PodLevelRunAsRoot`, `TestScanPods_ResourceLimits`, `TestScanPods_HostNamespace`, and more)
+- New `go-core/internal/ops/ops_test.go`: coverage for all ops functions using fake k8s clients
+
+### Release / distribution
+
+- GitHub Actions release workflow now builds and uploads `podscape-mcp` binaries for all platforms as part of the existing `v*` tag release flow — no separate pipeline required
+
+---
+
 ## [2.1.0] — 2026-03-22
 
 ### New features
