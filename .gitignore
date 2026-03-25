@@ -112,6 +112,9 @@ dist
 dist-ssr
 *.local
 
+# AI assistant config
+CLAUDE.md
+
 # Podscape specific
 /out/
 *.tsbuildinfo

@@ -118,8 +118,7 @@ podscape-electron/
 │       └── portforward/     # Port-forward manager
 ├── resources/         # Icons, splash screen
 ├── scripts/           # Build helpers (notarize, icon generation)
-├── CHANGELOG.md
-└── CLAUDE.md          # AI coding assistant instructions
+└── CHANGELOG.md
 ```
 
 ---
