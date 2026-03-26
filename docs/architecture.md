@@ -16,9 +16,18 @@ Renderer (React / TypeScript)
 ### Renderer (`src/renderer/`)
 
 - Built with **Vite + React + TypeScript + Tailwind CSS**.
-- State managed by a single **Zustand** store (`useAppStore`) split into slices: cluster, navigation, resource, operation.
-- Talks to the sidecar via plain `fetch()` through IPC helpers (`checkedSidecarFetch` in `src/main/api.ts`).
-- All 27+ resource type arrays, context/namespace selection, section navigation, exec modal state, and port-forward state live in the store.
+- State managed by a single **Zustand** store (`useAppStore`) split into six slices:
+
+| Slice | Responsibility |
+|---|---|
+| `clusterSlice` | Context/namespace selection, RBAC denied tracking, provider detection trigger |
+| `navigationSlice` | Active section, theme, sidebar width, search state |
+| `resourceSlice` | All 27+ resource arrays, section loading, dashboard fetch, resource navigation |
+| `operationSlice` | Scale/delete/YAML modals, exec session management |
+| `analysisSlice` | Security scanning, owner chain, debug pods, Prometheus config |
+| `providersSlice` | Istio/Traefik/NGINX provider detection state |
+
+- Talks to the sidecar via plain `fetch()` through IPC helpers (`checkedSidecarFetch` in `src/main/sidecar/api.ts`).
 
 ### Go Sidecar (`go-core/`)
 
@@ -27,16 +36,20 @@ The sidecar is a standalone HTTP server compiled as `podscape-core`. It is the s
 | Package | Responsibility |
 |---|---|
 | `cmd/podscape-core/main.go` | Route registration, startup, token auth middleware, CORS |
-| `internal/handlers/handlers.go` | One handler per resource type and operation; `MakeHandler` factory with RBAC guard |
+| `internal/handlers/` | HTTP handlers split across 12 files: `resources.go` (resource listers), `operations.go` (scale/delete/rollout), `helm.go`, `security.go`, `network.go`, `tls.go`, `gitops.go`, `prometheus.go`, `ownerchain.go`, `customresource.go`, `providers.go`; `handlers.go` holds the `MakeHandler` RBAC factory and shared helpers |
+| `internal/client/` | Shared Kubernetes client initialisation (`ClientBundle`: REST config, clientset, apiextensions client) |
 | `internal/informers/` | K8s shared informers — cache resource lists in-memory for fast reads; skips informers for denied resources |
 | `internal/store/` | `ClusterStore` singleton: per-context `ContextCache` pool, active context pointer |
 | `internal/rbac/` | `CheckAccess` — concurrent `SelfSubjectAccessReview` probe (list + watch, 8-goroutine pool); `AllResources` descriptor table |
+| `internal/ops/` | Write operations shared between sidecar and MCP server: `ListResource`, `GetResource`, `Scale`, `Delete`, `RolloutRestart`, `RolloutUndo`, `ApplyYAML` |
 | `internal/portforward/` | Manages active tunnels, streams events over WebSocket |
 | `internal/exec/` | WebSocket-based container exec (PTY) |
 | `internal/logs/` | WebSocket-based log streaming |
 | `internal/ownerchain/` | Upward + downward owner reference traversal with 30s reverse-index TTL |
 | `internal/prometheus/` | Prometheus auto-discovery via k8s service proxy, batch query with 30s result cache |
 | `internal/helm/` | `HelmRepoManager` — repo list, chart search, version fetch, values, SSE install |
+| `internal/topology/` | Cluster network topology graph (nodes → pods → services) |
+| `internal/providers/` | Provider detection logic (Istio, Traefik, NGINX) used by the `/providers` endpoint |
 
 **Context cache pool**: each Kubernetes context gets its own `ContextCache` (clientset, informers, resource maps). Switching context restarts informers for the new context without affecting others already cached.
 
@@ -59,12 +72,19 @@ Informers only register for resources where `allowed[resource] != false`. Each `
 | File | Responsibility |
 |---|---|
 | `index.ts` | App bootstrap, splash window, sidecar start, `BrowserWindow` creation |
-| `sidecar.ts` | Launch / monitor / kill the Go subprocess; expose `sidecar:restart` IPC |
-| `kubectl.ts` | IPC handlers for log streaming, port-forward, file copy, owner chain, metrics |
-| `terminal.ts` | PTY terminal sessions via `node-pty` |
-| `helm.ts` | Helm IPC handlers — repo browser, SSE install relay |
-| `settings_storage.ts` | Read / write `~/.podscape/settings.json` |
-| `api.ts` | `checkedSidecarFetch` — injects token, retries up to 20× with 500 ms delay |
+| `sidecar/sidecar.ts` | Launch / monitor / kill the Go subprocess; expose `sidecar:restart` IPC |
+| `sidecar/api.ts` | `checkedSidecarFetch` — injects token, retries up to 20× with 500 ms delay |
+| `sidecar/auth.ts` | Generates the random per-session `X-Podscape-Token` |
+| `sidecar/runtime.ts` | Shared `activeSidecarPort` variable |
+| `ipc/kubectl.ts` | IPC handlers for log streaming, port-forward, file copy, owner chain, metrics |
+| `ipc/terminal.ts` | PTY terminal sessions via `node-pty` |
+| `ipc/helm.ts` | Helm IPC handlers — repo browser, SSE install relay |
+| `ipc/settings.ts` | Settings IPC handlers |
+| `ipc/dialog.ts` | Native file open/save dialogs |
+| `settings/settings_storage.ts` | Read / write `~/.podscape/settings.json` |
+| `system/env.ts` | Augments subprocess `PATH` for cloud credential helpers |
+| `system/updater.ts` | Auto-updater checks and notifications |
+| `system/kubeProvider.ts` | Kubeconfig path resolution |
 
 ### Preload (`src/preload/index.ts`)
 

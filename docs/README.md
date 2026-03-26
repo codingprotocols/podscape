@@ -30,7 +30,7 @@ npm run dev
 |---|---|
 | Resource Browser | 27+ Kubernetes resource types with live informer-backed cache |
 | RBAC-aware startup | Concurrent `SelfSubjectAccessReview` probe at startup; denied sections show an "Access denied" banner instead of errors |
-| Go Sidecar | Standalone `podscape-core` binary — no local `kubectl` or `helm` CLI required |
+| Go Sidecar | Standalone `podscape-core` binary — HTTP server split across 12 handler files, shared informer cache, RBAC probe |
 | Service Mesh Support | Istio, Traefik v2/v3, NGINX Inc, NGINX Community — auto-detected per cluster via API group discovery |
 | HPA v2 Metrics | Full `autoscaling/v2` metric display: resource, container-resource, Pods, External targets vs current |
 | Prometheus Charts | CPU, memory, and network time-series charts in Pod / Node / Deployment detail panels |
