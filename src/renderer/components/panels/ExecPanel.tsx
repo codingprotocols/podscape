@@ -126,8 +126,8 @@ function ExecTab({ session, active, theme }: ExecTabProps): JSX.Element {
   return (
     <div
       ref={containerRef}
-      className="flex-1 min-h-0 bg-[#0d1117] p-5"
-      style={{ display: active ? 'flex' : 'none', flexDirection: 'column' }}
+      className="absolute inset-0 bg-[#0d1117] p-5 overflow-hidden"
+      style={{ display: active ? 'block' : 'none' }}
     />
   )
 }

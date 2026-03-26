@@ -66,16 +66,17 @@ var kindGVR = map[string]schema.GroupVersionResource{
 	"namespace":               {Group: "", Version: "v1", Resource: "namespaces"},
 	"crd":                     {Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"},
 	// Aliases — renderer components use both short and full names
-	"hpa":                   {Group: "autoscaling", Version: "v1", Resource: "horizontalpodautoscalers"},
-	"persistentvolumeclaim": {Group: "", Version: "v1", Resource: "persistentvolumeclaims"},
-	"persistentvolume":      {Group: "", Version: "v1", Resource: "persistentvolumes"},
+	"hpa":                      {Group: "autoscaling", Version: "v1", Resource: "horizontalpodautoscalers"},
+	"persistentvolumeclaim":    {Group: "", Version: "v1", Resource: "persistentvolumeclaims"},
+	"persistentvolume":         {Group: "", Version: "v1", Resource: "persistentvolumes"},
+	"customresourcedefinition": {Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"},
 }
 
 // clusterScopedKinds are not namespace-scoped; calls must omit the namespace.
 var clusterScopedKinds = map[string]bool{
 	"pv": true, "persistentvolume": true, "storageclass": true, "ingressclass": true,
 	"clusterrole": true, "clusterrolebinding": true,
-	"node": true, "namespace": true, "crd": true,
+	"node": true, "namespace": true, "crd": true, "customresourcedefinition": true,
 }
 
 // listToIface converts a typed k8s list items slice into []interface{} for JSON

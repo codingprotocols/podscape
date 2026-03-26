@@ -212,6 +212,16 @@ function getInstanceType(node: KubeNode): string {
   return labels['node.kubernetes.io/instance-type'] ?? labels['beta.kubernetes.io/instance-type'] ?? '—'
 }
 
+function getNodePool(node: KubeNode): string {
+  const labels = node.metadata.labels ?? {}
+  return labels['karpenter.sh/nodepool'] ?? labels['karpenter.k8s.aws/nodepool'] ?? '—'
+}
+
+function getCapacityType(node: KubeNode): string {
+  const labels = node.metadata.labels ?? {}
+  return labels['karpenter.sh/capacity-type'] ?? '—'
+}
+
 const NodeRow = React.memo(function NodeRow({ node }: { node: KubeNode }) {
   const ready = getNodeReady(node)
   const cordoned = !!node.spec.unschedulable
@@ -225,12 +235,13 @@ const NodeRow = React.memo(function NodeRow({ node }: { node: KubeNode }) {
   const fmtCpu = (m: number) => m >= 1000 ? `${(m / 1000).toFixed(1)}` : `${m}m`
   const fmtMem = (mib: number) => mib >= 1024 ? `${(mib / 1024).toFixed(0)}Gi` : `${Math.round(mib)}Mi`
 
-  const roles = getNodeRoles(node)
   const instanceType = getInstanceType(node)
+  const nodePool = getNodePool(node)
+  const capacityType = getCapacityType(node)
 
   return (
     <>
-      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[200px]">{node.metadata.name}</td>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[260px]" title={node.metadata.name}>{node.metadata.name}</td>
       <td className="px-6 py-3">
         <div className="flex items-center gap-1.5">
           <Badge
@@ -242,8 +253,18 @@ const NodeRow = React.memo(function NodeRow({ node }: { node: KubeNode }) {
           )}
         </div>
       </td>
-      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-medium">{roles}</td>
       <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono">{instanceType}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-medium">{nodePool}</td>
+      <td className="px-6 py-3">
+        {capacityType !== '—' ? (
+          <Badge
+            text={capacityType}
+            cls={capacityType === 'spot'
+              ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/20 dark:text-violet-400 outline-violet-500/20'
+              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 outline-blue-500/20'}
+          />
+        ) : <span className="text-xs text-slate-400 dark:text-slate-600">—</span>}
+      </td>
       <td className="px-6 py-3 text-xs text-slate-600 dark:text-slate-300 font-mono whitespace-nowrap">
         {cpuAlloc > 0 ? `${fmtCpu(cpuAlloc)} / ${fmtCpu(cpuCap)}` : '—'}
       </td>
@@ -251,7 +272,6 @@ const NodeRow = React.memo(function NodeRow({ node }: { node: KubeNode }) {
         {memAllocMiB > 0 ? `${fmtMem(memAllocMiB)} / ${fmtMem(memCapMiB)}` : '—'}
       </td>
       <td className="px-6 py-3 text-xs font-bold text-slate-600 dark:text-slate-300 font-mono">{internalIP}</td>
-      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-medium">{node.status.nodeInfo?.kubeletVersion ?? '—'}</td>
       <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(node.metadata.creationTimestamp)}</td>
     </>
   )
@@ -510,7 +530,7 @@ const COLUMNS: Record<string, string[]> = {
   clusterroles: ['Name', 'Rules', 'Age'],
   rolebindings: ['Name', 'Role', 'Subjects', 'Age'],
   clusterrolebindings: ['Name', 'Role', 'Subjects', 'Age'],
-  nodes: ['Name', 'Status', 'Roles', 'Instance Type', 'CPU', 'Memory', 'IP', 'Version', 'Age'],
+  nodes: ['Name', 'Status', 'Instance Type', 'Node Pool', 'Capacity', 'CPU', 'Memory', 'IP', 'Age'],
   namespaces: ['Name', 'Status', 'Age'],
   crds: ['Name', 'Group', 'Scope', 'Age']
 }
@@ -1418,10 +1438,10 @@ function getSortValue(resource: any, section: string, col: string): string | num
   }
 
   if (section === 'nodes') {
-    if (col === 'Version') return resource.status?.nodeInfo?.kubeletVersion ?? ''
     if (col === 'IP') return (resource.status?.addresses ?? []).find((a: any) => a.type === 'InternalIP')?.address ?? ''
-    if (col === 'Roles') return getNodeRoles(resource as KubeNode)
     if (col === 'Instance Type') return getInstanceType(resource as KubeNode)
+    if (col === 'Node Pool') return getNodePool(resource as KubeNode)
+    if (col === 'Capacity') return getCapacityType(resource as KubeNode)
     if (col === 'CPU') return parseCpuMillicores(resource.status?.allocatable?.cpu ?? '0')
     if (col === 'Memory') return parseMemoryMiB(resource.status?.allocatable?.memory ?? '0Ki')
   }

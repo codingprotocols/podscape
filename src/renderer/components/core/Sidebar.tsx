@@ -253,12 +253,12 @@ export default function Sidebar(): JSX.Element {
           <RailBtn 
             icon={ICONS.feedback} 
             label="Feedback" 
-            onClick={() => window.open('https://github.com/codingprotocols/podscape-community/issues/new', '_blank')} 
+            onClick={() => window.open('https://github.com/codingprotocols/podscape/issues/new', '_blank')} 
           />
           <RailBtn 
             icon={ICONS.help} 
             label="Ask a Question" 
-            onClick={() => window.open('https://github.com/codingprotocols/podscape-community/discussions/new', '_blank')} 
+            onClick={() => window.open('https://github.com/codingprotocols/podscape/discussions/new', '_blank')} 
           />
           <RailBtn 
             icon={ICONS.heart} 
