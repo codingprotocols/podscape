@@ -10,6 +10,7 @@ import {
     HelmRelease, DebugPodEntry, AppGroup, OwnerChainResponse, ProviderSet
 } from '../types'
 import { AnalysisSlice } from './slices/analysisSlice'
+import { OperationSlice } from './slices/operationSlice'
 import { ProvidersSlice } from './slices/providersSlice'
 
 declare global {
@@ -152,7 +153,7 @@ export interface ExecSession {
     target: ExecTarget
 }
 
-export interface AppStore extends AnalysisSlice, ProvidersSlice {
+export interface AppStore extends AnalysisSlice, OperationSlice, ProvidersSlice {
     // Navigation
     section: ResourceKind
     setSection: (s: ResourceKind) => void
@@ -220,23 +221,11 @@ export interface AppStore extends AnalysisSlice, ProvidersSlice {
     helmReleases: HelmRelease[]
     debugPods: DebugPodEntry[]
     securityScanResults: any | null
-    securityScanning: boolean
-    securityScanProgressLines: string[]
-    // Map of "namespace/name/kind" → KubesecBatchItem from /security/kubesec/batch
-    kubesecBatchResults: Record<string, any> | null
-    trivyAvailable: boolean | null
     lastPreloadedAt: number
     lastDashboardLoadedAt: number
     addDebugPod: (pod: DebugPodEntry) => void
     removeDebugPod: (name: string) => void
     updateDebugPod: (name: string, updates: Partial<DebugPodEntry>) => void
-
-    // Terminal session
-    execSessions: ExecSession[]
-    activeExecId: string | null
-    openExec: (target: ExecTarget) => void
-    setActiveExecId: (id: string) => void
-    closeExec: () => void
 
     // Loading / errors
     loadingContexts: boolean
@@ -256,20 +245,6 @@ export interface AppStore extends AnalysisSlice, ProvidersSlice {
     loadDashboard: () => Promise<void>
     refresh: () => Promise<void>
     preloadSearchResources: () => Promise<void>
-    scanSecurity: (options?: CustomScanOptions) => Promise<void>
-
-    // Operations
-    scaleDeployment: (name: string, replicas: number, namespace?: string) => Promise<void>
-    scaleStatefulSet: (name: string, replicas: number, namespace?: string) => Promise<void>
-    rolloutRestart: (kind: string, name: string, namespace?: string) => Promise<void>
-    deleteResource: (kind: string, name: string, clusterScoped?: boolean, namespace?: string) => Promise<void>
-    getYAML: (kind: string, name: string, clusterScoped?: boolean, namespace?: string) => Promise<string>
-    getSecretValue: (name: string, key: string, namespace?: string) => Promise<string>
-    applyYAML: (yaml: string) => Promise<string>
-
-    // Port forwarding
-    startPortForward: (entry: PortForwardEntry) => void
-    stopPortForward: (id: string) => void
 
     // Prometheus
     prometheusAvailable: boolean | null

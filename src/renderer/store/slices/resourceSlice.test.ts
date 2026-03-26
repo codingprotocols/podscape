@@ -1,5 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { createResourceSlice, SECTION_CONFIG, sectionClearState } from './resourceSlice'
+import { createOperationSlice } from './operationSlice'
+import { createAnalysisSlice } from './analysisSlice'
 import { createClusterSlice } from './clusterSlice'
 import { setupMocks } from './test-utils'
 
@@ -211,7 +213,7 @@ describe('resourceSlice', () => {
             )
             windowMock.kubectl.scanKubesecBatch.mockResolvedValue([])
 
-            const slice = createResourceSlice(set, get, {} as any)
+            const slice = createAnalysisSlice(set, get, {} as any)
             await slice.scanSecurity()
 
             expect(state.trivyAvailable).toBe(false)
@@ -224,7 +226,7 @@ describe('resourceSlice', () => {
             windowMock.kubectl.scanSecurity.mockResolvedValue(fakeResults)
             windowMock.kubectl.scanKubesecBatch.mockResolvedValue([])
 
-            const slice = createResourceSlice(set, get, {} as any)
+            const slice = createAnalysisSlice(set, get, {} as any)
             await slice.scanSecurity()
 
             expect(state.trivyAvailable).toBe(true)
@@ -236,7 +238,7 @@ describe('resourceSlice', () => {
             windowMock.kubectl.scanSecurity.mockRejectedValue(new Error('network timeout'))
             windowMock.kubectl.scanKubesecBatch.mockResolvedValue([])
 
-            const slice = createResourceSlice(set, get, {} as any)
+            const slice = createAnalysisSlice(set, get, {} as any)
             await slice.scanSecurity()
 
             expect(state.error).toContain('network timeout')
@@ -256,7 +258,7 @@ describe('resourceSlice', () => {
                 { metadata: { name: 'pod-b', namespace: 'ns2', uid: '2', creationTimestamp: '', labels: {} }, kind: 'Pod', apiVersion: 'v1', spec: {}, status: {} },
             ]
 
-            const slice = createResourceSlice(set, get, {} as any)
+            const slice = createAnalysisSlice(set, get, {} as any)
             await slice.scanSecurity()
 
             expect(state.kubesecBatchResults?.['ns1/pod-a/Pod']).toEqual(batchResults[0])
@@ -267,7 +269,7 @@ describe('resourceSlice', () => {
             windowMock.kubectl.scanSecurity.mockResolvedValue({ Resources: [] })
             windowMock.kubectl.scanKubesecBatch.mockRejectedValue(new Error('kubesec error'))
 
-            const slice = createResourceSlice(set, get, {} as any)
+            const slice = createAnalysisSlice(set, get, {} as any)
             await slice.scanSecurity()
 
             expect(state.kubesecBatchResults).toBeNull()
@@ -287,7 +289,7 @@ describe('resourceSlice', () => {
         })
 
         it('openExec appends a new session and sets it as active', () => {
-            const slice = createResourceSlice(set, get, {} as any)
+            const slice = createOperationSlice(set, get, {} as any)
             slice.openExec(target1)
 
             expect(state.execSessions).toHaveLength(1)
@@ -296,7 +298,7 @@ describe('resourceSlice', () => {
         })
 
         it('openExec twice appends two sessions, active is the second', () => {
-            const slice = createResourceSlice(set, get, {} as any)
+            const slice = createOperationSlice(set, get, {} as any)
             slice.openExec(target1)
             slice.openExec(target2)
 
@@ -307,7 +309,7 @@ describe('resourceSlice', () => {
         })
 
         it('closeExec clears all sessions and activeExecId', () => {
-            const slice = createResourceSlice(set, get, {} as any)
+            const slice = createOperationSlice(set, get, {} as any)
             slice.openExec(target1)
             slice.openExec(target2)
             slice.closeExec()
@@ -317,7 +319,7 @@ describe('resourceSlice', () => {
         })
 
         it('closeExecTab removes the tab and shifts active to next', () => {
-            const slice = createResourceSlice(set, get, {} as any)
+            const slice = createOperationSlice(set, get, {} as any)
             slice.openExec(target1)
             slice.openExec(target2)
             const firstId = state.execSessions[0].id
@@ -333,7 +335,7 @@ describe('resourceSlice', () => {
         })
 
         it('closeExecTab on the last session leaves execSessions empty and activeExecId null', () => {
-            const slice = createResourceSlice(set, get, {} as any)
+            const slice = createOperationSlice(set, get, {} as any)
             slice.openExec(target1)
             const id = state.execSessions[0].id
             slice.closeExecTab(id)
@@ -343,7 +345,7 @@ describe('resourceSlice', () => {
         })
 
         it('closeExecTab on a non-active tab leaves active unchanged', () => {
-            const slice = createResourceSlice(set, get, {} as any)
+            const slice = createOperationSlice(set, get, {} as any)
             slice.openExec(target1)
             slice.openExec(target2)
             const firstId = state.execSessions[0].id
@@ -357,7 +359,7 @@ describe('resourceSlice', () => {
         })
 
         it('setActiveExecId switches the active tab', () => {
-            const slice = createResourceSlice(set, get, {} as any)
+            const slice = createOperationSlice(set, get, {} as any)
             slice.openExec(target1)
             slice.openExec(target2)
             const firstId = state.execSessions[0].id

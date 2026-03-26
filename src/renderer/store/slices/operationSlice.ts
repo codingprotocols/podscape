@@ -1,4 +1,4 @@
-import { AppStore, StoreSlice } from '../types'
+import { AppStore, StoreSlice, ExecTarget, ExecSession } from '../types'
 import { PortForwardEntry } from '../../types'
 
 // Keyed by port-forward ID; holds the three IPC unsubscribe functions so they
@@ -15,9 +15,34 @@ export interface OperationSlice {
     applyYAML: (yaml: string) => Promise<string>
     startPortForward: (entry: PortForwardEntry) => void
     stopPortForward: (id: string) => void
+    execSessions: ExecSession[]
+    activeExecId: string | null
+    openExec: (target: ExecTarget) => void
+    setActiveExecId: (id: string) => void
+    closeExecTab: (id: string) => void
+    closeExec: () => void
 }
 
 export const createOperationSlice: StoreSlice<OperationSlice> = (set, get) => ({
+    execSessions: [],
+    activeExecId: null,
+    openExec: (target) => {
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+        const session: ExecSession = { id, target }
+        set(s => ({ execSessions: [...s.execSessions, session], activeExecId: id }))
+    },
+    closeExecTab: (id) => set(s => {
+        const remaining = s.execSessions.filter(sess => sess.id !== id)
+        let nextActive = s.activeExecId
+        if (s.activeExecId === id) {
+            const idx = s.execSessions.findIndex(sess => sess.id === id)
+            const next = s.execSessions[idx + 1] ?? s.execSessions[idx - 1]
+            nextActive = next?.id ?? null
+        }
+        return { execSessions: remaining, activeExecId: nextActive }
+    }),
+    setActiveExecId: (id) => set({ activeExecId: id }),
+    closeExec: () => set({ execSessions: [], activeExecId: null }),
     scaleDeployment: async (name, replicas, namespace) => {
         const { selectedContext: ctx, selectedNamespace: ns, selectedResource } = get()
         if (!ctx) return

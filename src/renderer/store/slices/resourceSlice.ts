@@ -1,5 +1,4 @@
-import { StoreSlice, AppStore, ExecTarget, ExecSession, CustomScanOptions } from '../types'
-import { extractWorkloadImages } from '../../utils/security/extractImages'
+import { StoreSlice, AppStore } from '../types'
 import {
     KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet,
     KubeReplicaSet, KubeJob, KubeCronJob, KubeHPA, KubePDB,
@@ -10,55 +9,9 @@ import {
     NodeMetrics, PodMetrics, ResourceKind, AnyKubeResource, PortForwardEntry,
     HelmRelease, DebugPodEntry, AppGroup
 } from '../../types'
+import { SECTION_CONFIG, sectionClearState, kindToSection, kindLabel } from '../resourceConfig'
 
-// ── Section config ────────────────────────────────────────────────────────────
-// Single source of truth mapping each resource section to its state key and
-// fetch function. Both loadSection and the clear-on-context-switch derive from
-// this map, so they can never fall out of sync.
-
-type SectionConfig = {
-    stateKey: string
-    fetch: (ctx: string, ns: string | null) => Promise<any[]>
-    namespaced: boolean  // false = cluster-scoped; namespace arg is ignored
-}
-
-export const SECTION_CONFIG: Partial<Record<ResourceKind, SectionConfig>> = {
-    pods:                { stateKey: 'pods',                fetch: (c, ns) => window.kubectl.getPods(c, ns),                  namespaced: true },
-    deployments:         { stateKey: 'deployments',         fetch: (c, ns) => window.kubectl.getDeployments(c, ns),            namespaced: true },
-    daemonsets:          { stateKey: 'daemonsets',          fetch: (c, ns) => window.kubectl.getDaemonSets(c, ns),             namespaced: true },
-    statefulsets:        { stateKey: 'statefulsets',        fetch: (c, ns) => window.kubectl.getStatefulSets(c, ns),           namespaced: true },
-    replicasets:         { stateKey: 'replicasets',         fetch: (c, ns) => window.kubectl.getReplicaSets(c, ns),            namespaced: true },
-    jobs:                { stateKey: 'jobs',                fetch: (c, ns) => window.kubectl.getJobs(c, ns),                   namespaced: true },
-    cronjobs:            { stateKey: 'cronjobs',            fetch: (c, ns) => window.kubectl.getCronJobs(c, ns),               namespaced: true },
-    hpas:                { stateKey: 'hpas',                fetch: (c, ns) => window.kubectl.getHPAs(c, ns),                   namespaced: true },
-    pdbs:                { stateKey: 'pdbs',                fetch: (c, ns) => window.kubectl.getPodDisruptionBudgets(c, ns),   namespaced: true },
-    services:            { stateKey: 'services',            fetch: (c, ns) => window.kubectl.getServices(c, ns),               namespaced: true },
-    ingresses:           { stateKey: 'ingresses',           fetch: (c, ns) => window.kubectl.getIngresses(c, ns),              namespaced: true },
-    networkpolicies:     { stateKey: 'networkpolicies',     fetch: (c, ns) => window.kubectl.getNetworkPolicies(c, ns),        namespaced: true },
-    endpoints:           { stateKey: 'endpoints',           fetch: (c, ns) => window.kubectl.getEndpoints(c, ns),              namespaced: true },
-    configmaps:          { stateKey: 'configmaps',          fetch: (c, ns) => window.kubectl.getConfigMaps(c, ns),             namespaced: true },
-    secrets:             { stateKey: 'secrets',             fetch: (c, ns) => window.kubectl.getSecrets(c, ns),                namespaced: true },
-    pvcs:                { stateKey: 'pvcs',                fetch: (c, ns) => window.kubectl.getPVCs(c, ns),                   namespaced: true },
-    serviceaccounts:     { stateKey: 'serviceaccounts',     fetch: (c, ns) => window.kubectl.getServiceAccounts(c, ns),        namespaced: true },
-    roles:               { stateKey: 'roles',               fetch: (c, ns) => window.kubectl.getRoles(c, ns),                  namespaced: true },
-    rolebindings:        { stateKey: 'rolebindings',        fetch: (c, ns) => window.kubectl.getRoleBindings(c, ns),           namespaced: true },
-    events:              { stateKey: 'events',              fetch: (c, ns) => window.kubectl.getEvents(c, ns),                 namespaced: true },
-    nodes:               { stateKey: 'nodes',               fetch: (c, _)  => window.kubectl.getNodes(c),                     namespaced: false },
-    namespaces:          { stateKey: 'namespaces',          fetch: (c, _)  => window.kubectl.getNamespaces(c),                 namespaced: false },
-    crds:                { stateKey: 'crds',                fetch: (c, _)  => window.kubectl.getCRDs(c),                       namespaced: false },
-    ingressclasses:      { stateKey: 'ingressclasses',      fetch: (c, _)  => window.kubectl.getIngressClasses(c),             namespaced: false },
-    pvs:                 { stateKey: 'pvs',                 fetch: (c, _)  => window.kubectl.getPVs(c),                        namespaced: false },
-    storageclasses:      { stateKey: 'storageclasses',      fetch: (c, _)  => window.kubectl.getStorageClasses(c),             namespaced: false },
-    clusterroles:        { stateKey: 'clusterroles',        fetch: (c, _)  => window.kubectl.getClusterRoles(c),               namespaced: false },
-    clusterrolebindings: { stateKey: 'clusterrolebindings', fetch: (c, _)  => window.kubectl.getClusterRoleBindings(c),        namespaced: false },
-}
-
-// Pre-computed reset object for all resource sections (empty arrays).
-// Import this in clusterSlice to clear resource lists on context switch.
-// Note: deniedSections is reset separately in clusterSlice alongside other cross-cutting state.
-export const sectionClearState: Record<string, any> = {
-    ...Object.fromEntries(Object.values(SECTION_CONFIG).map(c => [c!.stateKey, []])),
-}
+export { SECTION_CONFIG, sectionClearState }
 
 export interface ResourceSlice {
     pods: KubePod[]
@@ -101,25 +54,14 @@ export interface ResourceSlice {
     selectedResource: AnyKubeResource | null
     loadingResources: boolean
     error: string | null
-    execSessions: ExecSession[]
-    activeExecId: string | null
     selectResource: (r: AnyKubeResource | null) => void
     setError: (err: string | null) => void
     clearError: () => void
-    openExec: (target: ExecTarget) => void
-    setActiveExecId: (id: string) => void
-    closeExecTab: (id: string) => void
-    closeExec: () => void
     deniedSections: Set<ResourceKind>
     loadSection: (section: ResourceKind) => Promise<void>
     loadDashboard: () => Promise<void>
     refresh: () => Promise<void>
     preloadSearchResources: () => Promise<void>
-    scanSecurity: (options?: CustomScanOptions) => Promise<void>
-    securityScanning: boolean
-    securityScanProgressLines: string[]
-    kubesecBatchResults: Record<string, any> | null
-    trivyAvailable: boolean | null
     lastPreloadedAt: number
     lastDashboardLoadedAt: number
     navigateToResource: (kind: string, name: string, namespace: string) => void
@@ -161,17 +103,11 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     debugPods: [],
     deniedSections: new Set<ResourceKind>(),
     securityScanResults: null,
-    securityScanning: false,
-    securityScanProgressLines: [],
-    kubesecBatchResults: null,
-    trivyAvailable: null,
     lastPreloadedAt: 0,
     lastDashboardLoadedAt: 0,
     selectedResource: null,
     loadingResources: false,
     error: null,
-    execSessions: [],
-    activeExecId: null,
 
     selectResource: (r) => {
         if (r && !r.kind) {
@@ -192,23 +128,6 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     },
     setError: (err) => set({ error: err }),
     clearError: () => set({ error: null }),
-    openExec: (target) => {
-        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-        const session: ExecSession = { id, target }
-        set(s => ({ execSessions: [...s.execSessions, session], activeExecId: id }))
-    },
-    closeExecTab: (id) => set(s => {
-        const remaining = s.execSessions.filter(sess => sess.id !== id)
-        let nextActive = s.activeExecId
-        if (s.activeExecId === id) {
-            const idx = s.execSessions.findIndex(sess => sess.id === id)
-            const next = s.execSessions[idx + 1] ?? s.execSessions[idx - 1]
-            nextActive = next?.id ?? null
-        }
-        return { execSessions: remaining, activeExecId: nextActive }
-    }),
-    setActiveExecId: (id) => set({ activeExecId: id }),
-    closeExec: () => set({ execSessions: [], activeExecId: null }),
     addDebugPod: (pod) => set(s => ({ debugPods: [pod, ...s.debugPods] })),
     removeDebugPod: (name) => set(s => ({ debugPods: s.debugPods.filter(p => p.name !== name) })),
     updateDebugPod: (name, updates) => set(s => ({ debugPods: s.debugPods.map(p => p.name === name ? { ...p, ...updates } : p) })),
@@ -394,10 +313,10 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             ...(get().configmaps),
             ...(get().hpas)
         ]
-        
+
         const groups: Record<string, AppGroup> = {}
         const APP_LABELS = ['app.kubernetes.io/name', 'app', 'run']
-        
+
         allResources.forEach(r => {
             const labels = r.metadata.labels || {}
             let appName = ''
@@ -407,7 +326,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     break
                 }
             }
-            
+
             if (appName) {
                 const ns = r.metadata.namespace || 'default'
                 const key = `${ns}:${appName}`
@@ -417,7 +336,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                 groups[key].resources.push(r)
             }
         })
-        
+
         set({ apps: Object.values(groups).sort((a, b) => a.name.localeCompare(b.name)), loadingResources: false, lastDashboardLoadedAt: Date.now() })
     },
 
@@ -455,116 +374,6 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         if (Object.keys(updates).length > 0) set(updates as Partial<AppStore>)
     },
 
-    scanSecurity: async (options?: CustomScanOptions) => {
-        set({ securityScanning: true, error: null, securityScanProgressLines: [] })
-
-        // Synthetic milestone helper — prefixed with '› ' so the UI can style them distinctly.
-        const milestone = (msg: string) =>
-            set(s => ({ securityScanProgressLines: [...s.securityScanProgressLines.slice(-9), `› ${msg}`] }))
-
-        const { pods, deployments, statefulsets, daemonsets, jobs, cronjobs } = get()
-        let workloads = [...pods, ...deployments, ...statefulsets, ...daemonsets, ...jobs, ...cronjobs]
-
-        // Apply scope filters when a custom scan is requested.
-        if (options) {
-            if (options.namespaces.length > 0) {
-                const nsSet = new Set(options.namespaces)
-                workloads = workloads.filter(w => nsSet.has(w.metadata.namespace || ''))
-            }
-            if (options.kinds.length > 0) {
-                const kindSet = new Set(options.kinds.map(k => k.toLowerCase()))
-                workloads = workloads.filter(w => kindSet.has((w.kind || '').toLowerCase()))
-            }
-        }
-
-        const runTrivy = !options || options.runTrivy
-        const runKubesec = !options || options.runKubesec
-
-        milestone(`${workloads.length} workload${workloads.length !== 1 ? 's' : ''} in scope`)
-        if (runTrivy && runKubesec) milestone('Launching config analysis + image CVE scan')
-        else if (runTrivy) milestone('Launching image CVE scan')
-        else milestone('Launching config analysis')
-
-        // Strip the `TIMESTAMP\tLEVEL\t` prefix that trivy emits on every stderr line.
-        const TRIVY_PREFIX_RE = /^\S+\t(?:INFO|WARN|ERROR|FATAL)\t/
-        // Suppress trivy lines that are internal noise and not useful to the user.
-        const TRIVY_NOISE_RE = /Unable to parse (container|image)|unable to parse digest/i
-
-        // Wire up the progress relay before starting the scan so no lines are missed.
-        const unsubProgress = window.kubectl.onSecurityProgress((line: string) => {
-            const clean = line.replace(TRIVY_PREFIX_RE, '').trim()
-            if (!clean) return
-            // Suppress trivy internal noise that isn't actionable for the user.
-            if (TRIVY_NOISE_RE.test(clean)) return
-            // Keep only the last 10 lines to avoid unbounded growth.
-            set(s => ({ securityScanProgressLines: [...s.securityScanProgressLines.slice(-9), clean] }))
-        })
-
-        try {
-            const [trivyResult, kubesecResult] = await Promise.allSettled([
-                runTrivy
-                    ? (() => {
-                        if (options?.selectedImages !== undefined) {
-                            const entries = extractWorkloadImages(workloads)
-                                .filter(e => (options.selectedImages as string[]).includes(e.image))
-                            if (entries.length === 0) return Promise.resolve(null)
-                            return window.kubectl.scanTrivyImages(entries)
-                        }
-                        return window.kubectl.scanSecurity()
-                    })()
-                    : Promise.resolve(null),
-                runKubesec ? window.kubectl.scanKubesecBatch(workloads) : Promise.resolve(null),
-            ])
-
-            // --- trivy ---
-            let error: string | null = null
-            const stateUpdate: Record<string, any> = { securityScanning: false }
-
-            if (runTrivy) {
-                if (trivyResult.status === 'fulfilled') {
-                    let trivyData = trivyResult.value
-                    // Post-filter trivy Resources to match custom scope.
-                    if (trivyData && options) {
-                        trivyData = filterTrivyByScope(trivyData, options)
-                    }
-                    stateUpdate.securityScanResults = trivyData
-                    stateUpdate.trivyAvailable = true
-                } else {
-                    const msg: string = trivyResult.reason?.message ?? ''
-                    if (msg.includes('trivy_not_found') || msg.includes('trivy binary not found')) {
-                        stateUpdate.trivyAvailable = false
-                    } else {
-                        error = `Image scan failed: ${msg}`
-                        stateUpdate.trivyAvailable = null
-                    }
-                    stateUpdate.securityScanResults = null
-                }
-            } else {
-                // Config-only scan: clear stale trivy results so the UI matches the scan scope.
-                stateUpdate.securityScanResults = null
-            }
-
-            // --- kubesec batch ---
-            // Build a map of "namespace/name/kind" → batch result for O(1) lookup in the UI.
-            let kubesecBatchResults: Record<string, any> | null = null
-            if (runKubesec && kubesecResult.status === 'fulfilled' && kubesecResult.value !== null) {
-                const raw: any[] = kubesecResult.value
-                kubesecBatchResults = {}
-                workloads.forEach((w: any, i: number) => {
-                    const key = `${w.metadata?.namespace ?? ''}/${w.metadata?.name ?? ''}/${w.kind ?? ''}`
-                    kubesecBatchResults![key] = raw[i]
-                })
-            }
-            stateUpdate.kubesecBatchResults = kubesecBatchResults
-            stateUpdate.error = error
-
-            milestone('Processing results...')
-            set(stateUpdate)
-        } finally {
-            unsubProgress()
-        }
-    },
-
     navigateToResource: async (kind, name, namespace) => {
         const section = kindToSection[kind]
         if (!section) return
@@ -582,57 +391,4 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     },
 })
 
-/** Post-filters trivy scan output to match the custom scan scope. */
-function filterTrivyByScope(data: any, options: CustomScanOptions): any {
-    if (!data?.Resources) return data
-    let resources = data.Resources
-    if (options.namespaces.length > 0) {
-        const nsSet = new Set(options.namespaces)
-        resources = resources.filter((r: any) => nsSet.has(r.Namespace))
-    }
-    if (options.kinds.length > 0) {
-        const kindSet = new Set(options.kinds)
-        resources = resources.filter((r: any) => kindSet.has(r.Kind))
-    }
-    return { ...data, Resources: resources }
-}
-
-const kindToSection: Record<string, ResourceKind> = {
-    Pod: 'pods',
-    Deployment: 'deployments',
-    ReplicaSet: 'replicasets',
-    DaemonSet: 'daemonsets',
-    StatefulSet: 'statefulsets',
-    Job: 'jobs',
-    CronJob: 'cronjobs',
-    Service: 'services',
-    Ingress: 'ingresses',
-    ConfigMap: 'configmaps',
-    Secret: 'secrets',
-    Node: 'nodes',
-    Namespace: 'namespaces',
-    HorizontalPodAutoscaler: 'hpas',
-    PersistentVolumeClaim: 'pvcs',
-    PersistentVolume: 'pvs',
-    ServiceAccount: 'serviceaccounts',
-    Role: 'roles',
-    ClusterRole: 'clusterroles',
-    RoleBinding: 'rolebindings',
-    ClusterRoleBinding: 'clusterrolebindings',
-}
-
-export function kindLabel(section: string): string {
-    const map: Record<string, string> = {
-        pods: 'pod', deployments: 'deployment', daemonsets: 'daemonset',
-        statefulsets: 'statefulset', replicasets: 'replicaset', jobs: 'job', cronjobs: 'cronjob',
-        hpas: 'horizontalpodautoscaler', pdbs: 'poddisruptionbudget',
-        services: 'service', ingresses: 'ingress', ingressclasses: 'ingressclass',
-        networkpolicies: 'networkpolicy', endpoints: 'endpoints',
-        configmaps: 'configmap', secrets: 'secret',
-        pvcs: 'persistentvolumeclaim', pvs: 'persistentvolume', storageclasses: 'storageclass',
-        serviceaccounts: 'serviceaccount', roles: 'role', clusterroles: 'clusterrole',
-        rolebindings: 'rolebinding', clusterrolebindings: 'clusterrolebinding',
-        nodes: 'node', namespaces: 'namespace', crds: 'crd'
-    }
-    return map[section] ?? section
-}
+export { kindLabel }
