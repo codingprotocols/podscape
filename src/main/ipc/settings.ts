@@ -2,8 +2,8 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { ipcMain, shell } from 'electron'
-import { findKubeconfigPath, getSettings, saveSettings, PodscapeSettings } from './settings_storage'
-import { startSidecar, stopSidecar } from './sidecar'
+import { findKubeconfigPath, getSettings, saveSettings, PodscapeSettings } from '../settings/settings_storage'
+import { startSidecar, stopSidecar } from '../sidecar/sidecar'
 
 export function registerSettingsHandlers(): void {
   ipcMain.handle('settings:get', () => {

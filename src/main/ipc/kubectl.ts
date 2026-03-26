@@ -1,9 +1,9 @@
 import http from 'http'
 import { ipcMain } from 'electron'
-import { checkedSidecarFetch, sidecarFetch } from './api'
-import { activeSidecarPort } from './runtime'
-import { sidecarToken } from './auth'
-import { SIDECAR_HOST } from '../common/constants'
+import { checkedSidecarFetch, sidecarFetch } from '../sidecar/api'
+import { activeSidecarPort } from '../sidecar/runtime'
+import { sidecarToken } from '../sidecar/auth'
+import { SIDECAR_HOST } from '../../common/constants'
 
 export class RBACDeniedError extends Error {
   constructor(public readonly kind: string) {

@@ -1,13 +1,13 @@
 import { app, shell, BrowserWindow, dialog, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { registerKubectlHandlers, cancelAllLogStreams } from './kubectl'
-import { registerTerminalHandlers, cancelAllExecStreams } from './terminal'
-import { registerSettingsHandlers } from './settings'
-import { registerHelmHandlers } from './helm'
-import { registerDialogHandlers } from './dialog'
-import { startSidecar, stopSidecar } from './sidecar'
-import { setupUpdater } from './updater'
+import { registerKubectlHandlers, cancelAllLogStreams } from './ipc/kubectl'
+import { registerTerminalHandlers, cancelAllExecStreams } from './ipc/terminal'
+import { registerSettingsHandlers } from './ipc/settings'
+import { registerHelmHandlers } from './ipc/helm'
+import { registerDialogHandlers } from './ipc/dialog'
+import { startSidecar, stopSidecar } from './sidecar/sidecar'
+import { setupUpdater } from './system/updater'
 
 async function createSplashWindow(): Promise<BrowserWindow> {
   const splash = new BrowserWindow({

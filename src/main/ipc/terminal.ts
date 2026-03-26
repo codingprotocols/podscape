@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
-import { activeSidecarPort } from './runtime'
-import { sidecarToken } from './auth'
-import { SIDECAR_HOST } from '../common/constants'
+import { activeSidecarPort } from '../sidecar/runtime'
+import { sidecarToken } from '../sidecar/auth'
+import { SIDECAR_HOST } from '../../common/constants'
 
 const activeStreams = new Map<string, any>()
 

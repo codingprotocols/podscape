@@ -1,6 +1,6 @@
 import { homedir } from 'os'
 import { join } from 'path'
-import { getSettings } from './settings_storage'
+import { getSettings } from '../settings/settings_storage'
 
 /**
  * Build a clean env object for subprocesses.

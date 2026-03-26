@@ -1,6 +1,6 @@
 import { activeSidecarPort } from './runtime'
 import { sidecarToken } from './auth'
-import { SIDECAR_HOST } from '../common/constants'
+import { SIDECAR_HOST } from '../../common/constants'
 
 export async function sidecarFetch(path: string, options?: RequestInit) {
   const url = `http://${SIDECAR_HOST}:${activeSidecarPort}${path.startsWith('/') ? '' : '/'}${path}`
