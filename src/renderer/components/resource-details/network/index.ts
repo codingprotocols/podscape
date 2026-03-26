@@ -1,0 +1,5 @@
+export { default as ServiceDetail } from './ServiceDetail'
+export { default as IngressDetail } from './IngressDetail'
+export { default as IngressClassDetail } from './IngressClassDetail'
+export { default as NetworkPolicyDetail } from './NetworkPolicyDetail'
+export { default as EndpointsDetail } from './EndpointsDetail'
