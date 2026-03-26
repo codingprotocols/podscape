@@ -18,23 +18,27 @@ export interface NavigationSlice {
     resourceHistory: AnyKubeResource[]
 }
 
+const ls = (key: string, fallback: string): string => {
+    try { return localStorage.getItem(key) ?? fallback } catch { return fallback }
+}
+
 export const createNavigationSlice: StoreSlice<NavigationSlice> = (set, get) => ({
     section: 'dashboard' as ResourceKind,
     setSection: (section) => {
         set({ section, selectedResource: null })
         get().loadSection(section)
     },
-    navWidth: parseInt(localStorage.getItem('podscape:navWidth') ?? '210'),
+    navWidth: parseInt(ls('podscape:navWidth', '210')),
     setNavWidth: (navWidth) => {
         set({ navWidth })
         localStorage.setItem('podscape:navWidth', navWidth.toString())
     },
-    detailWidth: parseInt(localStorage.getItem('podscape:detailWidth') ?? '560'),
+    detailWidth: parseInt(ls('podscape:detailWidth', '560')),
     setDetailWidth: (detailWidth) => {
         set({ detailWidth })
         localStorage.setItem('podscape:detailWidth', detailWidth.toString())
     },
-    theme: (localStorage.getItem('theme') === 'light' ? 'light' : 'dark'),
+    theme: (ls('theme', 'dark') === 'light' ? 'light' : 'dark'),
     setTheme: (theme) => {
         set({ theme })
         localStorage.setItem('theme', theme)

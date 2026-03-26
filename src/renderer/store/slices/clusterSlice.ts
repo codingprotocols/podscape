@@ -33,10 +33,14 @@ export interface ClusterSlice {
 
 let contextSwitchSeq = 0
 
+const safeGetItem = (key: string): string | null => {
+    try { return localStorage.getItem(key) } catch { return null }
+}
+
 export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
     contexts: [],
     selectedContext: null,
-    starredContext: localStorage.getItem('podscape:starred'),
+    starredContext: safeGetItem('podscape:starred'),
     setStarredContext: (name) => {
         set({ starredContext: name })
         if (name) localStorage.setItem('podscape:starred', name)
@@ -44,7 +48,7 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
     },
     hotbarContexts: (() => {
         try {
-            const saved = localStorage.getItem('podscape:hotbar')
+            const saved = safeGetItem('podscape:hotbar')
             return saved ? JSON.parse(saved) : []
         } catch { return [] }
     })(),
