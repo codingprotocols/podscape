@@ -1,6 +1,6 @@
 # Podscape UI Design Patterns
 
-Reference for all AI agents and contributors. Every new component must follow these patterns exactly — do not introduce new design tokens, class combinations, or layout structures that aren't already present here.
+Reference for contributors. Every new component must follow these patterns exactly — do not introduce new design tokens, class combinations, or layout structures that aren't already present here.
 
 ---
 

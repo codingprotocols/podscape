@@ -114,6 +114,7 @@ dist-ssr
 
 # AI assistant config
 CLAUDE.md
+.claude/
 
 # Podscape specific
 /out/
