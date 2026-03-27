@@ -55,6 +55,15 @@ export function registerHelmHandlers(): void {
     return 'Rollback successful'
   })
 
+  // Upgrade release with new values (values-only, same chart version)
+  ipcMain.handle('helm:upgrade', async (_event, _context: string, namespace: string, release: string, values: string) => {
+    await checkedSidecarFetch(
+      `/helm/upgrade?namespace=${encodeURIComponent(namespace)}&release=${encodeURIComponent(release)}`,
+      { method: 'POST', headers: { 'Content-Type': 'text/yaml' }, body: values }
+    )
+    return 'Upgrade successful'
+  })
+
   // Uninstall release
   ipcMain.handle('helm:uninstall', async (_event, _context: string, namespace: string, release: string) => {
     await checkedSidecarFetch(`/helm/uninstall?namespace=${encodeURIComponent(namespace)}&release=${encodeURIComponent(release)}`)

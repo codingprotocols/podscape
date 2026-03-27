@@ -59,6 +59,7 @@ declare global {
             getResourceEvents: (context: string, namespace: string, kind: string, name: string) => Promise<KubeEvent[]>
             cordonNode: (context: string, name: string, unschedulable: boolean) => Promise<void>
             drainNode: (context: string, name: string) => Promise<void>
+            triggerCronJob: (context: string, namespace: string, name: string) => Promise<string>
             deleteResource: (context: string, namespace: string | null, kind: string, name: string) => Promise<string>
             getYAML: (context: string, namespace: string | null, kind: string, name: string) => Promise<string>
             getSecretValue: (context: string, namespace: string, name: string, key: string) => Promise<string>
@@ -95,6 +96,7 @@ declare global {
             history: (context: string, namespace: string, release: string) => Promise<unknown[]>
             rollback: (context: string, namespace: string, release: string, revision: number) => Promise<string>
             uninstall: (context: string, namespace: string, release: string) => Promise<string>
+            upgrade: (context: string, namespace: string, release: string, values: string) => Promise<string>
             repoList: () => Promise<Array<{ name: string; url: string }>>
             repoSearch: (query: string, limit: number, offset: number) => Promise<{ charts: Array<{ name: string; repo: string; description: string; version: string; appVersion: string }>; total: number }>
             repoVersions: (repoName: string, chartName: string) => Promise<Array<{ version: string; appVersion: string; description: string }>>

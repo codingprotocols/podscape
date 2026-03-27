@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -102,20 +104,53 @@ func HandleCustomResource(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// groupVersionEntry holds a cached preferred-version result for an API group.
+type groupVersionEntry struct {
+	version string
+	expiry  time.Time
+}
+
+var (
+	gvCacheMu  sync.RWMutex
+	gvCacheMap = map[string]groupVersionEntry{}
+)
+
 // preferredGroupVersion returns the server's preferred version string for the
-// given API group name by querying the discovery API.
+// given API group name. Results are cached for 5 minutes, keyed by
+// (activeContextName, group), to avoid a discovery round-trip on every
+// /customresource or /getYAML request. Using the active context name as part
+// of the key prevents stale entries from one cluster being served to another.
 func preferredGroupVersion(cs kubernetes.Interface, group string) (string, error) {
+	store.Store.RLock()
+	ctxName := store.Store.ActiveContextName
+	store.Store.RUnlock()
+
+	cacheKey := ctxName + "\x00" + group
+
+	gvCacheMu.RLock()
+	entry, hit := gvCacheMap[cacheKey]
+	gvCacheMu.RUnlock()
+	if hit && time.Now().Before(entry.expiry) {
+		return entry.version, nil
+	}
+
 	groups, err := cs.Discovery().ServerGroups()
 	if err != nil {
 		return "", err
 	}
 	for _, g := range groups.Groups {
 		if g.Name == group {
+			var version string
 			if g.PreferredVersion.Version != "" {
-				return g.PreferredVersion.Version, nil
+				version = g.PreferredVersion.Version
+			} else if len(g.Versions) > 0 {
+				version = g.Versions[0].Version
 			}
-			if len(g.Versions) > 0 {
-				return g.Versions[0].Version, nil
+			if version != "" {
+				gvCacheMu.Lock()
+				gvCacheMap[cacheKey] = groupVersionEntry{version: version, expiry: time.Now().Add(5 * time.Minute)}
+				gvCacheMu.Unlock()
+				return version, nil
 			}
 		}
 	}

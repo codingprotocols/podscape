@@ -77,6 +77,8 @@ const kubectl = {
     ipcRenderer.invoke('kubectl:cordonNode', context, name, unschedulable),
   drainNode: (context: string, name: string): Promise<void> =>
     ipcRenderer.invoke('kubectl:drainNode', context, name),
+  triggerCronJob: (context: string, namespace: string, name: string): Promise<string> =>
+    ipcRenderer.invoke('kubectl:triggerCronJob', context, namespace, name),
   deleteResource: (context: string, namespace: string | null, kind: string, name: string) =>
     ipcRenderer.invoke('kubectl:deleteResource', context, namespace, kind, name),
   getYAML: (context: string, namespace: string | null, kind: string, name: string) =>
@@ -290,6 +292,8 @@ const helm = {
     ipcRenderer.invoke('helm:rollback', context, namespace, release, revision),
   uninstall: (context: string, namespace: string, release: string): Promise<string> =>
     ipcRenderer.invoke('helm:uninstall', context, namespace, release),
+  upgrade: (context: string, namespace: string, release: string, values: string): Promise<string> =>
+    ipcRenderer.invoke('helm:upgrade', context, namespace, release, values),
 
   // Helm repo browser
   repoList: () => ipcRenderer.invoke('helm:repoList'),

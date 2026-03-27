@@ -195,17 +195,6 @@ const SecretRow = React.memo(function SecretRow({ sec }: { sec: KubeSecret }) {
   )
 })
 
-function getNodeRoles(node: KubeNode): string {
-  const labels = node.metadata.labels ?? {}
-  const roles: string[] = []
-  for (const key of Object.keys(labels)) {
-    const match = key.match(/^node-role\.kubernetes\.io\/(.+)$/)
-    if (match) roles.push(match[1])
-  }
-  if (roles.length === 0 && labels['kubernetes.io/role']) roles.push(labels['kubernetes.io/role'])
-  if (roles.length === 0) roles.push('worker')
-  return roles.join(', ')
-}
 
 function getInstanceType(node: KubeNode): string {
   const labels = node.metadata.labels ?? {}

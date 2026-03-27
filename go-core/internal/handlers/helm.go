@@ -11,9 +11,12 @@ import (
 )
 
 func HandleHelmList(w http.ResponseWriter, r *http.Request) {
-	kubeconfig := r.URL.Query().Get("kubeconfig")
-	context := r.URL.Query().Get("context")
 	namespace := r.URL.Query().Get("namespace")
+
+	store.Store.RLock()
+	kubeconfig := store.Store.Kubeconfig
+	context := store.Store.ActiveContextName
+	store.Store.RUnlock()
 
 	releases, err := helm.ListReleases(kubeconfig, context, namespace)
 	if err != nil {
@@ -99,6 +102,37 @@ func HandleHelmRollback(w http.ResponseWriter, r *http.Request) {
 	store.Store.RUnlock()
 
 	if err = helm.RollbackRelease(kubeconfig, context, namespace, releaseName, revision); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func HandleHelmUpgrade(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	namespace := r.URL.Query().Get("namespace")
+	releaseName := r.URL.Query().Get("release")
+	if namespace == "" || releaseName == "" {
+		http.Error(w, "namespace and release are required", http.StatusBadRequest)
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20)) // 1 MB
+	if err != nil {
+		http.Error(w, "failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	store.Store.RLock()
+	kubeconfig := store.Store.Kubeconfig
+	context := store.Store.ActiveContextName
+	store.Store.RUnlock()
+
+	if err := helm.UpgradeRelease(kubeconfig, context, namespace, releaseName, string(body)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
