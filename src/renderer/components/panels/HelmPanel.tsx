@@ -33,12 +33,14 @@ function ReleaseDrawer({
   release,
   context,
   onClose,
-  onUninstall
+  onUninstall,
+  onUpgraded,
 }: {
   release: HelmRelease
   context: string
   onClose: () => void
   onUninstall: (r: HelmRelease) => void
+  onUpgraded: () => void
 }) {
   const [tab, setTab] = useState<'overview' | 'history'>('overview')
   const [values, setValues] = useState<string | null>(null)
@@ -82,6 +84,7 @@ function ReleaseDrawer({
     try {
       await window.helm.upgrade(context, release.namespace, release.name, newValues)
       setValues(null)
+      onUpgraded()
     } catch (err) {
       setUpgradeError((err as Error).message ?? 'Upgrade failed')
     } finally {
@@ -549,6 +552,7 @@ export default function HelmPanel(): JSX.Element {
           context={selectedContext}
           onClose={() => setSelected(null)}
           onUninstall={setUninstallTarget}
+          onUpgraded={load}
         />
       )}
 

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -28,6 +29,8 @@ func restoreCustomResourceGlobals(t *testing.T, origDynFactory func(*rest.Config
 }
 
 func TestHandleCustomResource(t *testing.T) {
+	ClearGVCache()
+	t.Cleanup(ClearGVCache)
 	origDynFactory := dynClientFactory
 
 	t.Run("missing crd param returns 400", func(t *testing.T) {
@@ -112,6 +115,7 @@ func TestHandleCustomResource(t *testing.T) {
 	})
 
 	t.Run("list returns items for known API group", func(t *testing.T) {
+		ClearGVCache()
 		restoreCustomResourceGlobals(t, origDynFactory)
 
 		// Build a fake clientset whose discovery returns the traefik.io group.
@@ -194,6 +198,8 @@ func TestHandleCustomResource(t *testing.T) {
 
 // TestPreferredGroupVersion tests the helper function directly.
 func TestPreferredGroupVersion(t *testing.T) {
+	ClearGVCache()
+	t.Cleanup(ClearGVCache)
 	t.Run("returns preferred version for known group", func(t *testing.T) {
 		fakeCS := fake.NewSimpleClientset()
 		fakeCS.Resources = []*metav1.APIResourceList{
@@ -223,4 +229,37 @@ func TestPreferredGroupVersion(t *testing.T) {
 			t.Errorf("expected 'not found' in error, got: %v", err)
 		}
 	})
+}
+
+func TestClearGVCache(t *testing.T) {
+	// Seed the cache with a known entry.
+	gvCacheMu.Lock()
+	gvCacheMap["ctx\x00test.io"] = groupVersionEntry{version: "v1", expiry: time.Now().Add(time.Minute)}
+	gvCacheMu.Unlock()
+
+	// Confirm it's there.
+	gvCacheMu.RLock()
+	_, exists := gvCacheMap["ctx\x00test.io"]
+	gvCacheMu.RUnlock()
+	if !exists {
+		t.Fatal("pre-condition: cache entry should exist before ClearGVCache")
+	}
+
+	ClearGVCache()
+
+	// Confirm it's gone.
+	gvCacheMu.RLock()
+	_, exists = gvCacheMap["ctx\x00test.io"]
+	gvCacheMu.RUnlock()
+	if exists {
+		t.Error("ClearGVCache should have evicted all entries")
+	}
+
+	// Confirm the map itself is non-nil (not just zeroed out).
+	gvCacheMu.RLock()
+	mapNil := gvCacheMap == nil
+	gvCacheMu.RUnlock()
+	if mapNil {
+		t.Error("ClearGVCache must replace the map, not nil it")
+	}
 }

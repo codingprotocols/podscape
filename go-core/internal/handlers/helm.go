@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -11,14 +12,14 @@ import (
 )
 
 func HandleHelmList(w http.ResponseWriter, r *http.Request) {
-	namespace := r.URL.Query().Get("namespace")
-
+	// namespace is intentionally omitted — the panel always lists all releases
+	// across all namespaces. ListReleases sets AllNamespaces=true when namespace=="".
 	store.Store.RLock()
 	kubeconfig := store.Store.Kubeconfig
 	context := store.Store.ActiveContextName
 	store.Store.RUnlock()
 
-	releases, err := helm.ListReleases(kubeconfig, context, namespace)
+	releases, err := helm.ListReleases(kubeconfig, context, "")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -121,9 +122,15 @@ func HandleHelmUpgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20)) // 1 MB
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB hard limit
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "failed to read request body", http.StatusBadRequest)
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			http.Error(w, "request body exceeds 1 MB limit", http.StatusRequestEntityTooLarge)
+		} else {
+			http.Error(w, "failed to read request body", http.StatusBadRequest)
+		}
 		return
 	}
 
