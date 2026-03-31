@@ -75,6 +75,13 @@ function ExecTab({ session, active, theme }: ExecTabProps): JSX.Element {
     xtermRef.current = term
     fitRef.current   = fit
 
+    // Prevent the browser from consuming Tab for focus navigation
+    // so it reaches the PTY as a real tab-completion character.
+    term.attachCustomKeyEventHandler(e => {
+      if (e.key === 'Tab') e.preventDefault()
+      return true
+    })
+
     window.exec.start(selectedContext, session.target.namespace, session.target.pod, session.target.container)
       .then(ptyId => {
         ptyIdRef.current = ptyId
@@ -125,10 +132,11 @@ function ExecTab({ session, active, theme }: ExecTabProps): JSX.Element {
 
   return (
     <div
-      ref={containerRef}
-      className="flex-1 min-h-0 bg-[#0d1117] p-5"
-      style={{ display: active ? 'flex' : 'none', flexDirection: 'column' }}
-    />
+      className="absolute inset-0 bg-[#0d1117] p-5"
+      style={{ display: active ? 'block' : 'none' }}
+    >
+      <div ref={containerRef} className="w-full h-full" />
+    </div>
   )
 }
 
@@ -138,11 +146,13 @@ interface ExecPanelProps {
   embedded?: boolean
 }
 
+// ── ExecPanel ─────────────────────────────────────────────────────────────────
+
 export function ExecPanel({ embedded }: ExecPanelProps): JSX.Element {
-  const { 
+  const {
     execSessions, activeExecId,
-    closeExec, 
-    theme, selectedContext 
+    closeExec,
+    theme, selectedContext
   } = useAppStore()
 
   const activeSession = execSessions.find(s => s.id === activeExecId) ?? execSessions[0]
@@ -156,7 +166,7 @@ export function ExecPanel({ embedded }: ExecPanelProps): JSX.Element {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isCmdOrCtrl = isMac ? e.metaKey : e.ctrlKey
-      
+
       if (isCmdOrCtrl && e.key === 'd') {
         if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
           e.preventDefault()
@@ -165,9 +175,7 @@ export function ExecPanel({ embedded }: ExecPanelProps): JSX.Element {
       }
 
       if (e.key === 'Escape') {
-        if (panelMode === 'idle') {
-          closeExec()
-        }
+        if (panelMode === 'idle') closeExec()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -259,7 +267,7 @@ export function ExecPanel({ embedded }: ExecPanelProps): JSX.Element {
               {isMac ? 'Cmd+D' : 'Ctrl+D'} to exit
             </span>
 
-            <button
+<button
               onClick={handleOpenUploadPanel}
               title="Upload file to container"
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${

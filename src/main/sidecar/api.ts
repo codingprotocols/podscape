@@ -19,14 +19,24 @@ export async function sidecarFetch(path: string, options?: RequestInit) {
       const res = await fetch(url, mergedOptions)
       return res
     } catch (err: any) {
-      // Only retry on connection-refused (sidecar still starting up).
-      // Any other network error (DNS failure, TLS error, etc.) is a hard fault.
-      const isConnRefused =
-        err?.code === 'ECONNREFUSED' ||
-        err?.cause?.code === 'ECONNREFUSED' ||
-        String(err?.message ?? '').includes('ECONNREFUSED')
+      // Retry on transient sidecar-level socket errors in addition to the
+      // startup ECONNREFUSED case:
+      //
+      //  ECONNREFUSED   — sidecar process still starting up
+      //  UND_ERR_SOCKET — sidecar dropped the connection mid-request (e.g. the
+      //                   Go HTTP server's panic-recovery closed the response
+      //                   writer after an upstream EKS stream reset). The next
+      //                   attempt will open a fresh TCP connection.
+      const errCode = err?.code ?? err?.cause?.code ?? ''
+      const errMsg = String(err?.message ?? '')
+      const isRetriable =
+        errCode === 'ECONNREFUSED' ||
+        errCode === 'UND_ERR_SOCKET' ||
+        errMsg.includes('ECONNREFUSED') ||
+        errMsg.includes('other side closed') ||
+        errMsg.includes('socket hang up')
 
-      if (!isConnRefused) {
+      if (!isRetriable) {
         console.error(`[API] Non-retriable error for ${url}:`, err)
         throw err
       }

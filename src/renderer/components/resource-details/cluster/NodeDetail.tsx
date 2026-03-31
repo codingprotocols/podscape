@@ -24,6 +24,13 @@ export default function NodeDetail({ node }: Props): JSX.Element {
   const externalIP = (node.status.addresses ?? []).find(a => a.type === 'ExternalIP')?.address ?? '—'
   const ni = node.status.nodeInfo
 
+  const labels = node.metadata.labels ?? {}
+  const roles = Object.keys(labels)
+    .filter(k => k.startsWith('node-role.kubernetes.io/'))
+    .map(k => k.replace('node-role.kubernetes.io/', ''))
+    .concat(labels['kubernetes.io/role'] ? [labels['kubernetes.io/role']] : [])
+    .join(', ') || 'worker'
+
   const cpuCap = parseCpuMillicores(node.status.capacity?.cpu ?? '0')
   const cpuAlloc = parseCpuMillicores(node.status.allocatable?.cpu ?? '0')
   const memCapMiB = parseMemoryMiB(node.status.capacity?.memory ?? '0Ki')
@@ -175,11 +182,12 @@ export default function NodeDetail({ node }: Props): JSX.Element {
         <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
           <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">System</h4>
           <dl className="space-y-1.5 px-1">
+            <Row label="Roles" value={roles} />
+            <Row label="Kubelet" value={ni.kubeletVersion} mono />
             <Row label="OS" value={ni.osImage} />
             <Row label="Kernel" value={ni.kernelVersion} mono />
             <Row label="Arch" value={ni.architecture} />
             <Row label="Runtime" value={ni.containerRuntimeVersion} mono />
-            <Row label="Kubelet" value={ni.kubeletVersion} mono />
           </dl>
         </div>
       )}

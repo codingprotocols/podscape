@@ -14,10 +14,12 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
@@ -179,7 +181,51 @@ func HandleGetYAML(w http.ResponseWriter, r *http.Request) {
 
 	gvr, ok := kindGVR[kind]
 	if !ok {
-		http.Error(w, fmt.Sprintf("unsupported kind: %s", kind), http.StatusBadRequest)
+		// Fall back to treating kind as "<resource>.<group>" for custom resources
+		// (e.g. "virtualservices.networking.istio.io" — the format CRDDetail uses
+		// when fetching YAML for CRD instances).
+		dot := strings.Index(kind, ".")
+		if dot <= 0 {
+			http.Error(w, fmt.Sprintf("unsupported kind: %s", kind), http.StatusBadRequest)
+			return
+		}
+		resource, group := kind[:dot], kind[dot+1:]
+
+		cs, cfg := store.Store.ActiveClientset()
+		if cfg == nil {
+			http.Error(w, "no active context", http.StatusServiceUnavailable)
+			return
+		}
+		version, err := preferredGroupVersion(cs, group)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("unknown API group %q: %v", group, err), http.StatusBadRequest)
+			return
+		}
+
+		dynClient, err := dynClientFactory(cfg)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		crdGVR := schema.GroupVersionResource{Group: group, Version: version, Resource: resource}
+		var obj *unstructured.Unstructured
+		if namespace != "" {
+			obj, err = dynClient.Resource(crdGVR).Namespace(namespace).Get(r.Context(), name, metav1.GetOptions{})
+		} else {
+			obj, err = dynClient.Resource(crdGVR).Get(r.Context(), name, metav1.GetOptions{})
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		y, err := yaml.Marshal(obj.Object)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/yaml")
+		w.Write(y)
 		return
 	}
 
@@ -756,4 +802,65 @@ func HandleDrainNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// HandleTriggerCronJob creates a Job on-demand from a CronJob's template
+// (equivalent to `kubectl create job --from=cronjob/<name>`).
+// Query params: namespace (required), name (required).
+func HandleTriggerCronJob(w http.ResponseWriter, r *http.Request) {
+	namespace := r.URL.Query().Get("namespace")
+	name := r.URL.Query().Get("name")
+	if namespace == "" || name == "" {
+		http.Error(w, "namespace and name are required", http.StatusBadRequest)
+		return
+	}
+
+	cs, _ := store.Store.ActiveClientset()
+	if cs == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
+	cj, err := cs.BatchV1().CronJobs(namespace).Get(r.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	trueVal := true
+	jobName := fmt.Sprintf("%s-manual-%d", name, time.Now().Unix())
+	// Truncate so the total stays within the 63-char DNS label limit.
+	if len(jobName) > 63 {
+		jobName = jobName[:63]
+	}
+
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      jobName,
+			Namespace: namespace,
+			Annotations: map[string]string{
+				"cronjob.kubernetes.io/instantiate": "manual",
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "batch/v1",
+					Kind:               "CronJob",
+					Name:               cj.Name,
+					UID:                cj.UID,
+					BlockOwnerDeletion: &trueVal,
+					Controller:         &trueVal,
+				},
+			},
+		},
+		Spec: cj.Spec.JobTemplate.Spec,
+	}
+
+	created, err := cs.BatchV1().Jobs(namespace).Create(r.Context(), job, metav1.CreateOptions{})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"name": created.Name})
 }

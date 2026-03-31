@@ -89,6 +89,7 @@ func main() {
 	http.HandleFunc("/config/current-context", handlers.HandleGetCurrentContext)
 	http.HandleFunc("/config/switch", handlers.HandleSwitchContext)
 	http.HandleFunc("/helm/rollback", handlers.HandleHelmRollback)
+	http.HandleFunc("/helm/upgrade", handlers.HandleHelmUpgrade)
 	http.HandleFunc("/helm/uninstall", handlers.HandleHelmUninstall)
 	http.HandleFunc("/metrics/pods", handlers.HandleGetPodMetrics)
 	http.HandleFunc("/metrics/nodes", handlers.HandleGetNodeMetrics)
@@ -117,6 +118,9 @@ func main() {
 	// Node operations
 	http.HandleFunc("/node/cordon", handlers.HandleCordonNode)
 	http.HandleFunc("/node/drain", handlers.HandleDrainNode)
+
+	// CronJob operations
+	http.HandleFunc("/cronjob/trigger", handlers.HandleTriggerCronJob)
 
 	// TLS Certificate Dashboard
 	http.HandleFunc("/tls-certs", handlers.HandleTLSCerts)

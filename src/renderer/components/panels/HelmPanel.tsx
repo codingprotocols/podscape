@@ -33,12 +33,14 @@ function ReleaseDrawer({
   release,
   context,
   onClose,
-  onUninstall
+  onUninstall,
+  onUpgraded,
 }: {
   release: HelmRelease
   context: string
   onClose: () => void
   onUninstall: (r: HelmRelease) => void
+  onUpgraded: () => void
 }) {
   const [tab, setTab] = useState<'overview' | 'history'>('overview')
   const [values, setValues] = useState<string | null>(null)
@@ -50,6 +52,8 @@ function ReleaseDrawer({
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null)
   const [rollingBack, setRollingBack] = useState(false)
   const [rbError, setRbError] = useState<string | null>(null)
+  const [upgrading, setUpgrading] = useState(false)
+  const [upgradeError, setUpgradeError] = useState<string | null>(null)
 
   useEffect(() => {
     if (tab === 'history' && history.length === 0) {
@@ -71,6 +75,20 @@ function ReleaseDrawer({
       setValuesError((err as Error).message ?? 'Failed to fetch values')
     } finally {
       setLoadingValues(false)
+    }
+  }
+
+  const handleUpgrade = async (newValues: string) => {
+    setUpgrading(true)
+    setUpgradeError(null)
+    try {
+      await window.helm.upgrade(context, release.namespace, release.name, newValues)
+      setValues(null)
+      onUpgraded()
+    } catch (err) {
+      setUpgradeError((err as Error).message ?? 'Upgrade failed')
+    } finally {
+      setUpgrading(false)
     }
   }
 
@@ -156,7 +174,7 @@ function ReleaseDrawer({
               ].map(({ label, value }) => (
                 <div key={label} className="bg-slate-50 dark:bg-white/[0.03] rounded-2xl px-5 py-4 border border-slate-100 dark:border-white/5 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    <span className="text-slate-500">{label}</span>
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{label}</span>
                   </div>
                   <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 text-right truncate max-w-[240px] font-mono">
                     {typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—')}
@@ -199,7 +217,7 @@ function ReleaseDrawer({
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-3 mb-2">
-                          <span className="text-[14px] font-black text-slate-900 dark:text-white">Rev {entry.revision}</span>
+                          <span className="text-xs font-black text-slate-900 dark:text-white">Rev {entry.revision}</span>
                           <StatusBadge status={entry.status} />
                         </div>
                         <p className="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-500 truncate">{entry.chart}</p>
@@ -264,7 +282,7 @@ function ReleaseDrawer({
                   }
                 </div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest leading-none">
-                  {loadingValues ? 'Loading Values…' : `Manifest — ${release.name}`}
+                  {loadingValues ? 'Loading Values…' : `Values — ${release.name}`}
                 </h3>
               </div>
               <button
@@ -275,7 +293,7 @@ function ReleaseDrawer({
                 <X size={20} strokeWidth={2.5} />
               </button>
             </div>
-            <div className="flex-1 min-h-0 bg-slate-100 dark:bg-slate-950">
+            <div className="flex-1 min-h-0">
               {valuesError ? (
                 <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
                   <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center mb-2">
@@ -289,7 +307,18 @@ function ReleaseDrawer({
                   <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
               ) : values !== null ? (
-                <YAMLViewer content={values} />
+                <>
+                  <YAMLViewer
+                    content={values}
+                    editable
+                    onSave={handleUpgrade}
+                  />
+                  {upgradeError && (
+                    <div className="px-6 py-3 bg-red-500/10 border-t border-red-500/20 text-red-400 text-[10px] font-black uppercase tracking-widest shrink-0">
+                      {upgradeError}
+                    </div>
+                  )}
+                </>
               ) : null}
             </div>
           </div>
@@ -302,7 +331,7 @@ function ReleaseDrawer({
 // ─── Main HelmPanel ───────────────────────────────────────────────────────────
 
 export default function HelmPanel(): JSX.Element {
-  const { selectedContext, loadingNamespaces } = useAppStore()
+  const { selectedContext } = useAppStore()
   const [activeTab, setActiveTab] = useState<'releases' | 'browser'>('releases')
   const [releases, setReleases] = useState<HelmRelease[]>([])
   const [loading, setLoading] = useState(false)
@@ -320,9 +349,7 @@ export default function HelmPanel(): JSX.Element {
   }, [selectedContext])
 
   const load = useCallback(async () => {
-    // Wait until the context switch is fully complete (sidecar has switched +
-    // namespaces loaded) before fetching — avoids getting old-context releases.
-    if (!selectedContext || loadingNamespaces) return
+    if (!selectedContext) return
     setLoading(true)
     setError(null)
     try {
@@ -333,7 +360,7 @@ export default function HelmPanel(): JSX.Element {
     } finally {
       setLoading(false)
     }
-  }, [selectedContext, loadingNamespaces])
+  }, [selectedContext])
 
   useEffect(() => { load() }, [load])
 
@@ -525,6 +552,7 @@ export default function HelmPanel(): JSX.Element {
           context={selectedContext}
           onClose={() => setSelected(null)}
           onUninstall={setUninstallTarget}
+          onUpgraded={load}
         />
       )}
 

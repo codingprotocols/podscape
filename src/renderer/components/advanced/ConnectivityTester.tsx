@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 
 import { useAppStore } from '../../store'
 import PageHeader from '../core/PageHeader'
-import type { KubePod, KubeService } from '../../types'
+import type { KubePod, KubeService, KubeNetworkPolicy, KubeEndpoints, NetworkPolicyIngressRule, NetworkPolicyEgressRule } from '../../types'
 import { isMac } from '../../utils/platform'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -27,6 +27,12 @@ interface DiagRun {
     to: string
     steps: DiagStep[]
     done: boolean
+    // Fields used by FailureAnalysis — populated at run time
+    sourcePod?: KubePod
+    sourceContext?: string
+    targetHost?: string         // raw hostname without port
+    targetNamespace?: string    // parsed from SVC/Pod DNS, if available
+    targetServiceName?: string  // parsed from <svc>.<ns>.svc.cluster.local, if available
 }
 
 interface ManualRun {
@@ -54,12 +60,13 @@ export function buildServiceDnsName(svc: { metadata: { name: string; namespace?:
 }
 
 export function buildPodDnsName(pod: { metadata: { namespace?: string }; status: { podIP?: string } }): string {
-    const ip = pod.status.podIP ?? ''
+    const ip = pod.status.podIP
+    if (!ip) return ''
     const ns = pod.metadata.namespace ?? 'default'
     return `${ip.replace(/\./g, '-')}.${ns}.pod.cluster.local`
 }
 
-function podContainerPorts(pod: KubePod): number[] {
+export function podContainerPorts(pod: KubePod): number[] {
     const ports = new Set<number>()
     for (const c of pod.spec.containers) {
         for (const p of c.ports ?? []) {
@@ -69,14 +76,14 @@ function podContainerPorts(pod: KubePod): number[] {
     return [...ports].sort((a, b) => a - b)
 }
 
-function buildDiagSteps(host: string, port: string, path: string, skipDns: boolean): DiagStep[] {
+export function buildDiagSteps(host: string, port: string, path: string, skipDns: boolean): DiagStep[] {
     const url = `http://${host}${port ? ':' + port : ''}${path || '/'}`
     const steps: DiagStep[] = []
 
     if (!skipDns) {
         steps.push({
             key: 'dns', label: 'DNS Resolution', status: 'idle', output: '', durationMs: 0,
-            cmd: ['nslookup', host],
+            cmd: ['nslookup', '-timeout=5', host],
         })
     }
 
@@ -91,6 +98,367 @@ function buildDiagSteps(host: string, port: string, path: string, skipDns: boole
     })
 
     return steps
+}
+
+// ─── Failure-analysis helpers ─────────────────────────────────────────────────
+
+/** Parse `<svc>.<ns>.svc.cluster.local` → { name, namespace } */
+function parseSvcDns(host: string): { name: string; namespace: string } | null {
+    const p = host.split('.')
+    if (p.length >= 5 && p[2] === 'svc' && p[3] === 'cluster' && p[4] === 'local') {
+        return { name: p[0], namespace: p[1] }
+    }
+    return null
+}
+
+/** Parse `<ip-dashes>.<ns>.pod.cluster.local` → { namespace } */
+function parsePodDns(host: string): { namespace: string } | null {
+    const p = host.split('.')
+    if (p.length >= 5 && p[2] === 'pod' && p[3] === 'cluster' && p[4] === 'local') {
+        return { namespace: p[1] }
+    }
+    return null
+}
+
+/** Does a podSelector matchLabels match the given pod labels?
+ *  An empty/absent matchLabels selects ALL pods in the namespace. */
+function labelsMatchSelector(
+    selector: { matchLabels?: Record<string, string> } | undefined,
+    labels: Record<string, string>
+): boolean {
+    if (!selector?.matchLabels || Object.keys(selector.matchLabels).length === 0) return true
+    return Object.entries(selector.matchLabels).every(([k, v]) => labels[k] === v)
+}
+
+function describeRuleFrom(rule: NetworkPolicyIngressRule): string {
+    if (!rule.from || rule.from.length === 0) return 'any source'
+    return rule.from.map(peer => {
+        if (peer.ipBlock) return `IP ${peer.ipBlock.cidr}`
+        const ns = peer.namespaceSelector?.matchLabels
+            ? Object.entries(peer.namespaceSelector.matchLabels).map(([k, v]) => `${k}=${v}`).join(',')
+            : peer.namespaceSelector ? 'any namespace' : null
+        const pod = peer.podSelector?.matchLabels
+            ? Object.entries(peer.podSelector.matchLabels).map(([k, v]) => `${k}=${v}`).join(',')
+            : peer.podSelector ? 'any pod' : null
+        if (ns && pod) return `pods {${pod}} in ns {${ns}}`
+        if (ns) return `namespace {${ns}}`
+        if (pod) return `pods {${pod}}`
+        return 'same namespace'
+    }).join(', ')
+}
+
+function describeRuleTo(rule: NetworkPolicyEgressRule): string {
+    if (!rule.to || rule.to.length === 0) return 'any destination'
+    return rule.to.map(peer => {
+        if (peer.ipBlock) return `IP ${peer.ipBlock.cidr}`
+        const ns = peer.namespaceSelector?.matchLabels
+            ? Object.entries(peer.namespaceSelector.matchLabels).map(([k, v]) => `${k}=${v}`).join(',')
+            : peer.namespaceSelector ? 'any namespace' : null
+        const pod = peer.podSelector?.matchLabels
+            ? Object.entries(peer.podSelector.matchLabels).map(([k, v]) => `${k}=${v}`).join(',')
+            : peer.podSelector ? 'any pod' : null
+        if (ns && pod) return `pods {${pod}} in ns {${ns}}`
+        if (ns) return `namespace {${ns}}`
+        if (pod) return `pods {${pod}}`
+        return 'same namespace'
+    }).join(', ')
+}
+
+function describeRulePorts(ports: NetworkPolicyIngressRule['ports']): string {
+    if (!ports || ports.length === 0) return 'all ports'
+    return ports.map(p => p.port
+        ? `${p.port}${p.endPort ? `–${p.endPort}` : ''}${p.protocol && p.protocol !== 'TCP' ? '/' + p.protocol : ''}`
+        : 'all ports'
+    ).join(', ')
+}
+
+function isIngressRestricted(np: KubeNetworkPolicy): boolean {
+    const types = np.spec.policyTypes ?? []
+    return types.includes('Ingress') || (types.length === 0 && np.spec.ingress !== undefined)
+}
+
+function isEgressRestricted(np: KubeNetworkPolicy): boolean {
+    const types = np.spec.policyTypes ?? []
+    return types.includes('Egress') || (types.length === 0 && np.spec.egress !== undefined)
+}
+
+// ─── FailureAnalysis component ────────────────────────────────────────────────
+
+interface FailureAnalysisData {
+    targetNetpols: KubeNetworkPolicy[]
+    sourceNetpols: KubeNetworkPolicy[]
+    endpoints: KubeEndpoints | null
+}
+
+function FailureAnalysis({ run }: { run: DiagRun }) {
+    const [state, setState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+    const [data, setData] = useState<FailureAnalysisData | null>(null)
+    const [err, setErr] = useState('')
+
+    if (!run.sourceContext || !run.sourcePod || !run.targetHost) return null
+
+    const { sourceContext, sourcePod, targetHost, targetNamespace, targetServiceName } = run
+    const sourceNs = sourcePod.metadata.namespace ?? 'default'
+    const sourcePodLabels = sourcePod.metadata.labels ?? {}
+
+    const analyze = async () => {
+        setState('loading')
+        try {
+            const [targetNpRaw, sourceNpRaw, endpointRaw] = await Promise.all([
+                targetNamespace
+                    ? window.kubectl.getNetworkPolicies(sourceContext, targetNamespace)
+                    : Promise.resolve([]),
+                window.kubectl.getNetworkPolicies(sourceContext, sourceNs),
+                targetNamespace && targetServiceName
+                    ? window.kubectl.getEndpoints(sourceContext, targetNamespace)
+                    : Promise.resolve([]),
+            ])
+            const targetNetpols = targetNpRaw as KubeNetworkPolicy[]
+            const sourceNetpols = sourceNpRaw as KubeNetworkPolicy[]
+            const allEp = endpointRaw as KubeEndpoints[]
+            const endpoints = targetServiceName
+                ? allEp.find(e => e.metadata.name === targetServiceName) ?? null
+                : null
+            setData({ targetNetpols, sourceNetpols, endpoints })
+            setState('done')
+        } catch (e) {
+            setErr((e as Error).message)
+            setState('error')
+        }
+    }
+
+    if (state === 'idle') {
+        return (
+            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-white/5">
+                <button
+                    onClick={analyze}
+                    className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-amber-500 hover:text-amber-400 transition-colors"
+                >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                    Investigate Failure
+                </button>
+            </div>
+        )
+    }
+
+    if (state === 'loading') {
+        return (
+            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-white/5 flex items-center gap-2 text-[10px] text-slate-500">
+                <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />
+                Fetching network policies and endpoints…
+            </div>
+        )
+    }
+
+    if (state === 'error') {
+        return (
+            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-white/5 text-[10px] text-red-400">
+                Analysis failed: {err}
+            </div>
+        )
+    }
+
+    const { targetNetpols, sourceNetpols, endpoints } = data!
+
+    // NetworkPolicies that restrict INGRESS and select the target pods
+    const ingressPols = targetNetpols.filter(np => isIngressRestricted(np))
+    // NetworkPolicies that restrict EGRESS and select the source pod
+    const egressPols = sourceNetpols.filter(np =>
+        isEgressRestricted(np) && labelsMatchSelector(np.spec.podSelector, sourcePodLabels)
+    )
+
+    // Endpoint stats
+    const readyCount = endpoints?.subsets?.reduce((n, s) => n + (s.addresses?.length ?? 0), 0) ?? null
+    const notReadyCount = endpoints?.subsets?.reduce((n, s) => n + (s.notReadyAddresses?.length ?? 0), 0) ?? null
+    const readyPodNames = endpoints?.subsets?.flatMap(s =>
+        (s.addresses ?? []).map(a => a.targetRef?.name).filter(Boolean)
+    ) ?? []
+
+    const failedSteps = run.steps.filter(s => s.status === 'failed').map(s => s.key)
+
+    return (
+        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-white/5 space-y-4 text-[11px]">
+            <div className="flex items-center gap-1.5 font-black text-[10px] uppercase tracking-widest text-amber-500">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                Failure Analysis
+            </div>
+
+            {/* ── DNS hint ── */}
+            {failedSteps.includes('dns') && (
+                <div className="px-3 py-2 rounded-lg bg-amber-500/5 border border-amber-500/15 text-amber-600 dark:text-amber-400 text-[10px]">
+                    <strong>DNS failed</strong> — check that the service name and namespace are correct.
+                    {targetNamespace && <span> Expected namespace: <code className="font-mono">{targetNamespace}</code>.</span>}
+                    {' '}NetworkPolicies do not affect DNS resolution.
+                </div>
+            )}
+
+            {/* ── Endpoints ── */}
+            {endpoints !== null && (
+                <div>
+                    <p className="text-[10px] font-black text-slate-500 dark:text-slate-600 uppercase tracking-widest mb-1.5">
+                        Endpoints — {targetServiceName}
+                    </p>
+                    {readyCount === 0 && notReadyCount === 0 ? (
+                        <div className="px-3 py-2 rounded-lg bg-red-500/5 border border-red-500/15 text-red-400 text-[10px] font-bold">
+                            No endpoints — no pods match the service selector. Check the service's podSelector and that matching pods are Running.
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-3">
+                            <span className={`flex items-center gap-1.5 text-[10px] font-bold ${readyCount! > 0 ? 'text-emerald-400' : 'text-slate-500'}`}>
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                                {readyCount} ready{readyPodNames.length > 0 && ` (${readyPodNames.slice(0, 3).join(', ')}${readyPodNames.length > 3 ? '…' : ''})`}
+                            </span>
+                            {notReadyCount! > 0 && (
+                                <span className="flex items-center gap-1.5 text-[10px] font-bold text-amber-400">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+                                    {notReadyCount} not-ready
+                                </span>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ── Target ingress NetworkPolicies ── */}
+            <div>
+                <p className="text-[10px] font-black text-slate-500 dark:text-slate-600 uppercase tracking-widest mb-1.5">
+                    Ingress NetworkPolicies
+                    {targetNamespace && <span className="normal-case font-normal text-slate-400"> (namespace: {targetNamespace})</span>}
+                </p>
+                {!targetNamespace && (
+                    <p className="text-[10px] text-slate-500 italic">Cannot determine target namespace from this hostname.</p>
+                )}
+                {targetNamespace && ingressPols.length === 0 && (
+                    <p className="text-[10px] text-slate-400">No ingress NetworkPolicies found — inbound traffic is unrestricted by policy.</p>
+                )}
+                <div className="space-y-1.5">
+                    {ingressPols.map(np => {
+                        const selectorDesc = !np.spec.podSelector?.matchLabels || Object.keys(np.spec.podSelector.matchLabels).length === 0
+                            ? 'all pods'
+                            : Object.entries(np.spec.podSelector.matchLabels).map(([k, v]) => `${k}=${v}`).join(', ')
+                        const hasRules = np.spec.ingress && np.spec.ingress.length > 0
+                        const isDenyAll = !hasRules
+                        return (
+                            <div key={np.metadata.uid} className={`px-3 py-2 rounded-lg border text-[10px] ${isDenyAll ? 'bg-red-500/5 border-red-500/15' : 'bg-slate-50 dark:bg-white/[0.02] border-slate-100 dark:border-white/5'}`}>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className={isDenyAll ? 'text-red-400' : 'text-slate-500'}>
+                                        {isDenyAll ? '✗' : '≈'}
+                                    </span>
+                                    <span className="font-black font-mono text-slate-700 dark:text-slate-300">{np.metadata.name}</span>
+                                    <span className="text-slate-400">selects: <code className="font-mono">{selectorDesc}</code></span>
+                                </div>
+                                {isDenyAll ? (
+                                    <p className="text-red-400 ml-4">Denies ALL ingress (no rules defined)</p>
+                                ) : (
+                                    <div className="ml-4 space-y-0.5">
+                                        {np.spec.ingress!.map((rule, i) => (
+                                            <p key={i} className="text-slate-500 dark:text-slate-400">
+                                                Allow from <span className="text-slate-700 dark:text-slate-300 font-semibold">{describeRuleFrom(rule)}</span>
+                                                {' '}on <span className="text-slate-700 dark:text-slate-300 font-semibold">{describeRulePorts(rule.ports)}</span>
+                                            </p>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )
+                    })}
+                </div>
+            </div>
+
+            {/* ── Source egress NetworkPolicies ── */}
+            <div>
+                <p className="text-[10px] font-black text-slate-500 dark:text-slate-600 uppercase tracking-widest mb-1.5">
+                    Egress NetworkPolicies
+                    <span className="normal-case font-normal text-slate-400"> (source namespace: {sourceNs})</span>
+                </p>
+                {egressPols.length === 0 ? (
+                    <p className="text-[10px] text-slate-400">No egress NetworkPolicies apply to this pod — outbound traffic is unrestricted.</p>
+                ) : (
+                    <div className="space-y-1.5">
+                        {egressPols.map(np => {
+                            const hasRules = np.spec.egress && np.spec.egress.length > 0
+                            const isDenyAll = !hasRules
+                            return (
+                                <div key={np.metadata.uid} className={`px-3 py-2 rounded-lg border text-[10px] ${isDenyAll ? 'bg-red-500/5 border-red-500/15' : 'bg-slate-50 dark:bg-white/[0.02] border-slate-100 dark:border-white/5'}`}>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className={isDenyAll ? 'text-red-400' : 'text-slate-500'}>
+                                            {isDenyAll ? '✗' : '≈'}
+                                        </span>
+                                        <span className="font-black font-mono text-slate-700 dark:text-slate-300">{np.metadata.name}</span>
+                                    </div>
+                                    {isDenyAll ? (
+                                        <p className="text-red-400 ml-4">Denies ALL egress (no rules defined)</p>
+                                    ) : (
+                                        <div className="ml-4 space-y-0.5">
+                                            {np.spec.egress!.map((rule, i) => (
+                                                <p key={i} className="text-slate-500 dark:text-slate-400">
+                                                    Allow to <span className="text-slate-700 dark:text-slate-300 font-semibold">{describeRuleTo(rule)}</span>
+                                                    {' '}on <span className="text-slate-700 dark:text-slate-300 font-semibold">{describeRulePorts(rule.ports)}</span>
+                                                </p>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )
+                        })}
+                    </div>
+                )}
+            </div>
+        </div>
+    )
+}
+
+// ─── Step runner (exported for tests) ────────────────────────────────────────
+
+export type ExecFn = (cmd: string[]) => Promise<{ stdout: string; exitCode: number }>
+
+/** Runs a DiagStep[] array sequentially against a cluster.
+ *  `allowSkipOnDnsFail`: when true, TCP/HTTP steps are skipped if the DNS step fails
+ *  (use false for IP targets where there is no DNS step).
+ */
+export async function runSteps(
+    steps: DiagStep[],
+    execFn: ExecFn,
+    onStepUpdate: (steps: DiagStep[]) => void,
+    cancelledRef: { current: boolean },
+    allowSkipOnDnsFail: boolean
+): Promise<DiagStep[]> {
+    const result = steps.map(s => ({ ...s }))
+    let dnsOk = true
+
+    for (let i = 0; i < result.length; i++) {
+        if (cancelledRef.current) {
+            result[i] = { ...result[i], status: 'skipped' }
+            onStepUpdate([...result])
+            continue
+        }
+
+        const step = result[i]
+        result[i] = { ...step, status: 'running' }
+        onStepUpdate([...result])
+
+        if (step.key !== 'dns' && !dnsOk && allowSkipOnDnsFail) {
+            result[i] = { ...step, status: 'skipped', output: '', durationMs: 0 }
+            onStepUpdate([...result])
+            continue
+        }
+
+        const t0 = Date.now()
+        try {
+            const { stdout, exitCode } = await execFn(step.cmd)
+            const durationMs = Date.now() - t0
+            const success = exitCode === 0
+            if (step.key === 'dns' && !success) dnsOk = false
+            result[i] = { ...step, status: success ? 'success' : 'failed', output: stdout, durationMs }
+        } catch (err) {
+            const durationMs = Date.now() - t0
+            if (step.key === 'dns') dnsOk = false
+            result[i] = { ...step, status: 'failed', output: (err as Error).message, durationMs }
+        }
+        onStepUpdate([...result])
+    }
+
+    return result
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -182,6 +550,7 @@ function DiagRunCard({ run }: { run: DiagRun }) {
             </div>
             <div className="p-4 space-y-3">
                 {run.steps.map(step => <StepRow key={step.key} step={step} />)}
+                {allDone && anyFailed && <FailureAnalysis run={run} />}
             </div>
         </div>
     )
@@ -216,9 +585,6 @@ function ManualRunCard({ run }: { run: ManualRun }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-const idRef = { current: 0 }
-const nextId = () => ++idRef.current
-
 export default function ConnectivityTester() {
     const { selectedContext, selectedNamespace } = useAppStore()
 
@@ -246,21 +612,34 @@ export default function ConnectivityTester() {
     const [activeDiag, setActiveDiag] = useState<DiagRun | null>(null)
     const [diagHistory, setDiagHistory] = useState<DiagRun[]>([])
     const [manualHistory, setManualHistory] = useState<ManualRun[]>([])
+    const [fetchError, setFetchError] = useState<string | null>(null)
 
-    const activeDiagRef = useRef<DiagRun | null>(null)
+    const idRef = useRef(0)
+    const nextId = () => { idRef.current += 1; return idRef.current }
+    const cancelledRef = useRef(false)
 
     // Fetch pods + services on context/namespace change
     useEffect(() => {
         if (!selectedContext) return
+        let cancelled = false
         const nsArg = selectedNamespace === '_all' ? null : selectedNamespace
-        window.kubectl.getPods(selectedContext, nsArg)
-            .then(p => setPods(p as KubePod[]))
-            .catch(() => setPods([]))
-        window.kubectl.getServices(selectedContext, nsArg)
-            .then(s => setServices(s as KubeService[]))
-            .catch(() => setServices([]))
+        setFetchError(null)
+        Promise.all([
+            window.kubectl.getPods(selectedContext, nsArg),
+            window.kubectl.getServices(selectedContext, nsArg),
+        ]).then(([p, s]) => {
+            if (cancelled) return
+            setPods(p as KubePod[])
+            setServices(s as KubeService[])
+        }).catch(err => {
+            if (cancelled) return
+            setPods([])
+            setServices([])
+            setFetchError((err as Error).message)
+        })
         setSelectedPod(null)
         setSelectedContainer('')
+        return () => { cancelled = true }
     }, [selectedContext, selectedNamespace])
 
     const filteredPods = useMemo(
@@ -313,72 +692,58 @@ export default function ConnectivityTester() {
         ? `${targetHost}${targetPort ? ':' + targetPort : ''}${mode === 'manual' && protocol === 'curl' && targetPath ? targetPath : ''}`
         : null
 
-    const previewCmd = canRun
-        ? (mode === 'diagnose'
-            ? `nslookup ${targetHost} → nc -zv ${targetHost} ${targetPort || '80'} → curl http://${toLabel}${targetPath || '/'}`
-            : buildCommand(protocol, targetHost, targetPort, protocol === 'curl' ? targetPath : '').join(' ')
-        )
-        : null
+    const previewCmd = useMemo(() => {
+        if (!canRun) return null
+        if (mode === 'diagnose') {
+            return buildDiagSteps(targetHost, targetPort, targetPath, isIPAddress)
+                .map(s => s.cmd.join(' ')).join(' → ')
+        }
+        return buildCommand(protocol, targetHost, targetPort, protocol === 'curl' ? targetPath : '').join(' ')
+    }, [canRun, mode, protocol, targetHost, targetPort, targetPath, isIPAddress])
 
     // ── Run diagnose ──────────────────────────────────────────────────────────
 
     const runDiagnose = useCallback(async () => {
         if (!canRun) return
+        cancelledRef.current = false
         setRunning(true)
 
         const steps = buildDiagSteps(targetHost, targetPort, targetPath, isIPAddress)
+        const svcInfo = parseSvcDns(targetHost)
+        const podInfo = !svcInfo ? parsePodDns(targetHost) : null
         const run: DiagRun = {
             id: nextId(),
             timestamp: new Date(),
-            from: fromLabel!,
-            to: toLabel!,
+            from: fromLabel ?? '',
+            to: toLabel ?? '',
             steps,
             done: false,
+            sourcePod: selectedPod!,
+            sourceContext: selectedContext!,
+            targetHost,
+            targetNamespace: svcInfo?.namespace ?? podInfo?.namespace,
+            targetServiceName: svcInfo?.name,
         }
-        activeDiagRef.current = run
         setActiveDiag({ ...run })
 
         const ns = selectedPod!.metadata.namespace || 'default'
         const podName = selectedPod!.metadata.name
-        let dnsOk = true
+        const execFn = (cmd: string[]) => window.kubectl.execCommand(
+            selectedContext!, ns, podName, selectedContainer, cmd
+        )
 
-        for (let i = 0; i < steps.length; i++) {
-            const step = steps[i]
+        const finishedSteps = await runSteps(
+            steps, execFn,
+            updatedSteps => setActiveDiag({ ...run, steps: updatedSteps }),
+            cancelledRef,
+            !isIPAddress
+        )
 
-            // Update step to running
-            steps[i] = { ...step, status: 'running' }
-            setActiveDiag({ ...run, steps: [...steps] })
-
-            // Skip TCP/HTTP if DNS failed and host is not an IP
-            if (step.key !== 'dns' && !dnsOk && !isIPAddress) {
-                steps[i] = { ...step, status: 'skipped', output: '', durationMs: 0 }
-                setActiveDiag({ ...run, steps: [...steps] })
-                continue
-            }
-
-            const t0 = Date.now()
-            try {
-                const { stdout, exitCode } = await window.kubectl.execCommand(
-                    selectedContext!, ns, podName, selectedContainer, step.cmd
-                )
-                const durationMs = Date.now() - t0
-                const success = exitCode === 0
-                if (step.key === 'dns' && !success) dnsOk = false
-                steps[i] = { ...step, status: success ? 'success' : 'failed', output: stdout, durationMs }
-            } catch (err) {
-                const durationMs = Date.now() - t0
-                if (step.key === 'dns') dnsOk = false
-                steps[i] = { ...step, status: 'failed', output: (err as Error).message, durationMs }
-            }
-
-            setActiveDiag({ ...run, steps: [...steps] })
-        }
-
-        const finished: DiagRun = { ...run, steps: [...steps], done: true }
+        const finished: DiagRun = { ...run, steps: finishedSteps, done: true }
         setActiveDiag(null)
         setDiagHistory(prev => [finished, ...prev].slice(0, 20))
         setRunning(false)
-    }, [canRun, targetHost, targetPort, targetPath, isIPAddress, selectedPod, selectedContainer, selectedContext, fromLabel, toLabel])
+    }, [canRun, targetHost, targetPort, targetPath, isIPAddress, selectedPod, selectedContainer, selectedContext, fromLabel, toLabel]) // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── Run manual ────────────────────────────────────────────────────────────
 
@@ -396,13 +761,13 @@ export default function ConnectivityTester() {
             )
             setManualHistory(prev => [{
                 id: nextId(), timestamp: new Date(),
-                cmd, from: fromLabel!, to: toLabel!,
+                cmd, from: fromLabel ?? '', to: toLabel ?? '',
                 output: stdout, exitCode, durationMs: Date.now() - t0,
             }, ...prev].slice(0, 20))
         } catch (err) {
             setManualHistory(prev => [{
                 id: nextId(), timestamp: new Date(),
-                cmd, from: fromLabel!, to: toLabel!,
+                cmd, from: fromLabel ?? '', to: toLabel ?? '',
                 output: (err as Error).message, exitCode: 1, durationMs: Date.now() - t0,
             }, ...prev].slice(0, 20))
         } finally {
@@ -459,6 +824,14 @@ export default function ConnectivityTester() {
                                 className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-xl text-xs font-mono text-slate-900 dark:text-slate-300 placeholder-slate-400 dark:placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/10 transition-all"
                             />
                         </div>
+
+                        {/* Fetch error */}
+                        {fetchError && (
+                            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/5 border border-red-500/20 text-red-400 text-[10px] font-bold">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+                                Failed to load: {fetchError}
+                            </div>
+                        )}
 
                         {/* Pod list */}
                         <div className="space-y-1 max-h-44 overflow-y-auto pr-1">
@@ -748,6 +1121,15 @@ export default function ConnectivityTester() {
                         }
                         {running ? 'Running…' : mode === 'diagnose' ? 'Diagnose' : 'Run'}
                     </button>
+
+                    {running && (
+                        <button
+                            onClick={() => { cancelledRef.current = true }}
+                            className="px-4 py-2.5 text-xs font-black uppercase tracking-widest text-red-400 hover:text-red-300 border border-red-500/20 hover:border-red-500/40 rounded-xl transition-all"
+                        >
+                            Cancel
+                        </button>
+                    )}
 
                     <span className="text-[10px] text-slate-600 ml-auto">{isMac ? '⌘' : 'Ctrl+'}↵ to run</span>
                 </div>

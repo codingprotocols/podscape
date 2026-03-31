@@ -2,9 +2,10 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAppStore } from '../../store'
 import {
-  Activity, GitBranch, Box, Layers, ExternalLink, RefreshCw, Search, X, Info, Shield, AlertTriangle, CheckCircle, Clock, LayoutGrid, ListFilter, PauseCircle, PlayCircle, RotateCw, GitPullRequest
+  Activity, GitBranch, Box, Layers, ExternalLink, RefreshCw, Search, X, Info, Shield, AlertTriangle, CheckCircle, Clock, LayoutGrid, ListFilter, PauseCircle, PlayCircle, RotateCw, GitPullRequest, FileCode
 } from 'lucide-react'
 import PageHeader from '../core/PageHeader'
+import YAMLViewer from '../common/YAMLViewer'
 
 interface GitOpsResource {
   kind: string
@@ -40,6 +41,17 @@ const KIND_META: Record<string, { color: string; border: string; bg: string; dot
 
 function kindMeta(kind: string) {
   return KIND_META[kind] ?? { color: 'text-slate-400', border: 'border-slate-500/30', bg: 'bg-slate-500/10', dot: '#94a3b8', label: kind, tool: null as any, icon: <Box className="w-3 h-3" /> }
+}
+
+// Maps GitOps resource kind → plural.group used by the dynamic CRD YAML handler
+const KIND_TO_CRD: Record<string, string> = {
+  Kustomization:   'kustomizations.kustomize.toolkit.fluxcd.io',
+  HelmRelease:     'helmreleases.helm.toolkit.fluxcd.io',
+  GitRepository:   'gitrepositories.source.toolkit.fluxcd.io',
+  HelmRepository:  'helmrepositories.source.toolkit.fluxcd.io',
+  HelmChart:       'helmcharts.source.toolkit.fluxcd.io',
+  Application:     'applications.argoproj.io',
+  AppProject:      'appprojects.argoproj.io',
 }
 
 function isHealthy(r: GitOpsResource) {
@@ -235,11 +247,12 @@ function OverviewPanel({ resources, fluxDetected, argoDetected }: {
 
 // ── detail panel ─────────────────────────────────────────────────────────────
 
-function DetailPanel({ r, onClose, onReconcile, onSuspend, actionPending, actionFeedback }: {
+function DetailPanel({ r, onClose, onReconcile, onSuspend, onEditYAML, actionPending, actionFeedback }: {
   r: GitOpsResource
   onClose: () => void
   onReconcile: (r: GitOpsResource) => void
   onSuspend: (r: GitOpsResource, suspend: boolean) => void
+  onEditYAML: (r: GitOpsResource) => void
   actionPending: string | null
   actionFeedback: { key: string; msg: string; ok: boolean } | null
 }) {
@@ -350,6 +363,20 @@ function DetailPanel({ r, onClose, onReconcile, onSuspend, actionPending, action
               </button>
             )
           )}
+
+          {/* Edit YAML */}
+          {KIND_TO_CRD[r.kind] && (
+            <button
+              onClick={() => onEditYAML(r)}
+              className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-slate-500/20 bg-white/[0.02] hover:bg-white/[0.04] hover:border-slate-500/40 text-slate-400 hover:text-slate-300 transition-all text-left"
+            >
+              <FileCode className="w-3.5 h-3.5 shrink-0" />
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest">Edit YAML</p>
+                <p className="text-[9px] text-slate-500 mt-0.5">View and edit raw resource manifest</p>
+              </div>
+            </button>
+          )}
         </div>
 
         {/* action feedback toast */}
@@ -410,6 +437,7 @@ function DetailPanel({ r, onClose, onReconcile, onSuspend, actionPending, action
           </div>
         </div>
       )}
+
     </div>
   )
 }
@@ -557,6 +585,10 @@ export default function GitOpsPanel() {
   const [selected, setSelected] = useState<GitOpsResource | null>(null)
   const [actionPending, setActionPending] = useState<string | null>(null) // "<kind>/<ns>/<name>"
   const [actionFeedback, setActionFeedback] = useState<{ key: string; msg: string; ok: boolean } | null>(null)
+  const [yamlTarget, setYamlTarget] = useState<GitOpsResource | null>(null)
+  const [yamlContent, setYamlContent] = useState<string | null>(null)
+  const [yamlLoading, setYamlLoading] = useState(false)
+  const [yamlError, setYamlError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!selectedContext) return
@@ -606,11 +638,39 @@ export default function GitOpsPanel() {
     }
   }, [load, selected])
 
+  const handleEditYAML = useCallback(async (r: GitOpsResource) => {
+    const crd = KIND_TO_CRD[r.kind]
+    if (!crd || !selectedContext) return
+    setYamlTarget(r)
+    setYamlContent(null)
+    setYamlError(null)
+    setYamlLoading(true)
+    try {
+      const yaml = await window.kubectl.getYAML(selectedContext, r.namespace || null, crd, r.name)
+      setYamlContent(yaml)
+    } catch (err) {
+      setYamlError((err as Error).message ?? 'Failed to load YAML')
+    } finally {
+      setYamlLoading(false)
+    }
+  }, [selectedContext])
+
+  const closeYaml = useCallback(() => {
+    setYamlTarget(null)
+    setYamlContent(null)
+    setYamlError(null)
+    setYamlLoading(false)
+  }, [])
+
   useEffect(() => { load() }, [load])
   useEffect(() => {
     setSelected(null)
     setActionPending(null)
     setActionFeedback(null)
+    setYamlTarget(null)
+    setYamlContent(null)
+    setYamlError(null)
+    setYamlLoading(false)
   }, [selectedContext, selectedNamespace])
 
   const resources = data?.resources ?? []
@@ -795,6 +855,7 @@ export default function GitOpsPanel() {
                 onClose={() => setSelected(null)}
                 onReconcile={handleReconcile}
                 onSuspend={handleSuspend}
+                onEditYAML={handleEditYAML}
                 actionPending={actionPending}
                 actionFeedback={actionFeedback}
               />
@@ -807,6 +868,56 @@ export default function GitOpsPanel() {
             )}
           </div>
 
+        </div>
+      )}
+
+      {/* ── YAML modal ───────────────────────────────────────────────────── */}
+      {(yamlLoading || yamlContent !== null || yamlError !== null) && yamlTarget && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-8 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl h-full max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
+                  {yamlLoading
+                    ? <div className="w-4 h-4 border-2 border-slate-400 border-t-blue-500 rounded-full animate-spin" />
+                    : <FileCode className="w-4 h-4 text-slate-500" />
+                  }
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest">
+                  {yamlLoading ? 'Loading YAML…' : `${yamlTarget.kind} — ${yamlTarget.name}`}
+                </h3>
+              </div>
+              <button
+                onClick={closeYaml}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 bg-slate-950">
+              {yamlError ? (
+                <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
+                  <AlertTriangle className="w-8 h-8 text-red-400" />
+                  <p className="text-sm font-bold text-red-400 text-center">Failed to load YAML</p>
+                  <p className="text-xs text-slate-500 font-mono max-w-[500px] break-words text-center">{yamlError}</p>
+                </div>
+              ) : yamlLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+                </div>
+              ) : yamlContent !== null ? (
+                <YAMLViewer
+                  content={yamlContent}
+                  editable
+                  onSave={async (updated) => {
+                    await window.kubectl.applyYAML(selectedContext!, updated)
+                    closeYaml()
+                    load()
+                  }}
+                />
+              ) : null}
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -790,3 +790,49 @@ func TestHandleHelmRollback_InvalidRevision(t *testing.T) {
 		})
 	}
 }
+
+func TestHandleHelmUpgrade_OversizedBody(t *testing.T) {
+	// A POST body larger than 1 MB must return 413, not 400 or 500.
+	// This tests the http.MaxBytesReader + errors.As path.
+	oversized := bytes.Repeat([]byte("x"), (1<<20)+1) // 1 MB + 1 byte
+	req := httptest.NewRequest(http.MethodPost,
+		"/helm/upgrade?namespace=default&release=myapp",
+		bytes.NewReader(oversized),
+	)
+	rr := httptest.NewRecorder()
+	HandleHelmUpgrade(rr, req)
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("expected 413, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+}
+
+func TestHandleHelmUpgrade_MissingParams(t *testing.T) {
+	cases := []struct {
+		name     string
+		url      string
+		wantCode int
+	}{
+		{"missing namespace", "/helm/upgrade?release=myapp", http.StatusBadRequest},
+		{"missing release", "/helm/upgrade?namespace=default", http.StatusBadRequest},
+		{"missing both", "/helm/upgrade", http.StatusBadRequest},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, tc.url, strings.NewReader(""))
+			rr := httptest.NewRecorder()
+			HandleHelmUpgrade(rr, req)
+			if rr.Code != tc.wantCode {
+				t.Errorf("expected %d, got %d (body: %s)", tc.wantCode, rr.Code, rr.Body.String())
+			}
+		})
+	}
+}
+
+func TestHandleHelmUpgrade_MethodNotAllowed(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/helm/upgrade?namespace=default&release=myapp", nil)
+	rr := httptest.NewRecorder()
+	HandleHelmUpgrade(rr, req)
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405, got %d", rr.Code)
+	}
+}

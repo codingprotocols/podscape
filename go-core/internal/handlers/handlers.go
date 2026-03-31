@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/podscape/go-core/internal/helm"
 	"github.com/podscape/go-core/internal/informers"
 	"github.com/podscape/go-core/internal/portforward"
 	"github.com/podscape/go-core/internal/prometheus"
@@ -66,16 +67,17 @@ var kindGVR = map[string]schema.GroupVersionResource{
 	"namespace":               {Group: "", Version: "v1", Resource: "namespaces"},
 	"crd":                     {Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"},
 	// Aliases — renderer components use both short and full names
-	"hpa":                   {Group: "autoscaling", Version: "v1", Resource: "horizontalpodautoscalers"},
-	"persistentvolumeclaim": {Group: "", Version: "v1", Resource: "persistentvolumeclaims"},
-	"persistentvolume":      {Group: "", Version: "v1", Resource: "persistentvolumes"},
+	"hpa":                      {Group: "autoscaling", Version: "v1", Resource: "horizontalpodautoscalers"},
+	"persistentvolumeclaim":    {Group: "", Version: "v1", Resource: "persistentvolumeclaims"},
+	"persistentvolume":         {Group: "", Version: "v1", Resource: "persistentvolumes"},
+	"customresourcedefinition": {Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"},
 }
 
 // clusterScopedKinds are not namespace-scoped; calls must omit the namespace.
 var clusterScopedKinds = map[string]bool{
 	"pv": true, "persistentvolume": true, "storageclass": true, "ingressclass": true,
 	"clusterrole": true, "clusterrolebinding": true,
-	"node": true, "namespace": true, "crd": true,
+	"node": true, "namespace": true, "crd": true, "customresourcedefinition": true,
 }
 
 // listToIface converts a typed k8s list items slice into []interface{} for JSON
@@ -343,6 +345,12 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 	newCache.RLock()
 	hasData := newCache.HasData
 	newCache.RUnlock()
+
+	// Evict the Helm action.Configuration cache so the new context gets a fresh
+	// REST client. Without this, a switch from cluster A to cluster B would reuse
+	// cluster A's k8s discovery results for the first Helm request on cluster B.
+	helm.ClearCache()
+	ClearGVCache()
 
 	// Stop all port-forwards from the previous context — their local port
 	// bindings (e.g. 127.0.0.1:9090) would otherwise keep responding and cause

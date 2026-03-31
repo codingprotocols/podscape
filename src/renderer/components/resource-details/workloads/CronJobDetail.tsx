@@ -1,14 +1,88 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import type { KubeCronJob, KubeJob } from '../../../types'
 import { formatAge } from '../../../types'
-import { Clock, Play, FileCode, X, Activity, History } from 'lucide-react'
+import { Clock, Play, FileCode, X, Activity, History, Loader2, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react'
 import YAMLViewer from '../../common/YAMLViewer'
 import { useYAMLEditor } from '../../../hooks/useYAMLEditor'
+import { useAppStore } from '../../../store'
 
 interface Props { cronJob: KubeCronJob }
 
+type TriggerState = 'idle' | 'running' | 'done' | 'error'
+
+function jobStatus(job: KubeJob): { label: string; color: string } {
+  if (job.status.active) return { label: 'Running', color: 'blue' }
+  if (job.status.succeeded) return { label: 'Succeeded', color: 'emerald' }
+  if (job.status.failed) return { label: 'Failed', color: 'red' }
+  // Check conditions
+  const failed = job.status.conditions?.find(c => c.type === 'Failed' && c.status === 'True')
+  if (failed) return { label: 'Failed', color: 'red' }
+  return { label: 'Pending', color: 'amber' }
+}
+
+function jobDuration(job: KubeJob): string {
+  if (!job.status.startTime) return '—'
+  const end = job.status.completionTime ? new Date(job.status.completionTime) : new Date()
+  const start = new Date(job.status.startTime)
+  const secs = Math.round((end.getTime() - start.getTime()) / 1000)
+  if (secs < 60) return `${secs}s`
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`
+  return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`
+}
+
 export default function CronJobDetail({ cronJob: cj }: Props): JSX.Element {
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
+  const { selectedContext, selectedNamespace } = useAppStore()
+
+  const [recentJobs, setRecentJobs] = useState<KubeJob[]>([])
+  const [jobsLoading, setJobsLoading] = useState(false)
+
+  const [triggerState, setTriggerState] = useState<TriggerState>('idle')
+  const [triggerMsg, setTriggerMsg] = useState('')
+
+  const fetchRecentJobs = async () => {
+    if (!selectedContext) return
+    setJobsLoading(true)
+    try {
+      const ns = cj.metadata.namespace ?? (selectedNamespace === '_all' ? null : selectedNamespace)
+      const all = await window.kubectl.getJobs(selectedContext, ns) as KubeJob[]
+      const owned = all.filter(j =>
+        j.metadata.ownerReferences?.some(ref => ref.kind === 'CronJob' && ref.name === cj.metadata.name)
+      )
+      // Sort newest first
+      owned.sort((a, b) => {
+        const aTime = a.status.startTime ?? a.metadata.creationTimestamp
+        const bTime = b.status.startTime ?? b.metadata.creationTimestamp
+        return new Date(bTime).getTime() - new Date(aTime).getTime()
+      })
+      setRecentJobs(owned)
+    } catch {
+      // non-critical — silently fail
+    } finally {
+      setJobsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchRecentJobs()
+  }, [selectedContext, cj.metadata.name, cj.metadata.namespace]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleTrigger = async () => {
+    if (!selectedContext) return
+    setTriggerState('running')
+    setTriggerMsg('')
+    try {
+      const ns = cj.metadata.namespace ?? (selectedNamespace === '_all' ? '' : selectedNamespace) ?? ''
+      const jobName = await window.kubectl.triggerCronJob(selectedContext, ns, cj.metadata.name)
+      setTriggerState('done')
+      setTriggerMsg(`Created job: ${jobName}`)
+      // Refresh recent jobs after a short delay so the new job appears
+      setTimeout(fetchRecentJobs, 1000)
+    } catch (err) {
+      setTriggerState('error')
+      setTriggerMsg((err as Error).message)
+    }
+  }
 
   return (
     <div className="flex flex-col w-full h-full relative">
@@ -22,6 +96,18 @@ export default function CronJobDetail({ cronJob: cj }: Props): JSX.Element {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* Trigger Now */}
+            <button
+              onClick={triggerState === 'idle' || triggerState === 'done' || triggerState === 'error' ? handleTrigger : undefined}
+              disabled={triggerState === 'running'}
+              title="Trigger job manually"
+              className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-400 hover:text-emerald-300 border border-emerald-500/20 hover:border-emerald-500/30 transition-all flex items-center gap-2 group disabled:opacity-50"
+            >
+              {triggerState === 'running'
+                ? <><Loader2 size={12} className="animate-spin" /> Triggering…</>
+                : <><Play size={12} /> Trigger Now</>
+              }
+            </button>
             <button
               onClick={() => openYAML('cronjob', cj.metadata.name, false, cj.metadata.namespace)}
               disabled={yamlLoading}
@@ -35,6 +121,25 @@ export default function CronJobDetail({ cronJob: cj }: Props): JSX.Element {
             </span>
           </div>
         </div>
+
+        {/* Trigger feedback */}
+        {triggerState !== 'idle' && (
+          <div className={`mt-3 flex items-center gap-2 text-[10px] font-bold animate-in slide-in-from-top-1 duration-150 ${
+            triggerState === 'done' ? 'text-emerald-400'
+              : triggerState === 'error' ? 'text-red-400'
+              : 'text-slate-400'
+          }`}>
+            {triggerState === 'done'    && <CheckCircle2 size={12} />}
+            {triggerState === 'error'   && <AlertCircle size={12} />}
+            {triggerState === 'running' && <Loader2 size={12} className="animate-spin" />}
+            {triggerMsg || (triggerState === 'running' ? 'Creating job…' : '')}
+            {(triggerState === 'done' || triggerState === 'error') && (
+              <button onClick={() => setTriggerState('idle')} className="ml-1 text-slate-500 hover:text-slate-300">
+                <X size={10} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0 scrollbar-hide p-6">
@@ -50,6 +155,10 @@ export default function CronJobDetail({ cronJob: cj }: Props): JSX.Element {
                 <div className="grid grid-cols-2 gap-4 mt-4 py-4 border-t border-slate-100 dark:border-white/5">
                   <MetaItem label="Last Schedule" value={cj.status.lastScheduleTime ? formatAge(cj.status.lastScheduleTime) + ' ago' : 'Never'} />
                   <MetaItem label="Concurrency" value={cj.spec.concurrencyPolicy ?? 'Allow'} />
+                  {cj.status.lastSuccessfulTime && (
+                    <MetaItem label="Last Success" value={formatAge(cj.status.lastSuccessfulTime) + ' ago'} />
+                  )}
+                  <MetaItem label="Created" value={formatAge(cj.metadata.creationTimestamp) + ' ago'} />
                 </div>
               </div>
             </section>
@@ -60,30 +169,63 @@ export default function CronJobDetail({ cronJob: cj }: Props): JSX.Element {
               </h4>
               <div className="flex flex-wrap gap-3">
                 <StatusBadge label="Running" value={cj.status.active?.length ?? 0} active={!!cj.status.active?.length} />
-                <StatusBadge label="Created" value={formatAge(cj.metadata.creationTimestamp) + ' ago'} />
+                <StatusBadge label="History Limit (ok)" value={cj.spec.successfulJobsHistoryLimit ?? 3} />
+                <StatusBadge label="History Limit (fail)" value={cj.spec.failedJobsHistoryLimit ?? 1} />
               </div>
             </section>
           </div>
 
-          {/* Jobs */}
+          {/* Recent Jobs */}
           <section>
-            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <Play size={12} /> Recent Jobs
+            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4 flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2"><Play size={12} /> Recent Jobs</span>
+              <button
+                onClick={fetchRecentJobs}
+                disabled={jobsLoading}
+                className="text-slate-500 hover:text-slate-300 transition-colors disabled:opacity-50"
+                title="Refresh jobs"
+              >
+                <RefreshCw size={11} className={jobsLoading ? 'animate-spin' : ''} />
+              </button>
             </h4>
-            <div className="space-y-3">
-              {cj.status.active?.map(jobRef => (
-                <div key={jobRef.name} className="flex items-center justify-between p-3 bg-blue-500/5 border border-blue-500/10 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                    <span className="text-[11px] font-bold font-mono text-blue-400">{jobRef.name}</span>
-                  </div>
-                  <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest bg-blue-500/10 px-2 py-0.5 rounded">Running</span>
+            <div className="space-y-2">
+              {jobsLoading && recentJobs.length === 0 ? (
+                <div className="flex items-center justify-center py-10 text-slate-500">
+                  <Loader2 size={16} className="animate-spin" />
                 </div>
-              ))}
-              {(!cj.status.active || cj.status.active.length === 0) && (
+              ) : recentJobs.length === 0 ? (
                 <div className="text-center py-12 bg-slate-50 dark:bg-white/[0.01] rounded-2xl border border-dashed border-slate-200 dark:border-white/10">
-                  <p className="text-xs text-slate-400">No active jobs currently running</p>
+                  <p className="text-xs text-slate-400">No recent jobs found</p>
                 </div>
+              ) : (
+                recentJobs.slice(0, 10).map(job => {
+                  const { label, color } = jobStatus(job)
+                  const colorMap: Record<string, string> = {
+                    blue: 'bg-blue-500/5 border-blue-500/10 text-blue-400 dot-blue',
+                    emerald: 'bg-emerald-500/5 border-emerald-500/10 text-emerald-400',
+                    red: 'bg-red-500/5 border-red-500/10 text-red-400',
+                    amber: 'bg-amber-500/5 border-amber-500/10 text-amber-400',
+                  }
+                  const dotColor: Record<string, string> = {
+                    blue: 'bg-blue-500 animate-pulse',
+                    emerald: 'bg-emerald-500',
+                    red: 'bg-red-500',
+                    amber: 'bg-amber-400',
+                  }
+                  return (
+                    <div key={job.metadata.uid} className={`flex items-center justify-between p-3 border rounded-xl ${colorMap[color]}`}>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`w-1.5 h-1.5 shrink-0 rounded-full ${dotColor[color]}`} />
+                        <span className="text-[11px] font-bold font-mono truncate">{job.metadata.name}</span>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0 ml-2">
+                        <span className="text-[9px] text-slate-400">{job.status.startTime ? formatAge(job.status.startTime) + ' ago' : formatAge(job.metadata.creationTimestamp) + ' ago'}</span>
+                        <span className="text-[9px] text-slate-500">{jobDuration(job)}</span>
+                        <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-current/10`}>{label}</span>
+                      </div>
+                    </div>
+                  )
+                })
               )}
             </div>
           </section>

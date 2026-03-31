@@ -253,6 +253,13 @@ export class KubectlProvider {
     })
     return await res.json()
   }
+
+  async triggerCronJob(_context: string, namespace: string, name: string): Promise<string> {
+    const url = `/cronjob/trigger?namespace=${encodeURIComponent(namespace)}&name=${encodeURIComponent(name)}`
+    const res = await checkedSidecarFetch(url, { method: 'POST' })
+    const data = await res.json() as { name: string }
+    return data.name
+  }
 }
 
 async function getTopology(ns: string): Promise<any> {
@@ -327,6 +334,7 @@ export function registerKubectlHandlers(): void {
   ipcMain.handle('kubectl:applyYAML', (_e, ctx, yaml) => provider.applyYAML(ctx, yaml))
   ipcMain.handle('kubectl:copyToContainer', (_e, ctx, ns, pod, container, local, remote) => provider.copyToContainer(ctx, ns, pod, container, local, remote))
   ipcMain.handle('kubectl:copyFromContainer', (_e, ctx, ns, pod, container, remote, local) => provider.copyFromContainer(ctx, ns, pod, container, remote, local))
+  ipcMain.handle('kubectl:triggerCronJob', (_e, ctx, ns, name) => provider.triggerCronJob(ctx, ns, name))
 
   ipcMain.handle('kubectl:streamLogs', async (event, ctx, ns, pod, container) => {
     const streamId = `${ctx}/${ns}/${pod}${container ? '/' + container : ''}`
