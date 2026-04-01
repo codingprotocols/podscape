@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -7,8 +10,31 @@ on:
     branches: [main]
 
 jobs:
+  # ── Detect Changes ──────────────────────────────────────────────────────────
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      electron: ${{ steps.filter.outputs.electron }}
+      go: ${{ steps.filter.outputs.go }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            electron:
+              - 'src/**/*'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'electron-vite.config.ts'
+              - 'tsconfig.json'
+            go:
+              - 'go-core/**/*'
+
   # ── TypeScript build + tests ──────────────────────────────────────────────────
-  build:
+  test-electron:
+    needs: changes
+    if: ${{ needs.changes.outputs.electron == 'true' || github.event_name == 'push' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +54,9 @@ jobs:
         run: npm run test
 
   # ── Go tests ──────────────────────────────────────────────────────────────────
-  go-test:
+  test-go:
+    needs: changes
+    if: ${{ needs.changes.outputs.go == 'true' || github.event_name == 'push' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,3 +69,6 @@ jobs:
 
       - name: Run Go tests
         run: cd go-core && go test ./...
+      
+      - name: Go Build Check
+        run: cd go-core && go build ./cmd/podscape-core/ && go build ./cmd/podscape-mcp/
