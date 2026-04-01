@@ -117,7 +117,8 @@
     "asarUnpack": []
   },
   "overrides": {
-    "dompurify": ">=3.3.2"
+    "dompurify": ">=3.3.2",
+    "@xmldom/xmldom": ">=0.8.12"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
