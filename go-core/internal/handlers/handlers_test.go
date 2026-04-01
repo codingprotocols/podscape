@@ -836,3 +836,61 @@ func TestHandleHelmUpgrade_MethodNotAllowed(t *testing.T) {
 		t.Errorf("expected 405, got %d", rr.Code)
 	}
 }
+
+// ── Security: XSS — HandleGetCurrentContext Content-Type ─────────────────────
+
+func TestHandleGetCurrentContext_ContentTypeIsPlainText(t *testing.T) {
+	// Use an HTML-looking name: without an explicit Content-Type header Go's
+	// auto-sniffer would classify this as text/html, enabling reflected XSS.
+	store.Store.Lock()
+	store.Store.ActiveContextName = "<script>xss</script>"
+	store.Store.Unlock()
+	t.Cleanup(func() {
+		store.Store.Lock()
+		store.Store.ActiveContextName = ""
+		store.Store.Unlock()
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/config/current-context", nil)
+	rr := httptest.NewRecorder()
+	HandleGetCurrentContext(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rr.Code)
+	}
+	ct := rr.Header().Get("Content-Type")
+	if !strings.HasPrefix(ct, "text/plain") {
+		t.Errorf("expected Content-Type to start with text/plain, got %q", ct)
+	}
+	if got := rr.Body.String(); got != "<script>xss</script>" {
+		t.Errorf("expected body %q, got %q", "<script>xss</script>", got)
+	}
+}
+
+// ── Security: HandlePrometheusStatus rejects invalid URL scheme ───────────────
+
+func TestHandlePrometheusStatus_InvalidURLScheme_Returns400(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/prometheus/status?url=ftp://evil.com", nil)
+	rr := httptest.NewRecorder()
+	HandlePrometheusStatus(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for ftp scheme, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+}
+
+// ── Security: Integer overflow — HandleScale replicas > MaxInt32 ──────────────
+
+func TestHandleScale_ReplicasExceedInt32Max_IsRejected(t *testing.T) {
+	cs := fake.NewSimpleClientset()
+	setActiveClientset(t, cs)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/scale?namespace=ns&kind=deployment&name=dep&replicas=9999999999", nil)
+	rr := httptest.NewRecorder()
+	HandleScale(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for replicas > MaxInt32, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+}

@@ -19,6 +19,15 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// isSafeHelmIdentifier returns false if s contains characters that could cause
+// path traversal when used as a component of a cache file path.
+func isSafeHelmIdentifier(s string) bool {
+	return s != "" &&
+		!strings.ContainsAny(s, "/\\") &&
+		!strings.Contains(s, "..") &&
+		!strings.ContainsRune(s, 0)
+}
+
 // ChartEntry is one chart in search results.
 type ChartEntry struct {
 	Name        string `json:"name"`
@@ -166,6 +175,12 @@ func (m *HelmRepoManager) Search(query string, limit, offset int) SearchResult {
 
 // GetVersions returns all available versions of a chart.
 func (m *HelmRepoManager) GetVersions(repoName, chartName string) ([]ChartEntry, error) {
+	for _, s := range []string{repoName, chartName} {
+		if !isSafeHelmIdentifier(s) {
+			return nil, fmt.Errorf("invalid Helm identifier %q: must not contain path separators or '..'", s)
+		}
+	}
+
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -193,6 +208,12 @@ func (m *HelmRepoManager) GetVersions(repoName, chartName string) ([]ChartEntry,
 
 // GetValues fetches the default values.yaml for a specific chart version.
 func (m *HelmRepoManager) GetValues(repoName, chartName, version string) (string, error) {
+	for _, s := range []string{repoName, chartName, version} {
+		if !isSafeHelmIdentifier(s) {
+			return "", fmt.Errorf("invalid Helm identifier %q: must not contain path separators or '..'", s)
+		}
+	}
+
 	m.mu.RLock()
 	idx, ok := m.indices[repoName]
 	m.mu.RUnlock()

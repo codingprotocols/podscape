@@ -12,10 +12,13 @@ import (
 func HandlePrometheusStatus(w http.ResponseWriter, r *http.Request) {
 	// If the renderer passes a manual URL override, apply it before probing.
 	if u := r.URL.Query().Get("url"); u != "" {
-		prometheus.SetManualURL(u)
+		if err := prometheus.SetManualURL(u); err != nil {
+			http.Error(w, "invalid Prometheus URL: "+err.Error(), http.StatusBadRequest)
+			return
+		}
 	} else {
 		// Explicitly clear any stale manual URL so auto-discovery takes over.
-		prometheus.SetManualURL("")
+		prometheus.SetManualURL("") //nolint:errcheck — empty string always succeeds
 	}
 	result := prometheus.ProbePrometheus()
 	w.Header().Set("Content-Type", "application/json")

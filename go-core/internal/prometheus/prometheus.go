@@ -78,6 +78,12 @@ func normalizeURL(u string) (string, error) {
 	if u == "" {
 		return "", fmt.Errorf("empty URL")
 	}
+	// Reject non-http(s) schemes before adding a default scheme. This prevents
+	// ftp://, file://, gopher:// and similar from being silently rewritten to
+	// "http://ftp://..." and avoids CodeQL go/request-forgery.
+	if strings.Contains(u, "://") && !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+		return "", fmt.Errorf("URL scheme must be http or https, got %q", u)
+	}
 	// Add http:// scheme if the user omitted it.
 	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
 		u = "http://" + u
@@ -156,20 +162,21 @@ func ClearCache() {
 // When set, direct HTTP calls are used instead of the k8s service proxy.
 // The URL is normalized (scheme added if missing, trailing slash stripped).
 // In-cluster DNS names (*.svc.cluster.local) are automatically routed via the k8s API proxy.
-func SetManualURL(u string) {
+// Returns an error if the URL is malformed or uses a non-http(s) scheme.
+func SetManualURL(u string) error {
 	manualURLMu.Lock()
 	defer manualURLMu.Unlock()
 	if u == "" {
 		manualURL = ""
-		return
+		return nil
 	}
 	normalized, err := normalizeURL(u)
 	if err != nil {
-		// Store empty so we don't attempt to use a malformed URL.
 		manualURL = ""
-		return
+		return err
 	}
 	manualURL = normalized
+	return nil
 }
 
 func getManualURL() string {
