@@ -29,7 +29,7 @@ interface ClusterStatProps {
 export default function MetricsView(): JSX.Element {
   const {
     podMetrics, nodeMetrics, nodes, pods, hpas,
-    loadSection, loadingResources, selectedNamespace
+    loadSection, loadingResources, selectedNamespace, metricsError
   } = useAppStore()
 
   const [searchTerm, setSearchTerm] = useState('')
@@ -328,22 +328,40 @@ export default function MetricsView(): JSX.Element {
               </section>
             </>
           ) : !loadingResources ? (
-            <div className="glass-panel p-12 flex flex-col items-center text-center gap-6 border-dashed border-2 border-slate-200 dark:border-white/10">
-              <div className="w-16 h-16 rounded-3xl bg-slate-50 dark:bg-slate-900 flex items-center justify-center text-slate-400 dark:text-slate-600 shadow-inner">
-                <Cpu className="w-8 h-8" />
-              </div>
-              <div className="max-w-md">
-                <h4 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Metrics-Server Required</h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
-                  To enable real-time resource monitoring, you must install the metrics-server in your cluster.
-                </p>
-                <div className="mt-8 p-4 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-white/5 font-mono group relative">
-                  <code className="text-[10px] text-blue-600 dark:text-blue-400 break-all leading-relaxed">
-                    kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
-                  </code>
+            metricsError !== null ? (
+              <div className="glass-panel p-12 flex flex-col items-center text-center gap-6 border-dashed border-2 border-red-200 dark:border-red-500/20">
+                <div className="w-16 h-16 rounded-3xl bg-red-50 dark:bg-red-500/10 flex items-center justify-center text-red-400 shadow-inner">
+                  <Cpu className="w-8 h-8" />
+                </div>
+                <div className="max-w-md">
+                  <h4 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Metrics-Server Unavailable</h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                    Could not reach the metrics-server in this cluster. Install it to enable resource monitoring.
+                  </p>
+                  <div className="mt-6 p-4 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-white/5 font-mono">
+                    <code className="text-[10px] text-blue-600 dark:text-blue-400 break-all leading-relaxed">
+                      kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+                    </code>
+                  </div>
+                  <details className="mt-4 text-left">
+                    <summary className="text-[10px] font-bold text-slate-400 cursor-pointer hover:text-slate-300 uppercase tracking-widest">Error detail</summary>
+                    <pre className="mt-2 text-[10px] text-slate-500 bg-white/5 p-3 rounded-lg border border-white/5 break-words whitespace-pre-wrap font-mono">{metricsError}</pre>
+                  </details>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="glass-panel p-12 flex flex-col items-center text-center gap-6 border-dashed border-2 border-slate-200 dark:border-white/10">
+                <div className="w-16 h-16 rounded-3xl bg-slate-50 dark:bg-slate-900 flex items-center justify-center text-slate-400 dark:text-slate-600 shadow-inner">
+                  <Cpu className="w-8 h-8" />
+                </div>
+                <div className="max-w-md">
+                  <h4 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">No Metrics Available</h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                    No running pods in this namespace, or metrics-server has no data yet.
+                  </p>
+                </div>
+              </div>
+            )
           ) : null}
 
           {/* Sync state */}
