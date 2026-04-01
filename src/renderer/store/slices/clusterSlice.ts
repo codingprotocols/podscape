@@ -142,6 +142,7 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             helmReleases: [],
             prometheusAvailable: null,
             prometheusProbeError: null,
+            metricsError: null,
             // Reset provider detection so stale flags from the old cluster don't
             // briefly show sidebar groups that don't exist in the new cluster.
             providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false },
