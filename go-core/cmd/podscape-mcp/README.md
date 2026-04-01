@@ -13,16 +13,16 @@ cd go-core
 go build ./cmd/podscape-mcp/
 ```
 
-The binary is produced at `go-core/podscape-mcp`. Pre-built binaries for all platforms are available on every [GitHub Release](https://github.com/codingprotocols/podscape-community/releases/latest).
+The binary is produced at `go-core/podscape-mcp`. Pre-built binaries for all platforms are available on every [GitHub Release](https://github.com/codingprotocols/podscape/releases/latest).
 
 **Install a pre-built binary (macOS):**
 ```bash
 # Apple Silicon
-sudo curl -L https://github.com/codingprotocols/podscape-community/releases/latest/download/podscape-mcp-darwin-arm64 \
+sudo curl -L https://github.com/codingprotocols/podscape/releases/latest/download/podscape-mcp-darwin-arm64 \
   -o /usr/local/bin/podscape-mcp && sudo chmod +x /usr/local/bin/podscape-mcp
 
 # Intel
-sudo curl -L https://github.com/codingprotocols/podscape-community/releases/latest/download/podscape-mcp-darwin-amd64 \
+sudo curl -L https://github.com/codingprotocols/podscape/releases/latest/download/podscape-mcp-darwin-amd64 \
   -o /usr/local/bin/podscape-mcp && sudo chmod +x /usr/local/bin/podscape-mcp
 
 # Clear Gatekeeper quarantine (unsigned binary)

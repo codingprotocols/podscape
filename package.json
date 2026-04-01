@@ -10,7 +10,7 @@
     "url": "https://github.com/codingprotocols/podscape.git"
   },
   "bugs": {
-    "url": "https://github.com/codingprotocols/podscape-community/issues"
+    "url": "https://github.com/codingprotocols/podscape/issues"
   },
   "license": "MIT",
   "scripts": {
@@ -34,7 +34,6 @@
     "copyright": "Copyright © 2025 Coding Protocols Private Limited",
     "afterSign": "scripts/notarize.js",
     "icon": "resources/icon.png",
-
     "mac": {
       "icon": "resources/icon.icns",
       "category": "public.app-category.developer-tools",
@@ -96,7 +95,7 @@
     "publish": {
       "provider": "github",
       "owner": "codingprotocols",
-      "repo": "podscape-community"
+      "repo": "podscape"
     },
     "extraResources": [
       {

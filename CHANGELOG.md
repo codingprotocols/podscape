@@ -4,7 +4,7 @@
 
 ### Fixes
 
-- **CI:** `gh release upload` for `podscape-mcp` binaries now explicitly targets `codingprotocols/podscape-community` via `--repo` flag — previously the command resolved to the private source repo and failed with a "repository not found" error
+- **CI:** `gh release upload` for `podscape-mcp` binaries now targets `codingprotocols/podscape` — all binaries are released from the main repo
 
 ---
 

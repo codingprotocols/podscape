@@ -60,7 +60,7 @@ Please make sure both pass before submitting a pull request. New features should
 
 ## What to work on
 
-Check the [Issues](https://github.com/codingprotocols/podscape-community/issues) tab for open bugs and feature requests. Issues labelled `good first issue` are a good starting point.
+Check the [Issues](https://github.com/codingprotocols/podscape/issues) tab for open bugs and feature requests. Issues labelled `good first issue` are a good starting point.
 
 If you want to work on something not listed, open an issue first to discuss it before investing time in a large change.
 
@@ -76,7 +76,7 @@ If you want to work on something not listed, open an issue first to discuss it b
 
 ## Reporting bugs
 
-Open an issue at [podscape-community/issues](https://github.com/codingprotocols/podscape-community/issues) with:
+Open an issue at [podscape/issues](https://github.com/codingprotocols/podscape/issues) with:
 - What you did
 - What you expected
 - What actually happened
