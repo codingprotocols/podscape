@@ -5,10 +5,20 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+  pull-requests: read
+
 jobs:
   # ── macOS ────────────────────────────────────────────────────────────────────
   release-mac:
     runs-on: macos-latest
+    env:
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +41,7 @@ jobs:
       # Import the Developer ID Application certificate into a temporary keychain
       # so electron-builder can sign the app. Skipped gracefully if secret is absent.
       - name: Import signing certificate
-        if: ${{ env.CSC_LINK != '' }}
+        if: env.CSC_LINK != ''
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -54,23 +64,21 @@ jobs:
           GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${GITHUB_REF_NAME}" \
             -o podscape-mcp-darwin-amd64 ./cmd/podscape-mcp/
 
-      - name: Package & publish macOS
+      - name: Package macOS
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npm run build:mac -- --publish always
+        run: npm run build:mac -- --publish never
 
-      - name: Upload podscape-mcp macOS binaries
+      - name: Upload macOS artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${GITHUB_REF_NAME}" \
             go-core/podscape-mcp-darwin-arm64 \
-            go-core/podscape-mcp-darwin-amd64
+            go-core/podscape-mcp-darwin-amd64 \
+            dist/*.dmg \
+            dist/*.zip \
+            --clobber
 
   # ── Windows ──────────────────────────────────────────────────────────────────
   release-win:
@@ -108,16 +116,20 @@ jobs:
           go build -ldflags="-s -w -X main.Version=$env:GITHUB_REF_NAME" `
             -o podscape-mcp-windows-amd64.exe ./cmd/podscape-mcp/
 
-      - name: Package & publish Windows
+      - name: Package Windows
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CGO_ENABLED: '1'
-        run: npm run build:win -- --publish always
+        run: npm run build:win -- --publish never
 
-      - name: Upload podscape-mcp Windows binary
+      - name: Upload Windows artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$env:GITHUB_REF_NAME" go-core/podscape-mcp-windows-amd64.exe
+        run: |
+          gh release upload "$env:GITHUB_REF_NAME" `
+            go-core/podscape-mcp-windows-amd64.exe `
+            dist/*.exe `
+            --clobber
 
   # ── Linux ────────────────────────────────────────────────────────────────────
   release-linux:
@@ -155,15 +167,18 @@ jobs:
             go build -ldflags="-s -w -X main.Version=${GITHUB_REF_NAME}" \
             -o podscape-mcp-linux-amd64 ./cmd/podscape-mcp/
 
-      - name: Package & publish Linux
+      - name: Package Linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CGO_ENABLED: '1'
-        run: npm run build:linux -- --publish always
+        run: npm run build:linux -- --publish never
 
-      - name: Upload podscape-mcp Linux binary
+      - name: Upload Linux artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${GITHUB_REF_NAME}" \
-            go-core/podscape-mcp-linux-amd64
+            go-core/podscape-mcp-linux-amd64 \
+            dist/*.AppImage \
+            dist/*.deb \
+            --clobber
