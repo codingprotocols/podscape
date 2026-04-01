@@ -206,7 +206,7 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
     },
 
     selectNamespace: (name) => {
-        set({ selectedNamespace: name, selectedResource: null })
+        set({ selectedNamespace: name, selectedResource: null, metricsError: null })
         get().loadSection(get().section)
     },
 })

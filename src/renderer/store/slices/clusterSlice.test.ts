@@ -105,7 +105,7 @@ describe('clusterSlice', () => {
         const slice = createClusterSlice(set, get, {} as any)
         slice.selectNamespace('myns')
 
-        expect(set).toHaveBeenCalledWith({ selectedNamespace: 'myns', selectedResource: null })
+        expect(set).toHaveBeenCalledWith(expect.objectContaining({ selectedNamespace: 'myns', selectedResource: null, metricsError: null }))
         expect(state.loadSection).toHaveBeenCalledWith('pods')
     })
 
@@ -302,5 +302,16 @@ describe('clusterSlice', () => {
 
         const firstSetCall = set.mock.calls[0][0]
         expect(firstSetCall).toHaveProperty('metricsError', null)
+    })
+
+    it('resets metricsError to null on namespace switch', () => {
+        state.metricsError = 'metrics-server not found'
+        state.section = 'pods'
+        state.loadSection = vi.fn()
+
+        const slice = createClusterSlice(set, get, {} as any)
+        slice.selectNamespace('new-ns')
+
+        expect(set).toHaveBeenCalledWith(expect.objectContaining({ metricsError: null }))
     })
 })
