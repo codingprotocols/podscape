@@ -290,4 +290,17 @@ describe('clusterSlice', () => {
         expect(firstSetCall.deniedSections).toBeInstanceOf(Set)
         expect(firstSetCall.deniedSections.size).toBe(0)
     })
+
+    it('resets metricsError to null on context switch', async () => {
+        state.metricsError = 'metrics-server not found'
+        windowMock.kubectl.switchContext.mockResolvedValue(undefined)
+        windowMock.kubectl.getNamespaces.mockResolvedValue([{ name: 'ns1' }])
+        state.preloadSearchResources = vi.fn()
+
+        const slice = createClusterSlice(set, get, {} as any)
+        await slice.selectContext('new-ctx')
+
+        const firstSetCall = set.mock.calls[0][0]
+        expect(firstSetCall).toHaveProperty('metricsError', null)
+    })
 })
