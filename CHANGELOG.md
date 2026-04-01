@@ -1,5 +1,27 @@
 # Changelog
 
+## [2.3.0] — 2026-04-01
+
+### Features
+
+- **CronJob:** Manual trigger support and recent job history displayed in CronJob detail view
+- **Helm:** Connection retry logic with cache TTL and UI refresh triggers to handle transient network errors
+- **Terminal:** Improved Tab key handling in terminal sessions
+
+### Improvements
+
+- **Node detail:** Node roles now displayed in node detail view
+- **CRDs:** Added `customresourcedefinition` as an alias for CRD lookups
+
+### CI
+
+- **Open source:** Repository is now public under the MIT license
+- Consolidated all binary releases (including `podscape-mcp`) to the main repo — `podscape-community` archived
+- Switched from custom `GH_TOKEN` to built-in `GITHUB_TOKEN` for release publishing
+- Added CI workflow — TypeScript build + tests and Go tests run on PRs and pushes to main
+
+---
+
 ## [2.2.2] — 2026-03-25
 
 ### Fixes
