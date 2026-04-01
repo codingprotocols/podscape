@@ -345,7 +345,7 @@ export default function MetricsView(): JSX.Element {
                   </div>
                   <details className="mt-4 text-left">
                     <summary className="text-[10px] font-bold text-slate-400 cursor-pointer hover:text-slate-300 uppercase tracking-widest">Error detail</summary>
-                    <pre className="mt-2 text-[10px] text-slate-500 bg-white/5 p-3 rounded-lg border border-white/5 break-words whitespace-pre-wrap font-mono">{metricsError}</pre>
+                    <pre className="mt-2 text-[10px] text-slate-500 bg-slate-50 dark:bg-white/5 p-3 rounded-lg border border-slate-200 dark:border-white/5 break-words whitespace-pre-wrap font-mono max-h-32 overflow-y-auto">{metricsError}</pre>
                   </details>
                 </div>
               </div>
