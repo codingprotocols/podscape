@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { Lock } from 'lucide-react'
 import { useAppStore } from '../../store'
 import { ICONS, Icon } from './Icons'
 import type { ResourceKind } from '../../types'
@@ -75,17 +76,21 @@ function NavGroup({ title, children }: { title: string; children: React.ReactNod
 function NavItem({
   label, section, icon, badge
 }: { label: string; section: ResourceKind; icon?: string; badge?: number }) {
-  const { section: active, setSection } = useAppStore()
+  const { section: active, setSection, deniedSections } = useAppStore()
   const isActive = active === section
+  const isDenied = deniedSections.has(section)
 
   return (
     <button
       onClick={() => setSection(section)}
+      title={isDenied ? 'Access denied — insufficient RBAC permissions' : undefined}
       className={`relative flex items-center gap-2.5 w-full px-2.5 py-2 text-[12px] font-semibold
                   transition-all duration-200 group rounded-xl
         ${isActive
           ? 'bg-blue-600/15 text-blue-600 dark:text-blue-400'
-          : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.04]'
+          : isDenied
+            ? 'text-slate-500/60 hover:text-slate-500/80 hover:bg-slate-50 dark:hover:bg-white/[0.02]'
+            : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.04]'
         }`}
     >
       {isActive && (
@@ -95,11 +100,20 @@ function NavItem({
         <Icon
           path={icon}
           size={14}
-          className={`shrink-0 transition-colors duration-200 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-500 group-hover:text-slate-900 dark:group-hover:text-slate-300'}`}
+          className={`shrink-0 transition-colors duration-200 ${
+            isActive
+              ? 'text-blue-600 dark:text-blue-400'
+              : isDenied
+                ? 'text-slate-500/50'
+                : 'text-slate-500 dark:text-slate-500 group-hover:text-slate-900 dark:group-hover:text-slate-300'
+          }`}
         />
       )}
       <span className="flex-1 text-left truncate leading-none">{label}</span>
-      {badge !== undefined && badge > 0 && (
+      {isDenied && (
+        <Lock size={10} className="shrink-0 text-slate-500/50" />
+      )}
+      {!isDenied && badge !== undefined && badge > 0 && (
         <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-md font-extrabold leading-none
           ${isActive
             ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/50'
