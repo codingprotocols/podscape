@@ -31,7 +31,7 @@
   "build": {
     "appId": "com.codingprotocols.podscape",
     "productName": "Podscape",
-    "copyright": "Copyright © 2025 Coding Protocols Private Limited",
+    "copyright": "Copyright © 2026 Coding Protocols Private Limited",
     "afterSign": "scripts/notarize.js",
     "icon": "resources/icon.png",
     "mac": {
