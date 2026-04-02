@@ -238,12 +238,20 @@ func ProbePrometheus() ProbeResult {
 		}
 
 		// Direct HTTP request (external or localhost URL).
-		// mu is already validated by normalizeURL (http/https only, parseable host).
-		// Parse it to a *url.URL and use JoinPath so CodeQL can verify no raw
-		// user string reaches the HTTP client directly.
-		parsedMu, _ := url.Parse(mu) // normalizeURL guarantees this succeeds
-		probeURL := parsedMu.JoinPath("/api/v1/query")
-		probeURL.RawQuery = "query=up"
+		// Re-parse mu and validate the scheme explicitly at this call site so the
+		// taint barrier is visible to CodeQL. The path is a constant — only the
+		// validated scheme and host come from the user-supplied value.
+		parsedMu, err := url.Parse(mu)
+		if err != nil || parsedMu.Host == "" ||
+			(parsedMu.Scheme != "http" && parsedMu.Scheme != "https") {
+			return ProbeResult{Error: fmt.Sprintf("invalid Prometheus URL: %v", err)}
+		}
+		probeURL := &url.URL{
+			Scheme:   parsedMu.Scheme,
+			Host:     parsedMu.Host,
+			Path:     "/api/v1/query",
+			RawQuery: "query=up",
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 		defer cancel()
 		req, err := http.NewRequestWithContext(ctx, "GET", probeURL.String(), nil)
@@ -421,17 +429,25 @@ func fetchQueryRange(query string, start, end, step int64) ([]byte, error) {
 		}
 
 		// Direct HTTP request.
-		// mu is already validated by normalizeURL (http/https only, parseable host).
-		// Parse to *url.URL and use JoinPath so CodeQL can verify no raw
-		// user string reaches the HTTP client directly.
-		parsedMu, _ := url.Parse(mu) // normalizeURL guarantees this succeeds
-		rangeURL := parsedMu.JoinPath("/api/v1/query_range")
-		rangeURL.RawQuery = url.Values{
-			"query": {query},
-			"start": {startStr},
-			"end":   {endStr},
-			"step":  {stepStr},
-		}.Encode()
+		// Re-parse mu and validate the scheme explicitly at this call site so the
+		// taint barrier is visible to CodeQL. The path is a constant — only the
+		// validated scheme and host come from the user-supplied value.
+		parsedMu, err := url.Parse(mu)
+		if err != nil || parsedMu.Host == "" ||
+			(parsedMu.Scheme != "http" && parsedMu.Scheme != "https") {
+			return nil, fmt.Errorf("invalid Prometheus URL: %w", err)
+		}
+		rangeURL := &url.URL{
+			Scheme: parsedMu.Scheme,
+			Host:   parsedMu.Host,
+			Path:   "/api/v1/query_range",
+			RawQuery: url.Values{
+				"query": {query},
+				"start": {startStr},
+				"end":   {endStr},
+				"step":  {stepStr},
+			}.Encode(),
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		req, err := http.NewRequestWithContext(ctx, "GET", rangeURL.String(), nil)
