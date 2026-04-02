@@ -1,3 +1,8 @@
+---
+title: Architecture
+nav_order: 2
+---
+
 # Architecture Overview
 
 Podscape is a three-process Electron application. Each process has a strictly defined responsibility.
@@ -67,6 +72,23 @@ The sidecar is a standalone HTTP server compiled as `podscape-core`. It is the s
 
 Informers only register for resources where `allowed[resource] != false`. Each `MakeHandler`-built HTTP handler checks `AllowedResources` before serving; denied resources return `200 []` + `X-Podscape-Denied: true`. The renderer `getResources` IPC handler detects this header and throws `RBACDeniedError`, which `loadSection` catches to populate `deniedSections: Set<ResourceKind>` in the Zustand store. `ResourceList` renders an amber "Access denied" banner for denied sections instead of the generic empty state.
 
+### Sidecar Lifecycle & Crash Recovery
+
+The sidecar subprocess is managed by `src/main/sidecar/sidecar.ts`. Several mechanisms work together to prevent false error dialogs and surface genuine crashes correctly.
+
+**`shuttingDown` flag**: `stopSidecar()` sets `shuttingDown = true` before sending `SIGTERM`. The startup promise's `exitHandler` checks this flag: if the process exits while `shuttingDown` is true it calls `resolve()` (not `reject()`), so the caller never sees a "sidecar failed to start" error dialog during normal quit.
+
+**Crash detection after startup**: once `startSidecar()` resolves (i.e. `/health` returned 200 and `startupComplete` is set to `true`), a subsequent unexpected `exit` event on the child process sends a `sidecar:crashed` IPC message to the renderer. `stopSidecar()` resets `startupComplete = false` before stopping so an intentional stop does not trigger this notification.
+
+**`isQuitting` guard in `index.ts`**: a module-level `isQuitting` flag is set in the `before-quit` handler. The `catch` block that wraps `startSidecar()` checks `if (isQuitting) return` before showing the error dialog — a second line of defence in case the `shuttingDown` flag race is lost.
+
+**Renderer crash recovery**: `App.tsx` listens for `sidecar:crashed` via `window.sidecar.onCrashed()`. When fired, it shows a red banner with a "Reconnect" button. Clicking the button calls `window.sidecar.restart()` (IPC channel `sidecar:restart`), which re-runs `startSidecar()` in the main process, and then reloads the renderer window.
+
+| API | Channel | Direction |
+|---|---|---|
+| `window.sidecar.onCrashed(cb)` | `sidecar:crashed` | Main → Renderer |
+| `window.sidecar.restart()` | `sidecar:restart` | Renderer → Main |
+
 ### Main Process (`src/main/`)
 
 | File | Responsibility |
@@ -85,6 +107,27 @@ Informers only register for resources where `allowed[resource] != false`. Each `
 | `system/env.ts` | Augments subprocess `PATH` for cloud credential helpers |
 | `system/updater.ts` | Auto-updater checks and notifications |
 | `system/kubeProvider.ts` | Kubeconfig path resolution |
+
+### Production Context Tracking
+
+Podscape lets operators mark specific context names as "production" to guard against accidental changes.
+
+**Store fields** (in `clusterSlice`, `src/renderer/store/slices/clusterSlice.ts`):
+
+| Field | Type | Description |
+|---|---|---|
+| `prodContexts` | `string[]` | List of context names treated as production |
+| `isProduction` | `boolean` | Derived: `true` when `selectedContext` is included in `prodContexts` |
+| `setProdContexts(contexts)` | async action | Updates both the store and `~/.podscape/settings.json` atomically |
+
+`isProduction` is recomputed whenever `selectContext` runs or `setProdContexts` is called — there is no selector subscription overhead.
+
+**Visual indicators** (in `src/renderer/App.tsx`):
+
+- **Red ring**: the root `<div>` gains `ring-inset ring-4 ring-red-500/50` when `isProduction` is true, drawing a red border around the entire window.
+- **Production banner**: a fixed, centered banner reading "PRODUCTION CONTEXT ACTIVE" appears at the top of the window (z-index 10000) using `animate-in slide-in-from-top`.
+
+**Persistence**: `prodContexts` is stored in `~/.podscape/settings.json` under the `prodContexts` key (an array of strings). On app launch, `settings_storage.ts` merges saved settings over defaults before the renderer hydrates the store.
 
 ### Preload (`src/preload/index.ts`)
 
