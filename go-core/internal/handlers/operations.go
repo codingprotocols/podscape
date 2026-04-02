@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"net/http"
 	"path"
 	"strconv"
@@ -38,12 +37,11 @@ func HandleScale(w http.ResponseWriter, r *http.Request) {
 	kind := r.URL.Query().Get("kind") // deployment, statefulset
 	name := r.URL.Query().Get("name")
 	replicasStr := r.URL.Query().Get("replicas")
-	replicas, err := strconv.Atoi(replicasStr)
-	if err != nil || replicasStr == "" || replicas < 0 || replicas > math.MaxInt32 {
+	replicasI64, err := strconv.ParseInt(replicasStr, 10, 32)
+	if err != nil || replicasStr == "" || replicasI64 < 0 {
 		http.Error(w, "invalid replicas: must be a non-negative integer not exceeding 2147483647", http.StatusBadRequest)
 		return
 	}
-
 	if namespace == "" || name == "" || kind == "" {
 		http.Error(w, "missing required parameters", http.StatusBadRequest)
 		return
@@ -62,7 +60,7 @@ func HandleScale(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return err
 			}
-			rep := int32(replicas)
+			rep := int32(replicasI64)
 			deploy.Spec.Replicas = &rep
 			_, err = cs.AppsV1().Deployments(namespace).Update(r.Context(), deploy, metav1.UpdateOptions{})
 			return err
@@ -71,7 +69,7 @@ func HandleScale(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return err
 			}
-			rep := int32(replicas)
+			rep := int32(replicasI64)
 			sts.Spec.Replicas = &rep
 			_, err = cs.AppsV1().StatefulSets(namespace).Update(r.Context(), sts, metav1.UpdateOptions{})
 			return err

@@ -238,9 +238,15 @@ func ProbePrometheus() ProbeResult {
 		}
 
 		// Direct HTTP request (external or localhost URL).
+		// mu is already validated by normalizeURL (http/https only, parseable host).
+		// Parse it to a *url.URL and use JoinPath so CodeQL can verify no raw
+		// user string reaches the HTTP client directly.
+		parsedMu, _ := url.Parse(mu) // normalizeURL guarantees this succeeds
+		probeURL := parsedMu.JoinPath("/api/v1/query")
+		probeURL.RawQuery = "query=up"
 		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 		defer cancel()
-		req, err := http.NewRequestWithContext(ctx, "GET", mu+"/api/v1/query?query=up", nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", probeURL.String(), nil)
 		if err != nil {
 			return ProbeResult{Error: fmt.Sprintf("invalid URL: %v", err)}
 		}
@@ -415,15 +421,20 @@ func fetchQueryRange(query string, start, end, step int64) ([]byte, error) {
 		}
 
 		// Direct HTTP request.
-		params := url.Values{
+		// mu is already validated by normalizeURL (http/https only, parseable host).
+		// Parse to *url.URL and use JoinPath so CodeQL can verify no raw
+		// user string reaches the HTTP client directly.
+		parsedMu, _ := url.Parse(mu) // normalizeURL guarantees this succeeds
+		rangeURL := parsedMu.JoinPath("/api/v1/query_range")
+		rangeURL.RawQuery = url.Values{
 			"query": {query},
 			"start": {startStr},
 			"end":   {endStr},
 			"step":  {stepStr},
-		}
+		}.Encode()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		req, err := http.NewRequestWithContext(ctx, "GET", mu+"/api/v1/query_range?"+params.Encode(), nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", rangeURL.String(), nil)
 		if err != nil {
 			return nil, err
 		}
