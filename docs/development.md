@@ -106,8 +106,8 @@ Each job also uploads a `checksums-<platform>.txt` file to the GitHub release so
 
 ```bash
 # Create and push a release tag
-git tag v2.2.2
-git push origin v2.2.2
+git tag v2.3.0
+git push origin v2.3.0
 ```
 
 Required GitHub secret: `GH_TOKEN` with `contents: write` permission on the repository.

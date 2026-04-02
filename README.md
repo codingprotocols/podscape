@@ -96,13 +96,14 @@ go build ./cmd/podscape-mcp/          # Build the MCP server binary
 
 ## MCP Server
 
-`podscape-mcp` is a standalone binary that exposes your Kubernetes cluster as tools for AI assistants (Claude, Cursor, Copilot, etc.).
+`podscape-mcp` is a standalone binary that exposes your Kubernetes cluster as tools for AI assistants (Claude, Cursor, Copilot, etc.). It ships as a pre-built binary for macOS, Windows, and Linux alongside the app on every **[GitHub Release](https://github.com/codingprotocols/podscape/releases/latest)**.
 
 ```bash
-# Build
-cd go-core && go build ./cmd/podscape-mcp/
+# Register with Claude Code (using a pre-built binary)
+claude mcp add --transport stdio podscape -- /path/to/podscape-mcp-darwin-arm64
 
-# Register with Claude Code
+# Or build from source
+cd go-core && go build ./cmd/podscape-mcp/
 claude mcp add --transport stdio podscape -- ./go-core/podscape-mcp
 ```
 
@@ -163,7 +164,7 @@ podscape-electron/
 Releases are triggered by pushing a `v*` tag. GitHub Actions builds for macOS (arm64 + x64), Windows, and Linux in parallel and publishes to GitHub Releases.
 
 ```bash
-git tag v2.2.2 && git push origin v2.2.2
+git tag v2.3.0 && git push origin v2.3.0
 ```
 
 ### macOS signing + notarization
@@ -191,4 +192,4 @@ Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before
 
 MIT License — see [LICENSE](LICENSE) for details.
 
-&copy; 2025 Coding Protocols Private Limited
+&copy; 2026 Coding Protocols Private Limited
