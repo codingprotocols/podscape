@@ -257,9 +257,13 @@ func (m *HelmRepoManager) GetValues(repoName, chartName, version string) (string
 		chartURL = strings.TrimSuffix(repoURL, "/") + "/" + chartURL
 	}
 
-	// Check local cache
+	// Check local cache.
+	// isSafeHelmIdentifier already rejected path separators and ".." above, but
+	// filepath.Base each component at construction time so the path sanitizer is
+	// explicit and visible to static analysis (CodeQL go/path-injection).
 	cacheDir := filepath.Join(m.settings.RepositoryCache, "archive")
-	cachePath := filepath.Join(cacheDir, fmt.Sprintf("%s-%s-%s.tgz", repoName, chartName, version))
+	cachePath := filepath.Join(cacheDir, fmt.Sprintf("%s-%s-%s.tgz",
+		filepath.Base(repoName), filepath.Base(chartName), filepath.Base(version)))
 	var chartData []byte
 	if data, err := os.ReadFile(cachePath); err == nil {
 		chartData = data
