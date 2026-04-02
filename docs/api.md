@@ -1,3 +1,8 @@
+---
+title: API Reference
+nav_order: 3
+---
+
 # API Reference — Go Sidecar
 
 The Go sidecar listens on `127.0.0.1:5050` by default. All endpoints except `/health` require the `X-Podscape-Token` header.

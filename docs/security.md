@@ -1,3 +1,8 @@
+---
+title: Security Hub
+nav_order: 4
+---
+
 # Security Hub
 
 The Security Hub provides a unified interface for auditing cluster security, combining a built-in scanner engine with optional Trivy and Kubesec integrations.

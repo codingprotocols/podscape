@@ -1,3 +1,8 @@
+---
+title: Development Guide
+nav_order: 5
+---
+
 # Development Guide
 
 ## Prerequisites
@@ -111,6 +116,64 @@ git push origin v2.3.0
 ```
 
 Required GitHub secret: `GH_TOKEN` with `contents: write` permission on the repository.
+
+---
+
+## Settings Schema
+
+App settings are stored in `~/.podscape/settings.json`. The file is created automatically on first write. All fields are optional — missing keys fall back to the defaults shown below.
+
+```json
+{
+  "kubeconfigPath": "",
+  "shellPath": "",
+  "theme": "dark",
+  "prodContexts": [],
+  "prometheusUrls": {}
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `kubeconfigPath` | `string` | `""` | Absolute path to a kubeconfig file. Empty string means use `$KUBECONFIG` env var, then `~/.kube/config`. |
+| `shellPath` | `string` | `""` | Absolute path to the shell binary used for PTY terminals (e.g. `/bin/zsh`). Empty string means auto-detect from the user's environment. |
+| `theme` | `"dark" \| "light" \| ""` | `"dark"` | UI colour theme. Empty string defers to the last-used or OS preference. |
+| `prodContexts` | `string[]` | `[]` | List of kubeconfig context names to treat as production. Any matching context activates the red border + banner in the UI. |
+| `prometheusUrls` | `Record<string, string>` | `{}` | Per-context manual Prometheus base URLs (e.g. `{ "my-ctx": "https://prometheus.example.com" }`). Empty string for a context means auto-discover via Kubernetes service proxy. |
+
+The settings file is read and written by `src/main/settings/settings_storage.ts` (`getSettings` / `saveSettings`). IPC handlers in `src/main/ipc/settings.ts` expose `settings:get` and `settings:set` channels to the renderer via `window.settings`.
+
+---
+
+## Auto-Updater
+
+Podscape uses [`electron-updater`](https://www.electron.build/auto-update) to deliver in-app updates. The updater is configured in `src/main/system/updater.ts` and only activates in production builds (`is.dev` guard — no update checks during `npm run dev`).
+
+**Update source**: `electron-updater` reads the `publish` configuration from `package.json` (GitHub releases). It fetches `latest.yml` / `latest-mac.yml` from the GitHub release assets to compare the current version against the latest published release.
+
+**Behaviour**:
+- `autoDownload` is set to `false` — updates are downloaded only when the user explicitly confirms.
+- `autoInstallOnAppQuit` is `true` — a downloaded update is installed automatically the next time the app quits.
+- An initial check fires 5 seconds after launch (delayed to avoid racing with sidecar startup). The timer is cancelled on `before-quit` to prevent a network request into a partially torn-down process.
+- Events fired before the renderer window is ready are queued (up to 20) and flushed once `did-finish-load` fires, so no update notification is lost on a fast machine.
+
+**IPC channels**:
+
+| Channel | Direction | Description |
+|---|---|---|
+| `updater:check` | Renderer → Main (handle) | Trigger an immediate update check |
+| `updater:download` | Renderer → Main (handle) | Start downloading the available update |
+| `updater:install` | Renderer → Main (handle) | Quit and install the downloaded update |
+| `updater:checking` | Main → Renderer (send) | Update check started |
+| `updater:available` | Main → Renderer (send) | New version found; payload is the `UpdateInfo` object |
+| `updater:not-available` | Main → Renderer (send) | Already on the latest version |
+| `updater:progress` | Main → Renderer (send) | Download progress; payload is a `ProgressInfo` object |
+| `updater:downloaded` | Main → Renderer (send) | Download complete; payload is the `UpdateDownloadedEvent` object |
+| `updater:error` | Main → Renderer (send) | Error during check or download; payload is the error message string |
+
+The `UpdateBanner` component in `src/renderer/components/core/UpdateBanner.tsx` listens for these events and renders an in-app notification bar when an update is available or has been downloaded.
+
+**Testing updates locally**: `electron-updater` skips the update check entirely when `is.dev` is true, so local testing requires a production build. Point `autoUpdater.updateConfigPath` to a local `dev-app-update.yml` file or use `autoUpdater.forceDevUpdateConfig = true` with a matching release on a local file server.
 
 ---
 
