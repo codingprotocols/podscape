@@ -51,6 +51,11 @@ var (
 	queryCache  sync.Map // cacheKey string → *cacheEntry
 	manualURL   string
 	manualURLMu sync.RWMutex
+	// prometheusClient is a dedicated, hardened http.Client with a safe timeout
+	// and default configuration for Prometheus communication.
+	prometheusClient = &http.Client{
+		Timeout: 10 * time.Second,
+	}
 )
 
 // candidate is a well-known Prometheus service location.
@@ -78,7 +83,12 @@ func normalizeURL(u string) (string, error) {
 	if u == "" {
 		return "", fmt.Errorf("empty URL")
 	}
-	// Reject non-http(s) schemes before adding a default scheme. This prevents
+	// 1. Explicitly check for control characters and whitespaces in the input
+	// to prevent certain header injection/request forgery attacks before they reach url.Parse.
+	if strings.ContainsAny(u, "\t\n\r") {
+		return "", fmt.Errorf("URL contains control characters")
+	}
+	// 2. Reject non-http(s) schemes before adding a default scheme. This prevents
 	// ftp://, file://, gopher:// and similar from being silently rewritten to
 	// "http://ftp://..." and avoids CodeQL go/request-forgery.
 	if strings.Contains(u, "://") && !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
@@ -90,10 +100,16 @@ func normalizeURL(u string) (string, error) {
 	}
 	// Strip trailing slash so concatenation with /api/v1/... is always clean.
 	u = strings.TrimRight(u, "/")
-	// Validate the result is a parseable URL with a host.
+	// 3. Validate the result is a parseable URL with a host. Use url.Parse which
+	// performs its or internal validation of characters.
 	parsed, err := url.Parse(u)
 	if err != nil || parsed.Host == "" {
 		return "", fmt.Errorf("invalid URL %q: %w", u, err)
+	}
+	// 4. Double-check the host doesn't contain forbidden characters that could
+	// bypass earlier checks (e.g. URI components encoded in the host).
+	if strings.ContainsAny(parsed.Host, " \t\n\r@") {
+		return "", fmt.Errorf("invalid host %q", parsed.Host)
 	}
 	// Rewrite localhost → 127.0.0.1 to avoid Go resolving it to [::1] (IPv6)
 	// while kubectl port-forward only listens on 127.0.0.1 (IPv4).
@@ -258,7 +274,7 @@ func ProbePrometheus() ProbeResult {
 		if err != nil {
 			return ProbeResult{Error: fmt.Sprintf("invalid URL: %v", err)}
 		}
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := prometheusClient.Do(req)
 		if err != nil {
 			return ProbeResult{Error: fmt.Sprintf("connection failed: %v", err)}
 		}
@@ -320,7 +336,7 @@ func probeLocalPort(port int) bool {
 	if err != nil {
 		return false
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := prometheusClient.Do(req)
 	if err != nil {
 		return false
 	}
@@ -454,7 +470,7 @@ func fetchQueryRange(query string, start, end, step int64) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := prometheusClient.Do(req)
 		if err != nil {
 			return nil, err
 		}
@@ -494,7 +510,7 @@ func fetchQueryRange(query string, start, end, step int64) ([]byte, error) {
 			cancel()
 			continue
 		}
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := prometheusClient.Do(req)
 		if err != nil {
 			cancel()
 			continue
