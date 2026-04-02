@@ -78,6 +78,7 @@ jobs:
             go-core/podscape-mcp-darwin-amd64 \
             dist/*.dmg \
             dist/*.zip \
+            dist/latest-mac.yml \
             --clobber
 
   # ── Windows ──────────────────────────────────────────────────────────────────
@@ -129,6 +130,7 @@ jobs:
           gh release upload "$env:GITHUB_REF_NAME" `
             go-core/podscape-mcp-windows-amd64.exe `
             dist/*.exe `
+            dist/latest.yml `
             --clobber
 
   # ── Linux ────────────────────────────────────────────────────────────────────
@@ -181,4 +183,5 @@ jobs:
             go-core/podscape-mcp-linux-amd64 \
             dist/*.AppImage \
             dist/*.deb \
+            dist/latest-linux.yml \
             --clobber

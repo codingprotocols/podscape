@@ -135,6 +135,65 @@ func TestSearch_DescriptionFilter(t *testing.T) {
 	}
 }
 
+// ── Security: path injection — GetValues must reject traversal inputs ─────────
+
+func TestGetValues_PathTraversalInputs_AreRejected(t *testing.T) {
+	cases := []struct {
+		name      string
+		repoName  string
+		chartName string
+		version   string
+	}{
+		{"dotdot in repo name", "../evil", "chart", "1.0.0"},
+		{"dotdot in chart name", "repo", "../../etc", "1.0.0"},
+		{"dotdot in version", "repo", "chart", "../bad"},
+		{"slash in repo name", "path/traversal", "chart", "1.0.0"},
+		{"backslash in chart name", "repo", `back\slash`, "1.0.0"},
+		{"null byte in repo name", "repo\x00evil", "chart", "1.0.0"},
+		{"null byte in version", "repo", "chart", "1.0.0\x00"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := &HelmRepoManager{
+				indices: make(map[string]*repo.IndexFile),
+			}
+			_, err := m.GetValues(tc.repoName, tc.chartName, tc.version)
+			if err == nil {
+				t.Fatal("expected error for path-traversal input, got nil")
+			}
+			if !strings.Contains(err.Error(), "invalid") {
+				t.Errorf("expected validation error containing 'invalid', got: %v", err)
+			}
+		})
+	}
+}
+
+func TestGetVersions_PathTraversalInputs_AreRejected(t *testing.T) {
+	cases := []struct {
+		name      string
+		repoName  string
+		chartName string
+	}{
+		{"dotdot in repo name", "../evil", "chart"},
+		{"slash in chart name", "repo", "path/chart"},
+		{"null byte in repo name", "repo\x00", "chart"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := &HelmRepoManager{
+				indices: make(map[string]*repo.IndexFile),
+			}
+			_, err := m.GetVersions(tc.repoName, tc.chartName)
+			if err == nil {
+				t.Fatal("expected error for path-traversal input, got nil")
+			}
+			if !strings.Contains(err.Error(), "invalid") {
+				t.Errorf("expected validation error containing 'invalid', got: %v", err)
+			}
+		})
+	}
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 type stubError struct{ msg string }

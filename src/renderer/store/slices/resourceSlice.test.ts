@@ -277,6 +277,41 @@ describe('resourceSlice', () => {
         })
     })
 
+    // ── metricsError ──────────────────────────────────────────────────────────
+
+    it('loadSection metrics sets metricsError when fetch throws', async () => {
+        windowMock.kubectl.getPodMetrics.mockRejectedValue(new Error('metrics-server not found'))
+        windowMock.kubectl.getNodeMetrics.mockRejectedValue(new Error('metrics-server not found'))
+        windowMock.kubectl.getPods.mockResolvedValue([])
+        windowMock.kubectl.getNodes.mockResolvedValue([])
+        windowMock.kubectl.getHPAs.mockResolvedValue([])
+
+        const slice = createResourceSlice(set, get, {} as any)
+        await slice.loadSection('metrics')
+
+        expect(state.metricsError).toBe('metrics-server not found')
+        expect(state.loadingResources).toBe(false)
+    })
+
+    it('loadSection metrics clears metricsError on success', async () => {
+        state.metricsError = 'previous error'
+        windowMock.kubectl.getPodMetrics.mockResolvedValue([])
+        windowMock.kubectl.getNodeMetrics.mockResolvedValue([])
+        windowMock.kubectl.getPods.mockResolvedValue([])
+        windowMock.kubectl.getNodes.mockResolvedValue([])
+        windowMock.kubectl.getHPAs.mockResolvedValue([])
+
+        const slice = createResourceSlice(set, get, {} as any)
+        await slice.loadSection('metrics')
+
+        expect(state.metricsError).toBeNull()
+    })
+
+    it('metricsError initialises to null', () => {
+        const slice = createResourceSlice(set, get, {} as any)
+        expect(slice.metricsError).toBeNull()
+    })
+
     // ── Exec session state machine ─────────────────────────────────────────────
 
     describe('exec session actions', () => {

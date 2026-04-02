@@ -92,6 +92,22 @@ The main-process `getResources` IPC handler detects this header and throws `RBAC
 | GET | `/getYAML` | `?kind=&name=&namespace=` | Fetch resource manifest as YAML |
 | POST | `/apply` | Raw YAML body | Apply a manifest (kubectl apply equivalent) |
 | GET | `/secret/value` | `?name=&namespace=&key=` | Reveal a single secret value |
+| GET | `/exec/oneshot` | `?pod=&container=&namespace=&command=` | Run a one-shot command in a container (non-interactive); returns `{stdout, stderr, error?}` |
+| GET | `/cp/from` | `?pod=&container=&namespace=&path=` | Copy a file from a container (streams as binary) |
+| POST | `/cp/to` | `?pod=&container=&namespace=&path=` | Copy a file into a container (binary body) |
+
+## Node Operations
+
+| Method | Path | Body / Params | Description |
+|---|---|---|---|
+| POST | `/node/cordon` | `?name=&unschedulable=` | Cordon (`true`) or uncordon (`false`) a node |
+| POST | `/node/drain` | `?name=` | Drain a node (cordon + pod eviction) |
+
+## CronJob Operations
+
+| Method | Path | Body / Params | Description |
+|---|---|---|---|
+| POST | `/cronjob/trigger` | `?namespace=&name=` | Create a Job from a CronJob manually |
 
 ## Context Management
 
@@ -146,6 +162,7 @@ The main-process `getResources` IPC handler detects this header and throws `RBAC
 | GET | `/helm/values` | Release values `?name=&namespace=` |
 | GET | `/helm/history` | Release history `?name=&namespace=` |
 | POST | `/helm/rollback` | Roll back a release |
+| POST | `/helm/upgrade` | Upgrade a release (SSE stream) |
 | POST | `/helm/uninstall` | Uninstall a release |
 | GET | `/helm/repos` | List configured Helm repositories |
 | GET | `/helm/repos/search` | Search charts `?q=&repo=&limit=&offset=` |
@@ -253,6 +270,20 @@ Returns a raw JSON array of the matched custom resources. Returns an error (not 
 |---|---|---|
 | GET | `/topology` | Cluster topology graph (nodes → pods → services) |
 
+## TLS Certificates
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/tls-certs` | Cluster-wide certificate inventory with expiry tracking |
+
+## GitOps
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/gitops` | Argo CD / Flux resource overview |
+| POST | `/gitops/reconcile` | `{kind, name, namespace}` | Trigger resource reconciliation |
+| POST | `/gitops/suspend` | `{kind, name, namespace, suspend}` | Suspend or resume reconciliation |
+
 ---
 
 ## Debug Pod
@@ -262,6 +293,13 @@ Returns a raw JSON array of the matched custom resources. Returns an error (not 
 | POST | `/debugpod/create` | Launch an ephemeral debug pod on a specified node |
 
 ---
+
+## Port Forward
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/stopPortForward` | `?id=` — stop an active port-forward tunnel |
+| WS | `/portforward` | Port-forward lifecycle events (ready / error / exit) |
 
 ## Real-time (WebSocket)
 

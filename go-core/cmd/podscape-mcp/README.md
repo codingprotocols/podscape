@@ -101,7 +101,7 @@ Verify inside the new session:
 
 ## Tools
 
-### Read-only (13)
+### Read-only (15)
 
 | Tool | Description |
 |------|-------------|
@@ -110,7 +110,6 @@ Verify inside the new session:
 | `get_resource_yaml` | Get the full YAML manifest |
 | `get_pod_logs` | Fetch container logs (`tail`, `previous`) |
 | `list_events` | List events with optional namespace filter |
-| `get_resource_events` | Events for a specific resource (like `kubectl describe`) |
 | `list_namespaces` | List all namespaces |
 | `list_contexts` | List kubeconfig contexts |
 | `get_current_context` | Active context name |
@@ -119,6 +118,8 @@ Verify inside the new session:
 | `helm_values` | Values of a Helm release |
 | `security_scan` | Pod security posture scan for a namespace |
 | `detect_providers` | Detect Istio, Traefik, Nginx |
+| `list_crds` | List all CustomResourceDefinitions; optional `group` filter |
+| `get_metrics` | Pod or node CPU / memory usage (requires metrics-server) |
 
 ### Mutating (6)
 
@@ -138,7 +139,7 @@ Verify inside the new session:
 | `pod_summary` | Status + container states + events + logs in one call |
 | `cluster_health` | Node/pod counts + last hour's Warning events |
 | `list_failing_pods` | All non-Running/Succeeded pods with failure details |
-| `get_resource_events` | Events scoped to a specific named resource |
+| `get_resource_events` | Events for a specific resource (like `kubectl describe`) |
 
 ---
 

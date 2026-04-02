@@ -97,6 +97,7 @@ Exposes six namespaced APIs to the renderer via `contextBridge`:
 | `window.exec` | PTY exec-into-container sessions |
 | `window.settings` | Read / write app settings |
 | `window.kubeconfig` | Kubeconfig file path selection |
+| `window.dialog` | Native file open/save dialogs |
 | `window.sidecar` | Sidecar restart (used by kubeconfig onboarding) |
 
 ## Provider Detection (Istio / Traefik / NGINX)

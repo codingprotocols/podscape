@@ -5,6 +5,7 @@ import { formatAge } from '../../../types'
 import { FileCode, X, Activity, Info, History } from 'lucide-react'
 import YAMLViewer from '../../common/YAMLViewer'
 import { useYAMLEditor } from '../../../hooks/useYAMLEditor'
+import { isKubectlSystemAnnotation } from './namespaceAnnotationUtils'
 
 interface Props {
   namespace: KubeNamespace
@@ -100,12 +101,12 @@ export default function NamespaceDetail({ namespace: ns }: Props): JSX.Element {
             )}
 
             {/* Annotations */}
-            {ns.metadata.annotations && Object.keys(ns.metadata.annotations).filter(k => !k.startsWith('kubectl.kubernetes.io')).length > 0 && (
+            {ns.metadata.annotations && Object.keys(ns.metadata.annotations).filter(k => !isKubectlSystemAnnotation(k)).length > 0 && (
               <section>
                 <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4">Annotations</h4>
                 <div className="space-y-3">
                   {Object.entries(ns.metadata.annotations)
-                    .filter(([k]) => !k.startsWith('kubectl.kubernetes.io'))
+                    .filter(([k]) => !isKubectlSystemAnnotation(k))
                     .map(([k, v]) => (
                       <div key={k} className="flex flex-col gap-2 p-4 rounded-2xl bg-white/[0.02] border border-white/5">
                         <span className="text-[9px] font-black font-mono text-slate-500 uppercase tracking-widest">{k}</span>

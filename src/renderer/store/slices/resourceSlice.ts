@@ -54,6 +54,7 @@ export interface ResourceSlice {
     selectedResource: AnyKubeResource | null
     loadingResources: boolean
     error: string | null
+    metricsError: string | null
     selectResource: (r: AnyKubeResource | null) => void
     setError: (err: string | null) => void
     clearError: () => void
@@ -108,6 +109,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     selectedResource: null,
     loadingResources: false,
     error: null,
+    metricsError: null,
 
     selectResource: (r) => {
         if (r && !r.kind) {
@@ -163,9 +165,17 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     pods: (Array.isArray(pds) ? pds : []) as KubePod[],
                     nodes: (Array.isArray(nds) ? nds : []) as KubeNode[],
                     hpas: (Array.isArray(hpas) ? hpas : []) as KubeHPA[],
-                    loadingResources: false
+                    loadingResources: false,
+                    metricsError: null,
                 })
-            } catch { if (get().selectedContext === snapshotCtx) set({ loadingResources: false, podMetrics: [], nodeMetrics: [] }) }
+            } catch (err) {
+                if (get().selectedContext === snapshotCtx) set({
+                    loadingResources: false,
+                    podMetrics: [],
+                    nodeMetrics: [],
+                    metricsError: err instanceof Error ? err.message : 'Failed to load metrics',
+                })
+            }
             return
         }
 

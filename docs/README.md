@@ -24,7 +24,7 @@ cd go-core && go build ./cmd/podscape-core/ && cd ..
 npm run dev
 ```
 
-## Feature Overview (v2.2.2)
+## Feature Overview (v2.3.0)
 
 | Feature | Description |
 |---|---|
@@ -33,8 +33,9 @@ npm run dev
 | Go Sidecar | Standalone `podscape-core` binary — HTTP server split across 12 handler files, shared informer cache, RBAC probe |
 | Service Mesh Support | Istio, Traefik v2/v3, NGINX Inc, NGINX Community — auto-detected per cluster via API group discovery |
 | HPA v2 Metrics | Full `autoscaling/v2` metric display: resource, container-resource, Pods, External targets vs current |
+| CronJobs | Manual trigger support (instantiate Job from CronJob) and recent job history |
 | Prometheus Charts | CPU, memory, and network time-series charts in Pod / Node / Deployment detail panels |
-| Helm Management | List releases, inspect values, view history, rollback, and browse/install from Helm repositories |
+| Helm Management | List releases, inspect values, view history, rollback, and browse/install from Helm repositories; connection retry logic |
 | Security Hub | Unified kubesec config audit + Trivy image CVE scanner; export as CSV / JSON |
 | Port Forwarding | One-click tunnel setup with auto port detection and live status |
 | Container Shell | PTY exec-into-container via xterm.js |
@@ -43,6 +44,7 @@ npm run dev
 | TLS Dashboard | Cluster-wide certificate inventory with expiry tracking |
 | GitOps Panel | Argo CD / Flux resource overview |
 | Debug Pod | Launch an ephemeral debug container on any node |
+| Node Ops | Cordon, uncordon, and drain nodes with safety checks |
 | Owner Chain | Interactive tree visualization showing ancestor and descendant resources |
 | MCP Server | `podscape-mcp` — expose your cluster as tools for AI assistants (Claude, Cursor, etc.) |
 | Kubeconfig Onboarding | Guided setup when no kubeconfig is detected on first launch |

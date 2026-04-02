@@ -188,6 +188,62 @@ func TestSetManualURL_NormalizesInput(t *testing.T) {
 	}
 }
 
+// ── Security: SSRF — non-http(s) schemes must be rejected ────────────────────
+
+func TestSetManualURL_RejectsNonHttpSchemes(t *testing.T) {
+	t.Cleanup(func() { SetManualURL("") })
+
+	cases := []string{
+		"ftp://evil.com",
+		"file:///etc/passwd",
+		"gopher://evil.com",
+		"ldap://evil.com",
+	}
+	for _, u := range cases {
+		SetManualURL(u)
+		if got := getManualURL(); got != "" {
+			t.Errorf("SetManualURL(%q): expected empty URL (scheme rejected), got %q", u, got)
+		}
+	}
+}
+
+func TestNormalizeURL_RejectsNonHttpSchemes(t *testing.T) {
+	cases := []string{
+		"ftp://evil.com",
+		"file:///etc/passwd",
+		"gopher://evil.com",
+		"ldap://evil.com",
+	}
+	for _, u := range cases {
+		got, err := normalizeURL(u)
+		if err == nil {
+			t.Errorf("normalizeURL(%q): expected error for non-http scheme, got %q", u, got)
+		}
+	}
+}
+
+// ── Security: SetManualURL returns error for invalid input ────────────────────
+
+func TestSetManualURL_ReturnsErrorForInvalidScheme(t *testing.T) {
+	t.Cleanup(func() { SetManualURL("") }) //nolint:errcheck
+	if err := SetManualURL("ftp://evil.com"); err == nil {
+		t.Error("expected error for ftp scheme, got nil")
+	}
+	if err := SetManualURL("file:///etc/passwd"); err == nil {
+		t.Error("expected error for file scheme, got nil")
+	}
+}
+
+func TestSetManualURL_ReturnsNilForValidInput(t *testing.T) {
+	t.Cleanup(func() { SetManualURL("") }) //nolint:errcheck
+	if err := SetManualURL("http://localhost:9090"); err != nil {
+		t.Errorf("expected nil error for valid URL, got: %v", err)
+	}
+	if err := SetManualURL(""); err != nil {
+		t.Errorf("expected nil error for empty string (clear), got: %v", err)
+	}
+}
+
 func TestQueryCache_HitAvoidsFetch(t *testing.T) {
 	fetchCount := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

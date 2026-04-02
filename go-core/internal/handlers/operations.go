@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"path"
 	"strconv"
@@ -38,8 +39,8 @@ func HandleScale(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
 	replicasStr := r.URL.Query().Get("replicas")
 	replicas, err := strconv.Atoi(replicasStr)
-	if err != nil || replicasStr == "" || replicas < 0 {
-		http.Error(w, "invalid replicas: must be a non-negative integer", http.StatusBadRequest)
+	if err != nil || replicasStr == "" || replicas < 0 || replicas > math.MaxInt32 {
+		http.Error(w, "invalid replicas: must be a non-negative integer not exceeding 2147483647", http.StatusBadRequest)
 		return
 	}
 
