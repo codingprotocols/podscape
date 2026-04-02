@@ -249,7 +249,7 @@ func ProbePrometheus() ProbeResult {
 		probeURL := &url.URL{
 			Scheme:   parsedMu.Scheme,
 			Host:     parsedMu.Host,
-			Path:     "/api/v1/query",
+			Path:     strings.TrimSuffix(parsedMu.Path, "/") + "/api/v1/query",
 			RawQuery: "query=up",
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
@@ -440,7 +440,7 @@ func fetchQueryRange(query string, start, end, step int64) ([]byte, error) {
 		rangeURL := &url.URL{
 			Scheme: parsedMu.Scheme,
 			Host:   parsedMu.Host,
-			Path:   "/api/v1/query_range",
+			Path:   strings.TrimSuffix(parsedMu.Path, "/") + "/api/v1/query_range",
 			RawQuery: url.Values{
 				"query": {query},
 				"start": {startStr},
