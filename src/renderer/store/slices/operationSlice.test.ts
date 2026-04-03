@@ -63,6 +63,24 @@ describe('operationSlice', () => {
         expect(res).toBe('applied')
     })
 
+    it('applyYAML propagates errors and does not reload section', async () => {
+        const applyError = new Error('Go sidecar returned 422 for /apply: Apply failed: Pod spec fields are immutable after creation.')
+        windowMock.kubectl.applyYAML.mockRejectedValue(applyError)
+        const slice = createOperationSlice(set, get, {} as any)
+
+        await expect(slice.applyYAML('some yaml')).rejects.toThrow('immutable')
+        expect(state.loadSection).not.toHaveBeenCalled()
+    })
+
+    it('applyYAML returns empty string and skips fetch when no context', async () => {
+        state.selectedContext = null
+        const slice = createOperationSlice(set, get, {} as any)
+        const res = await slice.applyYAML('some yaml')
+
+        expect(windowMock.kubectl.applyYAML).not.toHaveBeenCalled()
+        expect(res).toBe('')
+    })
+
     it('startPortForward adds entry and calls kubectl portForward', () => {
         const entry = { id: 'pf1', name: 'p1', namespace: 'ns1', type: 'pod', localPort: 8080, remotePort: 80 }
         const slice = createOperationSlice(set, get, {} as any)

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { useAppStore } from '../../store'
 import { useShallow } from 'zustand/react/shallow'
 import type { KubeNode, KubeEvent, NodeMetrics, KubePod, KubeDeployment } from '../../types'
@@ -359,12 +359,13 @@ function PodStatusBadge({ row }: { row: PodHealthRow }) {
 
 export default function Dashboard(): JSX.Element {
   const {
-    loadingResources,
+    loadingResources, selectedContext,
     pods, deployments, namespaces,
     nodes, nodeMetrics, events,
     prometheusAvailable, navigateToResource, refresh, setSection,
   } = useAppStore(useShallow(s => ({
     loadingResources: s.loadingResources,
+    selectedContext: s.selectedContext,
     pods: s.pods,
     deployments: s.deployments,
     namespaces: s.namespaces,
@@ -378,6 +379,7 @@ export default function Dashboard(): JSX.Element {
   })))
 
   const [warningDismissed, setWarningDismissed] = useState(false)
+  useEffect(() => { setWarningDismissed(false) }, [selectedContext])
 
   // ── Derived health data ───────────────────────────────────────────────────
   const { problemPods, degradedDeployments } = useMemo(

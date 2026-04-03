@@ -115,8 +115,8 @@ declare global {
             onExit: (id: string, cb: () => void) => () => void
         }
         settings: {
-            get: () => Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string> }>
-            set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string> }) => Promise<void>
+            get: () => Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean }>
+            set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean }) => Promise<void>
             checkTools: () => Promise<{ kubeconfigOk: boolean; trivyOk: boolean }>
         }
         kubeconfig: {
