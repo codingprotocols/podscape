@@ -17,7 +17,7 @@ import CommandPalette from './components/core/CommandPalette'
 import UpdateBanner from './components/core/UpdateBanner'
 import TourOverlay from './components/core/TourOverlay'
 
-// Heavy panels — loaded only when first visited
+// Heavy panels — split into separate chunks but prefetched eagerly after mount
 const HelmPanel = React.lazy(() => import('./components/panels/HelmPanel'))
 const UnifiedLogs = React.lazy(() => import('./components/panels/UnifiedLogs'))
 const SecurityHub = React.lazy(() => import('./components/advanced/SecurityHub'))
@@ -27,6 +27,20 @@ const NetworkPanel = React.lazy(() => import('./components/panels/NetworkPanel')
 const ConnectivityTester = React.lazy(() => import('./components/advanced/ConnectivityTester'))
 const DebugPodLauncher = React.lazy(() => import('./components/advanced/DebugPodLauncher'))
 const ProviderResourcePanel = React.lazy(() => import('./components/panels/ProviderResourcePanel'))
+
+// Kick off background prefetch after the initial render so chunks are cached
+// before the user clicks — eliminates the per-panel loading delay
+function prefetchPanels() {
+  import('./components/panels/HelmPanel')
+  import('./components/panels/UnifiedLogs')
+  import('./components/advanced/SecurityHub')
+  import('./components/panels/TLSCertDashboard')
+  import('./components/panels/GitOpsPanel')
+  import('./components/panels/NetworkPanel')
+  import('./components/advanced/ConnectivityTester')
+  import('./components/advanced/DebugPodLauncher')
+  import('./components/panels/ProviderResourcePanel')
+}
 
 // Error boundary for individual sections to prevent one failing fetch from crashing the entire app
 class ErrorBoundary extends React.Component<{ children: React.ReactNode; resetKey?: string }, { error: Error | null }> {
@@ -122,6 +136,9 @@ export default function App(): JSX.Element {
   const [showTour, setShowTour] = useState(false)
 
   useEffect(() => { init() }, [])
+
+  // Prefetch all lazy panel chunks in the background after initial render
+  useEffect(() => { prefetchPanels() }, [])
 
   useEffect(() => {
     if (!selectedContext) return
