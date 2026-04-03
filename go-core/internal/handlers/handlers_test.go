@@ -538,7 +538,28 @@ func TestHandleScale_ZeroReplicasAllowed(t *testing.T) {
 	}
 }
 
-// ── HandleApplyYAML body-size limit ──────────────────────────────────────────
+// ── HandleApplyYAML ───────────────────────────────────────────────────────────
+
+func TestHandleApplyYAML_MethodNotAllowed(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/apply", nil)
+	rr := httptest.NewRecorder()
+	HandleApplyYAML(rr, req)
+
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for GET, got %d", rr.Code)
+	}
+}
+
+func TestHandleApplyYAML_InvalidYAML(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/apply", strings.NewReader("{{invalid: yaml: ["))
+	req.Header.Set("Content-Type", "application/yaml")
+	rr := httptest.NewRecorder()
+	HandleApplyYAML(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid YAML, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+}
 
 func TestHandleApplyYAML_BodyTooLarge(t *testing.T) {
 	// Build a body just over 10 MB (10*1024*1024 + 1 bytes)

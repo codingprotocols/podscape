@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -242,8 +243,19 @@ func ApplyYAML(ctx context.Context, bundle *client.ClientBundle, yamlBytes []byt
 	if err := yaml.Unmarshal(yamlBytes, obj); err != nil {
 		return fmt.Errorf("invalid YAML: %w", err)
 	}
-	// managedFields is a server-managed field; server-side apply rejects it.
+	// Strip server-managed fields: managedFields is rejected outright; status is
+	// owned by the controller and ignored by the API server anyway — excluding it
+	// keeps field ownership clean and reduces payload size.
 	obj.SetManagedFields(nil)
+	delete(obj.Object, "status")
+
+	// Strip read-only or server-generated metadata fields that interfere with apply
+	if metadata, ok := obj.Object["metadata"].(map[string]interface{}); ok {
+		delete(metadata, "uid")
+		delete(metadata, "resourceVersion")
+		delete(metadata, "creationTimestamp")
+		delete(metadata, "generation")
+	}
 
 	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
 	if err != nil {
@@ -278,10 +290,18 @@ func ApplyYAML(ctx context.Context, bundle *client.ClientBundle, yamlBytes []byt
 	if err != nil {
 		return fmt.Errorf("failed to marshal manifest: %w", err)
 	}
+	force := true
 	_, err = resource.Patch(ctx, obj.GetName(), types.ApplyPatchType, patchBytes, metav1.PatchOptions{
 		FieldManager: "podscape-cli",
+		Force:        &force,
 	})
-	return err
+	if err != nil {
+		if strings.Contains(err.Error(), "pod updates may not change fields") {
+			return fmt.Errorf("pod spec fields are immutable after creation — edit the parent Deployment or StatefulSet instead of the Pod directly")
+		}
+		return err
+	}
+	return nil
 }
 
 // ListResource lists all resources of the given type in the given namespace.

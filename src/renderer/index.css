@@ -236,3 +236,12 @@
 .animate-float {
   animation: float-y 3s ease-in-out infinite;
 }
+@keyframes pop {
+  0% { transform: scale(0.9); opacity: 0; }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-pop {
+  animation: pop 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}

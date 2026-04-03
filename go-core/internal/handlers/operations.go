@@ -314,6 +314,23 @@ func HandleApplyYAML(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 4. Apply using Server-Side Apply
+	// Strip server-managed fields: managedFields is rejected outright; status is
+	// owned by the controller and ignored by the API server anyway — excluding it
+	// keeps field ownership clean and reduces payload size.
+	obj.SetManagedFields(nil)
+	delete(obj.Object, "status")
+	if metadata, ok := obj.Object["metadata"].(map[string]interface{}); ok {
+		delete(metadata, "uid")
+		delete(metadata, "resourceVersion")
+		delete(metadata, "creationTimestamp")
+		delete(metadata, "generation")
+	}
+	patchBytes, err := json.Marshal(obj.Object)
+	if err != nil {
+		http.Error(w, "failed to marshal manifest: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	namespace := obj.GetNamespace()
 	name := obj.GetName()
 
@@ -324,12 +341,20 @@ func HandleApplyYAML(w http.ResponseWriter, r *http.Request) {
 		resource = dyn.Resource(mapping.Resource)
 	}
 
-	_, err = resource.Patch(r.Context(), name, types.ApplyPatchType, body, metav1.PatchOptions{
+	force := true
+	_, err = resource.Patch(r.Context(), name, types.ApplyPatchType, patchBytes, metav1.PatchOptions{
 		FieldManager: "podscape-sidecar",
+		Force:        &force,
 	})
 
 	if err != nil {
-		http.Error(w, "Apply failed: "+err.Error(), http.StatusInternalServerError)
+		msg := err.Error()
+		if strings.Contains(msg, "pod updates may not change fields") {
+			http.Error(w, "Apply failed: Pod spec fields are immutable after creation. "+
+				"To change this setting, edit the parent Deployment or StatefulSet instead of the Pod directly.", http.StatusUnprocessableEntity)
+		} else {
+			http.Error(w, "Apply failed: "+msg, http.StatusInternalServerError)
+		}
 		return
 	}
 

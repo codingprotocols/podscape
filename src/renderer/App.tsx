@@ -89,6 +89,7 @@ export default function App(): JSX.Element {
     error,
     clearError,
     kubeconfigOk,
+    selectedContext,
     execSessions,
     isProduction,
   } = useAppStore(useShallow(s => ({
@@ -103,6 +104,7 @@ export default function App(): JSX.Element {
     error: s.error,
     clearError: s.clearError,
     kubeconfigOk: s.kubeconfigOk,
+    selectedContext: s.selectedContext,
     execSessions: s.execSessions,
     isProduction: s.isProduction,
   })))
@@ -114,18 +116,20 @@ export default function App(): JSX.Element {
   useEffect(() => { init() }, [])
 
   useEffect(() => {
-    if (!kubeconfigOk) return
+    if (!selectedContext) return
     window.settings.get().then(s => {
       if (!s.tourCompleted) setShowTour(true)
     }).catch(() => { /* ignore */ })
-  }, [kubeconfigOk])
+  }, [selectedContext])
 
   const handleTourDone = async () => {
     setShowTour(false)
     try {
       const s = await window.settings.get()
       await window.settings.set({ ...s, tourCompleted: true })
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error('Failed to save tour status:', err)
+    }
   }
 
   useEffect(() => {

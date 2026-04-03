@@ -321,11 +321,11 @@ const helm = {
 // ─── settings API ─────────────────────────────────────────────────────────────
 
 const settings = {
-  get: (): Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string> }> =>
+  get: (): Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean }> =>
     ipcRenderer.invoke('settings:get'),
-  set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string> }): Promise<void> =>
+  set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean }): Promise<void> =>
     ipcRenderer.invoke('settings:set', s),
-  checkTools: (): Promise<{ kubectlOk: boolean; helmOk: boolean; kubeconfigOk: boolean }> =>
+  checkTools: (): Promise<{ kubeconfigOk: boolean; trivyOk: boolean }> =>
     ipcRenderer.invoke('settings:checkTools')
 }
 
