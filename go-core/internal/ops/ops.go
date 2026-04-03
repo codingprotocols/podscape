@@ -242,6 +242,8 @@ func ApplyYAML(ctx context.Context, bundle *client.ClientBundle, yamlBytes []byt
 	if err := yaml.Unmarshal(yamlBytes, obj); err != nil {
 		return fmt.Errorf("invalid YAML: %w", err)
 	}
+	// managedFields is a server-managed field; server-side apply rejects it.
+	obj.SetManagedFields(nil)
 
 	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
 	if err != nil {
@@ -272,7 +274,11 @@ func ApplyYAML(ctx context.Context, bundle *client.ClientBundle, yamlBytes []byt
 		resource = dyn.Resource(mapping.Resource)
 	}
 
-	_, err = resource.Patch(ctx, obj.GetName(), types.ApplyPatchType, yamlBytes, metav1.PatchOptions{
+	patchBytes, err := json.Marshal(obj.Object)
+	if err != nil {
+		return fmt.Errorf("failed to marshal manifest: %w", err)
+	}
+	_, err = resource.Patch(ctx, obj.GetName(), types.ApplyPatchType, patchBytes, metav1.PatchOptions{
 		FieldManager: "podscape-cli",
 	})
 	return err
