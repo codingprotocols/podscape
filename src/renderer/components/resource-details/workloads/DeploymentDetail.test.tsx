@@ -176,4 +176,24 @@ describe('DeploymentDetail — history tab', () => {
       expect(mockRolloutUndo).toHaveBeenCalledWith('test-ctx', 'default', 'deployment', 'web', 2)
     })
   })
+
+  it('shows error when rolloutHistory re-fetch fails after successful undo', async () => {
+    mockRolloutHistory
+      .mockResolvedValueOnce([
+        { revision: 3, current: true, age: '2d', images: ['nginx:v3'], desired: 3, ready: 3 },
+        { revision: 2, current: false, age: '5d', images: ['nginx:v2'], desired: 3, ready: 0 },
+      ])
+      .mockRejectedValue(new Error('forbidden after undo'))
+    mockRolloutUndo.mockResolvedValue('ok')
+
+    render(<DeploymentDetail deployment={makeDeployment()} />)
+    fireEvent.click(screen.getAllByRole('button', { name: /history/i })[0])
+    await waitFor(() => screen.getByText('#2'))
+
+    fireEvent.click(screen.getAllByRole('button', { name: /rollback/i })[0])
+
+    await waitFor(() => {
+      expect(screen.getByText('forbidden after undo')).toBeTruthy()
+    })
+  })
 })

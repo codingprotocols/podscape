@@ -314,4 +314,17 @@ describe('clusterSlice', () => {
 
         expect(set).toHaveBeenCalledWith(expect.objectContaining({ metricsError: null }))
     })
+
+    it('sets loadingNamespaces=false and error when getNamespaces throws', async () => {
+        windowMock.kubectl.switchContext.mockResolvedValue(undefined)
+        windowMock.kubectl.getNamespaces.mockRejectedValue(new Error('namespace fetch failed'))
+        state.preloadSearchResources = vi.fn()
+
+        const slice = createClusterSlice(set, get, {} as any)
+        await slice.selectContext('bad-ctx')
+
+        const setCalls = set.mock.calls.map((c: any[]) => c[0])
+        const errorCall = setCalls.find((c: any) => 'loadingNamespaces' in c && c.loadingNamespaces === false)
+        expect(errorCall).toBeDefined()
+    })
 })
