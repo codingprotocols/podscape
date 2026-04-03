@@ -4,6 +4,8 @@ import { checkedSidecarFetch, sidecarFetch } from '../sidecar/api'
 import { activeSidecarPort } from '../sidecar/runtime'
 import { sidecarToken } from '../sidecar/auth'
 import { SIDECAR_HOST } from '../../common/constants'
+import type { RolloutRevision } from '../../common/constants'
+export type { RolloutRevision } from '../../common/constants'
 
 export class RBACDeniedError extends Error {
   constructor(public readonly kind: string) {
@@ -147,11 +149,10 @@ export class KubectlProvider {
     return 'Restarted successfully'
   }
 
-  async rolloutHistory(_context: string, namespace: string, kind: string, name: string): Promise<string> {
+  async rolloutHistory(_context: string, namespace: string, kind: string, name: string): Promise<RolloutRevision[]> {
     const url = `/rollout/history?namespace=${encodeURIComponent(namespace)}&kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`
     const res = await checkedSidecarFetch(url)
-    const data = await res.json()
-    return JSON.stringify(data, null, 2)
+    return res.json()
   }
 
   async rolloutUndo(_context: string, namespace: string, kind: string, name: string, revision?: number): Promise<string> {

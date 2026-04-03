@@ -181,7 +181,7 @@ func RolloutUndo(ctx context.Context, bundle *client.ClientBundle, ns, kind, nam
 		var maxRev, secondRev int64
 		var maxRS, secondRS *appsv1.ReplicaSet
 		for i := range owned {
-			rev, ok := parseRevision(owned[i].Annotations)
+			rev, ok := ParseRevision(owned[i].Annotations)
 			if !ok {
 				continue
 			}
@@ -202,7 +202,7 @@ func RolloutUndo(ctx context.Context, bundle *client.ClientBundle, ns, kind, nam
 		targetRS = secondRS
 	} else {
 		for i := range owned {
-			rev, ok := parseRevision(owned[i].Annotations)
+			rev, ok := ParseRevision(owned[i].Annotations)
 			if ok && rev == revision {
 				targetRS = &owned[i]
 				break
@@ -227,7 +227,10 @@ func RolloutUndo(ctx context.Context, bundle *client.ClientBundle, ns, kind, nam
 	return err
 }
 
-func parseRevision(ann map[string]string) (int64, bool) {
+// ParseRevision reads the "deployment.kubernetes.io/revision" annotation and
+// returns (revision, true) on success, or (0, false) if the annotation is
+// absent or non-numeric.
+func ParseRevision(ann map[string]string) (int64, bool) {
 	s, ok := ann["deployment.kubernetes.io/revision"]
 	if !ok || s == "" {
 		return 0, false

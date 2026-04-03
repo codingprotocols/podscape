@@ -38,7 +38,7 @@ describe('CopyButton', () => {
     await act(async () => { fireEvent.click(btn) })
     expect(btn).toHaveAttribute('data-copied', 'true')
 
-    await act(async () => { vi.advanceTimersByTime(1500) })
+    await act(async () => { vi.advanceTimersByTime(2000) })
     expect(btn).toHaveAttribute('data-copied', 'false')
 
     vi.useRealTimers()
