@@ -46,6 +46,21 @@ export const SECTION_LABELS: Record<string, string> = {
 
 // ─── Row renderers ────────────────────────────────────────────────────────────
 
+function RestartBadge({ count }: { count: number }) {
+  const handleClick = (e: React.MouseEvent) => {
+    if (count === 0) return
+    e.stopPropagation()
+    useAppStore.getState().setSection('debugpod')
+  }
+  if (count === 0) {
+    return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-400">0</span>
+  }
+  if (count < 5) {
+    return <button onClick={handleClick} className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:opacity-80">{count}</button>
+  }
+  return <button onClick={handleClick} className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 animate-pulse hover:opacity-80">{count}</button>
+}
+
 const PodRow = React.memo(function PodRow({ pod }: { pod: KubePod }) {
   const phase = pod.status.phase ?? 'Unknown'
   const restarts = totalRestarts(pod)
@@ -58,7 +73,7 @@ const PodRow = React.memo(function PodRow({ pod }: { pod: KubePod }) {
         <Badge text={phase} cls={podPhaseBg(phase)} />
       </td>
       <td className="px-6 py-3 text-xs">
-        <span className={`font-bold ${restarts > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-slate-400 dark:text-slate-500'}`}>{restarts}</span>
+        <RestartBadge count={restarts} />
       </td>
       <td className="px-6 py-3 text-xs text-slate-500 font-mono truncate max-w-[140px]">{pod.spec.nodeName ?? '—'}</td>
       <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(pod.metadata.creationTimestamp)}</td>
