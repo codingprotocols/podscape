@@ -24,6 +24,7 @@ import ExecPanel from './components/panels/ExecPanel'
 import CommandPalette from './components/core/CommandPalette'
 import ProviderResourcePanel from './components/panels/ProviderResourcePanel'
 import UpdateBanner from './components/core/UpdateBanner'
+import TourOverlay from './components/core/TourOverlay'
 
 // Error boundary for individual sections to prevent one failing fetch from crashing the entire app
 class ErrorBoundary extends React.Component<{ children: React.ReactNode; resetKey?: string }, { error: Error | null }> {
@@ -108,8 +109,24 @@ export default function App(): JSX.Element {
 
   const [sidecarCrashed, setSidecarCrashed] = useState(false)
   const [sidecarRestarting, setSidecarRestarting] = useState(false)
+  const [showTour, setShowTour] = useState(false)
 
   useEffect(() => { init() }, [])
+
+  useEffect(() => {
+    if (!kubeconfigOk) return
+    window.settings.get().then(s => {
+      if (!s.tourCompleted) setShowTour(true)
+    }).catch(() => { /* ignore */ })
+  }, [kubeconfigOk])
+
+  const handleTourDone = async () => {
+    setShowTour(false)
+    try {
+      const s = await window.settings.get()
+      await window.settings.set({ ...s, tourCompleted: true })
+    } catch { /* ignore */ }
+  }
 
   useEffect(() => {
     const unlisten = (window as any).sidecar?.onCrashed(() => {
@@ -285,6 +302,7 @@ export default function App(): JSX.Element {
 
       {/* Command Palette Overlay */}
       <CommandPalette />
+      {showTour && kubeconfigOk && <TourOverlay onDone={handleTourDone} />}
     </div>
   )
 }
