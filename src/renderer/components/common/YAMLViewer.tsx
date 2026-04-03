@@ -137,7 +137,7 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
           <p className={`text-[11px] font-semibold leading-relaxed ${saveError.kind === 'immutable' ? 'text-amber-800 dark:text-amber-300' : 'text-red-800 dark:text-red-300'}`}>
             {saveError.message}
           </p>
-          <button onClick={() => setSaveError(null)} className="ml-auto shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+          <button onClick={() => setSaveError(null)} title="Dismiss" className="ml-auto shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
           </button>
         </div>

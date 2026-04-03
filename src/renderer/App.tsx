@@ -1,30 +1,46 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, Suspense } from 'react'
 import { useAppStore } from './store'
 import { useShallow } from 'zustand/react/shallow'
 import Sidebar from './components/core/Sidebar'
 import Dashboard from './components/core/Dashboard'
 import ResourceList, { SECTION_LABELS } from './components/core/ResourceList'
 import DetailPanel from './components/core/DetailPanel'
-import HelmPanel from './components/panels/HelmPanel'
 import PortForwardPanel from './components/panels/PortForwardPanel'
 import EventsView from './components/panels/EventsView'
 import MetricsView from './components/panels/MetricsView'
 import SettingsPanel from './components/panels/SettingsPanel'
-import UnifiedLogs from './components/panels/UnifiedLogs'
 import PageHeader from './components/core/PageHeader'
 import { Search, RefreshCw } from 'lucide-react'
-import SecurityHub from './components/advanced/SecurityHub'
-import TLSCertDashboard from './components/panels/TLSCertDashboard'
-import GitOpsPanel from './components/panels/GitOpsPanel'
-import NetworkPanel from './components/panels/NetworkPanel'
-import ConnectivityTester from './components/advanced/ConnectivityTester'
-import DebugPodLauncher from './components/advanced/DebugPodLauncher'
 import KubeConfigOnboarding from './components/core/KubeConfigOnboarding'
 import ExecPanel from './components/panels/ExecPanel'
 import CommandPalette from './components/core/CommandPalette'
-import ProviderResourcePanel from './components/panels/ProviderResourcePanel'
 import UpdateBanner from './components/core/UpdateBanner'
 import TourOverlay from './components/core/TourOverlay'
+
+// Heavy panels — split into separate chunks but prefetched eagerly after mount
+const HelmPanel = React.lazy(() => import('./components/panels/HelmPanel'))
+const UnifiedLogs = React.lazy(() => import('./components/panels/UnifiedLogs'))
+const SecurityHub = React.lazy(() => import('./components/advanced/SecurityHub'))
+const TLSCertDashboard = React.lazy(() => import('./components/panels/TLSCertDashboard'))
+const GitOpsPanel = React.lazy(() => import('./components/panels/GitOpsPanel'))
+const NetworkPanel = React.lazy(() => import('./components/panels/NetworkPanel'))
+const ConnectivityTester = React.lazy(() => import('./components/advanced/ConnectivityTester'))
+const DebugPodLauncher = React.lazy(() => import('./components/advanced/DebugPodLauncher'))
+const ProviderResourcePanel = React.lazy(() => import('./components/panels/ProviderResourcePanel'))
+
+// Kick off background prefetch after the initial render so chunks are cached
+// before the user clicks — eliminates the per-panel loading delay
+function prefetchPanels() {
+  import('./components/panels/HelmPanel')
+  import('./components/panels/UnifiedLogs')
+  import('./components/advanced/SecurityHub')
+  import('./components/panels/TLSCertDashboard')
+  import('./components/panels/GitOpsPanel')
+  import('./components/panels/NetworkPanel')
+  import('./components/advanced/ConnectivityTester')
+  import('./components/advanced/DebugPodLauncher')
+  import('./components/panels/ProviderResourcePanel')
+}
 
 // Error boundary for individual sections to prevent one failing fetch from crashing the entire app
 class ErrorBoundary extends React.Component<{ children: React.ReactNode; resetKey?: string }, { error: Error | null }> {
@@ -76,6 +92,12 @@ const LIST_SECTIONS = [
   'nodes', 'namespaces', 'crds'
 ]
 
+// Cluster-scoped sections (show "cluster-wide" subtitle instead of namespace)
+const CLUSTER_SCOPED_SECTIONS = new Set([
+  'nodes', 'namespaces', 'crds', 'pvs', 'storageclasses',
+  'clusterroles', 'clusterrolebindings', 'ingressclasses',
+])
+
 export default function App(): JSX.Element {
   const {
     init,
@@ -114,6 +136,9 @@ export default function App(): JSX.Element {
   const [showTour, setShowTour] = useState(false)
 
   useEffect(() => { init() }, [])
+
+  // Prefetch all lazy panel chunks in the background after initial render
+  useEffect(() => { prefetchPanels() }, [])
 
   useEffect(() => {
     if (!selectedContext) return
@@ -194,11 +219,11 @@ export default function App(): JSX.Element {
             ) : section === 'metrics' ? (
               <MetricsView />
             ) : section === 'unifiedlogs' ? (
-              <UnifiedLogs />
+              <Suspense fallback={null}><UnifiedLogs /></Suspense>
             ) : section === 'settings' ? (
               <SettingsPanel />
             ) : section === 'network' ? (
-              <NetworkPanel />
+              <Suspense fallback={null}><NetworkPanel /></Suspense>
             ) : section === 'portforwards' ? (
               <PortForwardPanel />
             ) : section === 'multi-terminal' ? (
@@ -211,29 +236,27 @@ export default function App(): JSX.Element {
                 </div>
               </div>
             ) : section === 'helm' ? (
-              <HelmPanel />
+              <Suspense fallback={null}><HelmPanel /></Suspense>
             ) : section === 'security' ? (
-              <SecurityHub />
+              <Suspense fallback={null}><SecurityHub /></Suspense>
             ) : section === 'tls' ? (
-              <TLSCertDashboard />
+              <Suspense fallback={null}><TLSCertDashboard /></Suspense>
             ) : section === 'gitops' ? (
-              <GitOpsPanel />
+              <Suspense fallback={null}><GitOpsPanel /></Suspense>
             ) : section === 'connectivity' ? (
-              <ConnectivityTester />
+              <Suspense fallback={null}><ConnectivityTester /></Suspense>
             ) : section === 'debugpod' ? (
-              <DebugPodLauncher />
+              <Suspense fallback={null}><DebugPodLauncher /></Suspense>
             ) : (section as string).startsWith('istio-') || (section as string).startsWith('traefik-') || (section as string).startsWith('nginx-') ? (
-              <ProviderResourcePanel section={section} />
+              <Suspense fallback={null}><ProviderResourcePanel section={section} /></Suspense>
             ) : (LIST_SECTIONS as string[]).includes(section) ? (
               <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden">
                 <PageHeader
                   title={SECTION_LABELS[section] ?? section}
                   subtitle={
-                    (() => {
-                      const clusterScoped = ['nodes', 'namespaces', 'crds', 'pvs', 'storageclasses', 'clusterroles', 'clusterrolebindings', 'ingressclasses'].includes(section)
-                      if (clusterScoped) return 'cluster-wide'
-                      return selectedNamespace === '_all' ? 'all namespaces' : (selectedNamespace ?? 'no namespace')
-                    })()
+                    CLUSTER_SCOPED_SECTIONS.has(section)
+                      ? 'cluster-wide'
+                      : selectedNamespace === '_all' ? 'all namespaces' : (selectedNamespace ?? 'no namespace')
                   }
                 >
                   <div className="flex items-center gap-3">

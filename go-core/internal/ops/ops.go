@@ -13,6 +13,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
@@ -96,6 +97,16 @@ var ClusterScoped = map[string]bool{
 // Tests replace this to inject a fake dynamic client without a real API server.
 var dynClientFactory = func(cfg *rest.Config) (dynamic.Interface, error) {
 	return dynamic.NewForConfig(cfg)
+}
+
+// restMapperFactory is an injectable factory used by ApplyYAML.
+// Tests replace this to avoid making real API discovery calls.
+var restMapperFactory = func(cfg *rest.Config) (meta.RESTMapper, error) {
+	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return restmapper.NewDeferredDiscoveryRESTMapper(memorycache.NewMemCacheClient(dc)), nil
 }
 
 // Delete removes a resource by kind and name.
@@ -260,7 +271,7 @@ func ApplyYAML(ctx context.Context, bundle *client.ClientBundle, yamlBytes []byt
 		delete(metadata, "generation")
 	}
 
-	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
+	mapper, err := restMapperFactory(cfg)
 	if err != nil {
 		return err
 	}
@@ -269,9 +280,6 @@ func ApplyYAML(ctx context.Context, bundle *client.ClientBundle, yamlBytes []byt
 		return err
 	}
 
-	// DeferredDiscoveryRESTMapper lazily fetches and caches API group resources,
-	// avoiding a full discovery round-trip on every apply call.
-	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memorycache.NewMemCacheClient(dc))
 	gvk := obj.GroupVersionKind()
 	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 	if err != nil {

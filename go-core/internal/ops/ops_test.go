@@ -2,15 +2,22 @@ package ops
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/podscape/go-core/internal/client"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
+	ktypes "k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
@@ -35,6 +42,27 @@ func injectDynClient(t *testing.T, dyn dynamic.Interface) {
 	dynClientFactory = func(*rest.Config) (dynamic.Interface, error) { return dyn, nil }
 	t.Cleanup(func() { dynClientFactory = orig })
 }
+
+// injectFakeMapper replaces the package-level restMapperFactory with one that
+// maps a single GVK to its resource without hitting the API server.
+func injectFakeMapper(t *testing.T, gvk schema.GroupVersionKind, gvr schema.GroupVersionResource, namespaced bool) {
+	t.Helper()
+	orig := restMapperFactory
+	restMapperFactory = func(*rest.Config) (meta.RESTMapper, error) {
+		rm := meta.NewDefaultRESTMapper([]schema.GroupVersion{gvk.GroupVersion()})
+		scope := meta.RESTScopeNameNamespace
+		if !namespaced {
+			scope = meta.RESTScopeNameRoot
+		}
+		rm.Add(gvk, &fakeRESTScope{name: scope})
+		return rm, nil
+	}
+	t.Cleanup(func() { restMapperFactory = orig })
+}
+
+type fakeRESTScope struct{ name meta.RESTScopeName }
+
+func (s *fakeRESTScope) Name() meta.RESTScopeName { return s.name }
 
 func int32p(v int32) *int32 { return &v }
 
@@ -361,4 +389,321 @@ func TestGetResource_UnsupportedType(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unsupported resource type")
 	}
+}
+
+// ── ParseRevision ─────────────────────────────────────────────────────────────
+
+func TestParseRevision(t *testing.T) {
+	cases := []struct {
+		name    string
+		ann     map[string]string
+		wantRev int64
+		wantOk  bool
+	}{
+		{"present", map[string]string{"deployment.kubernetes.io/revision": "5"}, 5, true},
+		{"zero_revision", map[string]string{"deployment.kubernetes.io/revision": "0"}, 0, true},
+		{"missing_key", map[string]string{}, 0, false},
+		{"nil_map", nil, 0, false},
+		{"empty_value", map[string]string{"deployment.kubernetes.io/revision": ""}, 0, false},
+		{"non_numeric", map[string]string{"deployment.kubernetes.io/revision": "abc"}, 0, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rev, ok := ParseRevision(tc.ann)
+			if ok != tc.wantOk {
+				t.Errorf("ok=%v, want %v", ok, tc.wantOk)
+			}
+			if ok && rev != tc.wantRev {
+				t.Errorf("rev=%d, want %d", rev, tc.wantRev)
+			}
+		})
+	}
+}
+
+// ── ApplyYAML ─────────────────────────────────────────────────────────────────
+
+func TestApplyYAML_InvalidYAML(t *testing.T) {
+	bundle := fakeBundle()
+	err := ApplyYAML(context.Background(), bundle, []byte("{{invalid"))
+	if err == nil {
+		t.Fatal("expected error for invalid YAML")
+	}
+	if !strings.Contains(err.Error(), "invalid YAML") {
+		t.Errorf("expected 'invalid YAML' in error, got: %v", err)
+	}
+}
+
+func TestApplyYAML_StripsServerManagedFields(t *testing.T) {
+	// Verify that managedFields, status, uid, resourceVersion,
+	// creationTimestamp, and generation are stripped before the patch is built.
+	scheme := runtime.NewScheme()
+	corev1.AddToScheme(scheme)
+
+	var capturedPayload []byte
+	dynFake := dynamicfake.NewSimpleDynamicClient(scheme)
+
+	origDyn := dynClientFactory
+	dynClientFactory = func(*rest.Config) (dynamic.Interface, error) {
+		return &capturingDynClient{inner: dynFake, capture: &capturedPayload}, nil
+	}
+	t.Cleanup(func() { dynClientFactory = origDyn })
+
+	// Inject a fake mapper so no real API server needed.
+	injectFakeMapper(t,
+		schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ConfigMap"},
+		schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"},
+		true,
+	)
+
+	yamlStr := `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-cm
+  namespace: default
+  uid: "some-uid"
+  resourceVersion: "12345"
+  creationTimestamp: "2024-01-01T00:00:00Z"
+  generation: 3
+  managedFields:
+    - manager: kubectl
+status:
+  phase: Running
+data:
+  key: value
+`
+	bundle := fakeBundle()
+	_ = ApplyYAML(context.Background(), bundle, []byte(yamlStr))
+
+	if capturedPayload == nil {
+		t.Fatal("expected patch to be called — captured payload is nil")
+	}
+	var obj map[string]interface{}
+	if err := json.Unmarshal(capturedPayload, &obj); err != nil {
+		t.Fatalf("captured payload is not JSON: %v", err)
+	}
+	if _, ok := obj["status"]; ok {
+		t.Error("status should be stripped from patch payload")
+	}
+	objMeta, _ := obj["metadata"].(map[string]interface{})
+	if objMeta == nil {
+		t.Fatal("metadata missing from patch payload")
+	}
+	for _, field := range []string{"uid", "resourceVersion", "creationTimestamp", "generation", "managedFields"} {
+		if _, present := objMeta[field]; present {
+			t.Errorf("metadata.%s should be stripped from patch payload", field)
+		}
+	}
+}
+
+func TestApplyYAML_ImmutablePodError(t *testing.T) {
+	// Verify the friendly error message is returned for immutable pod spec errors.
+	origDyn := dynClientFactory
+	dynClientFactory = func(*rest.Config) (dynamic.Interface, error) {
+		return &immutableErrorDynClient{}, nil
+	}
+	t.Cleanup(func() { dynClientFactory = origDyn })
+
+	injectFakeMapper(t,
+		schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Pod"},
+		schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"},
+		true,
+	)
+
+	yamlStr := `
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mypod
+  namespace: default
+spec:
+  containers:
+    - name: app
+      image: nginx
+`
+	bundle := fakeBundle()
+	err := ApplyYAML(context.Background(), bundle, []byte(yamlStr))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "immutable") {
+		t.Errorf("expected friendly immutable message, got: %v", err)
+	}
+}
+
+// ── test helpers ──────────────────────────────────────────────────────────────
+
+// capturingDynClient wraps a dynamic client and records the first Patch payload.
+type capturingDynClient struct {
+	inner   dynamic.Interface
+	capture *[]byte
+}
+
+func (c *capturingDynClient) Resource(resource schema.GroupVersionResource) dynamic.NamespaceableResourceInterface {
+	return &capturingResourceClient{inner: c.inner.Resource(resource), capture: c.capture}
+}
+
+type capturingResourceClient struct {
+	inner   dynamic.NamespaceableResourceInterface
+	capture *[]byte
+}
+
+func (r *capturingResourceClient) Namespace(ns string) dynamic.ResourceInterface {
+	return &capturingNsResourceClient{inner: r.inner.Namespace(ns), capture: r.capture}
+}
+func (r *capturingResourceClient) Apply(ctx context.Context, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return r.inner.Apply(ctx, name, obj, opts, subresources...)
+}
+func (r *capturingResourceClient) ApplyStatus(ctx context.Context, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions) (*unstructured.Unstructured, error) {
+	return r.inner.ApplyStatus(ctx, name, obj, opts)
+}
+func (r *capturingResourceClient) Create(ctx context.Context, obj *unstructured.Unstructured, opts metav1.CreateOptions, sub ...string) (*unstructured.Unstructured, error) {
+	return r.inner.Create(ctx, obj, opts, sub...)
+}
+func (r *capturingResourceClient) Update(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions, sub ...string) (*unstructured.Unstructured, error) {
+	return r.inner.Update(ctx, obj, opts, sub...)
+}
+func (r *capturingResourceClient) UpdateStatus(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions) (*unstructured.Unstructured, error) {
+	return r.inner.UpdateStatus(ctx, obj, opts)
+}
+func (r *capturingResourceClient) Delete(ctx context.Context, name string, opts metav1.DeleteOptions, sub ...string) error {
+	return r.inner.Delete(ctx, name, opts, sub...)
+}
+func (r *capturingResourceClient) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
+	return r.inner.DeleteCollection(ctx, opts, listOpts)
+}
+func (r *capturingResourceClient) Get(ctx context.Context, name string, opts metav1.GetOptions, sub ...string) (*unstructured.Unstructured, error) {
+	return r.inner.Get(ctx, name, opts, sub...)
+}
+func (r *capturingResourceClient) List(ctx context.Context, opts metav1.ListOptions) (*unstructured.UnstructuredList, error) {
+	return r.inner.List(ctx, opts)
+}
+func (r *capturingResourceClient) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
+	return r.inner.Watch(ctx, opts)
+}
+func (r *capturingResourceClient) Patch(ctx context.Context, name string, pt ktypes.PatchType, data []byte, opts metav1.PatchOptions, sub ...string) (*unstructured.Unstructured, error) {
+	*r.capture = data
+	return r.inner.Patch(ctx, name, pt, data, opts, sub...)
+}
+
+type capturingNsResourceClient struct {
+	inner   dynamic.ResourceInterface
+	capture *[]byte
+}
+
+func (r *capturingNsResourceClient) Apply(ctx context.Context, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return r.inner.Apply(ctx, name, obj, opts, subresources...)
+}
+func (r *capturingNsResourceClient) ApplyStatus(ctx context.Context, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions) (*unstructured.Unstructured, error) {
+	return r.inner.ApplyStatus(ctx, name, obj, opts)
+}
+func (r *capturingNsResourceClient) Create(ctx context.Context, obj *unstructured.Unstructured, opts metav1.CreateOptions, sub ...string) (*unstructured.Unstructured, error) {
+	return r.inner.Create(ctx, obj, opts, sub...)
+}
+func (r *capturingNsResourceClient) Update(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions, sub ...string) (*unstructured.Unstructured, error) {
+	return r.inner.Update(ctx, obj, opts, sub...)
+}
+func (r *capturingNsResourceClient) UpdateStatus(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions) (*unstructured.Unstructured, error) {
+	return r.inner.UpdateStatus(ctx, obj, opts)
+}
+func (r *capturingNsResourceClient) Delete(ctx context.Context, name string, opts metav1.DeleteOptions, sub ...string) error {
+	return r.inner.Delete(ctx, name, opts, sub...)
+}
+func (r *capturingNsResourceClient) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
+	return r.inner.DeleteCollection(ctx, opts, listOpts)
+}
+func (r *capturingNsResourceClient) Get(ctx context.Context, name string, opts metav1.GetOptions, sub ...string) (*unstructured.Unstructured, error) {
+	return r.inner.Get(ctx, name, opts, sub...)
+}
+func (r *capturingNsResourceClient) List(ctx context.Context, opts metav1.ListOptions) (*unstructured.UnstructuredList, error) {
+	return r.inner.List(ctx, opts)
+}
+func (r *capturingNsResourceClient) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
+	return r.inner.Watch(ctx, opts)
+}
+func (r *capturingNsResourceClient) Patch(ctx context.Context, name string, pt ktypes.PatchType, data []byte, opts metav1.PatchOptions, sub ...string) (*unstructured.Unstructured, error) {
+	*r.capture = data
+	return nil, fmt.Errorf("fake patch")
+}
+
+// immutableErrorDynClient returns a "pod updates may not change fields" error on Patch.
+type immutableErrorDynClient struct{}
+
+func (c *immutableErrorDynClient) Resource(resource schema.GroupVersionResource) dynamic.NamespaceableResourceInterface {
+	return &immutableNsResourceClient{}
+}
+
+type immutableNsResourceClient struct{}
+
+func (r *immutableNsResourceClient) Namespace(ns string) dynamic.ResourceInterface {
+	return &immutableResourceClient{}
+}
+func (r *immutableNsResourceClient) Apply(ctx context.Context, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions, sub ...string) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (r *immutableNsResourceClient) ApplyStatus(ctx context.Context, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (r *immutableNsResourceClient) Create(ctx context.Context, obj *unstructured.Unstructured, opts metav1.CreateOptions, sub ...string) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (r *immutableNsResourceClient) Update(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions, sub ...string) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (r *immutableNsResourceClient) UpdateStatus(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (r *immutableNsResourceClient) Delete(ctx context.Context, name string, opts metav1.DeleteOptions, sub ...string) error {
+	return nil
+}
+func (r *immutableNsResourceClient) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
+	return nil
+}
+func (r *immutableNsResourceClient) Get(ctx context.Context, name string, opts metav1.GetOptions, sub ...string) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (r *immutableNsResourceClient) List(ctx context.Context, opts metav1.ListOptions) (*unstructured.UnstructuredList, error) {
+	return nil, nil
+}
+func (r *immutableNsResourceClient) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
+	return nil, nil
+}
+func (r *immutableNsResourceClient) Patch(ctx context.Context, name string, pt ktypes.PatchType, data []byte, opts metav1.PatchOptions, sub ...string) (*unstructured.Unstructured, error) {
+	return nil, fmt.Errorf("pod updates may not change fields other than spec.containers[*].image")
+}
+
+type immutableResourceClient struct{}
+
+func (r *immutableResourceClient) Apply(ctx context.Context, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions, sub ...string) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (r *immutableResourceClient) ApplyStatus(ctx context.Context, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (r *immutableResourceClient) Create(ctx context.Context, obj *unstructured.Unstructured, opts metav1.CreateOptions, sub ...string) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (r *immutableResourceClient) Update(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions, sub ...string) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (r *immutableResourceClient) UpdateStatus(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (r *immutableResourceClient) Delete(ctx context.Context, name string, opts metav1.DeleteOptions, sub ...string) error {
+	return nil
+}
+func (r *immutableResourceClient) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
+	return nil
+}
+func (r *immutableResourceClient) Get(ctx context.Context, name string, opts metav1.GetOptions, sub ...string) (*unstructured.Unstructured, error) {
+	return nil, nil
+}
+func (r *immutableResourceClient) List(ctx context.Context, opts metav1.ListOptions) (*unstructured.UnstructuredList, error) {
+	return nil, nil
+}
+func (r *immutableResourceClient) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
+	return nil, nil
+}
+func (r *immutableResourceClient) Patch(ctx context.Context, name string, pt ktypes.PatchType, data []byte, opts metav1.PatchOptions, sub ...string) (*unstructured.Unstructured, error) {
+	return nil, fmt.Errorf("pod updates may not change fields other than spec.containers[*].image")
 }

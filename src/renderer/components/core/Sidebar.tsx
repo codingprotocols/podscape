@@ -1,8 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Lock } from 'lucide-react'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { ICONS, Icon } from './Icons'
 import type { ResourceKind } from '../../types'
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const openExternal = (url: string) =>
+  (window as unknown as { electron: { shell: { openExternal: (u: string) => void } } })
+    .electron.shell.openExternal(url)
 
 // ─── SVG Icon ─────────────────────────────────────────────────────────────────
 
@@ -43,7 +50,7 @@ function clusterInitials(name: string): string {
 
 // ─── Collapsible nav group ────────────────────────────────────────────────────
 
-function NavGroup({ title, children }: { title: string; children: React.ReactNode }) {
+const NavGroup = React.memo(function NavGroup({ title, children }: { title: string; children: React.ReactNode }) {
   const storageKey = `podscape:nav:${title}`
   const [open, setOpen] = useState(() => localStorage.getItem(storageKey) !== 'false')
 
@@ -69,16 +76,19 @@ function NavGroup({ title, children }: { title: string; children: React.ReactNod
       )}
     </div>
   )
-}
+})
 
 // ─── Nav item ─────────────────────────────────────────────────────────────────
 
-function NavItem({
+const NavItem = React.memo(function NavItem({
   label, section, icon, badge
 }: { label: string; section: ResourceKind; icon?: string; badge?: number }) {
-  const { section: active, setSection, deniedSections } = useAppStore()
+  const { active, setSection, isDenied } = useAppStore(useShallow(s => ({
+    active: s.section,
+    setSection: s.setSection,
+    isDenied: s.deniedSections.has(section),
+  })))
   const isActive = active === section
-  const isDenied = deniedSections.has(section)
 
   return (
     <button
@@ -123,7 +133,7 @@ function NavItem({
       )}
     </button>
   )
-}
+})
 
 // ─── Rail icon button ─────────────────────────────────────────────────────────
 
@@ -166,12 +176,34 @@ export default function Sidebar(): JSX.Element {
     loadingContexts, loadingNamespaces,
     selectContext, selectNamespace,
     section, setSection,
-    pods, deployments, events,
+    podCount, deploymentCount, warningEventCount,
     navWidth, setNavWidth,
     prodContexts, setProdContexts,
     contextSwitchStatus,
     providers,
-  } = useAppStore()
+  } = useAppStore(useShallow(s => ({
+    contexts: s.contexts,
+    selectedContext: s.selectedContext,
+    starredContext: s.starredContext,
+    setStarredContext: s.setStarredContext,
+    namespaces: s.namespaces,
+    selectedNamespace: s.selectedNamespace,
+    loadingContexts: s.loadingContexts,
+    loadingNamespaces: s.loadingNamespaces,
+    selectContext: s.selectContext,
+    selectNamespace: s.selectNamespace,
+    section: s.section,
+    setSection: s.setSection,
+    podCount: s.pods.length,
+    deploymentCount: s.deployments.length,
+    warningEventCount: s.events.filter(e => e.type === 'Warning').length,
+    navWidth: s.navWidth,
+    setNavWidth: s.setNavWidth,
+    prodContexts: s.prodContexts,
+    setProdContexts: s.setProdContexts,
+    contextSwitchStatus: s.contextSwitchStatus,
+    providers: s.providers,
+  })))
 
   const [isResizing, setIsResizing] = useState(false)
 
@@ -264,21 +296,21 @@ export default function Sidebar(): JSX.Element {
         >
           <div className="w-8 h-[1px] bg-white/5 mb-3" />
 
-          <RailBtn 
-            icon={ICONS.feedback} 
-            label="Feedback" 
-            onClick={() => window.open('https://github.com/codingprotocols/podscape/issues/new', '_blank')} 
+          <RailBtn
+            icon={ICONS.feedback}
+            label="Feedback"
+            onClick={() => openExternal('https://github.com/codingprotocols/podscape/issues/new')}
           />
-          <RailBtn 
-            icon={ICONS.help} 
-            label="Ask a Question" 
-            onClick={() => window.open('https://github.com/codingprotocols/podscape/discussions/new', '_blank')} 
+          <RailBtn
+            icon={ICONS.help}
+            label="Ask a Question"
+            onClick={() => openExternal('https://github.com/codingprotocols/podscape/discussions/new')}
           />
-          <RailBtn 
-            icon={ICONS.heart} 
-            label="Support Our Work" 
+          <RailBtn
+            icon={ICONS.heart}
+            label="Support Our Work"
             className="text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
-            onClick={() => window.open('https://github.com/sponsors/codingprotocols', '_blank')} 
+            onClick={() => openExternal('https://github.com/sponsors/codingprotocols')}
           />
           <RailBtn icon={ICONS.settings} label="Settings" active={section === 'settings'} onClick={() => setSection('settings')} />
         </div>
@@ -374,8 +406,8 @@ export default function Sidebar(): JSX.Element {
           </NavGroup>
 
           <NavGroup title="Workloads">
-            <NavItem label="Pods" section="pods" icon={ICONS.pod} badge={pods.length || undefined} />
-            <NavItem label="Deployments" section="deployments" icon={ICONS.deploy} badge={deployments.length || undefined} />
+            <NavItem label="Pods" section="pods" icon={ICONS.pod} badge={podCount || undefined} />
+            <NavItem label="Deployments" section="deployments" icon={ICONS.deploy} badge={deploymentCount || undefined} />
             <NavItem label="DaemonSets" section="daemonsets" icon={ICONS.daemonset} />
             <NavItem label="StatefulSets" section="statefulsets" icon={ICONS.sts} />
             <NavItem label="ReplicaSets" section="replicasets" icon={ICONS.rs} />
@@ -420,7 +452,7 @@ export default function Sidebar(): JSX.Element {
           </NavGroup>
 
           <NavGroup title="Observe">
-            <NavItem label="Events" section="events" icon={ICONS.event} badge={events.filter(e => e.type === 'Warning').length || undefined} />
+            <NavItem label="Events" section="events" icon={ICONS.event} badge={warningEventCount || undefined} />
             <NavItem label="Metrics" section="metrics" icon={ICONS.metrics} />
             <NavItem label="Unified Logs" section="unifiedlogs" icon={ICONS.terminal} />
             <NavItem label="Security Hub" section="security" icon={ICONS.secret} />

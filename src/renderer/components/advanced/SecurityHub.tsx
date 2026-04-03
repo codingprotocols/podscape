@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect, useDeferredValue } from 'react'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { scannerEngine } from '../../utils/scanner/engine'
 import { buildUnifiedResults } from '../../utils/security/buildUnifiedResults'
 import { getUniqueImages } from '../../utils/security/extractImages'
@@ -116,7 +117,21 @@ export default function SecurityHub(): JSX.Element {
         pods, deployments, statefulsets, daemonsets, jobs, cronjobs,
         scanSecurity, securityScanResults, kubesecBatchResults,
         trivyAvailable, securityScanning, securityScanProgressLines, error,
-    } = useAppStore()
+    } = useAppStore(useShallow(s => ({
+        pods: s.pods,
+        deployments: s.deployments,
+        statefulsets: s.statefulsets,
+        daemonsets: s.daemonsets,
+        jobs: s.jobs,
+        cronjobs: s.cronjobs,
+        scanSecurity: s.scanSecurity,
+        securityScanResults: s.securityScanResults,
+        kubesecBatchResults: s.kubesecBatchResults,
+        trivyAvailable: s.trivyAvailable,
+        securityScanning: s.securityScanning,
+        securityScanProgressLines: s.securityScanProgressLines,
+        error: s.error,
+    })))
 
     const [groupByNamespace, setGroupByNamespace] = useState(false)
     const [includeSystem, setIncludeSystem] = useState(false)
