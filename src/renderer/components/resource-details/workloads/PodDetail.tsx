@@ -82,12 +82,32 @@ export default function PodDetail({ pod }: Props): JSX.Element {
       const ns = selectedNamespace === '_all'
         ? (pod.metadata.namespace ?? '')
         : (selectedNamespace ?? '')
+
+      // Batch incoming log lines and flush every 100 ms to avoid a setState
+      // call (and React re-render) on every single chunk from verbose pods.
+      const pendingLines: string[] = []
+      let flushTimer: ReturnType<typeof setTimeout> | null = null
+      const flush = () => {
+        flushTimer = null
+        if (!isMountedRef.current || pendingLines.length === 0) return
+        const batch = pendingLines.splice(0)
+        setLogs(prev => {
+          const next = prev.concat(batch)
+          return next.length > 2000 ? next.slice(-2000) : next
+        })
+      }
+
       const streamId = await window.kubectl.streamLogs(
         ctx, ns, pod.metadata.name, selectedContainer,
         (chunk) => {
-          if (isMountedRef.current) setLogs(prev => [...prev, ...chunk.split('\n')].slice(-2000))
+          if (!isMountedRef.current) return
+          pendingLines.push(...chunk.split('\n'))
+          if (!flushTimer) flushTimer = setTimeout(flush, 100)
         },
         () => {
+          // Flush any remaining buffered lines before marking the stream done.
+          if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
+          flush()
           // Guard against a stale onEnd from a previous stream (e.g. when stopLogs
           // triggers ws.close() asynchronously after the next stream has already started).
           if (activeStreamIdRef.current === streamId) {

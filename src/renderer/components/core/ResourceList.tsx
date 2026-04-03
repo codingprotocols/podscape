@@ -692,23 +692,27 @@ export default function ResourceList(): JSX.Element {
   const filtered = useMemo(() => {
     const q = searchQuery.toLowerCase()
     let result = resources.filter(r => r.metadata.name.toLowerCase().includes(q))
-    
+
     if (sortCol) {
       result = [...result].sort((a, b) => {
         const valA = getSortValue(a, section, sortCol)
         const valB = getSortValue(b, section, sortCol)
-        
+
         if (typeof valA === 'number' && typeof valB === 'number') {
           return sortAsc ? valA - valB : valB - valA
         }
-        
+
         const strA = String(valA).toLowerCase()
         const strB = String(valB).toLowerCase()
         return sortAsc ? strA.localeCompare(strB) : strB.localeCompare(strA)
       })
     }
     return result
-  }, [resources, searchQuery, sortCol, sortAsc, section])
+    // `section` is intentionally excluded: when section changes, `resources`
+    // is replaced wholesale by useResources(), which already invalidates this memo.
+    // Including `section` would trigger a redundant sort on the old array.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resources, searchQuery, sortCol, sortAsc])
 
   // Clear selection and sorting if section changes
   useEffect(() => {
