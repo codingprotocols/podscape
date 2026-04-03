@@ -5,23 +5,24 @@ import { activeSidecarPort } from '../sidecar/runtime'
 import { sidecarToken } from '../sidecar/auth'
 import { SIDECAR_HOST } from '../../common/constants'
 
-export function registerHelmHandlers(): void {
-  const transformRelease = (r: any) => {
-    const info = r.info || r.Info || {}
-    const chart = r.chart || r.Chart || {}
-    const metadata = chart.metadata || chart.Metadata || {}
-    
-    return {
-      name: r.name || r.Name || '',
-      namespace: r.namespace || r.Namespace || '',
-      revision: String(r.version || r.Version || '0'),
-      updated: info.last_deployed || info.LastDeployed || '',
-      status: String(info.status || info.Status || 'unknown'),
-      chart: metadata.name ? `${metadata.name}-${metadata.version || ''}` : 'unknown',
-      app_version: metadata.appVersion || metadata.AppVersion || '',
-      description: info.description || info.Description || ''
-    }
+export function transformRelease(r: any) {
+  const info = r.info || r.Info || {}
+  const chart = r.chart || r.Chart || {}
+  const metadata = chart.metadata || chart.Metadata || {}
+
+  return {
+    name: r.name || r.Name || '',
+    namespace: r.namespace || r.Namespace || '',
+    revision: String(r.version || r.Version || '0'),
+    updated: info.last_deployed || info.LastDeployed || '',
+    status: String(info.status || info.Status || 'unknown'),
+    chart: metadata.name ? `${metadata.name}-${metadata.version || ''}` : 'unknown',
+    app_version: metadata.appVersion || metadata.AppVersion || '',
+    description: info.description || info.Description || '',
   }
+}
+
+export function registerHelmHandlers(): void {
 
   // List all releases across namespaces
   ipcMain.handle('helm:list', async (_event, context: string) => {
