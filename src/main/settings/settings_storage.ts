@@ -8,6 +8,7 @@ export interface PodscapeSettings {
     kubeconfigPath: string         // absolute path or '' for default (~/.kube/config)
     prodContexts: string[]         // List of contexts considered "Production"
     prometheusUrls: Record<string, string>  // per-context manual Prometheus URL; '' = auto-discover
+    tourCompleted: boolean         // whether the post-connection tour has been shown
 }
 
 const SETTINGS_DIR = join(homedir(), '.podscape')
@@ -19,6 +20,7 @@ const DEFAULTS: PodscapeSettings = {
     kubeconfigPath: '',
     prodContexts: [],
     prometheusUrls: {},
+    tourCompleted: false,
 }
 
 export function getSettings(): PodscapeSettings {
