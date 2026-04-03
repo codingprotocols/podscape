@@ -11,6 +11,7 @@ import AnalysisView from '../../advanced/AnalysisView'
 import PodLifecycleTimeline from '../../advanced/PodLifecycleTimeline'
 import { Shield, Clock as ClockIcon, BarChart2 } from 'lucide-react'
 import OwnerChain from '../../advanced/OwnerChain'
+import CopyButton from '../../common/CopyButton'
 import TimeSeriesChart, { PrometheusTimeRangeBar } from '../../advanced/TimeSeriesChart'
 import { podCpuQuery, podMemoryQuery, podNetworkRxQuery, podNetworkTxQuery } from '../../../utils/prometheusQueries'
 
@@ -443,9 +444,9 @@ export default function PodDetail({ pod }: Props): JSX.Element {
           <div className="px-6 py-4 border-b border-slate-100 dark:border-white/5 shrink-0">
             <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] mb-3">Resource Info</h4>
             <dl className="grid grid-cols-2 gap-x-6 gap-y-2.5">
-              <MetaRow label="Node" value={pod.spec.nodeName ?? '—'} mono />
-              <MetaRow label="Pod IP" value={pod.status.podIP ?? '—'} mono />
-              <MetaRow label="Host IP" value={pod.status.hostIP ?? '—'} mono />
+              <MetaRow label="Node" value={pod.spec.nodeName ?? '—'} mono copyable />
+              <MetaRow label="Pod IP" value={pod.status.podIP ?? '—'} mono copyable />
+              <MetaRow label="Host IP" value={pod.status.hostIP ?? '—'} mono copyable />
               <MetaRow label="QoS Class" value={pod.status.qosClass ?? '—'} />
               <MetaRow label="Created" value={formatAge(pod.metadata.creationTimestamp) + ' ago'} />
               <MetaRow label="Restart Policy" value={String(pod.spec.restartPolicy ?? 'Always')} />
@@ -753,11 +754,14 @@ function LogLine({ line, search }: { line: string; search: string }): JSX.Elemen
   )
 }
 
-function MetaRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function MetaRow({ label, value, mono, copyable }: { label: string; value: string; mono?: boolean; copyable?: boolean }) {
   return (
     <div className="min-w-0">
       <dt className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-tighter mb-0.5">{label}</dt>
-      <dd className={`text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate ${mono ? 'font-mono' : ''}`}>{value}</dd>
+      <dd className={`text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate flex items-center gap-1 ${mono ? 'font-mono' : ''}`}>
+        <span className="truncate">{value}</span>
+        {copyable && value !== '—' && <CopyButton value={value} size={11} />}
+      </dd>
     </div>
   )
 }
