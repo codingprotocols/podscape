@@ -70,11 +70,6 @@ func noopSync(_ *store.ContextCache, _ <-chan struct{}, _ time.Duration) bool {
 	return true
 }
 
-// timeoutSync immediately returns false (timed out) without touching any informers.
-func timeoutSync(_ *store.ContextCache, _ <-chan struct{}, _ time.Duration) bool {
-	return false
-}
-
 // noopRBAC immediately returns all-allowed without hitting the API server.
 func noopRBAC(_ context.Context, _ kubernetes.Interface) (map[string]bool, error) {
 	return nil, nil // nil = permissive (probe "not run")
@@ -538,7 +533,28 @@ func TestHandleScale_ZeroReplicasAllowed(t *testing.T) {
 	}
 }
 
-// ── HandleApplyYAML body-size limit ──────────────────────────────────────────
+// ── HandleApplyYAML ───────────────────────────────────────────────────────────
+
+func TestHandleApplyYAML_MethodNotAllowed(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/apply", nil)
+	rr := httptest.NewRecorder()
+	HandleApplyYAML(rr, req)
+
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for GET, got %d", rr.Code)
+	}
+}
+
+func TestHandleApplyYAML_InvalidYAML(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/apply", strings.NewReader("{{invalid: yaml: ["))
+	req.Header.Set("Content-Type", "application/yaml")
+	rr := httptest.NewRecorder()
+	HandleApplyYAML(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid YAML, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+}
 
 func TestHandleApplyYAML_BodyTooLarge(t *testing.T) {
 	// Build a body just over 10 MB (10*1024*1024 + 1 bytes)
@@ -892,5 +908,144 @@ func TestHandleScale_ReplicasExceedInt32Max_IsRejected(t *testing.T) {
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for replicas > MaxInt32, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+}
+
+// ── humanAge ─────────────────────────────────────────────────────────────────
+
+func TestHumanAge(t *testing.T) {
+	now := time.Now()
+	cases := []struct {
+		name string
+		age  time.Duration
+		want string
+	}{
+		{"zero", 0, "0s"},
+		{"30s", 30 * time.Second, "30s"},
+		{"59s", 59 * time.Second, "59s"},
+		{"1m", time.Minute, "1m"},
+		{"45m", 45 * time.Minute, "45m"},
+		{"1h", time.Hour, "1h"},
+		{"23h", 23 * time.Hour, "23h"},
+		{"1d", 24 * time.Hour, "1d"},
+		{"7d", 7 * 24 * time.Hour, "7d"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := humanAge(now.Add(-tc.age))
+			if got != tc.want {
+				t.Errorf("humanAge(now-%v) = %q, want %q", tc.age, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestHumanAge_FutureTimeClampedToZero(t *testing.T) {
+	got := humanAge(time.Now().Add(10 * time.Minute))
+	if got != "0s" {
+		t.Errorf("future time should clamp to 0s, got %q", got)
+	}
+}
+
+// ── deploymentRevisions ───────────────────────────────────────────────────────
+
+func TestDeploymentRevisions_FiltersUnownedRS(t *testing.T) {
+	// Two RSes share the same label selector, but only one is owned by the deployment.
+	deploy := makeDeployment("ns", "dep", 2, "img:v2")
+	owned := makeRS("ns", "dep-rs-owned", "dep", 2, "img:v2")
+	replicas := int32(3)
+	owned.Spec.Replicas = &replicas
+	owned.Status.ReadyReplicas = 3
+
+	unowned := makeRS("ns", "dep-rs-unowned", "dep", 1, "img:v1")
+	// Remove OwnerReference so it is not owned by "dep".
+	unowned.OwnerReferences = nil
+
+	cs := fake.NewSimpleClientset(deploy, owned, unowned)
+	entries, err := deploymentRevisions(context.Background(), cs, "ns", "dep")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry (owned RS only), got %d", len(entries))
+	}
+	if entries[0].Revision != 2 {
+		t.Errorf("expected revision 2, got %d", entries[0].Revision)
+	}
+	if entries[0].Desired != 3 {
+		t.Errorf("expected Desired=3 from Spec.Replicas, got %d", entries[0].Desired)
+	}
+}
+
+func TestDeploymentRevisions_NilSpecReplicasDefaultsToOne(t *testing.T) {
+	deploy := makeDeployment("ns", "dep", 1, "img:v1")
+	rs := makeRS("ns", "dep-rs", "dep", 1, "img:v1")
+	rs.Spec.Replicas = nil // explicitly nil
+
+	cs := fake.NewSimpleClientset(deploy, rs)
+	entries, err := deploymentRevisions(context.Background(), cs, "ns", "dep")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Desired != 1 {
+		t.Errorf("expected Desired=1 when Spec.Replicas is nil, got %d", entries[0].Desired)
+	}
+}
+
+func TestDeploymentRevisions_SortedNewestFirst(t *testing.T) {
+	deploy := makeDeployment("ns", "dep", 3, "img:v3")
+	rs1 := makeRS("ns", "dep-rs-1", "dep", 1, "img:v1")
+	rs2 := makeRS("ns", "dep-rs-2", "dep", 2, "img:v2")
+	rs3 := makeRS("ns", "dep-rs-3", "dep", 3, "img:v3")
+
+	cs := fake.NewSimpleClientset(deploy, rs1, rs2, rs3)
+	entries, err := deploymentRevisions(context.Background(), cs, "ns", "dep")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(entries))
+	}
+	// Should be sorted newest (highest revision) first.
+	for i := 1; i < len(entries); i++ {
+		if entries[i-1].Revision <= entries[i].Revision {
+			t.Errorf("entries not sorted newest-first: entries[%d].Revision=%d, entries[%d].Revision=%d",
+				i-1, entries[i-1].Revision, i, entries[i].Revision)
+		}
+	}
+	if !entries[0].Current {
+		t.Error("expected the newest entry to be marked Current=true")
+	}
+}
+
+// ── HandleRolloutHistory ──────────────────────────────────────────────────────
+
+func TestHandleRolloutHistory_UnsupportedKind(t *testing.T) {
+	cs := fake.NewSimpleClientset()
+	setActiveClientset(t, cs)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/rollout/history?namespace=ns&kind=statefulset&name=sts", nil)
+	rr := httptest.NewRecorder()
+	HandleRolloutHistory(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for unsupported kind, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+}
+
+func TestHandleRolloutHistory_MissingParams(t *testing.T) {
+	cs := fake.NewSimpleClientset()
+	setActiveClientset(t, cs)
+
+	req := httptest.NewRequest(http.MethodGet, "/rollout/history?namespace=ns&kind=deployment", nil)
+	rr := httptest.NewRecorder()
+	HandleRolloutHistory(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for missing name param, got %d (body: %s)", rr.Code, rr.Body.String())
 	}
 }

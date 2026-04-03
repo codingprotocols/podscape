@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { useAppStore } from '../../store'
 import { useShallow } from 'zustand/react/shallow'
 import type { KubeNode, KubeEvent, NodeMetrics, KubePod, KubeDeployment } from '../../types'
@@ -359,12 +359,13 @@ function PodStatusBadge({ row }: { row: PodHealthRow }) {
 
 export default function Dashboard(): JSX.Element {
   const {
-    loadingResources,
+    loadingResources, selectedContext,
     pods, deployments, namespaces,
     nodes, nodeMetrics, events,
-    prometheusAvailable, navigateToResource, refresh,
+    prometheusAvailable, navigateToResource, refresh, setSection,
   } = useAppStore(useShallow(s => ({
     loadingResources: s.loadingResources,
+    selectedContext: s.selectedContext,
     pods: s.pods,
     deployments: s.deployments,
     namespaces: s.namespaces,
@@ -374,7 +375,11 @@ export default function Dashboard(): JSX.Element {
     prometheusAvailable: s.prometheusAvailable,
     navigateToResource: s.navigateToResource,
     refresh: s.refresh,
+    setSection: s.setSection,
   })))
+
+  const [warningDismissed, setWarningDismissed] = useState(false)
+  useEffect(() => { setWarningDismissed(false) }, [selectedContext])
 
   // ── Derived health data ───────────────────────────────────────────────────
   const { problemPods, degradedDeployments } = useMemo(
@@ -385,7 +390,7 @@ export default function Dashboard(): JSX.Element {
   // Pre-calculate timestamps and derive stats memoized
   const {
     runningPods, readyNodes, readyDeploys,
-    recentEvents, processedEvents, metricsById
+    recentEvents, processedEvents, metricsById, warningCount
   } = useMemo(() => {
     // Stats calculation
     const runningPods = pods.filter(p => p.status.phase === 'Running').length
@@ -420,7 +425,9 @@ export default function Dashboard(): JSX.Element {
       return 0
     })
 
-    return { runningPods, readyNodes, readyDeploys, recentEvents: sortedEvents, processedEvents, metricsById }
+    const warningCount = safeEvents.filter(e => e.type === 'Warning').length
+
+    return { runningPods, readyNodes, readyDeploys, recentEvents: sortedEvents, processedEvents, metricsById, warningCount }
   }, [pods, deployments, nodes, events, nodeMetrics])
 
   return (
@@ -433,6 +440,32 @@ export default function Dashboard(): JSX.Element {
           </div>
         ) : (
           <div className="px-8 py-10 space-y-16 text-slate-900 dark:text-slate-100">
+            {/* ── Warning event banner ─────────────────────────────────────────── */}
+            {warningCount > 0 && !warningDismissed && (
+              <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 -mb-8">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={14} className="text-amber-500 shrink-0" />
+                  <span className="text-xs font-bold text-amber-700 dark:text-amber-400">
+                    {warningCount} Warning event{warningCount !== 1 ? 's' : ''} in this namespace
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setSection('events')}
+                    className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200 transition-colors"
+                  >
+                    View Events →
+                  </button>
+                  <button
+                    onClick={() => setWarningDismissed(true)}
+                    className="text-amber-400 hover:text-amber-600 dark:hover:text-amber-200 transition-colors text-xs"
+                    aria-label="Dismiss"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            )}
             {/* ── Cluster stats ───────────────────────────────────────────────── */}
             <section>
               <div className="flex items-center justify-between mb-6">

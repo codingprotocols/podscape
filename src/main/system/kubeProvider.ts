@@ -1,3 +1,5 @@
+import type { RolloutRevision } from '../../common/constants'
+
 export interface KubeProvider {
     getContexts(): Promise<unknown[]>;
     getCurrentContext(): Promise<string>;
@@ -9,7 +11,7 @@ export interface KubeProvider {
     getSecretValue(context: string, namespace: string, name: string, key: string): Promise<string>;
     scaleResource(context: string, namespace: string, kind: string, name: string, replicas: number): Promise<string>;
     rolloutRestart(context: string, namespace: string, kind: string, name: string): Promise<string>;
-    rolloutHistory(context: string, namespace: string, kind: string, name: string): Promise<string>;
+    rolloutHistory(context: string, namespace: string, kind: string, name: string): Promise<RolloutRevision[]>;
     rolloutUndo(context: string, namespace: string, kind: string, name: string, revision?: number): Promise<string>;
     getResourceEvents(context: string, namespace: string, kind: string, name: string): Promise<unknown[]>;
     deleteResource(context: string, namespace: string | null, kind: string, name: string): Promise<string>;

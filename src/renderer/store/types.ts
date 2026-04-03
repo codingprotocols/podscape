@@ -9,6 +9,7 @@ import {
     NodeMetrics, PodMetrics, ResourceKind, AnyKubeResource, PortForwardEntry,
     HelmRelease, DebugPodEntry, AppGroup, OwnerChainResponse, ProviderSet
 } from '../types'
+import type { RolloutRevision } from '../../common/constants'
 import { AnalysisSlice } from './slices/analysisSlice'
 import { OperationSlice } from './slices/operationSlice'
 import { ProvidersSlice } from './slices/providersSlice'
@@ -54,7 +55,7 @@ declare global {
             scale: (context: string, namespace: string, name: string, replicas: number) => Promise<string>
             scaleResource: (context: string, namespace: string, kind: string, name: string, replicas: number) => Promise<string>
             rolloutRestart: (context: string, namespace: string, kind: string, name: string) => Promise<string>
-            rolloutHistory: (context: string, namespace: string, kind: string, name: string) => Promise<string>
+            rolloutHistory: (context: string, namespace: string, kind: string, name: string) => Promise<RolloutRevision[]>
             rolloutUndo: (context: string, namespace: string, kind: string, name: string, revision?: number) => Promise<string>
             getResourceEvents: (context: string, namespace: string, kind: string, name: string) => Promise<KubeEvent[]>
             cordonNode: (context: string, name: string, unschedulable: boolean) => Promise<void>
@@ -115,8 +116,8 @@ declare global {
             onExit: (id: string, cb: () => void) => () => void
         }
         settings: {
-            get: () => Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string> }>
-            set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string> }) => Promise<void>
+            get: () => Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean }>
+            set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean }) => Promise<void>
             checkTools: () => Promise<{ kubeconfigOk: boolean; trivyOk: boolean }>
         }
         kubeconfig: {

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -180,7 +181,7 @@ func RolloutUndo(ctx context.Context, bundle *client.ClientBundle, ns, kind, nam
 		var maxRev, secondRev int64
 		var maxRS, secondRS *appsv1.ReplicaSet
 		for i := range owned {
-			rev, ok := parseRevision(owned[i].Annotations)
+			rev, ok := ParseRevision(owned[i].Annotations)
 			if !ok {
 				continue
 			}
@@ -201,7 +202,7 @@ func RolloutUndo(ctx context.Context, bundle *client.ClientBundle, ns, kind, nam
 		targetRS = secondRS
 	} else {
 		for i := range owned {
-			rev, ok := parseRevision(owned[i].Annotations)
+			rev, ok := ParseRevision(owned[i].Annotations)
 			if ok && rev == revision {
 				targetRS = &owned[i]
 				break
@@ -226,7 +227,10 @@ func RolloutUndo(ctx context.Context, bundle *client.ClientBundle, ns, kind, nam
 	return err
 }
 
-func parseRevision(ann map[string]string) (int64, bool) {
+// ParseRevision reads the "deployment.kubernetes.io/revision" annotation and
+// returns (revision, true) on success, or (0, false) if the annotation is
+// absent or non-numeric.
+func ParseRevision(ann map[string]string) (int64, bool) {
 	s, ok := ann["deployment.kubernetes.io/revision"]
 	if !ok || s == "" {
 		return 0, false
@@ -241,6 +245,19 @@ func ApplyYAML(ctx context.Context, bundle *client.ClientBundle, yamlBytes []byt
 	obj := &unstructured.Unstructured{}
 	if err := yaml.Unmarshal(yamlBytes, obj); err != nil {
 		return fmt.Errorf("invalid YAML: %w", err)
+	}
+	// Strip server-managed fields: managedFields is rejected outright; status is
+	// owned by the controller and ignored by the API server anyway — excluding it
+	// keeps field ownership clean and reduces payload size.
+	obj.SetManagedFields(nil)
+	delete(obj.Object, "status")
+
+	// Strip read-only or server-generated metadata fields that interfere with apply
+	if metadata, ok := obj.Object["metadata"].(map[string]interface{}); ok {
+		delete(metadata, "uid")
+		delete(metadata, "resourceVersion")
+		delete(metadata, "creationTimestamp")
+		delete(metadata, "generation")
 	}
 
 	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
@@ -272,10 +289,22 @@ func ApplyYAML(ctx context.Context, bundle *client.ClientBundle, yamlBytes []byt
 		resource = dyn.Resource(mapping.Resource)
 	}
 
-	_, err = resource.Patch(ctx, obj.GetName(), types.ApplyPatchType, yamlBytes, metav1.PatchOptions{
+	patchBytes, err := json.Marshal(obj.Object)
+	if err != nil {
+		return fmt.Errorf("failed to marshal manifest: %w", err)
+	}
+	force := true
+	_, err = resource.Patch(ctx, obj.GetName(), types.ApplyPatchType, patchBytes, metav1.PatchOptions{
 		FieldManager: "podscape-cli",
+		Force:        &force,
 	})
-	return err
+	if err != nil {
+		if strings.Contains(err.Error(), "pod updates may not change fields") {
+			return fmt.Errorf("pod spec fields are immutable after creation — edit the parent Deployment or StatefulSet instead of the Pod directly")
+		}
+		return err
+	}
+	return nil
 }
 
 // ListResource lists all resources of the given type in the given namespace.
