@@ -163,6 +163,23 @@ describe('operationSlice', () => {
         expect(state.loadSection).not.toHaveBeenCalled()
     })
 
+    it('onPortForwardError callback updates entry status to error', () => {
+        let errorCb: ((msg: string) => void) | undefined
+        windowMock.kubectl.onPortForwardError.mockImplementationOnce((_id: string, cb: (msg: string) => void) => {
+            errorCb = cb
+            return vi.fn()
+        })
+
+        const entry = { id: 'pf-err', name: 'perr', namespace: 'ns1', type: 'pod', localPort: 7070, remotePort: 70, status: 'starting' }
+        state.portForwards = [entry]
+        const slice = createOperationSlice(set, get, {} as any)
+        slice.startPortForward(entry as any)
+
+        errorCb!('connection refused')
+        const updated = state.portForwards.find((f: any) => f.id === 'pf-err')
+        expect(updated?.status).toBe('error')
+    })
+
     it('onPortForwardExit callback removes entry and cleans up unsubscribers', () => {
         let exitCb: (() => void) | undefined
         windowMock.kubectl.onPortForwardExit.mockImplementationOnce((_id: string, cb: () => void) => {
