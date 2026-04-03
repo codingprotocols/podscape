@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -29,7 +30,9 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/podscape/go-core/internal/exec"
+	"github.com/podscape/go-core/internal/ops"
 	"github.com/podscape/go-core/internal/store"
+	"k8s.io/client-go/kubernetes"
 )
 
 func HandleScale(w http.ResponseWriter, r *http.Request) {
@@ -589,33 +592,95 @@ func HandleRolloutHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Basic implementation: List ReplicaSets for Deployments or ControllerRevisions for StatefulSets
-	var history interface{}
-	var err error
 	switch kind {
 	case "deployment":
-		list, e := cs.AppsV1().ReplicaSets(namespace).List(r.Context(), metav1.ListOptions{
-			LabelSelector: fmt.Sprintf("app=%s", name), // This is a simplification
-		})
-		history = list
-		err = e
-	case "statefulset":
-		list, e := cs.AppsV1().ControllerRevisions(namespace).List(r.Context(), metav1.ListOptions{
-			LabelSelector: fmt.Sprintf("app=%s", name), // Simplification
-		})
-		history = list
-		err = e
+		revisions, err := deploymentRevisions(r.Context(), cs, namespace, name)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(revisions)
 	default:
-		err = fmt.Errorf("unsupported kind for rollout history: %s", kind)
+		http.Error(w, fmt.Sprintf("unsupported kind for rollout history: %s", kind), http.StatusBadRequest)
 	}
+}
 
+// revisionEntry is the structured rollout history entry returned to the client.
+type revisionEntry struct {
+	Revision int64    `json:"revision"`
+	Current  bool     `json:"current"`
+	Age      string   `json:"age"`
+	Images   []string `json:"images"`
+	Desired  int32    `json:"desired"`
+	Ready    int32    `json:"ready"`
+}
+
+// deploymentRevisions returns a sorted (newest first) list of revision summaries
+// for a Deployment by inspecting its owned ReplicaSets.
+func deploymentRevisions(ctx context.Context, cs kubernetes.Interface, namespace, name string) ([]revisionEntry, error) {
+	deploy, err := cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("failed to get deployment: %w", err)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(history)
+	currentRevision, _ := ops.ParseRevision(deploy.Annotations)
+
+	selector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build label selector: %w", err)
+	}
+	rsList, err := cs.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: selector.String(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list replicasets: %w", err)
+	}
+
+	var entries []revisionEntry
+	for _, rs := range rsList.Items {
+		// Only include ReplicaSets owned by this specific Deployment.
+		// Label selectors alone are insufficient — overlapping labels
+		// (common with Helm) can match RSes from sibling Deployments.
+		owned := false
+		for _, ref := range rs.OwnerReferences {
+			if ref.Kind == "Deployment" && ref.Name == name {
+				owned = true
+				break
+			}
+		}
+		if !owned {
+			continue
+		}
+
+		rev, ok := ops.ParseRevision(rs.Annotations)
+		if !ok {
+			continue
+		}
+
+		images := make([]string, 0, len(rs.Spec.Template.Spec.Containers))
+		for _, c := range rs.Spec.Template.Spec.Containers {
+			images = append(images, c.Image)
+		}
+
+		desired := int32(1)
+		if rs.Spec.Replicas != nil {
+			desired = *rs.Spec.Replicas
+		}
+
+		entries = append(entries, revisionEntry{
+			Revision: rev,
+			Current:  rev == currentRevision,
+			Age:      humanAge(rs.CreationTimestamp.Time),
+			Images:   images,
+			Desired:  desired,
+			Ready:    rs.Status.ReadyReplicas,
+		})
+	}
+
+	// Sort newest revision first.
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Revision > entries[j].Revision })
+	return entries, nil
 }
 
 func HandleRolloutUndo(w http.ResponseWriter, r *http.Request) {
@@ -654,17 +719,23 @@ func HandleRolloutUndo(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// parseRevision reads the "deployment.kubernetes.io/revision" annotation and
-// returns (revision, true) on success, or (0, false) if the annotation is
-// absent or non-numeric. Centralises the repeated strconv.ParseInt call so
-// callers can distinguish a missing annotation from an explicit revision 0.
-func parseRevision(ann map[string]string) (int64, bool) {
-	s, ok := ann["deployment.kubernetes.io/revision"]
-	if !ok || s == "" {
-		return 0, false
+// humanAge returns a human-readable age string (e.g. "2d", "4h", "35m") for
+// a given timestamp, matching the style used by kubectl.
+func humanAge(t time.Time) string {
+	d := time.Since(t)
+	if d < 0 {
+		d = 0
 	}
-	v, err := strconv.ParseInt(s, 10, 64)
-	return v, err == nil
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	}
 }
 
 // undoDeploymentRollout reverts a Deployment to a previous revision by finding
@@ -680,7 +751,7 @@ func undoDeploymentRollout(ctx context.Context, namespace, name string, targetRe
 	if err != nil {
 		return fmt.Errorf("failed to get deployment: %w", err)
 	}
-	currentRevision, hasRevision := parseRevision(deploy.Annotations)
+	currentRevision, hasRevision := ops.ParseRevision(deploy.Annotations)
 	if !hasRevision {
 		return fmt.Errorf("deployment %s has no revision annotation; rollout history not available", name)
 	}
@@ -717,14 +788,14 @@ func undoDeploymentRollout(ctx context.Context, namespace, name string, targetRe
 		// Find the highest revision that is NOT the current one.
 		var bestRev int64
 		for i := range owned {
-			if rev, ok := parseRevision(owned[i].Annotations); ok && rev != currentRevision && rev > bestRev {
+			if rev, ok := ops.ParseRevision(owned[i].Annotations); ok && rev != currentRevision && rev > bestRev {
 				bestRev = rev
 				targetRS = &owned[i]
 			}
 		}
 	} else {
 		for i := range owned {
-			if rev, ok := parseRevision(owned[i].Annotations); ok && rev == targetRevision {
+			if rev, ok := ops.ParseRevision(owned[i].Annotations); ok && rev == targetRevision {
 				targetRS = &owned[i]
 				break
 			}

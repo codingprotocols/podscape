@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import type { RolloutRevision } from '../../../../../common/constants'
 import type { KubeDeployment, KubeEvent } from '../../../types'
 import { formatAge } from '../../../types'
 import { useAppStore } from '../../../store'
@@ -23,7 +24,8 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
   const [tab, setTab] = useState<Tab>('overview')
 
   // Rollout history
-  const [history, setHistory] = useState<string | null>(null)
+  const [history, setHistory] = useState<RolloutRevision[] | null>(null)
+  const [historyError, setHistoryError] = useState('')
   const [historyLoading, setHistoryLoading] = useState(false)
   const [undoMsg, setUndoMsg] = useState('')
   const [undoLoading, setUndoLoading] = useState(false)
@@ -50,11 +52,12 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
   const loadHistory = async () => {
     if (!selectedContext) return
     setHistoryLoading(true)
+    setHistoryError('')
     try {
-      const out = await window.kubectl.rolloutHistory(selectedContext, ns, 'deployment', d.metadata.name)
-      setHistory(out)
+      const revisions = await window.kubectl.rolloutHistory(selectedContext, ns, 'deployment', d.metadata.name)
+      setHistory(revisions)
     } catch (err) {
-      setHistory(`Error: ${(err as Error).message}`)
+      setHistoryError((err as Error).message)
     } finally {
       setHistoryLoading(false)
     }
@@ -273,13 +276,62 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
             {undoMsg && (
               <p className={`text-[10px] font-black uppercase tracking-widest p-3 rounded-xl border ${undoMsg.startsWith('Error') ? 'bg-red-500/5 text-red-400 border-red-500/10' : 'bg-emerald-500/5 text-emerald-400 border-emerald-500/10'}`}>{undoMsg}</p>
             )}
-            <div className="bg-slate-950 rounded-2xl border border-white/5 p-6 shadow-inner overflow-hidden">
+            {historyError && (
+              <p className="text-[10px] font-black uppercase tracking-widest p-3 rounded-xl border bg-red-500/5 text-red-400 border-red-500/10">{historyError}</p>
+            )}
+            <div className="rounded-2xl border border-white/5 overflow-hidden">
               {historyLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="w-6 h-6 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
-              ) : history ? (
-                <pre className="text-[11px] font-bold font-mono text-slate-400 whitespace-pre overflow-x-auto leading-relaxed">{history}</pre>
+              ) : history && history.length > 0 ? (
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="bg-white/[0.03] border-b border-white/5 text-[9px] font-black uppercase tracking-widest text-slate-500">
+                      <th className="px-4 py-2.5 text-left">Revision</th>
+                      <th className="px-4 py-2.5 text-left">Status</th>
+                      <th className="px-4 py-2.5 text-left">Age</th>
+                      <th className="px-4 py-2.5 text-left">Images</th>
+                      <th className="px-4 py-2.5 text-left">Replicas</th>
+                      <th className="px-4 py-2.5 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map(rev => (
+                      <tr key={rev.revision} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-slate-200">#{rev.revision}</td>
+                        <td className="px-4 py-3">
+                          {rev.current
+                            ? <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Current</span>
+                            : <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-slate-500/10 text-slate-500 border border-white/5">Previous</span>
+                          }
+                        </td>
+                        <td className="px-4 py-3 text-slate-400">{rev.age}</td>
+                        <td className="px-4 py-3 font-mono text-slate-300 max-w-[280px]">
+                          {rev.images.map(img => (
+                            <div key={img} className="truncate text-[10px]" title={img}>{img}</div>
+                          ))}
+                        </td>
+                        <td className="px-4 py-3 text-slate-400">
+                          <span className={rev.ready >= rev.desired && rev.desired > 0 ? 'text-emerald-400' : 'text-amber-400'}>
+                            {rev.ready}/{rev.desired}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {!rev.current && (
+                            <button
+                              onClick={() => handleUndo(rev.revision)}
+                              disabled={undoLoading}
+                              className="text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg bg-amber-600/10 text-amber-500 border border-amber-500/20 hover:bg-amber-600/20 transition-all disabled:opacity-50"
+                            >
+                              Rollback
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               ) : (
                 <p className="text-xs text-slate-600 italic text-center py-12">No history available</p>
               )}
