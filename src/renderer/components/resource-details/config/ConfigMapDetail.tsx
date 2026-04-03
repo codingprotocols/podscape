@@ -4,6 +4,7 @@ import { formatAge } from '../../../types'
 import YAMLViewer from '../../common/YAMLViewer'
 import { FileCode, X, Activity } from 'lucide-react'
 import { useYAMLEditor } from '../../../hooks/useYAMLEditor'
+import CopyButton from '../../common/CopyButton'
 
 interface Props { configMap: KubeConfigMap }
 
@@ -72,9 +73,12 @@ export default function ConfigMapDetail({ configMap: cm }: Props): JSX.Element {
             <>
               <div className="px-4 py-2 border-b border-slate-100 dark:border-white/5 bg-white/[0.05] backdrop-blur-md flex items-center justify-between shrink-0">
                 <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 font-mono truncate uppercase tracking-widest">{selected}</span>
-                <span className="text-[10px] font-black text-slate-500 dark:text-slate-600 uppercase tracking-widest">
-                  {selectedValue.split('\n').length} lines
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black text-slate-500 dark:text-slate-600 uppercase tracking-widest">
+                    {selectedValue.split('\n').length} lines
+                  </span>
+                  <CopyButton value={selectedValue} />
+                </div>
               </div>
               <div className="flex-1 min-h-0">
                 {(isYAML || isJSON) ? (
