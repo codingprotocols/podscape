@@ -53,15 +53,16 @@ describe('UpdateBanner', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('shows available banner with version when update fires', () => {
+  it('shows available toast with version when update fires', () => {
     const { mock, emit } = makeUpdaterMock()
     ;(window as any).updater = mock
     render(<UpdateBanner />)
 
     act(() => emit('available', { version: '3.0.0' }))
 
-    expect(screen.getByText(/3\.0\.0 is available/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument()
+    expect(screen.getByText('Update available')).toBeInTheDocument()
+    expect(screen.getByText('Podscape 3.0.0')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /download update/i })).toBeInTheDocument()
   })
 
   it('shows progress bar without download button during download', () => {
@@ -73,31 +74,33 @@ describe('UpdateBanner', () => {
     act(() => emit('progress', { percent: 42 }))
 
     expect(screen.getByText(/42%/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^download$/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /download update/i })).toBeNull()
   })
 
-  it('shows ready banner with restart button when download completes', () => {
+  it('shows ready toast with restart button when download completes', () => {
     const { mock, emit } = makeUpdaterMock()
     ;(window as any).updater = mock
     render(<UpdateBanner />)
 
     act(() => emit('downloaded', { version: '3.0.0' }))
 
-    expect(screen.getByText(/3\.0\.0 is ready to install/)).toBeInTheDocument()
+    expect(screen.getByText('Ready to install')).toBeInTheDocument()
+    expect(screen.getByText('Podscape 3.0.0')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /restart/i })).toBeInTheDocument()
   })
 
-  it('shows error banner when updater emits an error', () => {
+  it('shows error toast when updater emits an error', () => {
     const { mock, emit } = makeUpdaterMock()
     ;(window as any).updater = mock
     render(<UpdateBanner />)
 
     act(() => emit('error', 'network timeout'))
 
-    expect(screen.getByText(/network timeout/)).toBeInTheDocument()
+    expect(screen.getByText('Update check failed')).toBeInTheDocument()
+    expect(screen.getByText('network timeout')).toBeInTheDocument()
   })
 
-  it('dismiss hides the banner', () => {
+  it('dismiss hides the toast', () => {
     const { mock, emit } = makeUpdaterMock()
     ;(window as any).updater = mock
     render(<UpdateBanner />)
@@ -105,20 +108,20 @@ describe('UpdateBanner', () => {
     act(() => emit('available', { version: '3.0.0' }))
     fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
 
-    expect(screen.queryByText(/3\.0\.0 is available/)).toBeNull()
+    expect(screen.queryByText('Update available')).toBeNull()
   })
 
-  it('re-shows banner after dismiss when download completes', () => {
+  it('re-shows toast after dismiss when download completes', () => {
     const { mock, emit } = makeUpdaterMock()
     ;(window as any).updater = mock
     render(<UpdateBanner />)
 
     act(() => emit('available', { version: '3.0.0' }))
     fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
-    expect(screen.queryByText(/3\.0\.0 is available/)).toBeNull()
+    expect(screen.queryByText('Update available')).toBeNull()
 
     act(() => emit('downloaded', { version: '3.0.0' }))
-    expect(screen.getByText(/3\.0\.0 is ready to install/)).toBeInTheDocument()
+    expect(screen.getByText('Ready to install')).toBeInTheDocument()
   })
 
   it('cleans up all listeners on unmount', () => {
