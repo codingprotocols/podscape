@@ -3,7 +3,7 @@
 A desktop Kubernetes management app built on Electron + React + TypeScript + Go.
 Manage clusters, stream logs, exec into containers, inspect RBAC, visualise network topology, and more — all from a single native app.
 
-**[Download](https://github.com/codingprotocols/podscape/releases/latest)** · **[Docs](https://github.com/codingprotocols/podscape/tree/main/docs)** · **[Issues](https://github.com/codingprotocols/podscape/issues)**
+**[Download](https://github.com/codingprotocols/podscape/releases/latest)** · **[Docs](https://codingprotocols.github.io/podscape/)** · **[Issues](https://github.com/codingprotocols/podscape/issues)**
 
 ---
 
