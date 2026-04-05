@@ -116,7 +116,7 @@ dist-ssr
 CLAUDE.md
 .claude/
 UI_DESIGN_PATTERNS.md
-docs/superpowers
+docs/superpowers/*
 
 # Podscape specific
 /out/
