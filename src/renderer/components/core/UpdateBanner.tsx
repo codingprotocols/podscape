@@ -1,5 +1,10 @@
 import React, { useEffect, useState } from 'react'
 import { Download, RefreshCw, X } from 'lucide-react'
+import { isMac } from '../../utils/platform'
+
+// On macOS with hiddenInset titlebar the traffic-light buttons are inset into
+// the content area at the top-left (~72 px wide). Push banner content past them.
+const macPadding = isMac ? 'pl-[80px]' : ''
 
 type UpdateState =
   | { status: 'idle' }
@@ -39,7 +44,7 @@ export default function UpdateBanner(): JSX.Element | null {
 
   if (update.status === 'error') {
     return (
-      <div className="fixed inset-x-0 top-0 z-[10002] flex items-center gap-3 px-4 py-2 bg-amber-500 text-white text-xs font-medium shadow-lg">
+      <div className={`fixed inset-x-0 top-0 z-[10002] flex items-center gap-3 px-4 py-2 bg-amber-500 text-white text-xs font-medium shadow-lg ${macPadding}`}>
         <span className="flex-1">Update check failed: {update.message}</span>
         <button aria-label="Dismiss" onClick={() => setDismissed(true)} className="p-0.5 hover:bg-white/20 rounded transition-colors">
           <X size={14} />
@@ -50,7 +55,7 @@ export default function UpdateBanner(): JSX.Element | null {
 
   if (update.status === 'available') {
     return (
-      <div className="fixed inset-x-0 top-0 z-[10002] flex items-center gap-3 px-4 py-2 bg-blue-600 text-white text-xs font-medium shadow-lg">
+      <div className={`fixed inset-x-0 top-0 z-[10002] flex items-center gap-3 px-4 py-2 bg-blue-600 text-white text-xs font-medium shadow-lg ${macPadding}`}>
         <span className="flex-1">Podscape {update.version} is available.</span>
         <button
           onClick={() => window.updater?.download()}
@@ -68,7 +73,7 @@ export default function UpdateBanner(): JSX.Element | null {
 
   if (update.status === 'downloading') {
     return (
-      <div className="fixed inset-x-0 top-0 z-[10002] flex items-center gap-3 px-4 py-2 bg-blue-600 text-white text-xs font-medium shadow-lg">
+      <div className={`fixed inset-x-0 top-0 z-[10002] flex items-center gap-3 px-4 py-2 bg-blue-600 text-white text-xs font-medium shadow-lg ${macPadding}`}>
         <span>Downloading update… {update.percent}%</span>
         <div className="flex-1 h-1 bg-white/20 rounded-full overflow-hidden">
           <div
@@ -82,7 +87,7 @@ export default function UpdateBanner(): JSX.Element | null {
 
   if (update.status === 'ready') {
     return (
-      <div className="fixed inset-x-0 top-0 z-[10002] flex items-center gap-3 px-4 py-2 bg-emerald-600 text-white text-xs font-medium shadow-lg">
+      <div className={`fixed inset-x-0 top-0 z-[10002] flex items-center gap-3 px-4 py-2 bg-emerald-600 text-white text-xs font-medium shadow-lg ${macPadding}`}>
         <span className="flex-1">Podscape {update.version} is ready to install.</span>
         <button
           onClick={() => window.updater?.install()}
