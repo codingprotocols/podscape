@@ -8,11 +8,16 @@ type UpdateState =
   | { status: 'ready'; version: string }
   | { status: 'error'; message: string }
 
+// Auto-dismiss the low-urgency "available" toast after this many ms.
+const AUTO_DISMISS_MS = 8000
+
 export default function UpdateBanner(): JSX.Element | null {
   const [update, setUpdate] = useState<UpdateState>({ status: 'idle' })
   const [dismissed, setDismissed] = useState(false)
   const [visible, setVisible] = useState(false)
 
+  // Wire up updater events. Each handler sets visible:true so the slide-in
+  // animation fires whenever a new state arrives (including after dismiss).
   useEffect(() => {
     const w = window.updater
     if (!w) return
@@ -42,20 +47,28 @@ export default function UpdateBanner(): JSX.Element | null {
     return () => offs.forEach((off) => off())
   }, [])
 
-  // Animate in after mount
+  // Auto-dismiss the "available" toast after AUTO_DISMISS_MS.
   useEffect(() => {
-    if (update.status !== 'idle' && !dismissed) {
-      const t = setTimeout(() => setVisible(true), 50)
-      return () => clearTimeout(t)
-    }
-    return undefined
-  }, [update.status])
+    if (update.status !== 'available' || dismissed) return
+    const t = setTimeout(() => setDismissed(true), AUTO_DISMISS_MS)
+    return () => clearTimeout(t)
+  }, [update.status, dismissed])
 
   if (dismissed || update.status === 'idle') return null
 
   const baseClass = `fixed bottom-6 right-6 z-[10002] w-[300px] rounded-xl shadow-2xl
     border transition-all duration-300 ease-out
     ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`
+
+  const dismissBtn = (
+    <button
+      aria-label="Dismiss"
+      onClick={() => setDismissed(true)}
+      className="shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+    >
+      <X size={13} />
+    </button>
+  )
 
   if (update.status === 'error') {
     return (
@@ -68,13 +81,7 @@ export default function UpdateBanner(): JSX.Element | null {
             <p className="text-[11px] font-bold text-slate-800 dark:text-white">Update check failed</p>
             <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed truncate">{update.message}</p>
           </div>
-          <button
-            aria-label="Dismiss"
-            onClick={() => setDismissed(true)}
-            className="shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
-          >
-            <X size={13} />
-          </button>
+          {dismissBtn}
         </div>
       </div>
     )
@@ -91,13 +98,7 @@ export default function UpdateBanner(): JSX.Element | null {
             <p className="text-[11px] font-bold text-slate-800 dark:text-white">Update available</p>
             <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Podscape {update.version}</p>
           </div>
-          <button
-            aria-label="Dismiss"
-            onClick={() => setDismissed(true)}
-            className="shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
-          >
-            <X size={13} />
-          </button>
+          {dismissBtn}
         </div>
         <div className="px-4 pb-4">
           <button
@@ -145,6 +146,7 @@ export default function UpdateBanner(): JSX.Element | null {
             <p className="text-[11px] font-bold text-slate-800 dark:text-white">Ready to install</p>
             <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Podscape {update.version}</p>
           </div>
+          {dismissBtn}
         </div>
         <div className="px-4 pb-4">
           <button

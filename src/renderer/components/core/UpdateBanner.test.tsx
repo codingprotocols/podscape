@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react'
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { vi, describe, it, expect, beforeEach, afterEach, beforeAll } from 'vitest'
 import { render, screen, act, fireEvent, cleanup } from '@testing-library/react'
 import * as matchers from '@testing-library/jest-dom/matchers'
 import UpdateBanner from './UpdateBanner'
@@ -33,12 +33,17 @@ function makeUpdaterMock() {
 }
 
 describe('UpdateBanner', () => {
+  beforeAll(() => {
+    vi.useFakeTimers()
+  })
+
   beforeEach(() => {
     delete (window as any).updater
   })
 
   afterEach(() => {
     cleanup()
+    vi.clearAllTimers()
   })
 
   it('renders nothing when no updater is present', () => {
@@ -122,6 +127,40 @@ describe('UpdateBanner', () => {
 
     act(() => emit('downloaded', { version: '3.0.0' }))
     expect(screen.getByText('Ready to install')).toBeInTheDocument()
+  })
+
+  it('auto-dismisses the available toast after 8 seconds', () => {
+    const { mock, emit } = makeUpdaterMock()
+    ;(window as any).updater = mock
+    render(<UpdateBanner />)
+
+    act(() => emit('available', { version: '3.0.0' }))
+    expect(screen.getByText('Update available')).toBeInTheDocument()
+
+    act(() => vi.advanceTimersByTime(8000))
+    expect(screen.queryByText('Update available')).toBeNull()
+  })
+
+  it('does not auto-dismiss downloading or ready states', () => {
+    const { mock, emit } = makeUpdaterMock()
+    ;(window as any).updater = mock
+    render(<UpdateBanner />)
+
+    act(() => emit('downloaded', { version: '3.0.0' }))
+    act(() => vi.advanceTimersByTime(10000))
+    expect(screen.getByText('Ready to install')).toBeInTheDocument()
+  })
+
+  it('ready state can be dismissed with X button', () => {
+    const { mock, emit } = makeUpdaterMock()
+    ;(window as any).updater = mock
+    render(<UpdateBanner />)
+
+    act(() => emit('downloaded', { version: '3.0.0' }))
+    expect(screen.getByText('Ready to install')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
+    expect(screen.queryByText('Ready to install')).toBeNull()
   })
 
   it('cleans up all listeners on unmount', () => {
