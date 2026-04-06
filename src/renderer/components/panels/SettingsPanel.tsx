@@ -10,11 +10,13 @@ interface SettingsForm {
   kubeconfigPath: string
   prodContexts: string[]
   prometheusUrls: Record<string, string>
+  costUrls: Record<string, string>
 }
 
 export default function SettingsPanel(): JSX.Element {
-  const { theme, setTheme, init, prodContexts, probePrometheus, prometheusAvailable, selectedContext } = useAppStore()
-  const [form, setForm] = useState<SettingsForm>({ shellPath: '', theme, kubeconfigPath: '', prodContexts: [], prometheusUrls: {} })
+  const { theme, setTheme, init, prodContexts, probePrometheus, prometheusAvailable, probeCost, costAvailable, selectedContext } = useAppStore()
+  const [form, setForm] = useState<SettingsForm>({ shellPath: '', theme, kubeconfigPath: '', prodContexts: [], prometheusUrls: {}, costUrls: {} })
+  const [costProbing, setCostProbing] = useState(false)
   const [probing, setProbing] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -29,7 +31,7 @@ export default function SettingsPanel(): JSX.Element {
   const [showEditor, setShowEditor] = useState(false)
 
   useEffect(() => {
-    window.settings.get().then(s => setForm({ ...s, prodContexts: s.prodContexts ?? prodContexts, prometheusUrls: s.prometheusUrls ?? {} })).catch(err => {
+    window.settings.get().then(s => setForm({ ...s, prodContexts: s.prodContexts ?? prodContexts, prometheusUrls: s.prometheusUrls ?? {}, costUrls: s.costUrls ?? {} })).catch(err => {
       console.error('[SettingsPanel] Failed to load settings:', err)
       setForm(f => ({ ...f, prodContexts }))
     })
@@ -379,6 +381,74 @@ export default function SettingsPanel(): JSX.Element {
                     </div>
                   </div>
                </div>
+            </div>
+          </section>
+
+          {/* ── Cost (Kubecost / OpenCost) ──────────────────────────────────────── */}
+          <section className="space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                <Activity size={14} />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-800 dark:text-white">Cost Integration</h2>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Kubecost or OpenCost — auto-detected at localhost:9090
+                </p>
+              </div>
+              <div className="ml-auto">
+                <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                  costAvailable === true
+                    ? 'bg-emerald-500/10 text-emerald-500'
+                    : costAvailable === false
+                      ? 'bg-slate-500/10 text-slate-400'
+                      : 'bg-amber-500/10 text-amber-500'
+                }`}>
+                  {costAvailable === true ? 'Connected' : costAvailable === false ? 'Not detected' : 'Detecting…'}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900/50 rounded-2xl border border-slate-200/80 dark:border-white/5 p-6 space-y-4">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Manual Endpoint URL</label>
+                  <span className="text-[10px] font-mono text-slate-400 opacity-60">{selectedContext}</span>
+                </div>
+                <div className="flex gap-4">
+                  <input
+                    type="text"
+                    value={selectedContext ? (form.costUrls[selectedContext] ?? '') : ''}
+                    onChange={e => {
+                      if (!selectedContext) return
+                      const url = e.target.value
+                      setForm(f => ({ ...f, costUrls: { ...f.costUrls, [selectedContext]: url } }))
+                    }}
+                    placeholder="http://localhost:9090"
+                    className="flex-1 text-[11px] bg-white dark:bg-black/40 border border-slate-200 dark:border-white/10
+                               text-slate-800 dark:text-slate-100 placeholder-slate-700
+                               rounded-xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-mono shadow-inner"
+                  />
+                  <button
+                    onClick={async () => {
+                      setCostProbing(true)
+                      try {
+                        const current = await window.settings.get()
+                        await window.settings.set({ ...current, costUrls: form.costUrls })
+                      } catch (err) {
+                        console.error('[SettingsPanel] Failed to save Cost URL:', err)
+                      }
+                      await probeCost()
+                      setCostProbing(false)
+                    }}
+                    disabled={costProbing}
+                    className="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-emerald-400 hover:text-emerald-300
+                               bg-emerald-500/10 border border-emerald-500/20 rounded-xl transition-all"
+                  >
+                    {costProbing ? 'Probing...' : 'Detect Now'}
+                  </button>
+                </div>
+              </div>
             </div>
           </section>
 
