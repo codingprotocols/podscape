@@ -690,6 +690,7 @@ export type ResourceKind =
   | 'security'
   | 'tls'
   | 'gitops'
+  | 'cost'
   | 'helm'
   // Istio service mesh
   | 'istio-virtualservices'
