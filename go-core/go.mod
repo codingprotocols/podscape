@@ -165,7 +165,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apiextensions-apiserver v0.35.2
 	k8s.io/apiserver v0.35.2 // indirect
-	k8s.io/cli-runtime v0.34.0 // indirect; indirect — TODO: upgrade to v0.35.x alongside kubectl to resolve k8s minor-version skew (used only by Helm CLI, unrelated to apiextensions path)
+	k8s.io/cli-runtime v0.34.0 // indirect — TODO: upgrade to v0.35.x alongside kubectl to resolve k8s minor-version skew (used only by Helm CLI, unrelated to apiextensions path)
 	k8s.io/component-base v0.35.2 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
