@@ -103,11 +103,6 @@ export default function HelmRepoBrowser({ installHint, onHintConsumed }: Props):
     }
   }
 
-  // Determine if the hint's repo is already added.
-  const hintRepoMissing = installHint
-    ? !repos.some(r => r.name === installHint.repoName)
-    : false
-
   // The "pending" hint passed via prop may already be cleared (onHintConsumed),
   // so we track the last seen hint separately for the "Add repo" banner.
   const [pendingHint, setPendingHint] = useState<HelmInstallHint | null>(null)
