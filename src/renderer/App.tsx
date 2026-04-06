@@ -27,6 +27,7 @@ const NetworkPanel = React.lazy(() => import('./components/panels/NetworkPanel')
 const ConnectivityTester = React.lazy(() => import('./components/advanced/ConnectivityTester'))
 const DebugPodLauncher = React.lazy(() => import('./components/advanced/DebugPodLauncher'))
 const ProviderResourcePanel = React.lazy(() => import('./components/panels/ProviderResourcePanel'))
+const CostPanel = React.lazy(() => import('./components/panels/CostPanel'))
 
 // Kick off background prefetch after the initial render so chunks are cached
 // before the user clicks — eliminates the per-panel loading delay
@@ -40,6 +41,7 @@ function prefetchPanels() {
   import('./components/advanced/ConnectivityTester')
   import('./components/advanced/DebugPodLauncher')
   import('./components/panels/ProviderResourcePanel')
+  import('./components/panels/CostPanel')
 }
 
 // Error boundary for individual sections to prevent one failing fetch from crashing the entire app
@@ -247,6 +249,8 @@ export default function App(): JSX.Element {
               <Suspense fallback={null}><ConnectivityTester /></Suspense>
             ) : section === 'debugpod' ? (
               <Suspense fallback={null}><DebugPodLauncher /></Suspense>
+            ) : section === 'cost' ? (
+              <Suspense fallback={null}><CostPanel /></Suspense>
             ) : (section as string).startsWith('istio-') || (section as string).startsWith('traefik-') || (section as string).startsWith('nginx-') ? (
               <Suspense fallback={null}><ProviderResourcePanel section={section} /></Suspense>
             ) : (LIST_SECTIONS as string[]).includes(section) ? (
