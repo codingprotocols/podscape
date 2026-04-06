@@ -218,6 +218,11 @@ const kubectl = {
   prometheusQueryBatch: (queries: any[], start: number, end: number) =>
     ipcRenderer.invoke('kubectl:prometheusQueryBatch', queries, start, end),
 
+  // Cost allocation (Kubecost / OpenCost)
+  costStatus: (url?: string) => ipcRenderer.invoke('kubectl:costStatus', url),
+  costAllocation: (url: string | undefined, provider: string, timeWindow: string, aggregate: string, namespace?: string) =>
+    ipcRenderer.invoke('kubectl:costAllocation', url, provider, timeWindow, aggregate, namespace),
+
   // Owner chain
   getOwnerChain: (kind: string, name: string, namespace: string) =>
     ipcRenderer.invoke('kubectl:getOwnerChain', kind, name, namespace),

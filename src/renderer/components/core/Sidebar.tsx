@@ -181,6 +181,7 @@ export default function Sidebar(): JSX.Element {
     prodContexts, setProdContexts,
     contextSwitchStatus,
     providers,
+    costAvailable,
   } = useAppStore(useShallow(s => ({
     contexts: s.contexts,
     selectedContext: s.selectedContext,
@@ -203,6 +204,7 @@ export default function Sidebar(): JSX.Element {
     setProdContexts: s.setProdContexts,
     contextSwitchStatus: s.contextSwitchStatus,
     providers: s.providers,
+    costAvailable: s.costAvailable,
   })))
 
   const [isResizing, setIsResizing] = useState(false)
@@ -463,6 +465,12 @@ export default function Sidebar(): JSX.Element {
             <NavItem label="Helm Charts" section="helm" icon={ICONS.helm} />
             <NavItem label="GitOps" section="gitops" icon={ICONS.deploy} />
           </NavGroup>
+
+          {costAvailable === true && (
+            <NavGroup title="FinOps">
+              <NavItem label="Cost" section="cost" icon={ICONS.cost} />
+            </NavGroup>
+          )}
 
           {providers.istio && (
             <NavGroup title="Service Mesh">

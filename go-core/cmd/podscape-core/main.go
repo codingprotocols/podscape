@@ -136,6 +136,10 @@ func main() {
 	// Generic CRD resource lister (Istio, Traefik, Nginx, etc.)
 	http.HandleFunc("/customresource", handlers.HandleCustomResource)
 
+	// Cost allocation (Kubecost or OpenCost — detects whichever is deployed)
+	http.HandleFunc("/cost/status", handlers.HandleCostStatus)
+	http.HandleFunc("/cost/allocation", handlers.HandleCostAllocation)
+
 	// Build the middleware chain: mux → [token auth]
 	// CORS headers are intentionally omitted — the sidecar binds to 127.0.0.1
 	// and is only accessed by the Electron renderer (file:// / localhost origin).
