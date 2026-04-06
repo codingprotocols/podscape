@@ -1,4 +1,7 @@
 import { app, shell, BrowserWindow, dialog, ipcMain } from 'electron'
+
+// Ensure the macOS menu bar and dock show "Podscape", not the package name
+app.name = 'Podscape'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerKubectlHandlers, cancelAllLogStreams } from './ipc/kubectl'

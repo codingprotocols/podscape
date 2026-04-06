@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { ICONS, Icon } from './Icons'
 import { ResourceKind, AnyKubeResource } from '../../types'
 import { isMac } from '../../utils/platform'
@@ -85,7 +86,6 @@ type ShortcutResult = { _type: 'shortcut'; label: string; section: ResourceKind;
 type Result = ResourceResult | ShortcutResult
 
 export default function CommandPalette() {
-  const store = useAppStore()
   const {
     isSearchOpen, setSearchOpen,
     searchQuery, setSearchQuery,
@@ -97,7 +97,42 @@ export default function CommandPalette() {
     pvcs, pvs, storageclasses,
     serviceaccounts, roles, clusterroles, rolebindings, clusterrolebindings,
     nodes, namespaces, crds,
-  } = store
+  } = useAppStore(useShallow(s => ({
+    isSearchOpen: s.isSearchOpen,
+    setSearchOpen: s.setSearchOpen,
+    searchQuery: s.searchQuery,
+    setSearchQuery: s.setSearchQuery,
+    setSection: s.setSection,
+    selectNamespace: s.selectNamespace,
+    selectResource: s.selectResource,
+    pods: s.pods,
+    deployments: s.deployments,
+    daemonsets: s.daemonsets,
+    statefulsets: s.statefulsets,
+    replicasets: s.replicasets,
+    jobs: s.jobs,
+    cronjobs: s.cronjobs,
+    hpas: s.hpas,
+    pdbs: s.pdbs,
+    services: s.services,
+    ingresses: s.ingresses,
+    ingressclasses: s.ingressclasses,
+    networkpolicies: s.networkpolicies,
+    endpoints: s.endpoints,
+    configmaps: s.configmaps,
+    secrets: s.secrets,
+    pvcs: s.pvcs,
+    pvs: s.pvs,
+    storageclasses: s.storageclasses,
+    serviceaccounts: s.serviceaccounts,
+    roles: s.roles,
+    clusterroles: s.clusterroles,
+    rolebindings: s.rolebindings,
+    clusterrolebindings: s.clusterrolebindings,
+    nodes: s.nodes,
+    namespaces: s.namespaces,
+    crds: s.crds,
+  })))
 
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -134,7 +169,10 @@ export default function CommandPalette() {
   const q = searchQuery.toLowerCase().trim()
 
   const results = useMemo((): Result[] => {
-    if (!q) return []
+    // Skip all work while the palette is closed — re-runs are triggered by
+    // resource array updates and this guard prevents the expensive spread+filter
+    // from executing on every background poll when the user has the palette shut.
+    if (!isSearchOpen || !q) return []
 
     // Section shortcuts — match on label + keywords
     const shortcuts: ShortcutResult[] = SECTION_SHORTCUTS
@@ -183,6 +221,7 @@ export default function CommandPalette() {
 
     return [...shortcuts, ...matchedResources]
   }, [
+    isSearchOpen,
     pods, deployments, daemonsets, statefulsets, replicasets,
     jobs, cronjobs, hpas, pdbs,
     services, ingresses, ingressclasses, networkpolicies, endpoints,

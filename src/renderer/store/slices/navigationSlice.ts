@@ -1,6 +1,12 @@
 import { StoreSlice } from '../types'
 import { ResourceKind, AnyKubeResource } from '../../types'
 
+export interface HelmInstallHint {
+    repoName: string
+    repoUrl: string
+    chart: string
+}
+
 export interface NavigationSlice {
     section: ResourceKind
     setSection: (s: ResourceKind) => void
@@ -16,6 +22,8 @@ export interface NavigationSlice {
     isSearchOpen: boolean
     setSearchOpen: (open: boolean) => void
     resourceHistory: AnyKubeResource[]
+    helmInstallHint: HelmInstallHint | null
+    setHelmInstallHint: (hint: HelmInstallHint | null) => void
 }
 
 const ls = (key: string, fallback: string): string => {
@@ -57,4 +65,6 @@ export const createNavigationSlice: StoreSlice<NavigationSlice> = (set, get) => 
     isSearchOpen: false,
     setSearchOpen: (isSearchOpen) => set({ isSearchOpen }),
     resourceHistory: [],
+    helmInstallHint: null,
+    setHelmInstallHint: (helmInstallHint) => set({ helmInstallHint }),
 })

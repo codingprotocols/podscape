@@ -545,6 +545,23 @@ export function registerKubectlHandlers(): void {
     return res.json()
   })
 
+  ipcMain.handle('kubectl:costStatus', async (_e, url?: string) => {
+    const path = url ? `/cost/status?url=${encodeURIComponent(url)}` : '/cost/status'
+    const res = await checkedSidecarFetch(path)
+    return res.json()
+  })
+
+  ipcMain.handle('kubectl:costAllocation', async (_e, url: string | undefined, prov: string, win: string, agg: string, ns?: string) => {
+    const p = new URLSearchParams()
+    if (url) p.set('url', url)
+    p.set('provider', prov)
+    p.set('window', win)
+    p.set('aggregate', agg)
+    if (ns) p.set('namespace', ns)
+    const res = await checkedSidecarFetch(`/cost/allocation?${p.toString()}`)
+    return res.json()
+  })
+
   ipcMain.handle('kubectl:prometheusQueryBatch', async (_e, queries, start, end) => {
     const res = await checkedSidecarFetch('/prometheus/query_range_batch', {
       method: 'POST',

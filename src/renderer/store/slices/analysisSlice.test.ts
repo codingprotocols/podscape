@@ -130,24 +130,25 @@ describe('analysisSlice — scanSecurity', () => {
     })
 
     it('builds kubesecBatchResults map keyed by namespace/name/kind', async () => {
-        const pod = { metadata: { uid: 'u1', name: 'web', namespace: 'default' }, kind: 'Pod' } as any
+        // Use a Deployment — Pods are excluded from default scans to avoid duplicates.
+        const dep = { metadata: { uid: 'u1', name: 'web', namespace: 'default' }, kind: 'Deployment' } as any
         windowMock.kubectl.scanSecurity = vi.fn().mockResolvedValue(null)
         windowMock.kubectl.scanKubesecBatch = vi.fn().mockResolvedValue([{ score: 4 }])
-        const { state } = makeSlice({ pods: [pod] })
+        const { state } = makeSlice({ deployments: [dep] })
         await state.scanSecurity()
         expect(state.kubesecBatchResults).not.toBeNull()
-        expect(state.kubesecBatchResults['default/web/Pod']).toEqual({ score: 4 })
+        expect(state.kubesecBatchResults['default/web/Deployment']).toEqual({ score: 4 })
     })
 
     it('filters workloads by namespace when options.namespaces is provided', async () => {
         const scanKubesecBatch = vi.fn().mockResolvedValue([])
-        const pod1 = { metadata: { uid: 'u1', name: 'a', namespace: 'default' }, kind: 'Pod' } as any
-        const pod2 = { metadata: { uid: 'u2', name: 'b', namespace: 'kube-system' }, kind: 'Pod' } as any
+        const dep1 = { metadata: { uid: 'u1', name: 'a', namespace: 'default' }, kind: 'Deployment' } as any
+        const dep2 = { metadata: { uid: 'u2', name: 'b', namespace: 'kube-system' }, kind: 'Deployment' } as any
         windowMock.kubectl.scanSecurity = vi.fn().mockResolvedValue(null)
         windowMock.kubectl.scanKubesecBatch = scanKubesecBatch
-        const { state } = makeSlice({ pods: [pod1, pod2] })
+        const { state } = makeSlice({ deployments: [dep1, dep2] })
         await state.scanSecurity({ namespaces: ['default'], kinds: [], runTrivy: false, runKubesec: true })
-        expect(scanKubesecBatch).toHaveBeenCalledWith([pod1])
+        expect(scanKubesecBatch).toHaveBeenCalledWith([dep1])
     })
 
     it('filters workloads by kind when options.kinds is provided', async () => {

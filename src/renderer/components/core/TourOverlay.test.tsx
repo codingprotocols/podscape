@@ -51,4 +51,12 @@ describe('TourOverlay', () => {
     fireEvent.click(screen.getByRole('button', { name: /done/i }))
     expect(onDone).toHaveBeenCalledTimes(1)
   })
+
+  it('calls onDone when the X button is clicked', async () => {
+    const onDone = vi.fn()
+    render(<TourOverlay onDone={onDone} />)
+    await screen.findByText(/your cluster at a glance/i)
+    fireEvent.click(screen.getByRole('button', { name: /close tour/i }))
+    expect(onDone).toHaveBeenCalledTimes(1)
+  })
 })

@@ -38,9 +38,22 @@ describe('CopyButton', () => {
     await act(async () => { fireEvent.click(btn) })
     expect(btn).toHaveAttribute('data-copied', 'true')
 
-    await act(async () => { vi.advanceTimersByTime(2000) })
+    await act(async () => { vi.advanceTimersByTime(1500) })
     expect(btn).toHaveAttribute('data-copied', 'false')
 
     vi.useRealTimers()
+  })
+
+  it('does not set copied state when clipboard write fails', async () => {
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    })
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    render(<CopyButton value="fail-value" />)
+    const btn = screen.getByRole('button')
+    await act(async () => { fireEvent.click(btn) })
+    expect(btn).toHaveAttribute('data-copied', 'false')
+    expect(consoleSpy).toHaveBeenCalledOnce()
+    consoleSpy.mockRestore()
   })
 })

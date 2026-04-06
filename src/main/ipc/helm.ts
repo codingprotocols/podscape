@@ -56,10 +56,17 @@ export function registerHelmHandlers(): void {
     return 'Rollback successful'
   })
 
-  // Upgrade release with new values (values-only, same chart version)
-  ipcMain.handle('helm:upgrade', async (_event, _context: string, namespace: string, release: string, values: string) => {
+  // Upgrade release with new values (supports version upgrades if chart/version are provided)
+  ipcMain.handle('helm:upgrade', async (_event, _context: string, namespace: string, release: string, values: string, chart?: string, version?: string) => {
+    const params = new URLSearchParams({
+      namespace,
+      release,
+    })
+    if (chart) params.append('chart', chart)
+    if (version) params.append('version', version)
+
     await checkedSidecarFetch(
-      `/helm/upgrade?namespace=${encodeURIComponent(namespace)}&release=${encodeURIComponent(release)}`,
+      `/helm/upgrade?${params.toString()}`,
       { method: 'POST', headers: { 'Content-Type': 'text/yaml' }, body: values }
     )
     return 'Upgrade successful'
@@ -75,6 +82,12 @@ export function registerHelmHandlers(): void {
 
   ipcMain.handle('helm:repoList', async () => {
     const res = await checkedSidecarFetch('/helm/repos')
+    return res.json()
+  })
+
+  ipcMain.handle('helm:repoAdd', async (_e, name: string, url: string) => {
+    const params = new URLSearchParams({ name, url })
+    const res = await checkedSidecarFetch(`/helm/repos/add?${params}`, { method: 'POST' })
     return res.json()
   })
 

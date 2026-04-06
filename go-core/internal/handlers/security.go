@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -127,7 +128,15 @@ func HandleSecurityScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sseEvent(w, flusher, "result", string(output))
+	// Compact JSON before sending as SSE data — trivy outputs pretty-printed
+	// JSON with newlines, which breaks SSE field parsing (newline = field separator).
+	var compacted bytes.Buffer
+	if err := json.Compact(&compacted, output); err != nil {
+		// Not valid JSON (e.g. empty output); send as-is and let the client handle it.
+		sseEvent(w, flusher, "result", string(output))
+		return
+	}
+	sseEvent(w, flusher, "result", compacted.String())
 }
 
 func HandleKubesec(w http.ResponseWriter, r *http.Request) {

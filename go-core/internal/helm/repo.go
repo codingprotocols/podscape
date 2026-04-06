@@ -297,6 +297,40 @@ func (m *HelmRepoManager) GetValues(repoName, chartName, version string) (string
 	return "# No values.yaml found in this chart\n", nil
 }
 
+// AddRepo adds a named Helm repository and downloads its index file.
+func (m *HelmRepoManager) AddRepo(name, url string) error {
+	if !isSafeHelmIdentifier(name) {
+		return fmt.Errorf("invalid repo name: %q", name)
+	}
+
+	repoFile, err := repo.LoadFile(m.settings.RepositoryConfig)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		repoFile = repo.NewFile()
+	}
+
+	entry := &repo.Entry{Name: name, URL: url}
+	getters := getter.All(m.settings)
+	cr, err := repo.NewChartRepository(entry, getters)
+	if err != nil {
+		return fmt.Errorf("creating repo client: %w", err)
+	}
+	cr.CachePath = m.settings.RepositoryCache
+	if _, err := cr.DownloadIndexFile(); err != nil {
+		return fmt.Errorf("downloading index: %w", err)
+	}
+
+	repoFile.Update(entry)
+	if err := repoFile.WriteFile(m.settings.RepositoryConfig, 0o600); err != nil {
+		return fmt.Errorf("writing repo file: %w", err)
+	}
+
+	// Reload indices so the new repo is immediately searchable.
+	return m.LoadIndices()
+}
+
 // Refresh re-downloads all repository index files.
 // progress is called with each status message (may be nil).
 func (m *HelmRepoManager) Refresh(progress func(msg string)) error {
@@ -398,13 +432,48 @@ func (m *HelmRepoManager) Install(req InstallRequest, progress func(msg string))
 
 	rel, err := installAction.Run(chart, vals)
 	if err != nil {
-		return normalizeHelmError(err, req.Name, req.Namespace)
+		normErr := normalizeHelmError(err, req.Name, req.Namespace)
+		// Resources exist outside Helm (e.g. installed via kubectl). Retry
+		// as a forced upgrade-or-install so Helm takes ownership.
+		if isOwnershipConflict(err) {
+			if progress != nil {
+				progress("Resources exist outside Helm — retrying as upgrade --install --force…")
+			}
+			upgradeAction := action.NewUpgrade(actionConfig)
+			upgradeAction.Install = true
+			upgradeAction.Force = true
+			upgradeAction.Namespace = req.Namespace
+			upgradeAction.Version = req.Version
+			upgradeAction.ReuseValues = false
+			rel2, err2 := upgradeAction.Run(req.Name, chart, vals)
+			if err2 != nil {
+				return normalizeHelmError(err2, req.Name, req.Namespace)
+			}
+			if progress != nil {
+				progress(fmt.Sprintf("Successfully installed %s (revision %d)", rel2.Name, rel2.Version))
+			}
+			return nil
+		}
+		return normErr
 	}
 
 	if progress != nil {
 		progress(fmt.Sprintf("Successfully installed %s (revision %d)", rel.Name, rel.Version))
 	}
 	return nil
+}
+
+// isOwnershipConflict reports whether the Helm error is the "resource exists
+// but is not owned by Helm" class of error (missing managed-by label /
+// release annotations).
+func isOwnershipConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "cannot be imported into the current release") ||
+		strings.Contains(msg, "invalid ownership metadata") ||
+		strings.Contains(msg, `missing key "app.kubernetes.io/managed-by"`)
 }
 
 // normalizeHelmError converts helm errors into user-friendly messages.

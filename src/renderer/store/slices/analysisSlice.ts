@@ -14,7 +14,8 @@ export interface AnalysisSlice {
     securityScanProgressLines: string[]
     kubesecBatchResults: Record<string, any> | null
     trivyAvailable: boolean | null
-    scanSecurity: (options?: CustomScanOptions) => Promise<void>
+    scanInBackground: boolean
+    scanSecurity: (options?: CustomScanOptions, background?: boolean) => Promise<void>
 }
 
 export const createAnalysisSlice: StoreSlice<AnalysisSlice> = (set, get) => ({
@@ -24,6 +25,7 @@ export const createAnalysisSlice: StoreSlice<AnalysisSlice> = (set, get) => ({
     securityScanProgressLines: [],
     kubesecBatchResults: null,
     trivyAvailable: null,
+    scanInBackground: false,
 
     scanResource: (resource) => {
         if (!resource?.metadata?.uid) return
@@ -47,8 +49,8 @@ export const createAnalysisSlice: StoreSlice<AnalysisSlice> = (set, get) => ({
 
     clearScanResults: () => set((state) => ({ ...state, scanResults: {} })),
 
-    scanSecurity: async (options?: CustomScanOptions) => {
-        set({ securityScanning: true, error: null, securityScanProgressLines: [] })
+    scanSecurity: async (options?: CustomScanOptions, background = false) => {
+        set({ securityScanning: true, scanInBackground: background, error: null, securityScanProgressLines: [] })
 
         // Synthetic milestone helper — prefixed with '› ' so the UI can style them distinctly.
         const milestone = (msg: string) =>
@@ -58,15 +60,24 @@ export const createAnalysisSlice: StoreSlice<AnalysisSlice> = (set, get) => ({
         let workloads = [...pods, ...deployments, ...statefulsets, ...daemonsets, ...jobs, ...cronjobs]
 
         // Apply scope filters when a custom scan is requested.
+        const userSelectedKinds = options?.kinds ?? []
         if (options) {
             if (options.namespaces.length > 0) {
                 const nsSet = new Set(options.namespaces)
                 workloads = workloads.filter(w => nsSet.has(w.metadata.namespace || ''))
             }
-            if (options.kinds.length > 0) {
-                const kindSet = new Set(options.kinds.map(k => k.toLowerCase()))
+            if (userSelectedKinds.length > 0) {
+                const kindSet = new Set(userSelectedKinds.map(k => k.toLowerCase()))
                 workloads = workloads.filter(w => kindSet.has((w.kind || '').toLowerCase()))
             }
+        }
+
+        // Exclude Pods unless the user explicitly selected the Pod kind in a custom scan.
+        // Pods duplicate findings from their parent controllers (Deployment, StatefulSet, etc.)
+        // and produce noisy, redundant results in kubesec and image extraction.
+        const podKindSelected = userSelectedKinds.map(k => k.toLowerCase()).includes('pod')
+        if (!podKindSelected) {
+            workloads = workloads.filter(w => w.kind !== 'Pod')
         }
 
         const runTrivy = !options || options.runTrivy
@@ -151,7 +162,25 @@ export const createAnalysisSlice: StoreSlice<AnalysisSlice> = (set, get) => ({
             stateUpdate.error = error
 
             milestone('Processing results...')
+            stateUpdate.scanInBackground = false
             set(stateUpdate)
+
+            // Fire a system notification when a background scan finishes.
+            if (background && 'Notification' in window) {
+                const issueCount =
+                    (stateUpdate.securityScanResults?.Resources?.length ?? 0) +
+                    Object.values(stateUpdate.kubesecBatchResults ?? {}).filter((r: any) => r?.issues?.length).length
+                Notification.requestPermission().then(perm => {
+                    if (perm === 'granted') {
+                        new Notification('Security Scan Complete', {
+                            body: issueCount > 0
+                                ? `Found issues in ${issueCount} resource${issueCount !== 1 ? 's' : ''}. Open Security Hub to review.`
+                                : 'No issues found across all resources.',
+                            icon: undefined,
+                        })
+                    }
+                })
+            }
         } finally {
             unsubProgress()
         }

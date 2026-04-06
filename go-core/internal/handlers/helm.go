@@ -134,12 +134,15 @@ func HandleHelmUpgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	chartName := r.URL.Query().Get("chart")
+	version := r.URL.Query().Get("version")
+
 	store.Store.RLock()
 	kubeconfig := store.Store.Kubeconfig
 	context := store.Store.ActiveContextName
 	store.Store.RUnlock()
 
-	if err := helm.UpgradeRelease(kubeconfig, context, namespace, releaseName, string(body)); err != nil {
+	if err := helm.UpgradeRelease(kubeconfig, context, namespace, releaseName, chartName, version, string(body)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -177,6 +180,26 @@ func HandleHelmRepoList(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(repos)
+}
+
+func HandleHelmRepoAdd(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	name := r.URL.Query().Get("name")
+	url := r.URL.Query().Get("url")
+	if name == "" || url == "" {
+		http.Error(w, "name and url are required", http.StatusBadRequest)
+		return
+	}
+	mgr := helm.GetRepoManager()
+	if err := mgr.AddRepo(name, url); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
 func HandleHelmRepoSearch(w http.ResponseWriter, r *http.Request) {
@@ -265,6 +288,15 @@ func HandleHelmInstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read the request body before writing any response headers.
+	// Writing headers + flushing before reading causes HTTP/1.1 to discard
+	// the body mid-stream, resulting in "failed to read request body".
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read request body", http.StatusBadRequest)
+		return
+	}
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
@@ -275,12 +307,6 @@ func HandleHelmInstall(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		sseEvent(w, flusher, "error", "failed to read request body")
-		return
-	}
 
 	err = helm.InstallFromJSON(body, func(msg string) {
 		sseEvent(w, flusher, "progress", msg)

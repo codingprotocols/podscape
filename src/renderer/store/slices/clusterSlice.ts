@@ -142,6 +142,10 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             helmReleases: [],
             prometheusAvailable: null,
             prometheusProbeError: null,
+            costAvailable: null,
+            costProvider: '',
+            costError: null,
+            costAllocations: [],
             metricsError: null,
             // Reset provider detection so stale flags from the old cluster don't
             // briefly show sidebar groups that don't exist in the new cluster.
@@ -194,6 +198,7 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
                 await get().loadSection(get().section)
                 get().preloadSearchResources() // background, fire-and-forget
                 get().fetchProviders()          // background, fire-and-forget
+                get().probeCost()               // background, fire-and-forget
                 // Prometheus is opt-in — only probe when the user clicks
                 // "Detect Now" in Settings. Auto-probing on every context
                 // switch causes false positives or spurious error messages.

@@ -13,6 +13,7 @@ import type { RolloutRevision } from '../../common/constants'
 import { AnalysisSlice } from './slices/analysisSlice'
 import { OperationSlice } from './slices/operationSlice'
 import { ProvidersSlice } from './slices/providersSlice'
+import { CostSlice } from './slices/costSlice'
 
 declare global {
     interface Window {
@@ -85,6 +86,8 @@ declare global {
             onSecurityProgress: (cb: (line: string) => void) => () => void
             prometheusStatus: (url?: string) => Promise<{ available: boolean; error?: string }>
             prometheusQueryBatch: (queries: Array<{ query: string; label: string }>, start: number, end: number) => Promise<Array<{ label: string; points: Array<{ t: number; v: number }>; error?: string }>>
+            costStatus: (url?: string) => Promise<{ available: boolean; provider: string; error?: string }>
+            costAllocation: (url: string | undefined, provider: string, timeWindow: string, aggregate: string, namespace?: string) => Promise<unknown[]>
             getOwnerChain: (kind: string, name: string, namespace: string) => Promise<OwnerChainResponse>
             getTLSCerts: (namespace?: string) => Promise<any[]>
             getGitOps: (namespace?: string) => Promise<any>
@@ -97,7 +100,8 @@ declare global {
             history: (context: string, namespace: string, release: string) => Promise<unknown[]>
             rollback: (context: string, namespace: string, release: string, revision: number) => Promise<string>
             uninstall: (context: string, namespace: string, release: string) => Promise<string>
-            upgrade: (context: string, namespace: string, release: string, values: string) => Promise<string>
+            upgrade: (context: string, namespace: string, release: string, values: string, chart?: string, version?: string) => Promise<string>
+            repoAdd: (name: string, url: string) => Promise<{ ok: boolean }>
             repoList: () => Promise<Array<{ name: string; url: string }>>
             repoSearch: (query: string, limit: number, offset: number) => Promise<{ charts: Array<{ name: string; repo: string; description: string; version: string; appVersion: string }>; total: number }>
             repoVersions: (repoName: string, chartName: string) => Promise<Array<{ version: string; appVersion: string; description: string }>>
@@ -116,8 +120,8 @@ declare global {
             onExit: (id: string, cb: () => void) => () => void
         }
         settings: {
-            get: () => Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean }>
-            set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean }) => Promise<void>
+            get: () => Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; costUrls?: Record<string, string>; tourCompleted: boolean }>
+            set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; costUrls?: Record<string, string>; tourCompleted: boolean }) => Promise<void>
             checkTools: () => Promise<{ kubeconfigOk: boolean; trivyOk: boolean }>
         }
         kubeconfig: {
@@ -156,7 +160,7 @@ export interface ExecSession {
     target: ExecTarget
 }
 
-export interface AppStore extends AnalysisSlice, OperationSlice, ProvidersSlice {
+export interface AppStore extends AnalysisSlice, OperationSlice, ProvidersSlice, CostSlice {
     // Navigation
     section: ResourceKind
     setSection: (s: ResourceKind) => void
@@ -171,6 +175,8 @@ export interface AppStore extends AnalysisSlice, OperationSlice, ProvidersSlice 
     setSearchQuery: (q: string) => void
     isSearchOpen: boolean
     setSearchOpen: (open: boolean) => void
+    helmInstallHint: import('./slices/navigationSlice').HelmInstallHint | null
+    setHelmInstallHint: (hint: import('./slices/navigationSlice').HelmInstallHint | null) => void
 
     // Cluster selection
     contexts: KubeContextEntry[]

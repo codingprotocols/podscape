@@ -253,16 +253,17 @@ describe('resourceSlice', () => {
             ]
             windowMock.kubectl.scanKubesecBatch.mockResolvedValue(batchResults)
 
-            state.pods = [
-                { metadata: { name: 'pod-a', namespace: 'ns1', uid: '1', creationTimestamp: '', labels: {} }, kind: 'Pod', apiVersion: 'v1', spec: {}, status: {} },
-                { metadata: { name: 'pod-b', namespace: 'ns2', uid: '2', creationTimestamp: '', labels: {} }, kind: 'Pod', apiVersion: 'v1', spec: {}, status: {} },
+            // Use Deployments — Pods are excluded from default scans to avoid duplicates.
+            state.deployments = [
+                { metadata: { name: 'dep-a', namespace: 'ns1', uid: '1', creationTimestamp: '', labels: {} }, kind: 'Deployment', apiVersion: 'apps/v1', spec: {}, status: {} },
+                { metadata: { name: 'dep-b', namespace: 'ns2', uid: '2', creationTimestamp: '', labels: {} }, kind: 'Deployment', apiVersion: 'apps/v1', spec: {}, status: {} },
             ]
 
             const slice = createAnalysisSlice(set, get, {} as any)
             await slice.scanSecurity()
 
-            expect(state.kubesecBatchResults?.['ns1/pod-a/Pod']).toEqual(batchResults[0])
-            expect(state.kubesecBatchResults?.['ns2/pod-b/Pod']).toEqual(batchResults[1])
+            expect(state.kubesecBatchResults?.['ns1/dep-a/Deployment']).toEqual(batchResults[0])
+            expect(state.kubesecBatchResults?.['ns2/dep-b/Deployment']).toEqual(batchResults[1])
         })
 
         it('sets kubesecBatchResults=null and clears securityScanning when kubesec fails', async () => {

@@ -1,11 +1,20 @@
 // Pure function extracted from SecurityHub — no React/store dependencies, fully testable.
 
+export type Vulnerability = {
+    id: string
+    severity: string
+    title: string
+    image: string
+    pkgName: string
+    fixedVersion: string
+}
+
 export type UnifiedResource = {
     name: string
     namespace: string
     kind?: string
     issues: any[]
-    vulnerabilities: any[]
+    vulnerabilities: Vulnerability[]
 }
 
 export function buildUnifiedResults(
@@ -23,7 +32,7 @@ export function buildUnifiedResults(
             namespace: r.resource.metadata.namespace,
             kind: r.resource.kind,
             issues: r.result.issues.map((i: any) => ({ ...i, source: 'config' })),
-            vulnerabilities: [],
+            vulnerabilities: [] as Vulnerability[],
         })
     })
 
@@ -34,8 +43,8 @@ export function buildUnifiedResults(
             name: res.Name,
             namespace: res.Namespace,
             kind: res.Kind,
-            issues: [],
-            vulnerabilities: [],
+            issues: [] as any[],
+            vulnerabilities: [] as Vulnerability[],
         }
         res.Results?.forEach((tr: any) => {
             tr.Vulnerabilities?.forEach((v: any) => {
@@ -43,6 +52,9 @@ export function buildUnifiedResults(
                     id: v.VulnerabilityID,
                     severity: v.Severity,
                     title: v.Title || v.Description,
+                    image: tr.Target ?? '',
+                    pkgName: v.PkgName ?? '',
+                    fixedVersion: v.FixedVersion ?? '',
                 })
             })
         })
@@ -59,7 +71,7 @@ export function buildUnifiedResults(
             const name = parts.pop() ?? ''
             const namespace = parts.join('/')
             const existing = resourceMap.get(key) ?? {
-                name, namespace, kind, issues: [], vulnerabilities: [],
+                name, namespace, kind, issues: [] as any[], vulnerabilities: [] as Vulnerability[],
             }
             result.issues.forEach((item: any) => {
                 existing.issues.push({

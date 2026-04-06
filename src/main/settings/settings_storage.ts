@@ -8,6 +8,7 @@ export interface PodscapeSettings {
     kubeconfigPath: string         // absolute path or '' for default (~/.kube/config)
     prodContexts: string[]         // List of contexts considered "Production"
     prometheusUrls: Record<string, string>  // per-context manual Prometheus URL; '' = auto-discover
+    costUrls: Record<string, string>        // per-context Kubecost/OpenCost base URL; '' = auto-detect
     tourCompleted: boolean         // whether the post-connection tour has been shown
 }
 
@@ -20,6 +21,7 @@ const DEFAULTS: PodscapeSettings = {
     kubeconfigPath: '',
     prodContexts: [],
     prometheusUrls: {},
+    costUrls: {},
     tourCompleted: false,
 }
 

@@ -109,6 +109,7 @@ func main() {
 
 	// Helm repo browser
 	http.HandleFunc("/helm/repos", handlers.HandleHelmRepoList)
+	http.HandleFunc("/helm/repos/add", handlers.HandleHelmRepoAdd)
 	http.HandleFunc("/helm/repos/search", handlers.HandleHelmRepoSearch)
 	http.HandleFunc("/helm/repos/versions", handlers.HandleHelmRepoVersions)
 	http.HandleFunc("/helm/repos/values", handlers.HandleHelmRepoValues)
@@ -135,6 +136,10 @@ func main() {
 
 	// Generic CRD resource lister (Istio, Traefik, Nginx, etc.)
 	http.HandleFunc("/customresource", handlers.HandleCustomResource)
+
+	// Cost allocation (Kubecost or OpenCost — detects whichever is deployed)
+	http.HandleFunc("/cost/status", handlers.HandleCostStatus)
+	http.HandleFunc("/cost/allocation", handlers.HandleCostAllocation)
 
 	// Build the middleware chain: mux → [token auth]
 	// CORS headers are intentionally omitted — the sidecar binds to 127.0.0.1

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { useAppStore } from '../../store'
 import { Search, Play, Square, Trash2, Terminal } from 'lucide-react'
 
@@ -49,6 +49,25 @@ export default function UnifiedLogs(): JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null)
   const podSearchRef = useRef<HTMLDivElement>(null)
   const [showPodResults, setShowPodResults] = useState(false)
+  // Throttle log state updates: accumulate chunks into a buffer and flush at
+  // most once per 100 ms so that high-throughput streams don't trigger a React
+  // re-render on every individual log line.
+  const pendingBuffer = useRef<LogEntry[]>([])
+  const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const flushPending = useCallback(() => {
+    flushTimer.current = null
+    if (pendingBuffer.current.length === 0) return
+    const toFlush = pendingBuffer.current
+    pendingBuffer.current = []
+    setLogs(prev => [...prev, ...toFlush].slice(-1000))
+  }, [])
+
+  const scheduleFlush = useCallback(() => {
+    if (flushTimer.current === null) {
+      flushTimer.current = setTimeout(flushPending, 100)
+    }
+  }, [flushPending])
 
   const availablePods = pods.filter(p => p.status.phase === 'Running')
   
@@ -61,6 +80,7 @@ export default function UnifiedLogs(): JSX.Element {
 
   useEffect(() => {
     return () => {
+      if (flushTimer.current !== null) clearTimeout(flushTimer.current)
       stopAllStreams()
     }
   }, [])
@@ -118,6 +138,13 @@ export default function UnifiedLogs(): JSX.Element {
   }, [pods])
 
   const stopAllStreams = async () => {
+    // Cancel any pending throttle timer and flush the buffer one final time
+    // so lines that arrived just before stop aren't silently dropped.
+    if (flushTimer.current !== null) {
+      clearTimeout(flushTimer.current)
+      flushTimer.current = null
+      flushPending()
+    }
     for (const sid of Object.values(streamIds.current)) {
       await window.kubectl.stopLogs(sid)
     }
@@ -129,6 +156,12 @@ export default function UnifiedLogs(): JSX.Element {
     if (!selectedContext) return
     setIsStreaming(true)
     setLogs([])
+    // Reset the buffer so leftover chunks from a previous session don't bleed in.
+    pendingBuffer.current = []
+    if (flushTimer.current !== null) {
+      clearTimeout(flushTimer.current)
+      flushTimer.current = null
+    }
 
     for (let i = 0; i < selectedPods.length; i++) {
         const podName = selectedPods[i]
@@ -154,7 +187,11 @@ export default function UnifiedLogs(): JSX.Element {
                         timestamp: new Date(),
                         color
                     }))
-                    setLogs(prev => [...prev, ...newEntries].slice(-1000))
+                    // Accumulate into the shared buffer and schedule a single
+                    // flush — at most one setState every 100 ms regardless of
+                    // how many lines arrive per chunk.
+                    pendingBuffer.current.push(...newEntries)
+                    scheduleFlush()
                 },
                 () => {}
             )
