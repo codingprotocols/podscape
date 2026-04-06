@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { parseCpuMillicores, parseMemoryMiB } from '../../types'
-import { Search, Database, Cpu, ArrowUp, ArrowDown, RefreshCw } from 'lucide-react'
+import { Search, Database, Cpu, ArrowUp, ArrowDown, RefreshCw, Package } from 'lucide-react'
 
 // ─── Types & Sorting ──────────────────────────────────────────────────────────
 
@@ -29,8 +30,21 @@ interface ClusterStatProps {
 export default function MetricsView(): JSX.Element {
   const {
     podMetrics, nodeMetrics, nodes, pods, hpas,
-    loadSection, loadingResources, selectedNamespace, metricsError
-  } = useAppStore()
+    loadSection, loadingResources, selectedNamespace, metricsError,
+    setSection, setHelmInstallHint,
+  } = useAppStore(useShallow(s => ({
+    podMetrics: s.podMetrics,
+    nodeMetrics: s.nodeMetrics,
+    nodes: s.nodes,
+    pods: s.pods,
+    hpas: s.hpas,
+    loadSection: s.loadSection,
+    loadingResources: s.loadingResources,
+    selectedNamespace: s.selectedNamespace,
+    metricsError: s.metricsError,
+    setSection: s.setSection,
+    setHelmInstallHint: s.setHelmInstallHint,
+  })))
 
   const [searchTerm, setSearchTerm] = useState('')
   const [sortField, setSortField] = useState<SortField>('cpu')
@@ -333,12 +347,36 @@ export default function MetricsView(): JSX.Element {
                 <div className="w-16 h-16 rounded-3xl bg-red-50 dark:bg-red-500/10 flex items-center justify-center text-red-400 shadow-inner">
                   <Cpu className="w-8 h-8" />
                 </div>
-                <div className="max-w-md">
+                <div className="max-w-lg w-full">
                   <h4 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Metrics-Server Unavailable</h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
                     Could not reach the metrics-server in this cluster. Install it to enable resource monitoring.
                   </p>
-                  <div className="mt-6 p-4 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-white/5 font-mono">
+
+                  {/* One-click Helm install */}
+                  <button
+                    onClick={() => {
+                      setHelmInstallHint({
+                        repoName: 'metrics-server',
+                        repoUrl: 'https://kubernetes-sigs.github.io/metrics-server/',
+                        chart: 'metrics-server/metrics-server',
+                      })
+                      setSection('helm')
+                    }}
+                    className="mt-6 w-full flex items-center gap-3 p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-600 hover:shadow-sm transition-all text-left group"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-500 shrink-0">
+                      <Package size={15} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="block text-[11px] font-black text-slate-800 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Install via Helm</span>
+                      <span className="block text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">metrics-server/metrics-server</span>
+                    </div>
+                    <span className="text-[9px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-wider shrink-0">Open in Helm →</span>
+                  </button>
+
+                  <div className="mt-3 p-4 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-white/5 font-mono text-left">
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Or apply manually</p>
                     <code className="text-[10px] text-blue-600 dark:text-blue-400 break-all leading-relaxed">
                       kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
                     </code>
@@ -354,11 +392,31 @@ export default function MetricsView(): JSX.Element {
                 <div className="w-16 h-16 rounded-3xl bg-slate-50 dark:bg-slate-900 flex items-center justify-center text-slate-400 dark:text-slate-600 shadow-inner">
                   <Cpu className="w-8 h-8" />
                 </div>
-                <div className="max-w-md">
+                <div className="max-w-lg w-full">
                   <h4 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">No Metrics Available</h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
-                    No running pods in this namespace, or metrics-server has no data yet.
+                    No running pods in this namespace, or metrics-server is not installed yet.
                   </p>
+                  <button
+                    onClick={() => {
+                      setHelmInstallHint({
+                        repoName: 'metrics-server',
+                        repoUrl: 'https://kubernetes-sigs.github.io/metrics-server/',
+                        chart: 'metrics-server/metrics-server',
+                      })
+                      setSection('helm')
+                    }}
+                    className="mt-6 w-full flex items-center gap-3 p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-600 hover:shadow-sm transition-all text-left group"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-500 shrink-0">
+                      <Package size={15} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="block text-[11px] font-black text-slate-800 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Install metrics-server via Helm</span>
+                      <span className="block text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">metrics-server/metrics-server</span>
+                    </div>
+                    <span className="text-[9px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-wider shrink-0">Open in Helm →</span>
+                  </button>
                 </div>
               </div>
             )
