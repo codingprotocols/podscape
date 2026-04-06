@@ -19,6 +19,7 @@ const INSTALL_OPTIONS = [
         repoUrl: 'https://opencost.github.io/opencost-helm-chart',
         chart: 'opencost/opencost',
         description: 'CNCF sandbox, Apache 2.0',
+        metrics: ['Namespace cost', 'Pod cost', 'CPU / memory / GPU', 'Network egress'],
     },
     {
         label: 'Install Kubecost',
@@ -26,6 +27,7 @@ const INSTALL_OPTIONS = [
         repoUrl: 'https://kubecost.github.io/cost-analyzer',
         chart: 'kubecost/cost-analyzer',
         description: 'Commercial, free tier available',
+        metrics: ['Namespace / pod / container', 'Idle cost', 'Savings recommendations', 'Multi-cluster'],
     },
 ]
 
@@ -117,11 +119,21 @@ export default function CostPanel() {
                                     setHelmInstallHint({ repoName: opt.repoName, repoUrl: opt.repoUrl, chart: opt.chart })
                                     setSection('helm')
                                 }}
-                                className="flex flex-col items-start gap-1 p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-400 dark:hover:border-emerald-600 hover:shadow-sm transition-all text-left group"
+                                className="flex flex-col items-start gap-2 p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-400 dark:hover:border-emerald-600 hover:shadow-sm transition-all text-left group"
                             >
-                                <span className="text-[11px] font-black text-slate-800 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{opt.label}</span>
-                                <span className="text-[10px] text-slate-400 dark:text-slate-500">{opt.description}</span>
-                                <span className="mt-1 text-[9px] font-mono text-slate-300 dark:text-slate-600">{opt.chart}</span>
+                                <div>
+                                    <span className="text-[11px] font-black text-slate-800 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{opt.label}</span>
+                                    <span className="block text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{opt.description}</span>
+                                </div>
+                                <ul className="flex flex-col gap-1 w-full">
+                                    {opt.metrics.map(m => (
+                                        <li key={m} className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400">
+                                            <span className="w-1 h-1 rounded-full bg-emerald-400 dark:bg-emerald-600 shrink-0" />
+                                            {m}
+                                        </li>
+                                    ))}
+                                </ul>
+                                <span className="text-[9px] font-mono text-slate-300 dark:text-slate-600">{opt.chart}</span>
                             </button>
                         ))}
                     </div>
