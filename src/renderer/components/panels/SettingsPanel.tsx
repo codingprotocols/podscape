@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { isMac } from '../../utils/platform'
 import Editor from '@monaco-editor/react'
 import { useAppStore } from '../../store'
-import { Save, CheckCircle, Monitor, Terminal, FileCode, Activity } from 'lucide-react'
+import { Save, CheckCircle, Monitor, Terminal, FileCode, Activity, DollarSign } from 'lucide-react'
 
 interface SettingsForm {
   shellPath: string
@@ -358,7 +358,7 @@ export default function SettingsPanel(): JSX.Element {
                         }}
                         placeholder="http://127.0.0.1:9090"
                         className="flex-1 text-[11px] bg-white dark:bg-black/40 border border-slate-200 dark:border-white/10
-                                   text-slate-800 dark:text-slate-100 placeholder-slate-700
+                                   text-slate-800 dark:text-slate-100 placeholder-slate-400
                                    rounded-xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-mono shadow-inner"
                       />
                       <button
@@ -388,7 +388,7 @@ export default function SettingsPanel(): JSX.Element {
           {/* ── Cost (Kubecost / OpenCost) ──────────────────────────────────────── */}
           <section className="space-y-6 pb-20">
             <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] flex items-center gap-3">
-              <Activity size={14} />
+              <DollarSign size={14} />
               FinOps
               <span className="flex-1 h-px bg-slate-100 dark:bg-white/5" />
             </h3>
@@ -407,7 +407,7 @@ export default function SettingsPanel(): JSX.Element {
 
               <div className="p-8 space-y-6">
                 <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-6 space-y-3">
-                  <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Access Guide</p>
+                  <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Cloud Cluster Guide (EKS/GKE/AKS)</p>
                   <p className="text-[11px] text-slate-500 leading-relaxed font-medium">Use Built-in Port Forwards for easy access. Map your Kubecost or OpenCost service to local port <code className="bg-blue-500/20 px-1 rounded text-blue-300">9090</code>, and it will be auto-detected.</p>
                 </div>
 
@@ -427,7 +427,7 @@ export default function SettingsPanel(): JSX.Element {
                       }}
                       placeholder="http://127.0.0.1:9090"
                       className="flex-1 text-[11px] bg-white dark:bg-black/40 border border-slate-200 dark:border-white/10
-                                 text-slate-800 dark:text-slate-100 placeholder-slate-700
+                                 text-slate-800 dark:text-slate-100 placeholder-slate-400
                                  rounded-xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-mono shadow-inner"
                     />
                     <button

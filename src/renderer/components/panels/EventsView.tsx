@@ -31,7 +31,7 @@ export default function EventsView(): JSX.Element {
   , [events, filter, search])
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-[hsl(var(--bg-dark))]">
+    <div className="flex flex-col flex-1 min-h-0 min-w-0 bg-slate-50 dark:bg-[hsl(var(--bg-dark))]">
       {/* Sub-header for local filters */}
       <div className="px-8 py-4 border-b border-slate-200 dark:border-white/5 flex items-center justify-between bg-slate-50/50 dark:bg-white/[0.02] shrink-0">
         <div className="flex items-center gap-6">
@@ -82,6 +82,13 @@ export default function EventsView(): JSX.Element {
           </div>
         ) : (
           <div className="divide-y divide-slate-100 dark:divide-white/5">
+            {/* Column headers */}
+            <div className="flex items-center gap-5 px-8 py-2.5 bg-slate-100/60 dark:bg-white/[0.03] border-b border-slate-200 dark:border-white/5">
+              <span className="w-20 shrink-0 text-[9px] font-black text-slate-400 uppercase tracking-widest">Type</span>
+              <span className="w-56 shrink-0 text-[9px] font-black text-slate-400 uppercase tracking-widest">Reason / Object</span>
+              <span className="flex-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">Message</span>
+              <span className="w-40 shrink-0 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Age / Source</span>
+            </div>
             {filtered.map(event => (
               <EventRow key={event.metadata.uid} event={event} />
             ))}
@@ -97,36 +104,40 @@ function EventRow({ event: e }: { event: KubeEvent }) {
   const ts = e.lastTimestamp ?? e.firstTimestamp ?? e.eventTime ?? ''
 
   return (
-    <div className={`px-8 py-4 hover:bg-white/[0.02] transition-colors group relative ${isWarning ? 'bg-orange-500/[0.02]' : ''}`}>
-      {isWarning && <div className="absolute left-0 top-0 bottom-0 w-1 bg-orange-500/40" />}
-      <div className="flex items-start gap-4">
-        <div className="shrink-0 mt-1">
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider border ${isWarning
-              ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20'
-              : 'bg-slate-500/10 text-slate-500 dark:text-slate-400 border-slate-500/20'
-            }`}>
-            {e.type ?? 'Unknown'}
-          </span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-baseline gap-3 flex-wrap mb-1">
-            <span className="text-sm font-black text-slate-800 dark:text-slate-100">{e.reason ?? 'Unknown'}</span>
-            <span className="text-[11px] font-bold text-slate-400 font-mono">
-              {e.involvedObject.kind}/{e.involvedObject.name}
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">{e.message ?? '—'}</p>
-          <div className="flex items-center gap-4 mt-2">
-            {e.count && e.count > 1 && (
-              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-600 bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded-md">×{e.count}</span>
-            )}
-            {e.source?.component && (
-              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-600 uppercase tracking-widest">{e.source.component}</span>
-            )}
-            {ts && (
-              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-auto">{formatAge(ts)} ago</span>
-            )}
-          </div>
+    <div className={`relative flex items-start gap-5 px-8 py-4 hover:bg-slate-100/50 dark:hover:bg-white/[0.02] transition-colors ${isWarning ? 'bg-orange-500/[0.02]' : ''}`}>
+      {isWarning && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-orange-400/60 rounded-full" />}
+
+      {/* Type badge — fixed width column */}
+      <div className="w-20 shrink-0 pt-0.5">
+        <span className={`inline-flex items-center justify-center w-full px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider border ${isWarning
+            ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20'
+            : 'bg-slate-500/10 text-slate-500 dark:text-slate-400 border-slate-500/20'
+          }`}>
+          {e.type ?? 'Unknown'}
+        </span>
+      </div>
+
+      {/* Reason + object — fixed width column */}
+      <div className="w-56 shrink-0 pt-0.5">
+        <p className="text-[11px] font-black text-slate-800 dark:text-slate-100 truncate">{e.reason ?? 'Unknown'}</p>
+        <p className="text-[10px] font-mono text-slate-400 truncate mt-0.5">{e.involvedObject.kind}/{e.involvedObject.name}</p>
+      </div>
+
+      {/* Message — fills remaining width */}
+      <div className="flex-1 min-w-0">
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">{e.message ?? '—'}</p>
+      </div>
+
+      {/* Meta — fixed width right column */}
+      <div className="w-40 shrink-0 flex flex-col items-end gap-1 pt-0.5">
+        {ts && <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">{formatAge(ts)} ago</span>}
+        <div className="flex items-center gap-2">
+          {e.count && e.count > 1 && (
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-600 bg-slate-100 dark:bg-white/5 px-1.5 py-0.5 rounded-md">×{e.count}</span>
+          )}
+          {e.source?.component && (
+            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-wide truncate max-w-[90px]">{e.source.component}</span>
+          )}
         </div>
       </div>
     </div>
