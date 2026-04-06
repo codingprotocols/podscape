@@ -100,7 +100,7 @@ declare global {
             history: (context: string, namespace: string, release: string) => Promise<unknown[]>
             rollback: (context: string, namespace: string, release: string, revision: number) => Promise<string>
             uninstall: (context: string, namespace: string, release: string) => Promise<string>
-            upgrade: (context: string, namespace: string, release: string, values: string) => Promise<string>
+            upgrade: (context: string, namespace: string, release: string, values: string, chart?: string, version?: string) => Promise<string>
             repoAdd: (name: string, url: string) => Promise<{ ok: boolean }>
             repoList: () => Promise<Array<{ name: string; url: string }>>
             repoSearch: (query: string, limit: number, offset: number) => Promise<{ charts: Array<{ name: string; repo: string; description: string; version: string; appVersion: string }>; total: number }>

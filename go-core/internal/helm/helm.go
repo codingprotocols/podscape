@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chart"
+	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/release"
 	"sigs.k8s.io/yaml"
@@ -204,7 +206,7 @@ func UninstallRelease(kubeconfig, context, namespace, releaseName string) (*rele
 	})
 }
 
-func UpgradeRelease(kubeconfig, context, namespace, releaseName, valuesYAML string) error {
+func UpgradeRelease(kubeconfig, context, namespace, releaseName, chartName, version, valuesYAML string) error {
 	// Parse values before acquiring a connection — fail fast on bad YAML.
 	vals := map[string]interface{}{}
 	if valuesYAML != "" {
@@ -214,14 +216,32 @@ func UpgradeRelease(kubeconfig, context, namespace, releaseName, valuesYAML stri
 	}
 
 	_, err := helmRun(kubeconfig, context, namespace, false, func(cfg *action.Configuration) (struct{}, error) {
-		// Fetch the current release to reuse its chart — values-only upgrade.
-		rel, err := action.NewGet(cfg).Run(releaseName)
-		if err != nil {
-			return struct{}{}, fmt.Errorf("failed to get current release: %w", err)
-		}
 		client := action.NewUpgrade(cfg)
 		client.Namespace = namespace
-		_, err = client.Run(releaseName, rel.Chart, vals)
+		client.Version = version
+
+		var chartToUpgrade *chart.Chart
+		if chartName != "" {
+			// Upgrade to a new chart version from a repo
+			settings := newSettings(kubeconfig, context)
+			chartPath, err := client.LocateChart(chartName, settings)
+			if err != nil {
+				return struct{}{}, fmt.Errorf("failed to locate chart %s: %w", chartName, err)
+			}
+			chartToUpgrade, err = loader.Load(chartPath)
+			if err != nil {
+				return struct{}{}, fmt.Errorf("failed to load chart from %s: %w", chartPath, err)
+			}
+		} else {
+			// Values-only upgrade for the current chart
+			rel, err := action.NewGet(cfg).Run(releaseName)
+			if err != nil {
+				return struct{}{}, fmt.Errorf("failed to get current release: %w", err)
+			}
+			chartToUpgrade = rel.Chart
+		}
+
+		_, err := client.Run(releaseName, chartToUpgrade, vals)
 		return struct{}{}, err
 	})
 	return err

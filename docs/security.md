@@ -31,7 +31,7 @@ A rule-based engine that runs entirely in the renderer against the already-loade
 - **Engine**: [Aqua Security Trivy](https://github.com/aquasecurity/trivy) — invoked via `os/exec` from the sidecar.
 - **Endpoint**: `POST /security/trivy/images` (SSE stream)
 - **Deduplication**: Images are deduplicated cluster-wide before scanning — each unique tag is scanned only once regardless of how many pods use it.
-- **SSE Streaming**: Scan progress (`progress` events) and the final report (`result` event) are streamed in real-time so the UI can display granular output during long scans.
+- **SSE Streaming**: Scan progress (`progress` events) and the final report (`result` event) are streamed in real-time. The sidecar compacts Trivy's pretty-printed JSON with `json.Compact` before transmission to prevent SSE newline-splitting.
 
 ---
 
@@ -43,6 +43,20 @@ The Security Hub supports scoped scans to reduce noise:
 - **Kind filter**: scan only specific resource types (e.g. Pods, Deployments).
 - **Engine toggles**: run any combination of the built-in engine, Kubesec, and Trivy independently.
 
+> **Pod deduplication:** Pods are excluded from scans by default. A pod's security posture is determined by its parent controller (Deployment, StatefulSet, DaemonSet, etc.) — scanning both produces identical duplicate findings. To include pods explicitly, select "Pod" in the kind filter of a custom scan.
+
+---
+
+## Background Scans
+
+Full and custom scans can run in the background while you use other panels:
+
+1. Click the **▾** arrow next to the Full Scan button and choose **Run in Background**.
+2. A floating pill appears in the bottom-right corner of every screen while the scan is running. Click it to jump back to Security Hub.
+3. When the scan finishes, a **system notification** is delivered with a summary (number of affected resources, or "No issues found").
+
+Background scans require notification permission; the app requests it automatically on first background scan.
+
 ---
 
 ## UI Features
@@ -50,7 +64,10 @@ The Security Hub supports scoped scans to reduce noise:
 | Feature | Description |
 |---|---|
 | Flat / grouped view | Toggle between a flat resource list and grouping by namespace |
-| System namespace filter | Auto-hides `kube-system`, `kube-node-lease`, etc.; toggle to reveal |
+| System filter | Auto-hides `kube-system`, `kube-node-lease`, `cert-manager`, and Node resources; toggle "Show System" to reveal |
+| Colored kind badges | Every row shows a colored pill (Deployment, StatefulSet, DaemonSet, etc.) for instant resource-type identification |
+| Config / CVE panels | Expanded rows display a red "Configuration Issues" card and an orange "Image Vulnerabilities" card separately |
+| CVE detail | Each vulnerability shows the image name, package name, fix version, CVE ID, and severity |
 | Severity filter tabs | Filter results to Critical-only or Warning-only |
 | Sortable columns | Sort by resource name, namespace, kind, config issues, CVE count, or combined score |
 | Navigate to resource | Click the `↗` button on any row to open that resource's detail panel directly |

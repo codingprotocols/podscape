@@ -134,12 +134,15 @@ func HandleHelmUpgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	chartName := r.URL.Query().Get("chart")
+	version := r.URL.Query().Get("version")
+
 	store.Store.RLock()
 	kubeconfig := store.Store.Kubeconfig
 	context := store.Store.ActiveContextName
 	store.Store.RUnlock()
 
-	if err := helm.UpgradeRelease(kubeconfig, context, namespace, releaseName, string(body)); err != nil {
+	if err := helm.UpgradeRelease(kubeconfig, context, namespace, releaseName, chartName, version, string(body)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

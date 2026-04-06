@@ -24,6 +24,40 @@ type AllocationItem struct {
 	RAMCost   float64 `json:"ramCost"`
 }
 
+// normalizeURL validates and normalises a user-supplied base URL.
+// - Rejects non-http(s) schemes to prevent request-forgery via ftp://, file://, etc.
+// - Rejects control characters to prevent header injection.
+// - Adds http:// when the scheme is omitted.
+// - Rewrites localhost → 127.0.0.1 so port-forward bindings are always reached.
+func normalizeURL(u string) (string, error) {
+	u = strings.TrimSpace(u)
+	if u == "" {
+		return "", fmt.Errorf("empty URL")
+	}
+	if strings.ContainsAny(u, "\t\n\r") {
+		return "", fmt.Errorf("URL contains control characters")
+	}
+	if strings.Contains(u, "://") && !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+		return "", fmt.Errorf("URL scheme must be http or https, got %q", u)
+	}
+	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+		u = "http://" + u
+	}
+	u = strings.TrimRight(u, "/")
+	parsed, err := url.Parse(u)
+	if err != nil || parsed.Host == "" {
+		return "", fmt.Errorf("invalid URL %q: %w", u, err)
+	}
+	if strings.ContainsAny(parsed.Host, " \t\n\r@") {
+		return "", fmt.Errorf("invalid host %q", parsed.Host)
+	}
+	if parsed.Hostname() == "localhost" {
+		parsed.Host = strings.Replace(parsed.Host, "localhost", "127.0.0.1", 1)
+		u = parsed.String()
+	}
+	return u, nil
+}
+
 // probe performs a minimal allocation query and returns true if the server
 // responds with 2xx and non-HTML content. Rejecting text/html prevents false
 // positives when a proxy or UI page returns 200 OK with an HTML error page.
@@ -43,10 +77,14 @@ func probe(endpoint string) bool {
 // Returns "kubecost", "opencost", or "" (not found).
 // Never returns a non-nil error — detection failures are silent.
 func Detect(baseURL string) (string, error) {
-	if probe(baseURL + "/model/allocation?window=1d&aggregate=namespace&accumulate=true") {
+	safe, err := normalizeURL(baseURL)
+	if err != nil {
+		return "", nil
+	}
+	if probe(safe + "/model/allocation?window=1d&aggregate=namespace&accumulate=true") {
 		return "kubecost", nil
 	}
-	if probe(baseURL + "/allocation/compute?window=1d&aggregate=namespace&accumulate=true") {
+	if probe(safe + "/allocation/compute?window=1d&aggregate=namespace&accumulate=true") {
 		return "opencost", nil
 	}
 	return "", nil
@@ -71,6 +109,11 @@ func allocationEndpoint(baseURL, provider string, q url.Values) string {
 //   - aggregate: grouping ("namespace", "deployment", "pod", "controller")
 //   - namespace: optional filter; empty = all namespaces
 func QueryAllocation(baseURL, provider, window, aggregate, namespace string) ([]AllocationItem, error) {
+	safe, err := normalizeURL(baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid cost provider URL: %w", err)
+	}
+
 	q := url.Values{}
 	q.Set("window", window)
 	q.Set("aggregate", aggregate)
@@ -79,7 +122,7 @@ func QueryAllocation(baseURL, provider, window, aggregate, namespace string) ([]
 		q.Set("filterNamespaces", namespace)
 	}
 
-	endpoint := allocationEndpoint(baseURL, provider, q)
+	endpoint := allocationEndpoint(safe, provider, q)
 	resp, err := httpClient.Get(endpoint)
 	if err != nil {
 		return nil, err

@@ -133,6 +133,30 @@ The main-process `getResources` IPC handler detects this header and throws `RBAC
 
 ---
 
+## Cost Estimation
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/cost/status` | Detect whether Kubecost or OpenCost is reachable; `?url=` |
+| GET | `/cost/allocation` | Proxy an allocation query to Kubecost or OpenCost |
+
+**Allocation query params:**
+- `url` — Cost provider base URL (optional)
+- `provider` — `kubecost` or `opencost` (optional; defaults to `kubecost`)
+- `window` — Time window, e.g. `1d`, `7d`, `30d` (optional; defaults to `1d`)
+- `aggregate` — Aggregation level: `namespace`, `controller`, `pod` (optional; defaults to `namespace`)
+- `namespace` — Filter results to a specific namespace (optional)
+
+**Allocation response:**
+```json
+[
+  { "name": "default", "totalCost": 1.25, "cpuCost": 0.85, "ramCost": 0.40 },
+  { "name": "kube-system", "totalCost": 0.45, "cpuCost": 0.30, "ramCost": 0.15 }
+]
+```
+
+---
+
 ## Prometheus
 
 | Method | Path | Description |
@@ -167,7 +191,7 @@ The main-process `getResources` IPC handler detects this header and throws `RBAC
 | GET | `/helm/values` | Release values `?name=&namespace=` |
 | GET | `/helm/history` | Release history `?name=&namespace=` |
 | POST | `/helm/rollback` | Roll back a release |
-| POST | `/helm/upgrade` | Upgrade a release (SSE stream) |
+| POST | `/helm/upgrade` | `?name=&namespace=&chart=&version=` | Upgrade a release (supports cross-version upgrades) |
 | POST | `/helm/uninstall` | Uninstall a release |
 | GET | `/helm/repos` | List configured Helm repositories |
 | GET | `/helm/repos/search` | Search charts `?q=&repo=&limit=&offset=` |

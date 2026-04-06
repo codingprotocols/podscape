@@ -42,11 +42,11 @@ cd go-core && go build ./cmd/podscape-core/ && cd ..
 npm run dev
 ```
 
-## Feature Overview (v2.3.0)
+## Feature Overview (v2.5.0)
 
 | Feature | Description |
 |---|---|
-| Resource Browser | 27+ Kubernetes resource types with live informer-backed cache |
+| Resource Browser | 28 built-in Kubernetes resource types with live informer-backed cache |
 | RBAC-aware startup | Concurrent `SelfSubjectAccessReview` probe at startup; denied sections show an "Access denied" banner instead of errors |
 | Go Sidecar | Standalone `podscape-core` binary — HTTP server split across 12 handler files, shared informer cache, RBAC probe |
 | Service Mesh Support | Istio, Traefik v2/v3, NGINX Inc, NGINX Community — auto-detected per cluster via API group discovery |
@@ -54,12 +54,13 @@ npm run dev
 | CronJobs | Manual trigger support (instantiate Job from CronJob) and recent job history |
 | Prometheus Charts | CPU, memory, and network time-series charts in Pod / Node / Deployment detail panels |
 | Helm Management | List releases, inspect values, view history, rollback, and browse/install from Helm repositories; connection retry logic |
-| Security Hub | Unified kubesec config audit + Trivy image CVE scanner; export as CSV / JSON |
+| Security Hub | Kubesec config audit + Trivy image CVE scanner; config/CVE split panels, kind badges, background scan with system notification, pod deduplication; export as CSV / JSON |
 | Port Forwarding | One-click tunnel setup with auto port detection and live status |
 | Container Shell | PTY exec-into-container via xterm.js |
 | Log Streaming | Real-time WebSocket log streaming with search and fullscreen mode |
 | Network Topology | Force-directed graph of pod-to-service relationships with cross-namespace connectivity testing |
 | TLS Dashboard | Cluster-wide certificate inventory with expiry tracking |
+| Cost Estimation | Kubecost / OpenCost integration with per-namespace allocation tracking |
 | GitOps Panel | Argo CD / Flux resource overview |
 | Debug Pod | Launch an ephemeral debug container on any node |
 | Node Ops | Cordon, uncordon, and drain nodes with safety checks |

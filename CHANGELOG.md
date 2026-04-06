@@ -1,5 +1,74 @@
 # Changelog
 
+## [2.5.0] — 2026-04-06
+
+### New features
+
+#### Security Hub
+- **Background scan:** Full and custom scans can now run in the background — start a scan, continue using other panels, and receive a system notification when it completes. A floating pill in the bottom-right corner lets you jump back to Security Hub at any time.
+- **Config Issues vs Image CVEs:** Results are now split into two visually distinct panels — a red-tinted "Configuration Issues" card and an orange-tinted "Image Vulnerabilities" card — making it faster to triage each concern type separately.
+- **Richer CVE details:** Each image vulnerability now shows the affected image name, package name, and available fix version alongside the CVE ID and severity.
+- **Colored kind badges:** Resource kind (Deployment, StatefulSet, Pod, DaemonSet, etc.) is displayed as a colored pill in every result row so you can identify the resource type at a glance.
+- **Pod deduplication:** Pods are excluded from scans by default. Because a pod's security posture mirrors its parent controller (Deployment, StatefulSet, etc.), scanning both produces duplicate findings. Pods can be re-included via the Custom Scan kind filter.
+- **System node filter:** Nodes and system-namespace workloads (`kube-system`, `kube-node-lease`, `cert-manager`) are hidden by default from scan results. Toggle "Show System" to reveal them.
+
+### Improvements
+
+- **CommandPalette performance:** The palette subscribes to the store with `useShallow` and skips the 27-array resource build while closed, eliminating re-renders during normal app use.
+- **UnifiedLogs throughput:** Log chunk callbacks now flush to React state at most every 100 ms via a ref-buffer throttle, reducing render pressure from 50–100 updates/s to ≤10/s on high-verbosity services.
+
+### Fixes
+
+- **macOS app menu:** The macOS menu bar now correctly shows "Podscape" instead of "podscape-electron".
+- **Trivy scan JSON:** Trivy outputs pretty-printed multi-line JSON. Newlines in SSE data were truncating the response to a single `{`. The sidecar now compacts Trivy output with `json.Compact` before streaming.
+- **Cost API HTML response:** When a port-forward proxy returns `200 OK` with an HTML error page, `probe()` now rejects it via `Content-Type` check. `QueryAllocation` also validates before parsing and returns a clear, actionable error message.
+- **Tour overlay:** The X dismiss button now carries `aria-label="Skip tour"` consistent with the visible "Skip" button.
+- **Dashboard warning count:** Extracted into a dedicated `useMemo([events])` — no longer recomputed on pod or node list changes.
+
+---
+
+## [2.4.1] — 2026-04-06
+
+### New features
+
+#### Cost Estimation (FinOps)
+- **New Cost Panel:** Unified dashboard for Kubecost and OpenCost with provider auto-detection, bar charts for trend analysis, and per-namespace allocation tables.
+- **FinOps Sidebar Group:** New navigation group for financial operations, housing the Cost and Allocation views.
+- **One-click Installation:** Added "Install Kubecost" and "Install OpenCost" hints to the Helm panel and Cost empty states for one-click setup.
+- **Settings Integration:** Redesigned Cost Integration settings section to match Prometheus configuration style, supporting per-context manual URLs.
+
+### Improvements
+
+- **Security Hub:** Enhanced security scanning UI components and progress indicators for a more responsive scanning experience.
+- **UI/UX:** Redesigned empty states for Metrics and Cost panels with helpful troubleshooting hints and direct installation links.
+- **Events and Settings:** Consistent layout and clarity improvements across the Events resource view and Settings panel.
+
+### Fixes
+
+- **Cost Panel Polish:** Fixed layout inconsistencies, background styling, and added port-forward guidance for local cost provider access.
+- **Cluster Store:** Fixed state synchronization issues in `clusterSlice` related to provider detection switching.
+
+---
+
+## [2.4.0] — 2026-04-05
+
+### New features
+
+- **Tour Overlay:** First-time post-connection walkthrough that highlights key panels (Dashboard, Security Hub, Logs, Network, etc.) with a dismissible overlay. Completion state is persisted in `~/.podscape/settings.json`.
+- **Warning Event Banner:** Collapsible amber banner on the Dashboard surfaces Warning events for the current namespace at a glance, with a one-click dismiss per context.
+- **RestartBadge:** Restart count in the pod list is now a colored badge (green / amber / red) with a direct link to the Debug Pod panel for pods with elevated restart counts.
+- **Copy Buttons:** One-click copy added to Pod IP, Host IP, and Node Name in Pod detail; and to key-value headers in ConfigMap detail.
+- **Rollout History & Undo:** Deployment detail now shows a full revision history table. Any previous revision can be rolled back to in one click.
+
+### Improvements
+
+- **YAML Apply:** `managedFields` are stripped before server-side apply to prevent `422` errors from field-manager conflicts.
+- **YAML UX:** Structured error messages surface the specific line and field that caused an apply failure.
+- **Performance:** Reduced re-renders across ResourceList and detail panels; initial JS bundle trimmed by 21% via lazy-loading of heavy panels.
+- **Onboarding:** Heavy panels (Security Hub, Network Topology, Cost) are prefetched after the first successful context connection to eliminate loading spinners on first visit.
+
+---
+
 ## [2.3.0] — 2026-04-01
 
 ### Features

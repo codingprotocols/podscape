@@ -46,19 +46,23 @@ export const SECTION_LABELS: Record<string, string> = {
 
 // ─── Row renderers ────────────────────────────────────────────────────────────
 
-function RestartBadge({ count }: { count: number }) {
-  const handleClick = (e: React.MouseEvent) => {
-    if (count === 0) return
-    e.stopPropagation()
-    useAppStore.getState().setSection('debugpod')
-  }
-  if (count === 0) {
-    return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-400">0</span>
-  }
-  if (count < 5) {
-    return <button onClick={handleClick} className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:opacity-80">{count}</button>
-  }
-  return <button onClick={handleClick} className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 animate-pulse hover:opacity-80">{count}</button>
+function RestartBadge({ count, onNavigateToDebug }: { count: number; onNavigateToDebug: () => void }) {
+  const cls =
+    count === 0
+      ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'
+      : count < 5
+        ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 cursor-pointer hover:opacity-80'
+        : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 animate-pulse cursor-pointer hover:opacity-80'
+
+  return (
+    <span
+      className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-black font-mono ${cls}`}
+      onClick={count > 0 ? (e) => { e.stopPropagation(); onNavigateToDebug() } : undefined}
+      title={count > 0 ? 'View in Debug Pod / Restart Analyzer' : undefined}
+    >
+      {count}
+    </span>
+  )
 }
 
 const PodRow = React.memo(function PodRow({ pod }: { pod: KubePod }) {
@@ -73,7 +77,7 @@ const PodRow = React.memo(function PodRow({ pod }: { pod: KubePod }) {
         <Badge text={phase} cls={podPhaseBg(phase)} />
       </td>
       <td className="px-6 py-3 text-xs">
-        <RestartBadge count={restarts} />
+        <RestartBadge count={restarts} onNavigateToDebug={() => useAppStore.getState().setSection('debugpod')} />
       </td>
       <td className="px-6 py-3 text-xs text-slate-500 font-mono truncate max-w-[140px]">{pod.spec.nodeName ?? '—'}</td>
       <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(pod.metadata.creationTimestamp)}</td>

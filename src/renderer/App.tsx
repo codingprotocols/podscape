@@ -149,11 +149,11 @@ export default function App(): JSX.Element {
   useEffect(() => { prefetchPanels() }, [])
 
   useEffect(() => {
-    if (!selectedContext) return
+    if (!kubeconfigOk) return
     window.settings.get().then(s => {
       if (!s.tourCompleted) setShowTour(true)
     }).catch(() => { /* ignore */ })
-  }, [selectedContext])
+  }, [kubeconfigOk])
 
   const handleTourDone = async () => {
     setShowTour(false)

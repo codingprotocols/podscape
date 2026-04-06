@@ -53,7 +53,7 @@ export default function TourOverlay({ onDone }: Props): JSX.Element {
           </div>
           <button
             onClick={onDone}
-            aria-label="Dismiss tour"
+            aria-label="Close tour"
             className="text-slate-500 hover:text-slate-300 transition-colors"
           >
             <X size={16} />
