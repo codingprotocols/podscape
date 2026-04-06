@@ -154,7 +154,7 @@ export default function UpdateBanner(): JSX.Element | null {
             className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-lg transition-colors"
           >
             <RefreshCw size={12} />
-            Restart &amp; Install
+            Restart & Install
           </button>
         </div>
       </div>
