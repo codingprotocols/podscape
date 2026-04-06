@@ -13,6 +13,7 @@ import {
     EyeOff, X, SlidersHorizontal,
     Box, Layers, Database, Server, Play, Clock, Globe, FileText,
     HardDrive, TrendingUp, RefreshCw, Network, Folder, Key, ArrowUpRight,
+    Package, Wrench,
 } from 'lucide-react'
 import PageHeader from '../core/PageHeader'
 
@@ -48,6 +49,75 @@ function KindIcon({ kind }: { kind: string }) {
 }
 
 const WORKLOAD_KINDS = ['Pod', 'Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob'] as const
+
+// ── Full Scan split button ────────────────────────────────────────────────────
+
+function FullScanButton({ scanning, onScan }: { scanning: boolean; onScan: (background: boolean) => void }) {
+    const [open, setOpen] = useState(false)
+    const ref = useRef<HTMLDivElement>(null)
+
+    useEffect(() => {
+        function handle(e: MouseEvent) {
+            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+        }
+        if (open) document.addEventListener('mousedown', handle)
+        return () => document.removeEventListener('mousedown', handle)
+    }, [open])
+
+    return (
+        <div className="relative flex" ref={ref}>
+            {/* Main action */}
+            <button
+                onClick={() => { onScan(false); setOpen(false) }}
+                disabled={scanning}
+                className={`h-9 pl-4 pr-3 rounded-l-xl premium-gradient text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg transition-all active:scale-95 border-r border-white/20 ${
+                    scanning ? 'opacity-50 cursor-not-allowed' : 'hover:-translate-y-0.5 hover:shadow-blue-500/20'
+                }`}
+            >
+                {scanning
+                    ? <div className="w-3 h-3 border-[1.5px] border-white/30 border-t-white rounded-full animate-spin" />
+                    : <Search className="w-3 h-3" />
+                }
+                {scanning ? 'Scanning...' : 'Full Scan'}
+            </button>
+            {/* Dropdown arrow */}
+            <button
+                onClick={() => setOpen(o => !o)}
+                disabled={scanning}
+                className={`h-9 px-2 rounded-r-xl premium-gradient text-white shadow-lg transition-all active:scale-95 ${
+                    scanning ? 'opacity-50 cursor-not-allowed' : 'hover:-translate-y-0.5 hover:shadow-blue-500/20'
+                }`}
+            >
+                <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+            </button>
+
+            {open && (
+                <div className="absolute right-0 top-full mt-2 w-52 rounded-xl bg-white dark:bg-[#0d1525] border border-slate-200 dark:border-white/10 shadow-xl dark:shadow-2xl dark:shadow-black/50 z-50 overflow-hidden py-1">
+                    <button
+                        onClick={() => { onScan(false); setOpen(false) }}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
+                    >
+                        <Search className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                        <div>
+                            <p className="text-[11px] font-bold text-slate-800 dark:text-slate-200">Scan Now</p>
+                            <p className="text-[10px] text-slate-500">Stay on this page</p>
+                        </div>
+                    </button>
+                    <button
+                        onClick={() => { onScan(true); setOpen(false) }}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
+                    >
+                        <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <div>
+                            <p className="text-[11px] font-bold text-slate-800 dark:text-slate-200">Run in Background</p>
+                            <p className="text-[10px] text-slate-500">Navigate freely, notified when done</p>
+                        </div>
+                    </button>
+                </div>
+            )}
+        </div>
+    )
+}
 
 // ── Download helpers ──────────────────────────────────────────────────────────
 
@@ -116,7 +186,7 @@ export default function SecurityHub(): JSX.Element {
     const {
         pods, deployments, statefulsets, daemonsets, jobs, cronjobs,
         scanSecurity, securityScanResults, kubesecBatchResults,
-        trivyAvailable, securityScanning, securityScanProgressLines, error,
+        trivyAvailable, securityScanning, scanInBackground, securityScanProgressLines, error,
     } = useAppStore(useShallow(s => ({
         pods: s.pods,
         deployments: s.deployments,
@@ -129,6 +199,7 @@ export default function SecurityHub(): JSX.Element {
         kubesecBatchResults: s.kubesecBatchResults,
         trivyAvailable: s.trivyAvailable,
         securityScanning: s.securityScanning,
+        scanInBackground: s.scanInBackground,
         securityScanProgressLines: s.securityScanProgressLines,
         error: s.error,
     })))
@@ -187,6 +258,13 @@ export default function SecurityHub(): JSX.Element {
     const deferredWorkloads = useDeferredValue(allWorkloads)
     const scanResults = useMemo(() => {
         return deferredWorkloads
+            // Skip Pods that are managed by a controller (ReplicaSet, Job, DaemonSet, etc.).
+            // Their spec is identical to the parent controller which is already scanned,
+            // so including them produces duplicate findings.
+            .filter(w => {
+                if (w.kind !== 'Pod') return true
+                return !w.metadata?.ownerReferences?.length
+            })
             .map(w => ({ resource: w, result: scannerEngine.scan(w) }))
             .filter(r => r.result.issues.length > 0)
     }, [deferredWorkloads])
@@ -215,6 +293,15 @@ export default function SecurityHub(): JSX.Element {
 
     const filteredResults = useMemo(() => {
         let results = unifiedResults
+        // Hide system namespaces + cluster nodes unless the user opts in.
+        // This mirrors the workload filter and also covers trivy k8s node results
+        // which have no namespace but Kind === 'Node'.
+        if (!includeSystem) {
+            results = results.filter(r =>
+                r.kind !== 'Node' &&
+                !SYSTEM_NAMESPACES.includes(r.namespace)
+            )
+        }
         if (filterNamespace) {
             results = results.filter(r => r.namespace === filterNamespace)
         }
@@ -228,7 +315,7 @@ export default function SecurityHub(): JSX.Element {
             return results.filter(r => r.issues.some((i: any) => i.level === 'warning'))
         }
         return results
-    }, [unifiedResults, severityFilter, filterNamespace])
+    }, [unifiedResults, severityFilter, filterNamespace, includeSystem])
 
     // Namespaces that actually appear in scan results (for the filter dropdown).
     const resultNamespaces = useMemo(() => {
@@ -292,6 +379,14 @@ export default function SecurityHub(): JSX.Element {
                     onClose={() => setShowImagePicker(false)}
                 />
             )}
+            {/* Background scan banner — shown when scan is running but user is here */}
+            {securityScanning && scanInBackground && (
+                <div className="flex items-center gap-3 px-6 py-2.5 bg-emerald-500/10 border-b border-emerald-500/20 text-emerald-400 text-[11px] font-semibold">
+                    <div className="w-3 h-3 border-[1.5px] border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin shrink-0" />
+                    Scan running in background — you can navigate away and we'll notify you when it's done.
+                </div>
+            )}
+
             {/* Hero Section */}
             <PageHeader
                 title="Security Hub"
@@ -309,19 +404,10 @@ export default function SecurityHub(): JSX.Element {
                             <SlidersHorizontal className="w-3 h-3" />
                             Custom Scan
                         </button>
-                        <button
-                            onClick={() => scanSecurity({ namespaces: [], kinds: [], runKubesec: true, runTrivy: true })}
-                            disabled={securityScanning}
-                            className={`h-9 px-4 rounded-xl premium-gradient text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg transition-all active:scale-95 ${
-                                securityScanning ? 'opacity-50 cursor-not-allowed' : 'hover:-translate-y-0.5 hover:shadow-blue-500/20'
-                            }`}
-                        >
-                            {securityScanning
-                                ? <div className="w-3 h-3 border-[1.5px] border-white/30 border-t-white rounded-full animate-spin" />
-                                : <Search className="w-3 h-3" />
-                            }
-                            {securityScanning ? 'Scanning...' : 'Full Scan'}
-                        </button>
+                        <FullScanButton
+                            scanning={securityScanning}
+                            onScan={(bg) => scanSecurity({ namespaces: [], kinds: [], runKubesec: true, runTrivy: true }, bg)}
+                        />
                     </div>
                     <p className="text-[9px] text-slate-600 font-medium">
                         {trivyAvailable === false
@@ -748,7 +834,10 @@ function ResourceTable({ results, groupByNamespace }: { results: any[]; groupByN
                 <HeaderCell col="namespace" label="Namespace" className="w-32 shrink-0" />
                 <HeaderCell col="kind"      label="Kind"      className="w-24 shrink-0" />
                 <HeaderCell col="config"    label="Config"    className="w-28 shrink-0" />
-                <HeaderCell col="cves"      label="CVEs"      className="w-28 shrink-0" />
+                <div className="w-28 shrink-0 flex items-center gap-1">
+                    <Package className="w-3 h-3 text-slate-600" />
+                    <HeaderCell col="cves" label="Image CVEs" className="" />
+                </div>
                 <HeaderCell col="score"     label=""          className="w-14 shrink-0 justify-end" />
             </div>
 
@@ -802,9 +891,17 @@ function TableRow({ res, isLast }: { res: any; isLast: boolean }) {
                 <div className="w-32 shrink-0">
                     <span className="text-[11px] text-slate-500 truncate block">{res.namespace || '—'}</span>
                 </div>
-                {/* Kind badge */}
+                {/* Kind badge — coloured to match KindIcon */}
                 <div className="w-24 shrink-0">
-                    <span className="px-1.5 py-0.5 rounded bg-white/5 text-[9px] font-black text-slate-600 uppercase tracking-widest">{res.kind}</span>
+                    {(() => {
+                        const m = KIND_META[res.kind ?? ''] ?? KIND_DEFAULT
+                        return (
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wide ${m.bg} ${m.border} ${m.text}`}>
+                                {m.icon}
+                                {res.kind}
+                            </span>
+                        )
+                    })()}
                 </div>
                 {/* Config counts */}
                 <div className="w-28 shrink-0 flex items-center gap-2">
@@ -822,17 +919,21 @@ function TableRow({ res, isLast }: { res: any; isLast: boolean }) {
                         <span className="text-[10px] text-slate-700">—</span>
                     )}
                 </div>
-                {/* CVE counts */}
-                <div className="w-28 shrink-0 flex items-center gap-2">
-                    {criticalCVEs.length > 0 && (
-                        <span className="flex items-center gap-1 text-[10px] font-bold text-orange-400">
-                            <Zap className="w-3 h-3" />{criticalCVEs.length}
-                        </span>
-                    )}
-                    {otherCVEs.length > 0 && (
-                        <span className="text-[10px] text-slate-600 font-medium">+{otherCVEs.length} low</span>
-                    )}
-                    {res.vulnerabilities.length === 0 && (
+                {/* Image CVE counts — package icon makes the source explicit */}
+                <div className="w-28 shrink-0 flex items-center gap-1.5">
+                    {res.vulnerabilities.length > 0 ? (
+                        <>
+                            <Package className="w-3 h-3 text-slate-500 shrink-0" />
+                            {criticalCVEs.length > 0 && (
+                                <span className="flex items-center gap-1 text-[10px] font-bold text-orange-400">
+                                    <Zap className="w-3 h-3" />{criticalCVEs.length}
+                                </span>
+                            )}
+                            {otherCVEs.length > 0 && (
+                                <span className="text-[10px] text-slate-500 font-medium">+{otherCVEs.length}</span>
+                            )}
+                        </>
+                    ) : (
                         <span className="text-[10px] text-slate-700">—</span>
                     )}
                 </div>
@@ -855,11 +956,16 @@ function TableRow({ res, isLast }: { res: any; isLast: boolean }) {
 
             {/* Expanded detail */}
             {expanded && (
-                <div className="border-t border-slate-100 dark:border-white/[0.06] px-4 pb-4 pt-3 ml-[2.375rem] grid grid-cols-1 xl:grid-cols-2 gap-6">
+                <div className="border-t border-slate-100 dark:border-white/[0.06] px-4 pb-5 pt-4 ml-[2.375rem] flex flex-col gap-4">
                     {res.issues.length > 0 && (
-                        <div>
-                            <p className="text-[9px] font-black text-slate-600 uppercase tracking-[0.2em] mb-3">Configuration Issues</p>
-                            <div className="space-y-3">
+                        <div className="rounded-xl border border-red-200/60 dark:border-red-500/15 bg-red-50/40 dark:bg-red-500/[0.04] overflow-hidden">
+                            {/* Config panel header */}
+                            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-red-200/60 dark:border-red-500/15 bg-red-50/60 dark:bg-red-500/[0.06]">
+                                <Lock className="w-3 h-3 text-red-400 shrink-0" />
+                                <span className="text-[9px] font-black text-red-500 dark:text-red-400 uppercase tracking-[0.2em]">Configuration Issues</span>
+                                <span className="ml-auto text-[9px] font-bold text-red-400/70 bg-red-500/10 px-2 py-0.5 rounded-full">{res.issues.length}</span>
+                            </div>
+                            <div className="p-4 space-y-3">
                                 {res.issues.map((issue: any, i: number) => (
                                     <IssueRow key={i} issue={issue} />
                                 ))}
@@ -867,22 +973,15 @@ function TableRow({ res, isLast }: { res: any; isLast: boolean }) {
                         </div>
                     )}
                     {res.vulnerabilities.length > 0 && (
-                        <div>
-                            <p className="text-[9px] font-black text-slate-600 uppercase tracking-[0.2em] mb-3">Image Vulnerabilities</p>
-                            <div className="space-y-2">
-                                {(showAllVulns ? res.vulnerabilities : res.vulnerabilities.slice(0, 8)).map((v: any, vi: number) => (
-                                    <VulnRow key={vi} v={v} />
-                                ))}
-                                {res.vulnerabilities.length > 8 && (
-                                    <button
-                                        onClick={() => setShowAllVulns(s => !s)}
-                                        className="w-full text-[10px] text-blue-500 hover:text-blue-400 font-semibold text-center pt-1 transition-colors"
-                                    >
-                                        {showAllVulns
-                                            ? 'Show less'
-                                            : `+${res.vulnerabilities.length - 8} more`}
-                                    </button>
-                                )}
+                        <div className="rounded-xl border border-orange-200/60 dark:border-orange-500/15 bg-orange-50/40 dark:bg-orange-500/[0.04] overflow-hidden">
+                            {/* Image CVE panel header */}
+                            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-orange-200/60 dark:border-orange-500/15 bg-orange-50/60 dark:bg-orange-500/[0.06]">
+                                <Package className="w-3 h-3 text-orange-400 shrink-0" />
+                                <span className="text-[9px] font-black text-orange-500 dark:text-orange-400 uppercase tracking-[0.2em]">Image Vulnerabilities</span>
+                                <span className="ml-auto text-[9px] font-bold text-orange-400/70 bg-orange-500/10 px-2 py-0.5 rounded-full">{res.vulnerabilities.length}</span>
+                            </div>
+                            <div className="p-4">
+                                <ImageVulnsPanel vulnerabilities={res.vulnerabilities} showAll={showAllVulns} onToggleAll={() => setShowAllVulns(s => !s)} />
                             </div>
                         </div>
                     )}
@@ -913,22 +1012,88 @@ function IssueRow({ issue }: { issue: any }) {
     )
 }
 
+const SEVERITY_STYLES: Record<string, string> = {
+    CRITICAL: 'bg-red-500/10 text-red-400 border-red-500/20',
+    HIGH: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+    MEDIUM: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+    LOW: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
+}
+
 function VulnRow({ v }: { v: any }) {
-    const styles: Record<string, string> = {
-        CRITICAL: 'bg-red-500/10 text-red-400 border-red-500/20',
-        HIGH: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-        MEDIUM: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-        LOW: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
-    }
     return (
-        <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5">
-            <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border shrink-0 ${styles[v.severity] ?? styles.LOW}`}>
+        <div className="flex items-start gap-3 px-3 py-2.5 rounded-lg bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5">
+            <span className={`mt-0.5 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border shrink-0 ${SEVERITY_STYLES[v.severity] ?? SEVERITY_STYLES.LOW}`}>
                 {v.severity}
             </span>
             <div className="min-w-0 flex-1">
-                <span className="text-[11px] font-bold text-slate-300 block">{v.id}</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-bold text-slate-300">{v.id}</span>
+                    {v.pkgName && (
+                        <span className="text-[10px] font-mono text-slate-500 bg-slate-100 dark:bg-white/5 px-1.5 py-0.5 rounded">{v.pkgName}</span>
+                    )}
+                </div>
                 <p className="text-[10px] text-slate-500 truncate mt-0.5">{v.title}</p>
+                {v.fixedVersion && (
+                    <p className="flex items-center gap-1 text-[10px] text-emerald-500 dark:text-emerald-400 mt-1 font-medium">
+                        <Wrench className="w-2.5 h-2.5 shrink-0" />
+                        Fix available: {v.fixedVersion}
+                    </p>
+                )}
             </div>
+        </div>
+    )
+}
+
+function ImageVulnsPanel({ vulnerabilities, showAll, onToggleAll }: { vulnerabilities: any[]; showAll: boolean; onToggleAll: () => void }) {
+    // Group by image name
+    const byImage = useMemo(() => {
+        const map = new Map<string, any[]>()
+        for (const v of vulnerabilities) {
+            const img = v.image || 'Unknown image'
+            if (!map.has(img)) map.set(img, [])
+            map.get(img)!.push(v)
+        }
+        return Array.from(map.entries())
+    }, [vulnerabilities])
+
+    const flat = showAll ? vulnerabilities : vulnerabilities.slice(0, 8)
+    const flatByImage = useMemo(() => {
+        const map = new Map<string, any[]>()
+        for (const v of flat) {
+            const img = v.image || 'Unknown image'
+            if (!map.has(img)) map.set(img, [])
+            map.get(img)!.push(v)
+        }
+        return Array.from(map.entries())
+    }, [flat])
+
+    return (
+        <div>
+            {byImage.length > 1 && (
+                <p className="text-[10px] text-orange-400/70 font-medium mb-3">{byImage.length} images scanned</p>
+            )}
+            <div className="space-y-4">
+                {flatByImage.map(([img, vulns]) => (
+                    <div key={img}>
+                        <div className="flex items-center gap-2 mb-1.5">
+                            <Package className="w-3 h-3 text-orange-400/60 shrink-0" />
+                            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 truncate">{img}</span>
+                            <span className="shrink-0 text-[9px] font-bold text-orange-400/70 bg-orange-500/10 px-1.5 py-0.5 rounded-full">{vulns.length}</span>
+                        </div>
+                        <div className="space-y-1.5 ml-1">
+                            {vulns.map((v: any, vi: number) => <VulnRow key={vi} v={v} />)}
+                        </div>
+                    </div>
+                ))}
+            </div>
+            {vulnerabilities.length > 8 && (
+                <button
+                    onClick={onToggleAll}
+                    className="w-full text-[10px] text-blue-500 hover:text-blue-400 font-semibold text-center pt-2 transition-colors"
+                >
+                    {showAll ? 'Show less' : `+${vulnerabilities.length - 8} more`}
+                </button>
+            )}
         </div>
     )
 }

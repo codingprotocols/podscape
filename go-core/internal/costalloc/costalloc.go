@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -24,14 +25,18 @@ type AllocationItem struct {
 }
 
 // probe performs a minimal allocation query and returns true if the server
-// responds with 2xx. It does NOT parse the body.
+// responds with 2xx and non-HTML content. Rejecting text/html prevents false
+// positives when a proxy or UI page returns 200 OK with an HTML error page.
 func probe(endpoint string) bool {
 	resp, err := httpClient.Get(endpoint)
 	if err != nil {
 		return false
 	}
 	_ = resp.Body.Close()
-	return resp.StatusCode >= 200 && resp.StatusCode < 300
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return false
+	}
+	return !strings.Contains(resp.Header.Get("Content-Type"), "text/html")
 }
 
 // Detect checks baseURL for Kubecost then OpenCost.
@@ -85,6 +90,13 @@ func QueryAllocation(baseURL, provider, window, aggregate, namespace string) ([]
 		return nil, fmt.Errorf("cost API returned %d", resp.StatusCode)
 	}
 
+	// Reject HTML responses early — a proxy or misconfigured port-forward can
+	// return 200 OK with an HTML page, producing a confusing JSON parse error.
+	if strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("cost API returned HTML instead of JSON — check that the port-forward targets the correct service and port")
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -96,7 +108,12 @@ func QueryAllocation(baseURL, provider, window, aggregate, namespace string) ([]
 		Data []map[string]json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
-		return nil, fmt.Errorf("decode cost response: %w", err)
+		// Surface the first 120 chars of the body to help diagnose unexpected responses.
+		preview := string(body)
+		if len(preview) > 120 {
+			preview = preview[:120] + "…"
+		}
+		return nil, fmt.Errorf("decode cost response: %w (body: %s)", err, preview)
 	}
 
 	var items []AllocationItem

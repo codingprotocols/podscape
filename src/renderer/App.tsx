@@ -10,7 +10,7 @@ import EventsView from './components/panels/EventsView'
 import MetricsView from './components/panels/MetricsView'
 import SettingsPanel from './components/panels/SettingsPanel'
 import PageHeader from './components/core/PageHeader'
-import { Search, RefreshCw } from 'lucide-react'
+import { Search, RefreshCw, ShieldCheck } from 'lucide-react'
 import KubeConfigOnboarding from './components/core/KubeConfigOnboarding'
 import ExecPanel from './components/panels/ExecPanel'
 import CommandPalette from './components/core/CommandPalette'
@@ -116,6 +116,9 @@ export default function App(): JSX.Element {
     selectedContext,
     execSessions,
     isProduction,
+    securityScanning,
+    scanInBackground,
+    setSection,
   } = useAppStore(useShallow(s => ({
     init: s.init,
     section: s.section,
@@ -131,6 +134,9 @@ export default function App(): JSX.Element {
     selectedContext: s.selectedContext,
     execSessions: s.execSessions,
     isProduction: s.isProduction,
+    securityScanning: s.securityScanning,
+    scanInBackground: s.scanInBackground,
+    setSection: s.setSection,
   })))
 
   const [sidecarCrashed, setSidecarCrashed] = useState(false)
@@ -182,6 +188,17 @@ export default function App(): JSX.Element {
   return (
     <div className={`flex h-screen overflow-hidden bg-white dark:bg-[hsl(var(--bg-dark))] text-slate-900 dark:text-slate-100 transition-all duration-300 ${isProduction ? 'ring-inset ring-4 ring-red-500/50' : ''}`}>
       <UpdateBanner />
+      {securityScanning && scanInBackground && section !== 'security' && (
+        <button
+          onClick={() => setSection('security')}
+          className="fixed bottom-5 right-5 z-[9999] flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-slate-900 dark:bg-slate-800 border border-emerald-500/30 shadow-2xl shadow-black/40 text-white text-[11px] font-bold hover:border-emerald-400/50 transition-all"
+        >
+          <div className="w-3.5 h-3.5 border-2 border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin shrink-0" />
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+          Security scan running…
+          <span className="text-[10px] text-emerald-400 font-semibold">View →</span>
+        </button>
+      )}
       {sidecarCrashed && (
         <div className="fixed inset-x-0 top-0 z-[10001] flex items-center gap-3 px-4 py-2.5 bg-red-600 text-white text-xs font-medium shadow-lg">
           <span className="flex-1">Connection to cluster lost — the backend process exited unexpectedly.</span>
