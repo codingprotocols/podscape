@@ -56,7 +56,8 @@ export default function CostPanel() {
     const providerLabel = PROVIDER_LABELS[costProvider] ?? costProvider
 
     return (
-        <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-950 p-6 gap-6 overflow-y-auto">
+        <div className="flex flex-col flex-1 min-w-0 min-h-0 bg-white dark:bg-[hsl(var(--bg-dark))] overflow-y-auto">
+        <div className="flex flex-col p-6 gap-6 min-h-full">
             {/* Header */}
             <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
@@ -101,11 +102,21 @@ export default function CostPanel() {
                 <div className="flex flex-col gap-4">
                     <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">
                         <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
-                        <div>
+                        <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-slate-800 dark:text-white">Kubecost / OpenCost not detected</p>
                             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                                Neither Kubecost nor OpenCost is running at the default address (localhost:9090). Install one via Helm below, or set a custom URL in Settings → Integrations.
+                                Neither tool is reachable at <code className="font-mono bg-amber-100 dark:bg-amber-900/40 px-1 rounded">localhost:9090</code>.
+                                Install one via Helm below, then port-forward its service so Podscape can reach it.
                             </p>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 font-mono bg-white dark:bg-slate-900 px-2 py-1 rounded border border-amber-200 dark:border-amber-800/30 inline-block">
+                                kubectl port-forward svc/&lt;release&gt; 9090:9090
+                            </p>
+                            <button
+                                onClick={() => setSection('portforwards')}
+                                className="block mt-2 text-[11px] font-semibold text-amber-700 dark:text-amber-400 hover:underline"
+                            >
+                                Or set up a Port Forward in Podscape →
+                            </button>
                             {costError && (
                                 <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-mono">{costError}</p>
                             )}
@@ -206,6 +217,7 @@ export default function CostPanel() {
                     No cost data for this time window.
                 </div>
             )}
+        </div>
         </div>
     )
 }

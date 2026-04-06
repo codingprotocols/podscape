@@ -81,8 +81,8 @@ const NavGroup = React.memo(function NavGroup({ title, children }: { title: stri
 // ─── Nav item ─────────────────────────────────────────────────────────────────
 
 const NavItem = React.memo(function NavItem({
-  label, section, icon, badge
-}: { label: string; section: ResourceKind; icon?: string; badge?: number }) {
+  label, section, icon, badge, dot
+}: { label: string; section: ResourceKind; icon?: string; badge?: number; dot?: boolean }) {
   const { active, setSection, isDenied } = useAppStore(useShallow(s => ({
     active: s.section,
     setSection: s.setSection,
@@ -122,6 +122,9 @@ const NavItem = React.memo(function NavItem({
       <span className="flex-1 text-left truncate leading-none">{label}</span>
       {isDenied && (
         <Lock size={10} className="shrink-0 text-slate-500/50" />
+      )}
+      {!isDenied && dot && (
+        <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-amber-400 dark:bg-amber-500" title="Not installed" />
       )}
       {!isDenied && badge !== undefined && badge > 0 && (
         <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-md font-extrabold leading-none
@@ -466,7 +469,7 @@ export default function Sidebar(): JSX.Element {
             <NavItem label="GitOps" section="gitops" icon={ICONS.deploy} />
           </NavGroup>
 
-          {costAvailable === true && (
+          {costAvailable !== null && (
             <NavGroup title="FinOps">
               <NavItem label="Cost" section="cost" icon={ICONS.cost} />
             </NavGroup>

@@ -432,13 +432,48 @@ func (m *HelmRepoManager) Install(req InstallRequest, progress func(msg string))
 
 	rel, err := installAction.Run(chart, vals)
 	if err != nil {
-		return normalizeHelmError(err, req.Name, req.Namespace)
+		normErr := normalizeHelmError(err, req.Name, req.Namespace)
+		// Resources exist outside Helm (e.g. installed via kubectl). Retry
+		// as a forced upgrade-or-install so Helm takes ownership.
+		if isOwnershipConflict(err) {
+			if progress != nil {
+				progress("Resources exist outside Helm — retrying as upgrade --install --force…")
+			}
+			upgradeAction := action.NewUpgrade(actionConfig)
+			upgradeAction.Install = true
+			upgradeAction.Force = true
+			upgradeAction.Namespace = req.Namespace
+			upgradeAction.Version = req.Version
+			upgradeAction.ReuseValues = false
+			rel2, err2 := upgradeAction.Run(req.Name, chart, vals)
+			if err2 != nil {
+				return normalizeHelmError(err2, req.Name, req.Namespace)
+			}
+			if progress != nil {
+				progress(fmt.Sprintf("Successfully installed %s (revision %d)", rel2.Name, rel2.Version))
+			}
+			return nil
+		}
+		return normErr
 	}
 
 	if progress != nil {
 		progress(fmt.Sprintf("Successfully installed %s (revision %d)", rel.Name, rel.Version))
 	}
 	return nil
+}
+
+// isOwnershipConflict reports whether the Helm error is the "resource exists
+// but is not owned by Helm" class of error (missing managed-by label /
+// release annotations).
+func isOwnershipConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "cannot be imported into the current release") ||
+		strings.Contains(msg, "invalid ownership metadata") ||
+		strings.Contains(msg, `missing key "app.kubernetes.io/managed-by"`)
 }
 
 // normalizeHelmError converts helm errors into user-friendly messages.

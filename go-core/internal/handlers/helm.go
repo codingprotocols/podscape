@@ -285,6 +285,15 @@ func HandleHelmInstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read the request body before writing any response headers.
+	// Writing headers + flushing before reading causes HTTP/1.1 to discard
+	// the body mid-stream, resulting in "failed to read request body".
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read request body", http.StatusBadRequest)
+		return
+	}
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
@@ -295,12 +304,6 @@ func HandleHelmInstall(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		sseEvent(w, flusher, "error", "failed to read request body")
-		return
-	}
 
 	err = helm.InstallFromJSON(body, func(msg string) {
 		sseEvent(w, flusher, "progress", msg)
