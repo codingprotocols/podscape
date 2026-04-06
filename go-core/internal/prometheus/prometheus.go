@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/podscape/go-core/internal/store"
+	"github.com/podscape/go-core/internal/urlutil"
 )
 
 // QueryRequest is a single query within a batch.
@@ -76,48 +77,14 @@ var defaultCandidates = []candidate{
 	{"default", "prometheus", "9090"},
 }
 
-// normalizeURL ensures the URL has a scheme and no trailing slash.
-// Returns the normalized URL or an error if the result is invalid.
-func normalizeURL(u string) (string, error) {
-	u = strings.TrimSpace(u)
-	if u == "" {
-		return "", fmt.Errorf("empty URL")
+// normalizeURL delegates to urlutil.Parse and returns the validated URL as a
+// string. Kept as a thin wrapper so existing call sites need no changes.
+func normalizeURL(raw string) (string, error) {
+	parsed, err := urlutil.Parse(raw)
+	if err != nil {
+		return "", err
 	}
-	// 1. Explicitly check for control characters and whitespaces in the input
-	// to prevent certain header injection/request forgery attacks before they reach url.Parse.
-	if strings.ContainsAny(u, "\t\n\r") {
-		return "", fmt.Errorf("URL contains control characters")
-	}
-	// 2. Reject non-http(s) schemes before adding a default scheme. This prevents
-	// ftp://, file://, gopher:// and similar from being silently rewritten to
-	// "http://ftp://..." and avoids CodeQL go/request-forgery.
-	if strings.Contains(u, "://") && !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
-		return "", fmt.Errorf("URL scheme must be http or https, got %q", u)
-	}
-	// Add http:// scheme if the user omitted it.
-	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
-		u = "http://" + u
-	}
-	// Strip trailing slash so concatenation with /api/v1/... is always clean.
-	u = strings.TrimRight(u, "/")
-	// 3. Validate the result is a parseable URL with a host. Use url.Parse which
-	// performs its or internal validation of characters.
-	parsed, err := url.Parse(u)
-	if err != nil || parsed.Host == "" {
-		return "", fmt.Errorf("invalid URL %q: %w", u, err)
-	}
-	// 4. Double-check the host doesn't contain forbidden characters that could
-	// bypass earlier checks (e.g. URI components encoded in the host).
-	if strings.ContainsAny(parsed.Host, " \t\n\r@") {
-		return "", fmt.Errorf("invalid host %q", parsed.Host)
-	}
-	// Rewrite localhost → 127.0.0.1 to avoid Go resolving it to [::1] (IPv6)
-	// while kubectl port-forward only listens on 127.0.0.1 (IPv4).
-	if parsed.Hostname() == "localhost" {
-		parsed.Host = strings.Replace(parsed.Host, "localhost", "127.0.0.1", 1)
-		u = parsed.String()
-	}
-	return u, nil
+	return parsed.String(), nil
 }
 
 // kubeSvcRef is the parsed components of a k8s service DNS name.

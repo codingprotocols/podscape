@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/podscape/go-core/internal/urlutil"
 )
 
 var httpClient = &http.Client{Timeout: 5 * time.Second}
@@ -22,56 +24,6 @@ type AllocationItem struct {
 	TotalCost float64 `json:"totalCost"`
 	CPUCost   float64 `json:"cpuCost"`
 	RAMCost   float64 `json:"ramCost"`
-}
-
-// parseBaseURL validates a user-supplied base URL and returns a *url.URL whose
-// Scheme and Host are guaranteed to be safe. Callers must construct final
-// request URLs from the returned struct's fields (not from the raw input string)
-// to satisfy CodeQL go/request-forgery: taint is broken at the struct boundary.
-//
-//   - Rejects non-http(s) schemes (prevents ftp://, file://, etc.)
-//   - Rejects control characters (prevents header injection)
-//   - Adds "http://" when the scheme is omitted
-//   - Rewrites localhost → 127.0.0.1 (port-forward binds IPv4 only)
-func parseBaseURL(raw string) (*url.URL, error) {
-	u := strings.TrimSpace(raw)
-	if u == "" {
-		return nil, fmt.Errorf("empty URL")
-	}
-	if strings.ContainsAny(u, "\t\n\r") {
-		return nil, fmt.Errorf("URL contains control characters")
-	}
-	if strings.Contains(u, "://") && !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
-		return nil, fmt.Errorf("URL scheme must be http or https, got %q", u)
-	}
-	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
-		u = "http://" + u
-	}
-	u = strings.TrimRight(u, "/")
-	parsed, err := url.Parse(u)
-	if err != nil || parsed.Host == "" {
-		return nil, fmt.Errorf("invalid URL %q: %w", u, err)
-	}
-	if strings.ContainsAny(parsed.Host, " \t\n\r@") {
-		return nil, fmt.Errorf("invalid host %q", parsed.Host)
-	}
-	if parsed.Hostname() == "localhost" {
-		parsed.Host = strings.Replace(parsed.Host, "localhost", "127.0.0.1", 1)
-	}
-	return parsed, nil
-}
-
-// buildURL constructs a request URL from trusted parsed-URL components plus a
-// fixed path and query string. Using struct fields (not the original input
-// string) breaks the taint chain for CodeQL go/request-forgery.
-func buildURL(base *url.URL, path string, q url.Values) string {
-	u := &url.URL{
-		Scheme:   base.Scheme,
-		Host:     base.Host,
-		Path:     strings.TrimSuffix(base.Path, "/") + path,
-		RawQuery: q.Encode(),
-	}
-	return u.String()
 }
 
 // probe performs a minimal allocation query and returns true if the server
@@ -93,7 +45,7 @@ func probe(u *url.URL) bool {
 // Returns "kubecost", "opencost", or "" (not found).
 // Never returns a non-nil error — detection failures are silent.
 func Detect(baseURL string) (string, error) {
-	base, err := parseBaseURL(baseURL)
+	base, err := urlutil.Parse(baseURL)
 	if err != nil {
 		return "", nil
 	}
@@ -101,19 +53,19 @@ func Detect(baseURL string) (string, error) {
 	probeQ.Set("window", "1d")
 	probeQ.Set("aggregate", "namespace")
 	probeQ.Set("accumulate", "true")
-	if probe(mustParseURL(buildURL(base, "/model/allocation", probeQ))) {
+	if probe(mustParse(urlutil.Build(base, "/model/allocation", probeQ))) {
 		return "kubecost", nil
 	}
-	if probe(mustParseURL(buildURL(base, "/allocation/compute", probeQ))) {
+	if probe(mustParse(urlutil.Build(base, "/allocation/compute", probeQ))) {
 		return "opencost", nil
 	}
 	return "", nil
 }
 
-// mustParseURL parses a URL that was constructed internally from validated
-// components. Panics only if our own buildURL produces an invalid URL, which
-// indicates a programming error.
-func mustParseURL(s string) *url.URL {
+// mustParse parses a URL that was constructed internally from validated
+// components. Panics only if our own urlutil.Build produces an invalid URL,
+// which indicates a programming error.
+func mustParse(s string) *url.URL {
 	u, err := url.Parse(s)
 	if err != nil {
 		panic(fmt.Sprintf("costalloc: internal URL construction failed: %v", err))
@@ -130,7 +82,7 @@ func mustParseURL(s string) *url.URL {
 //   - aggregate: grouping ("namespace", "deployment", "pod", "controller")
 //   - namespace: optional filter; empty = all namespaces
 func QueryAllocation(baseURL, provider, window, aggregate, namespace string) ([]AllocationItem, error) {
-	base, err := parseBaseURL(baseURL)
+	base, err := urlutil.Parse(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid cost provider URL: %w", err)
 	}
@@ -149,7 +101,7 @@ func QueryAllocation(baseURL, provider, window, aggregate, namespace string) ([]
 	} else {
 		path = "/allocation/compute"
 	}
-	endpoint := buildURL(base, path, q)
+	endpoint := urlutil.Build(base, path, q)
 
 	resp, err := httpClient.Get(endpoint)
 	if err != nil {
@@ -179,7 +131,6 @@ func QueryAllocation(baseURL, provider, window, aggregate, namespace string) ([]
 		Data []map[string]json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
-		// Surface the first 120 chars of the body to help diagnose unexpected responses.
 		preview := string(body)
 		if len(preview) > 120 {
 			preview = preview[:120] + "…"
