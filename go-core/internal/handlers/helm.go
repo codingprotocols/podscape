@@ -179,6 +179,26 @@ func HandleHelmRepoList(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(repos)
 }
 
+func HandleHelmRepoAdd(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	name := r.URL.Query().Get("name")
+	url := r.URL.Query().Get("url")
+	if name == "" || url == "" {
+		http.Error(w, "name and url are required", http.StatusBadRequest)
+		return
+	}
+	mgr := helm.GetRepoManager()
+	if err := mgr.AddRepo(name, url); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
 func HandleHelmRepoSearch(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
 	limitStr := r.URL.Query().Get("limit")

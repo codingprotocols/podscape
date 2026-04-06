@@ -331,7 +331,7 @@ function ReleaseDrawer({
 // ─── Main HelmPanel ───────────────────────────────────────────────────────────
 
 export default function HelmPanel(): JSX.Element {
-  const { selectedContext } = useAppStore()
+  const { selectedContext, helmInstallHint, setHelmInstallHint } = useAppStore()
   const [activeTab, setActiveTab] = useState<'releases' | 'browser'>('releases')
   const [releases, setReleases] = useState<HelmRelease[]>([])
   const [loading, setLoading] = useState(false)
@@ -340,6 +340,13 @@ export default function HelmPanel(): JSX.Element {
   const [filter, setFilter] = useState('')
   const [uninstallTarget, setUninstallTarget] = useState<HelmRelease | null>(null)
   const [uninstalling, setUninstalling] = useState(false)
+
+  // If arriving from CostPanel install button, switch to browser tab and carry hint.
+  useEffect(() => {
+    if (helmInstallHint) {
+      setActiveTab('browser')
+    }
+  }, [helmInstallHint])
 
   // Clear stale release selection when context changes so the detail panel
   // doesn't show a release from the previous context while the new list loads.
@@ -460,7 +467,10 @@ export default function HelmPanel(): JSX.Element {
 
         {/* Content */}
         {activeTab === 'browser' ? (
-          <HelmRepoBrowser />
+          <HelmRepoBrowser
+            installHint={helmInstallHint ?? undefined}
+            onHintConsumed={() => setHelmInstallHint(null)}
+          />
         ) : (
         <div className="flex-1 overflow-auto scrollbar-hide">
           {!selectedContext ? (

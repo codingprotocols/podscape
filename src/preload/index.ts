@@ -301,6 +301,7 @@ const helm = {
     ipcRenderer.invoke('helm:upgrade', context, namespace, release, values),
 
   // Helm repo browser
+  repoAdd: (name: string, url: string) => ipcRenderer.invoke('helm:repoAdd', name, url),
   repoList: () => ipcRenderer.invoke('helm:repoList'),
   repoSearch: (query: string, limit: number, offset: number) =>
     ipcRenderer.invoke('helm:repoSearch', query, limit, offset),

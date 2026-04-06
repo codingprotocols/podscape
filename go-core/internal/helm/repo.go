@@ -297,6 +297,40 @@ func (m *HelmRepoManager) GetValues(repoName, chartName, version string) (string
 	return "# No values.yaml found in this chart\n", nil
 }
 
+// AddRepo adds a named Helm repository and downloads its index file.
+func (m *HelmRepoManager) AddRepo(name, url string) error {
+	if !isSafeHelmIdentifier(name) {
+		return fmt.Errorf("invalid repo name: %q", name)
+	}
+
+	repoFile, err := repo.LoadFile(m.settings.RepositoryConfig)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		repoFile = repo.NewFile()
+	}
+
+	entry := &repo.Entry{Name: name, URL: url}
+	getters := getter.All(m.settings)
+	cr, err := repo.NewChartRepository(entry, getters)
+	if err != nil {
+		return fmt.Errorf("creating repo client: %w", err)
+	}
+	cr.CachePath = m.settings.RepositoryCache
+	if _, err := cr.DownloadIndexFile(); err != nil {
+		return fmt.Errorf("downloading index: %w", err)
+	}
+
+	repoFile.Update(entry)
+	if err := repoFile.WriteFile(m.settings.RepositoryConfig, 0o600); err != nil {
+		return fmt.Errorf("writing repo file: %w", err)
+	}
+
+	// Reload indices so the new repo is immediately searchable.
+	return m.LoadIndices()
+}
+
 // Refresh re-downloads all repository index files.
 // progress is called with each status message (may be nil).
 func (m *HelmRepoManager) Refresh(progress func(msg string)) error {

@@ -78,6 +78,12 @@ export function registerHelmHandlers(): void {
     return res.json()
   })
 
+  ipcMain.handle('helm:repoAdd', async (_e, name: string, url: string) => {
+    const params = new URLSearchParams({ name, url })
+    const res = await checkedSidecarFetch(`/helm/repos/add?${params}`, { method: 'POST' })
+    return res.json()
+  })
+
   ipcMain.handle('helm:repoSearch', async (_e, query: string, limit: number, offset: number) => {
     const params = new URLSearchParams({
       q: query,

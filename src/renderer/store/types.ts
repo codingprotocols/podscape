@@ -101,6 +101,7 @@ declare global {
             rollback: (context: string, namespace: string, release: string, revision: number) => Promise<string>
             uninstall: (context: string, namespace: string, release: string) => Promise<string>
             upgrade: (context: string, namespace: string, release: string, values: string) => Promise<string>
+            repoAdd: (name: string, url: string) => Promise<{ ok: boolean }>
             repoList: () => Promise<Array<{ name: string; url: string }>>
             repoSearch: (query: string, limit: number, offset: number) => Promise<{ charts: Array<{ name: string; repo: string; description: string; version: string; appVersion: string }>; total: number }>
             repoVersions: (repoName: string, chartName: string) => Promise<Array<{ version: string; appVersion: string; description: string }>>
@@ -174,6 +175,8 @@ export interface AppStore extends AnalysisSlice, OperationSlice, ProvidersSlice,
     setSearchQuery: (q: string) => void
     isSearchOpen: boolean
     setSearchOpen: (open: boolean) => void
+    helmInstallHint: import('./slices/navigationSlice').HelmInstallHint | null
+    setHelmInstallHint: (hint: import('./slices/navigationSlice').HelmInstallHint | null) => void
 
     // Cluster selection
     contexts: KubeContextEntry[]

@@ -109,6 +109,7 @@ func main() {
 
 	// Helm repo browser
 	http.HandleFunc("/helm/repos", handlers.HandleHelmRepoList)
+	http.HandleFunc("/helm/repos/add", handlers.HandleHelmRepoAdd)
 	http.HandleFunc("/helm/repos/search", handlers.HandleHelmRepoSearch)
 	http.HandleFunc("/helm/repos/versions", handlers.HandleHelmRepoVersions)
 	http.HandleFunc("/helm/repos/values", handlers.HandleHelmRepoValues)

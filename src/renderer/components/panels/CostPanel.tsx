@@ -12,10 +12,27 @@ const PROVIDER_LABELS: Record<string, string> = {
     opencost: 'OpenCost',
 }
 
+const INSTALL_OPTIONS = [
+    {
+        label: 'Install OpenCost',
+        repoName: 'opencost',
+        repoUrl: 'https://opencost.github.io/opencost-helm-chart',
+        chart: 'opencost/opencost',
+        description: 'CNCF sandbox, Apache 2.0',
+    },
+    {
+        label: 'Install Kubecost',
+        repoName: 'kubecost',
+        repoUrl: 'https://kubecost.github.io/cost-analyzer',
+        chart: 'kubecost/cost-analyzer',
+        description: 'Commercial, free tier available',
+    },
+]
+
 export default function CostPanel() {
     const {
         costAvailable, costProvider, costError, costAllocations, costLoading,
-        loadCostAllocations, selectedContext,
+        loadCostAllocations, selectedContext, setSection, setHelmInstallHint,
     } = useAppStore(useShallow(s => ({
         costAvailable: s.costAvailable,
         costProvider: s.costProvider,
@@ -24,6 +41,8 @@ export default function CostPanel() {
         costLoading: s.costLoading,
         loadCostAllocations: s.loadCostAllocations,
         selectedContext: s.selectedContext,
+        setSection: s.setSection,
+        setHelmInstallHint: s.setHelmInstallHint,
     })))
 
     const [timeWindow, setTimeWindow] = React.useState<TimeWindow>('1d')
@@ -77,16 +96,34 @@ export default function CostPanel() {
 
             {/* Not detected */}
             {costAvailable === false && (
-                <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">
-                    <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
-                    <div>
-                        <p className="text-sm font-semibold text-slate-800 dark:text-white">Kubecost / OpenCost not detected</p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                            Neither Kubecost nor OpenCost is running at the default address (localhost:9090). Deploy one via Helm, or set a custom URL in Settings → Integrations.
-                        </p>
-                        {costError && (
-                            <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-mono">{costError}</p>
-                        )}
+                <div className="flex flex-col gap-4">
+                    <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">
+                        <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
+                        <div>
+                            <p className="text-sm font-semibold text-slate-800 dark:text-white">Kubecost / OpenCost not detected</p>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                                Neither Kubecost nor OpenCost is running at the default address (localhost:9090). Install one via Helm below, or set a custom URL in Settings → Integrations.
+                            </p>
+                            {costError && (
+                                <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-mono">{costError}</p>
+                            )}
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        {INSTALL_OPTIONS.map(opt => (
+                            <button
+                                key={opt.repoName}
+                                onClick={() => {
+                                    setHelmInstallHint({ repoName: opt.repoName, repoUrl: opt.repoUrl, chart: opt.chart })
+                                    setSection('helm')
+                                }}
+                                className="flex flex-col items-start gap-1 p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-400 dark:hover:border-emerald-600 hover:shadow-sm transition-all text-left group"
+                            >
+                                <span className="text-[11px] font-black text-slate-800 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{opt.label}</span>
+                                <span className="text-[10px] text-slate-400 dark:text-slate-500">{opt.description}</span>
+                                <span className="mt-1 text-[9px] font-mono text-slate-300 dark:text-slate-600">{opt.chart}</span>
+                            </button>
+                        ))}
                     </div>
                 </div>
             )}
