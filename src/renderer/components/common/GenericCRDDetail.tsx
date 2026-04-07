@@ -55,7 +55,7 @@ export function GenericCRDDetail({ item, context, namespace, crdName, onAfterSav
     setYamlLoading(true)
     setYamlError(null)
     try {
-      const nsArg = ns || null
+      const nsArg = (meta.namespace as string | undefined) ?? namespace ?? null
       const content = await window.kubectl.getYAML(context, nsArg, crdName, name)
       setYaml(content)
     } catch (err) {
