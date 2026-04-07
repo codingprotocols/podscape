@@ -29,13 +29,13 @@ export default function UpdateBanner(): JSX.Element | null {
         setVisible(true)
       }),
       w.onProgress((p) => {
+        // Ensure the banner is visible when download progress is reported.
+        setVisible(true)
         setUpdate((prev) => {
           const next = Math.round(p.percent)
           if (prev.status === 'downloading' && prev.percent === next) {
             return prev
           }
-          // Ensure the banner is visible when download progress is reported.
-          setVisible(true)
           return { status: 'downloading', percent: next }
         })
       }),
@@ -107,7 +107,17 @@ export default function UpdateBanner(): JSX.Element | null {
         </div>
         <div className="px-4 pb-4">
           <button
-            onClick={() => window.updater?.download()}
+            onClick={async () => {
+              try {
+                await window.updater?.download()
+              } catch (err: any) {
+                const message =
+                  typeof err === 'object' && err !== null && 'message' in err
+                    ? String((err as { message?: unknown }).message)
+                    : 'Update download failed.'
+                setUpdate({ status: 'error', message })
+              }
+            }}
             className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold rounded-lg transition-colors"
           >
             <Download size={12} />
@@ -155,7 +165,17 @@ export default function UpdateBanner(): JSX.Element | null {
         </div>
         <div className="px-4 pb-4">
           <button
-            onClick={() => window.updater?.install()}
+            onClick={async () => {
+              try {
+                await window.updater?.install()
+              } catch (err: unknown) {
+                const message =
+                  err instanceof Error && err.message
+                    ? err.message
+                    : 'Failed to install update.'
+                setUpdate({ status: 'error', message })
+              }
+            }}
             className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-lg transition-colors"
           >
             <RefreshCw size={12} />
