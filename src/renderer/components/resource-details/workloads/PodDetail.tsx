@@ -318,7 +318,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
           ? <span className="text-slate-600 animate-pulse"># Waiting for logs...{'\n'}</span>
           : logs.length > 0
             ? <span className="text-slate-600"># No lines match search{'\n'}</span>
-            : <span className="text-slate-600"># Press LOAD LOGS to stream logs{'\n'}</span>
+            : <span className="text-slate-600"># Press STREAM to start streaming logs{'\n'}</span>
         )
         : search
           ? filteredLogs.map((line, i) => (
