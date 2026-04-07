@@ -125,6 +125,10 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     }
   }, [selectedContext, selectedNamespace, pod, selectedContainer, stopStream])
 
+  const scanCurrentPod = useCallback(() => {
+    scanResource(pod)
+  }, [scanResource, pod])
+
   // Stop stream when pod/container changes (no auto-start)
   useEffect(() => {
     setLogs([])
@@ -132,7 +136,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     setSearch('')
     setEvents([])
     // Trigger scan
-    scanResource(pod)
+    scanCurrentPod()
     // Fetch events for timeline
     const fetchEvents = async () => {
       if (!selectedContext) return
@@ -160,7 +164,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
       activeStreamIdRef.current = null
       setIsStreaming(false)
     }
-  }, [pod.metadata.uid, selectedContainer, selectedContext, scanResource])
+  }, [pod.metadata.uid, selectedContainer, selectedContext, scanCurrentPod])
 
   // Auto-scroll both normal and fullscreen log panes
   useEffect(() => {
