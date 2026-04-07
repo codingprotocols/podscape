@@ -29,13 +29,13 @@ export default function UpdateBanner(): JSX.Element | null {
         setVisible(true)
       }),
       w.onProgress((p) => {
+        // Ensure the banner is visible when download progress is reported.
+        setVisible(true)
         setUpdate((prev) => {
           const next = Math.round(p.percent)
           if (prev.status === 'downloading' && prev.percent === next) {
             return prev
           }
-          // Ensure the banner is visible when download progress is reported.
-          setVisible(true)
           return { status: 'downloading', percent: next }
         })
       }),
