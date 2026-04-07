@@ -59,7 +59,7 @@ export function GenericCRDDetail({ item, context, namespace, crdName, onAfterSav
       const content = await window.kubectl.getYAML(context, nsArg, crdName, name)
       setYaml(content)
     } catch (err) {
-      setYamlError((err as Error).message ?? 'Failed to fetch YAML')
+      setYamlError((err as Error).message || 'Failed to fetch YAML')
       yamlFetchedRef.current = false
     } finally {
       setYamlLoading(false)
