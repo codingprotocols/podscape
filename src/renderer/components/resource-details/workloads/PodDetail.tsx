@@ -385,8 +385,9 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger if typing in an input
-      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return
-      
+      const activeTag = document.activeElement?.tagName?.toLowerCase()
+      if (activeTag === 'input' || activeTag === 'textarea') return
+
       const isCmdOrCtrl = isMac ? e.metaKey : e.ctrlKey
 
       // CMD+T -> Open Shell
