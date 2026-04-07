@@ -37,6 +37,14 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const [selectedContainer, setSelectedContainer] = useState(
     isDebugPod ? 'debug' : (pod.spec.containers[0]?.name ?? '')
   )
+
+  useEffect(() => {
+    // Reset selected container when switching to a different pod
+    setSelectedContainer(
+      isDebugPod ? 'debug' : (pod.spec.containers[0]?.name ?? '')
+    )
+  }, [pod.metadata.uid, isDebugPod, pod.spec.containers])
+
   const [search, setSearch] = useState('')
   const [logFullscreen, setLogFullscreen] = useState(false)
   const [wrapLogs, setWrapLogs] = useState(false)
