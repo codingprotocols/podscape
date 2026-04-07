@@ -143,7 +143,7 @@ podscape-electron/
 ├── src/
 │   ├── main/          # Electron main process (sidecar, IPC handlers, terminal)
 │   ├── preload/       # Context bridge — exposes window.kubectl, window.helm, etc.
-│   └── renderer/      # React app (components, store, routing)
+│   └── renderer/      # React app (components, store, types, hooks, utils, config)
 ├── docs/              # In-depth feature guides and documentation
 ├── go-core/
 │   ├── cmd/
@@ -153,12 +153,20 @@ podscape-electron/
 │       ├── client/          # Shared k8s client initialisation
 │       ├── handlers/        # HTTP route handlers
 │       ├── informers/       # Shared informer cache
+│       ├── k8sutil/         # Canonical GVR mappings, cluster-scoped kinds, version fallbacks
 │       ├── ops/             # Write operations (scale, delete, apply, rollout)
-│       ├── logs/            # Log streaming
+│       ├── exec/            # WebSocket container exec (PTY)
+│       ├── logs/            # WebSocket log streaming
 │       ├── helm/            # Helm SDK wrapper
 │       ├── rbac/            # RBAC probe
 │       ├── store/           # Global sidecar state
-│       └── portforward/     # Port-forward manager
+│       ├── portforward/     # Port-forward manager
+│       ├── prometheus/      # Prometheus auto-discovery and query cache
+│       ├── ownerchain/      # Owner reference traversal (upward + downward)
+│       ├── providers/       # Service mesh / ingress provider detection
+│       ├── costalloc/       # Kubecost / OpenCost cost allocation
+│       ├── topology/        # Cluster network topology graph
+│       └── urlutil/         # Shared URL helpers
 ├── resources/         # Icons, splash screen
 ├── scripts/           # Build helpers (notarize, icon generation)
 └── CHANGELOG.md
@@ -171,7 +179,7 @@ podscape-electron/
 Releases are triggered by pushing a `v*` tag. GitHub Actions builds for macOS (arm64 + x64), Windows, and Linux in parallel and publishes to GitHub Releases.
 
 ```bash
-git tag v2.3.0 && git push origin v2.3.0
+git tag v2.5.0 && git push origin v2.5.0
 ```
 
 ### macOS signing + notarization

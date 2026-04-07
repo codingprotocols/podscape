@@ -9,11 +9,14 @@ import {
     NodeMetrics, PodMetrics, ResourceKind, AnyKubeResource, PortForwardEntry,
     HelmRelease, DebugPodEntry, AppGroup, OwnerChainResponse, ProviderSet
 } from '../types'
+
 import type { RolloutRevision } from '../../common/constants'
 import { AnalysisSlice } from './slices/analysisSlice'
 import { OperationSlice } from './slices/operationSlice'
 import { ProvidersSlice } from './slices/providersSlice'
 import { CostSlice } from './slices/costSlice'
+import { NavigationSlice } from './slices/navigationSlice'
+
 
 declare global {
     interface Window {
@@ -160,25 +163,11 @@ export interface ExecSession {
     target: ExecTarget
 }
 
-export interface AppStore extends AnalysisSlice, OperationSlice, ProvidersSlice, CostSlice {
-    // Navigation
-    section: ResourceKind
-    setSection: (s: ResourceKind) => void
-    navWidth: number
-    setNavWidth: (w: number) => void
-    detailWidth: number
-    setDetailWidth: (w: number) => void
-    theme: 'light' | 'dark'
-    setTheme: (theme: 'light' | 'dark') => void
-    toggleTheme: () => void
-    searchQuery: string
-    setSearchQuery: (q: string) => void
-    isSearchOpen: boolean
-    setSearchOpen: (open: boolean) => void
-    helmInstallHint: import('./slices/navigationSlice').HelmInstallHint | null
-    setHelmInstallHint: (hint: import('./slices/navigationSlice').HelmInstallHint | null) => void
-
+export interface AppStore extends AnalysisSlice, OperationSlice, ProvidersSlice, CostSlice, NavigationSlice {
+    // Navigation removed - inherited from NavigationSlice
+    
     // Cluster selection
+
     contexts: KubeContextEntry[]
     selectedContext: string | null
     starredContext: string | null

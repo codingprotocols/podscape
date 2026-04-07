@@ -17,6 +17,8 @@ import DeleteConfirm from '../common/DeleteConfirm'
 import YAMLViewer from '../common/YAMLViewer'
 import { kindLabel } from '../../store/slices/resourceSlice'
 import { Layers, ShieldOff } from 'lucide-react'
+import { SECTION_LABELS, COLUMNS, CLUSTER_SCOPED_SECTIONS } from '../../config'
+
 
 
 
@@ -31,18 +33,7 @@ function useResources(): AnyKubeResource[] {
   })
 }
 
-export const SECTION_LABELS: Record<string, string> = {
-  pods: 'Pods', deployments: 'Deployments', daemonsets: 'DaemonSets',
-  statefulsets: 'StatefulSets', replicasets: 'ReplicaSets', jobs: 'Jobs', cronjobs: 'CronJobs',
-  hpas: 'HorizontalPodAutoscalers', pdbs: 'PodDisruptionBudgets',
-  services: 'Services', ingresses: 'Ingresses', ingressclasses: 'IngressClasses',
-  networkpolicies: 'NetworkPolicies', endpoints: 'Endpoints',
-  configmaps: 'ConfigMaps', secrets: 'Secrets',
-  pvcs: 'PersistentVolumeClaims', pvs: 'PersistentVolumes', storageclasses: 'StorageClasses',
-  serviceaccounts: 'ServiceAccounts', roles: 'Roles', clusterroles: 'ClusterRoles',
-  rolebindings: 'RoleBindings', clusterrolebindings: 'ClusterRoleBindings',
-  nodes: 'Nodes', namespaces: 'Namespaces', crds: 'CRDs'
-}
+
 
 // ─── Row renderers ────────────────────────────────────────────────────────────
 
@@ -513,35 +504,7 @@ function ClusterRoleBindingRow({ crb }: { crb: KubeClusterRoleBinding }) {
 
 // ─── Column headers ───────────────────────────────────────────────────────────
 
-const COLUMNS: Record<string, string[]> = {
-  pods: ['Name', 'Status', 'Restarts', 'Node', 'Age'],
-  deployments: ['Name', 'Ready', 'Strategy', 'Age'],
-  daemonsets: ['Name', 'Desired', 'Ready', 'Available', 'Update Strategy', 'Age'],
-  statefulsets: ['Name', 'Ready', 'Service', 'Age'],
-  replicasets: ['Name', 'Ready', 'Age'],
-  jobs: ['Name', 'Status', 'Completions', 'Age'],
-  cronjobs: ['Name', 'Schedule', 'Status', 'Age'],
-  hpas: ['Name', 'Target', 'Min', 'Max', 'Current/Desired', 'Age'],
-  pdbs: ['Name', 'Min Available', 'Max Unavailable', 'Healthy/Expected', 'Age'],
-  services: ['Name', 'Type', 'Cluster IP', 'External IP', 'Ports'],
-  ingresses: ['Name', 'Hosts', 'Address', 'Class'],
-  ingressclasses: ['Name', 'Controller', 'Default', 'Age'],
-  networkpolicies: ['Name', 'Pod Selector', 'Policy Types', 'Age'],
-  endpoints: ['Name', 'Addresses', 'Ports', 'Age'],
-  configmaps: ['Name', 'Keys', 'Age'],
-  secrets: ['Name', 'Type', 'Keys', 'Age'],
-  pvcs: ['Name', 'Phase', 'Capacity', 'Access Modes', 'Storage Class', 'Age'],
-  pvs: ['Name', 'Phase', 'Capacity', 'Reclaim Policy', 'Storage Class', 'Age'],
-  storageclasses: ['Name', 'Provisioner', 'Reclaim Policy', 'Binding Mode', 'Age'],
-  serviceaccounts: ['Name', 'Secrets', 'Age'],
-  roles: ['Name', 'Rules', 'Age'],
-  clusterroles: ['Name', 'Rules', 'Age'],
-  rolebindings: ['Name', 'Role', 'Subjects', 'Age'],
-  clusterrolebindings: ['Name', 'Role', 'Subjects', 'Age'],
-  nodes: ['Name', 'Status', 'Instance Type', 'Node Pool', 'Capacity', 'CPU', 'Memory', 'IP', 'Age'],
-  namespaces: ['Name', 'Status', 'Age'],
-  crds: ['Name', 'Group', 'Scope', 'Age']
-}
+
 
 // ─── Row dispatcher ───────────────────────────────────────────────────────────
 
@@ -677,7 +640,8 @@ export default function ResourceList(): JSX.Element {
     }
   }, [])
 
-  const clusterScoped = ['nodes', 'namespaces', 'crds', 'ingressclasses', 'pvs', 'storageclasses', 'clusterroles', 'clusterrolebindings'].includes(section)
+  const clusterScoped = CLUSTER_SCOPED_SECTIONS.has(section)
+
   const showNsCol = selectedNamespace === '_all' && !clusterScoped
   const cols = COLUMNS[section] ?? ['Name']
 

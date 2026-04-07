@@ -24,7 +24,10 @@ export interface NavigationSlice {
     resourceHistory: AnyKubeResource[]
     helmInstallHint: HelmInstallHint | null
     setHelmInstallHint: (hint: HelmInstallHint | null) => void
+    showTour: boolean
+    setShowTour: (show: boolean) => void
 }
+
 
 const ls = (key: string, fallback: string): string => {
     try { return localStorage.getItem(key) ?? fallback } catch { return fallback }
@@ -67,4 +70,7 @@ export const createNavigationSlice: StoreSlice<NavigationSlice> = (set, get) => 
     resourceHistory: [],
     helmInstallHint: null,
     setHelmInstallHint: (helmInstallHint) => set({ helmInstallHint }),
+    showTour: false,
+    setShowTour: (showTour) => set({ showTour }),
 })
+

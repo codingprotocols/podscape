@@ -226,4 +226,10 @@ func (s *ClusterStore) ActiveClientset() (kubernetes.Interface, *rest.Config) {
 	return cs, cfg
 }
 
-var Store = &ClusterStore{caches: make(map[string]*ContextCache)}
+// NewClusterStore returns an initialised ClusterStore. Prefer this over a
+// struct literal so the private caches map is never nil.
+func NewClusterStore() *ClusterStore {
+	return &ClusterStore{caches: make(map[string]*ContextCache)}
+}
+
+var Store = NewClusterStore()
