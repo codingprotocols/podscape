@@ -181,7 +181,7 @@ export function GenericCRDDetail({ item, context, namespace, crdName, onAfterSav
                 onSave={async (newYaml) => {
                   try {
                     await applyYAML(newYaml)
-                    setYaml(null)
+                    setTab('metadata')
                     yamlFetchedRef.current = false
                     onAfterSave?.()
                   } catch (err) {
