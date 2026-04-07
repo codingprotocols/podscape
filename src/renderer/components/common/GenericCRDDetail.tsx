@@ -38,6 +38,7 @@ export function GenericCRDDetail({ item, context, namespace, crdName, onAfterSav
   const kind = String(item.kind ?? 'Resource')
   const name = String(meta.name ?? '—')
   const ns = String(meta.namespace ?? namespace ?? '')
+  const metaNamespace = meta.namespace as string | undefined
 
   // Reset YAML state when the selected item changes so stale YAML is never shown
   const yamlFetchedRef = useRef(false)
@@ -55,7 +56,7 @@ export function GenericCRDDetail({ item, context, namespace, crdName, onAfterSav
     setYamlLoading(true)
     setYamlError(null)
     try {
-      const nsArg = (meta.namespace as string | undefined) ?? namespace ?? null
+      const nsArg = metaNamespace ?? namespace ?? null
       const content = await window.kubectl.getYAML(context, nsArg, crdName, name)
       setYaml(content)
     } catch (err) {
@@ -64,7 +65,7 @@ export function GenericCRDDetail({ item, context, namespace, crdName, onAfterSav
     } finally {
       setYamlLoading(false)
     }
-  }, [context, namespace, crdName, name])
+  }, [context, namespace, crdName, name, metaNamespace])
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'metadata', label: 'Metadata' },
@@ -181,6 +182,7 @@ export function GenericCRDDetail({ item, context, namespace, crdName, onAfterSav
                 onSave={async (newYaml) => {
                   try {
                     await applyYAML(newYaml)
+                    setYaml(newYaml)
                     setTab('metadata')
                     yamlFetchedRef.current = false
                     onAfterSave?.()

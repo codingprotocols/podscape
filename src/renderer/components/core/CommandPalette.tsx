@@ -45,41 +45,11 @@ const SECTION_SHORTCUTS: Array<{ label: string; section: ResourceKind; icon: str
   { label: 'Security Hub', section: 'security', icon: ICONS.secret, keywords: ['scan', 'trivy', 'kubesec', 'vulnerability'] },
   { label: 'TLS Certificates', section: 'tls', icon: ICONS.secret, keywords: ['cert', 'ssl', 'x509', 'expiry'] },
   { label: 'GitOps', section: 'gitops', icon: ICONS.deploy, keywords: ['flux', 'argo', 'argocd', 'kustomize', 'gitops'] },
-  { label: 'Cost & Waste', section: 'costview', icon: ICONS.metrics, keywords: ['cost', 'billing', 'efficiency', 'waste', 'resources'] },
+  { label: 'Cost & Waste', section: 'cost', icon: ICONS.metrics, keywords: ['cost', 'billing', 'efficiency', 'waste', 'resources'] },
   { label: 'Helm Charts', section: 'helm', icon: ICONS.helm, keywords: ['helm', 'releases', 'charts', 'package'] },
   { label: 'Settings', section: 'settings', icon: ICONS.settings, keywords: ['config', 'preferences', 'theme'] },
 ]
 
-// Map section → resource array key in the store
-const SECTION_TO_STORE_KEY: Partial<Record<ResourceKind, keyof ReturnType<typeof useAppStore>>> = {
-  pods: 'pods',
-  deployments: 'deployments',
-  daemonsets: 'daemonsets',
-  statefulsets: 'statefulsets',
-  replicasets: 'replicasets',
-  jobs: 'jobs',
-  cronjobs: 'cronjobs',
-  hpas: 'hpas',
-  pdbs: 'pdbs',
-  services: 'services',
-  ingresses: 'ingresses',
-  ingressclasses: 'ingressclasses',
-  networkpolicies: 'networkpolicies',
-  endpoints: 'endpoints',
-  configmaps: 'configmaps',
-  secrets: 'secrets',
-  pvcs: 'pvcs',
-  pvs: 'pvs',
-  storageclasses: 'storageclasses',
-  serviceaccounts: 'serviceaccounts',
-  roles: 'roles',
-  clusterroles: 'clusterroles',
-  rolebindings: 'rolebindings',
-  clusterrolebindings: 'clusterrolebindings',
-  nodes: 'nodes',
-  namespaces: 'namespaces',
-  crds: 'crds',
-}
 
 type ResourceResult = AnyKubeResource & { _kind: ResourceKind; _icon: string }
 type ShortcutResult = { _type: 'shortcut'; label: string; section: ResourceKind; icon: string }

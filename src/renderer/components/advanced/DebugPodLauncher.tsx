@@ -1,5 +1,4 @@
 import React, { useState, useRef } from 'react'
-import { Search, Terminal, Plus, Trash2, Play, Power, Box, Cpu, Database, AlertCircle, X, RefreshCw, ChevronRight } from 'lucide-react'
 import { useAppStore } from '../../store'
 import PageHeader from '../core/PageHeader'
 import type { DebugPodEntry } from '../../types'

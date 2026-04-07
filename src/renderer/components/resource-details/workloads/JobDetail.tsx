@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React from 'react'
 import type { KubeJob } from '../../../types'
 import { formatAge } from '../../../types'
 import { Play, CheckCircle2, Circle, Clock, FileCode, X, Activity, History, AlertTriangle, CheckCircle } from 'lucide-react'

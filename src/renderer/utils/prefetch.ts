@@ -1,7 +1,7 @@
 const warn = (path: string) => (err: unknown) =>
   console.warn(`[prefetch] failed to load ${path}:`, err)
 
-export function prefetchPanels(): Promise<void> {
+export async function prefetchPanels(): Promise<void> {
   const prefetchPromises = [
     import('../components/panels/HelmPanel').catch(warn('HelmPanel')),
     import('../components/panels/UnifiedLogs').catch(warn('UnifiedLogs')),
@@ -15,6 +15,6 @@ export function prefetchPanels(): Promise<void> {
     import('../components/panels/CostPanel').catch(warn('CostPanel')),
   ]
 
-  return Promise.allSettled(prefetchPromises).then(() => {})
+  await Promise.allSettled(prefetchPromises)
 }
 

@@ -11,7 +11,7 @@ function makeSlice() {
         else Object.assign(state, up)
     })
     const get = vi.fn(() => state)
-    return { slice: createCostSlice(set, get, {} as any), state }
+    return { slice: (createCostSlice as any)(set, get), state }
 }
 
 describe('costSlice', () => {
