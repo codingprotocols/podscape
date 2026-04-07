@@ -20,11 +20,6 @@ const getInstanceKey = (inst: CRDInstance | null): string | null => {
   return metadata.uid ?? `${metadata.namespace ?? ''}/${metadata.name}`
 }
 
-const getMetadataKey = (meta: CRDInstance['metadata'] | null): string | null => {
-  if (!meta) return null
-  return meta.uid ?? `${meta.namespace ?? ''}/${meta.name}`
-}
-
 interface Props {
   /** CRD full name e.g. "virtualservices.networking.istio.io" */
   crdName: string
