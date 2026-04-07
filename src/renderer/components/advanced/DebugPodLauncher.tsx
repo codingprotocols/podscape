@@ -64,7 +64,7 @@ export default function DebugPodLauncher() {
   const {
     selectedContext, selectedNamespace, namespaces,
     debugPods, addDebugPod, removeDebugPod, updateDebugPod,
-    openExec, deleteResource,
+    openExec, loadSection,
   } = useAppStore()
 
   const [selectedImage, setSelectedImage] = useState<string>(DEBUG_IMAGES[0].name)
@@ -73,6 +73,7 @@ export default function DebugPodLauncher() {
   const [targetNs, setTargetNs] = useState('')
   const [launching, setLaunching] = useState(false)
   const [launchError, setLaunchError] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const isMountedRef = useRef(true)
   React.useEffect(() => {
     isMountedRef.current = true
@@ -139,10 +140,19 @@ export default function DebugPodLauncher() {
   }
 
   const stop = async (pod: DebugPodEntry) => {
+    setDeleteError(null)
+    // Remove immediately from the UI — don't wait for the cluster round-trip
     removeDebugPod(pod.name)
-    try {
-      await deleteResource('pod', pod.name, false, pod.namespace)
-    } catch { /* ignore — pod may already be gone */ }
+    useAppStore.setState(s => ({ pods: s.pods.filter(p => p.metadata.name !== pod.name) }))
+    // Fire delete in the background; show error only if it truly fails
+    window.kubectl.deleteResource(selectedContext!, pod.namespace, 'pod', pod.name)
+      .catch((err: unknown) => {
+        const msg = (err as Error).message ?? String(err)
+        if (!msg.toLowerCase().includes('not found')) {
+          setDeleteError(`Failed to delete ${pod.name}: ${msg}`)
+        }
+      })
+      .finally(() => { loadSection('pods') })
   }
 
   const stopAll = async () => {
@@ -185,7 +195,7 @@ export default function DebugPodLauncher() {
                 </p>
                 <p className="text-[10px] text-slate-500 mb-2">{img.description}</p>
                 <div className="flex flex-wrap gap-1">
-                  {img.tools.slice(0, 4).map(t => (
+                  {img.tools.slice(0, 4).map((t: string) => (
                     <span key={t} className="text-[9px] font-mono text-slate-600 bg-white/5 px-1.5 py-0.5 rounded">{t}</span>
                   ))}
                   {img.tools.length > 4 && (
@@ -245,9 +255,9 @@ export default function DebugPodLauncher() {
 
         {/* Launch button */}
         <div className="space-y-2">
-          {launchError && (
+          {(launchError || deleteError) && (
             <div className="px-4 py-3 rounded-xl bg-red-950/30 border border-red-900/40 text-xs text-red-400 break-words">
-              {launchError}
+              {launchError || deleteError}
             </div>
           )}
           <button
@@ -278,7 +288,7 @@ export default function DebugPodLauncher() {
                   onClick={stopAll}
                   className="text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-red-400 transition-colors"
                 >
-                  Stop All
+                  Delete All
                 </button>
               )}
             </div>
@@ -320,7 +330,7 @@ export default function DebugPodLauncher() {
                       disabled={pod.status === 'creating'}
                       className="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-red-400 border border-red-900/40 hover:bg-red-950/30 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all"
                     >
-                      Stop
+                      Delete
                     </button>
                   </div>
                 </div>
@@ -328,7 +338,7 @@ export default function DebugPodLauncher() {
             </div>
 
             <p className="text-center text-[10px] text-slate-600">
-              Debug pods keep running until you click Stop. They use your cluster resources.
+              Debug pods keep running until you click Delete. They use your cluster resources.
             </p>
           </div>
         )}
