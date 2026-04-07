@@ -562,7 +562,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
 
           {/* Resource requests / limits */}
           {pod.spec.containers.some(c => c.resources?.requests || c.resources?.limits) && (
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-900 shrink-0">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-white/5 shrink-0">
               <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] mb-3">Resources</h4>
               <div className="space-y-2.5">
                 {pod.spec.containers.filter(c => c.resources?.requests || c.resources?.limits).map(c => (
