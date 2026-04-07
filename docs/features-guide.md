@@ -290,6 +290,59 @@ The timeline combines data from the pod's own status conditions (Scheduled, Init
 
 ---
 
+## CRD Browser
+
+The CRD Browser lets you explore and edit instances of any Custom Resource Definition installed in your cluster — without writing any `kubectl` commands.
+
+### Opening a CRD
+
+Navigate to **Cluster → CRDs** in the sidebar. The table lists every CRD in the cluster with its group, scope (Namespaced / Cluster), and instance count. Click any row to open the full-page CRD detail view.
+
+The detail page replaces the main content area and shows:
+
+- A header with the CRD kind, API group, plural name, full name, scope badge, and live instance count.
+- A **Definition YAML** button to view and edit the CRD's own schema manifest.
+- A **`← CRDs` breadcrumb** at the top left to return to the list.
+
+### Browsing instances
+
+Below the header, a resizable list + detail split shows all instances of that CRD. The list columns are:
+
+| Column | Notes |
+|--------|-------|
+| Name | Resource name in monospace |
+| Namespace | Shown only when viewing all namespaces |
+| Age | Time since creation |
+
+Click an instance row to open its detail panel on the right. Drag the divider between the list and the detail panel to resize them. Clicking the selected row again closes the panel.
+
+### Instance detail tabs
+
+Each instance has three tabs:
+
+**Metadata** — Name, namespace, API version, kind, creation timestamp, labels (as pill badges), and annotations.
+
+**Spec** — The full spec rendered as formatted YAML. Scroll to read; no interaction required.
+
+**YAML Edit** — The complete resource manifest in an editor. Make changes and click **Apply** to apply them to the cluster via server-side apply.
+
+### Provider CRD sections (Istio / Traefik / NGINX)
+
+When Istio, Traefik v2/v3, or NGINX Inc is detected in your cluster, dedicated sidebar sections appear (e.g. **Virtual Services**, **Ingress Routes**, **Virtual Servers**). These use the same generic list + detail layout as the CRD Browser, with an additional **Summary** column showing the most relevant field at a glance:
+
+| Section | Summary column |
+|---------|---------------|
+| Virtual Services | Total HTTP + TCP route count |
+| Destination Rules | Host |
+| Gateways | Server count |
+| Service Entries | Location (MESH\_INTERNAL / MESH\_EXTERNAL) |
+| Peer Authentication | mTLS mode |
+| IngressRoutes (Traefik) | Entry points |
+| Middlewares | Type |
+| Virtual Servers (NGINX) | Host |
+
+---
+
 ## Auto-Updater
 
 Podscape checks for new releases automatically in the background using the built-in Electron auto-updater. No manual download or re-installation is required.

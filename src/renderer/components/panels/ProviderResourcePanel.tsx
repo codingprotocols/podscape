@@ -1,27 +1,10 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react'
-import * as yaml from 'js-yaml'
+import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAppStore } from '../../store'
-import { ResourceKind } from '../../types'
+import { useDragResize } from '../../hooks/useDragResize'
+import { GenericCRDDetail } from '../common/GenericCRDDetail'
+import { ResourceKind, formatAge } from '../../types'
 import PageHeader from '../core/PageHeader'
 import { RefreshCw, X } from 'lucide-react'
-import TraefikIngressRouteDetail from '../provider-details/traefik/TraefikIngressRouteDetail'
-import TraefikMiddlewareDetail from '../provider-details/traefik/TraefikMiddlewareDetail'
-import TraefikMiddlewareTCPDetail from '../provider-details/traefik/TraefikMiddlewareTCPDetail'
-import TraefikServiceDetail from '../provider-details/traefik/TraefikServiceDetail'
-import TraefikTLSOptionDetail from '../provider-details/traefik/TraefikTLSOptionDetail'
-import TraefikTLSStoreDetail from '../provider-details/traefik/TraefikTLSStoreDetail'
-import TraefikServersTransportTCPDetail from '../provider-details/traefik/TraefikServersTransportTCPDetail'
-import NginxVirtualServerDetail from '../provider-details/nginx/NginxVirtualServerDetail'
-import NginxVirtualServerRouteDetail from '../provider-details/nginx/NginxVirtualServerRouteDetail'
-import NginxPolicyDetail from '../provider-details/nginx/NginxPolicyDetail'
-import NginxTransportServerDetail from '../provider-details/nginx/NginxTransportServerDetail'
-import IstioVirtualServiceDetail from '../provider-details/istio/IstioVirtualServiceDetail'
-import IstioDestinationRuleDetail from '../provider-details/istio/IstioDestinationRuleDetail'
-import IstioGatewayDetail from '../provider-details/istio/IstioGatewayDetail'
-import IstioServiceEntryDetail from '../provider-details/istio/IstioServiceEntryDetail'
-import IstioPeerAuthDetail from '../provider-details/istio/IstioPeerAuthDetail'
-import IstioAuthPolicyDetail from '../provider-details/istio/IstioAuthPolicyDetail'
-import IstioRequestAuthDetail from '../provider-details/istio/IstioRequestAuthDetail'
 
 // Maps the ResourceKind value to the Kubernetes CRD plural resource name used
 // by getCustomResource (which passes it as the endpoint path to the sidecar).
@@ -74,20 +57,15 @@ const SECTION_LABELS: Partial<Record<ResourceKind, string>> = {
     'nginx-transportservers':    'Transport Servers',
 }
 
-function age(ts: string): string {
-    const diff = Date.now() - new Date(ts).getTime()
-    const s = Math.floor(diff / 1000)
-    if (s < 60) return `${s}s`
-    const m = Math.floor(s / 60)
-    if (m < 60) return `${m}m`
-    const h = Math.floor(m / 60)
-    if (h < 24) return `${h}h`
-    return `${Math.floor(h / 24)}d`
+/** Safe conversion of an unknown spec value to a display string. */
+function safeStr(v: unknown, fallback = '—'): string {
+    if (v === null || v === undefined || typeof v === 'object') return fallback
+    return String(v)
 }
 
-/** Derive a short summary string for the "Summary" table column. */
-function itemSummary(section: ResourceKind, item: any): string {
-    const spec = item?.spec ?? {}
+/** Derive a short summary string for the "Summary" table column. Returns '' for unsupported sections. */
+function itemSummary(section: ResourceKind, item: Record<string, unknown>): string {
+    const spec = (item?.spec ?? {}) as Record<string, unknown>
     switch (section) {
         case 'traefik-ingressroutes': {
             const n = (spec.routes ?? []).length
@@ -119,10 +97,10 @@ function itemSummary(section: ResourceKind, item: any): string {
             if (spec.mirroring) return 'Mirroring'
             return '—'
         case 'traefik-tlsoptions':
-            return spec.minVersion ?? 'Default'
+            return safeStr(spec.minVersion, 'Default')
         case 'nginx-virtualservers': {
-            const host = item?.spec?.host
-            return host ?? '—'
+            const host = (item?.spec as Record<string, unknown>)?.host
+            return safeStr(host)
         }
         case 'nginx-policies': {
             const known = ['accessControl', 'rateLimit', 'jwt', 'basicAuth', 'ingressMTLS', 'egressMTLS', 'oidc']
@@ -134,7 +112,7 @@ function itemSummary(section: ResourceKind, item: any): string {
             return labels[key] ?? (key || '—')
         }
         case 'nginx-transportservers':
-            return item?.spec?.listener?.protocol ?? '—'
+            return safeStr(((item?.spec as Record<string, unknown>)?.listener as Record<string, unknown>)?.protocol)
         case 'istio-virtualservices': {
             const httpCount = (spec.http ?? []).length
             const tcpCount = (spec.tcp ?? []).length
@@ -142,17 +120,17 @@ function itemSummary(section: ResourceKind, item: any): string {
             return total > 0 ? `${total} route${total !== 1 ? 's' : ''}` : '—'
         }
         case 'istio-destinationrules':
-            return spec.host ?? '—'
+            return safeStr(spec.host)
         case 'istio-gateways': {
             const serverCount = (spec.servers ?? []).length
             return `${serverCount} server${serverCount !== 1 ? 's' : ''}`
         }
         case 'istio-serviceentries':
-            return (spec.hosts ?? [])[0] ?? '—'
+            return safeStr((spec.hosts as unknown[])?.[0])
         case 'istio-peerauth':
-            return spec.mtls?.mode ?? 'UNSET'
+            return safeStr((spec.mtls as Record<string, unknown>)?.mode, 'UNSET')
         case 'istio-authpolicies':
-            return spec.action ?? 'ALLOW'
+            return safeStr(spec.action, 'ALLOW')
         case 'istio-requestauth': {
             const n = (spec.jwtRules ?? []).length
             return `${n} JWT rule${n !== 1 ? 's' : ''}`
@@ -160,82 +138,22 @@ function itemSummary(section: ResourceKind, item: any): string {
         case 'traefik-middlewaretcps':
             return (spec.ipAllowList?.sourceRange ?? []).length > 0 ? 'IP Allow List' : '—'
         case 'traefik-tlsstores':
-            return spec.defaultCertificate?.secretName ?? (spec.defaultGeneratedCert ? 'Generated' : '—')
-        case 'traefik-serverstransporttcps':
-            return spec.tls?.serverName ?? (spec.dialTimeout ? `dial ${spec.dialTimeout}` : '—')
+            return safeStr((spec.defaultCertificate as Record<string, unknown>)?.secretName,
+                spec.defaultGeneratedCert ? 'Generated' : '—')
+        case 'traefik-serverstransporttcps': {
+            const serverName = safeStr((spec.tls as Record<string, unknown>)?.serverName, '')
+            if (serverName) return serverName
+            const dialTimeout = safeStr(spec.dialTimeout, '')
+            return dialTimeout ? `dial ${dialTimeout}` : '—'
+        }
         case 'nginx-virtualserverroutes': {
-            const n = (spec.subroutes ?? []).length
-            return n > 0 ? `${n} subroute${n !== 1 ? 's' : ''}` : (spec.host ?? '—')
+            const n = (spec.subroutes as unknown[] ?? []).length
+            return n > 0 ? `${n} subroute${n !== 1 ? 's' : ''}` : safeStr(spec.host)
         }
         default:
             return ''
     }
 }
-
-/** Render the correct detail component for the selected item and section. */
-function DetailPanel({ section, item }: { section: ResourceKind; item: any }) {
-    switch (section) {
-        case 'traefik-ingressroutes':
-            return <TraefikIngressRouteDetail item={item} />
-        case 'traefik-middlewares':
-            return <TraefikMiddlewareDetail item={item} />
-        case 'traefik-services':
-            return <TraefikServiceDetail item={item} />
-        case 'traefik-tlsoptions':
-            return <TraefikTLSOptionDetail item={item} />
-        case 'nginx-virtualservers':
-            return <NginxVirtualServerDetail item={item} />
-        case 'nginx-policies':
-            return <NginxPolicyDetail item={item} />
-        case 'nginx-transportservers':
-            return <NginxTransportServerDetail item={item} />
-        case 'istio-virtualservices':
-            return <IstioVirtualServiceDetail item={item} />
-        case 'istio-destinationrules':
-            return <IstioDestinationRuleDetail item={item} />
-        case 'istio-gateways':
-            return <IstioGatewayDetail item={item} />
-        case 'istio-serviceentries':
-            return <IstioServiceEntryDetail item={item} />
-        case 'istio-peerauth':
-            return <IstioPeerAuthDetail item={item} />
-        case 'istio-authpolicies':
-            return <IstioAuthPolicyDetail item={item} />
-        case 'istio-requestauth':
-            return <IstioRequestAuthDetail item={item} />
-        case 'traefik-middlewaretcps':
-            return <TraefikMiddlewareTCPDetail item={item} />
-        case 'traefik-tlsstores':
-            return <TraefikTLSStoreDetail item={item} />
-        case 'traefik-serverstransporttcps':
-            return <TraefikServersTransportTCPDetail item={item} />
-        case 'nginx-virtualserverroutes':
-            return <NginxVirtualServerRouteDetail item={item} />
-        default:
-            // Generic YAML viewer for all other sections (istio, nginx, TCP/UDP routes…)
-            return (
-                <div className="flex flex-col w-full h-full overflow-y-auto">
-                    <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-white font-mono truncate">
-                            {item?.metadata?.name ?? '—'}
-                        </h3>
-                        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">
-                            {item?.metadata?.namespace ?? '—'} · {item?.kind ?? 'RESOURCE'}
-                        </p>
-                    </div>
-                    <div className="flex-1 overflow-auto bg-slate-950">
-                        <pre className="text-xs font-mono p-4 text-slate-300 leading-relaxed whitespace-pre">
-                            {yaml.dump(item, { indent: 2 })}
-                        </pre>
-                    </div>
-                </div>
-            )
-    }
-}
-
-const MIN_DETAIL_WIDTH = 280
-const MAX_DETAIL_WIDTH = 600
-const DEFAULT_DETAIL_WIDTH = 380
 
 export default function ProviderResourcePanel({ section }: { section: ResourceKind }) {
     const { selectedContext, selectedNamespace, providers } = useAppStore()
@@ -243,17 +161,13 @@ export default function ProviderResourcePanel({ section }: { section: ResourceKi
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [selectedItem, setSelectedItem] = useState<any | null>(null)
-    const [detailWidth, setDetailWidth] = useState(DEFAULT_DETAIL_WIDTH)
-
-    // Drag-to-resize state
-    const dragStartX = useRef<number | null>(null)
-    const dragStartWidth = useRef<number>(DEFAULT_DETAIL_WIDTH)
+    const { width: detailWidth, onMouseDown: handleResizeMouseDown } = useDragResize(380, 280, 600)
 
     const crdName = SECTION_TO_CRD[section]
     const label = SECTION_LABELS[section] ?? section
 
     // Detect the active provider for the Traefik v2 fallback
-    const resolvedCrdName = useCallback((): string | undefined => {
+    const resolvedCrdName = useMemo((): string | undefined => {
         if (!crdName) return undefined
         // Traefik v2 uses traefik.containo.us group instead of traefik.io
         if (crdName.endsWith('.traefik.io') && providers.traefikVersion === 'v2') {
@@ -263,21 +177,19 @@ export default function ProviderResourcePanel({ section }: { section: ResourceKi
     }, [crdName, providers.traefikVersion])
 
     const load = useCallback(async () => {
-        if (!selectedContext || !crdName) return
-        const resolved = resolvedCrdName()
-        if (!resolved) return
+        if (!selectedContext || !resolvedCrdName) return
         setLoading(true)
         setError(null)
         try {
             const ns = selectedNamespace === '_all' ? null : selectedNamespace
-            const data = await window.kubectl.getCustomResource(selectedContext, ns, resolved)
+            const data = await window.kubectl.getCustomResource(selectedContext, ns, resolvedCrdName)
             setItems(Array.isArray(data) ? data : [])
         } catch (err) {
             setError((err as Error).message)
         } finally {
             setLoading(false)
         }
-    }, [selectedContext, selectedNamespace, crdName, resolvedCrdName])
+    }, [selectedContext, selectedNamespace, resolvedCrdName])
 
     useEffect(() => {
         load()
@@ -285,62 +197,9 @@ export default function ProviderResourcePanel({ section }: { section: ResourceKi
         setSelectedItem(null)
     }, [load])
 
-    // Resize handle mouse handlers
-    const resizeListeners = useRef<{ move: (e: MouseEvent) => void; up: () => void } | null>(null)
-
-    useEffect(() => {
-        return () => {
-            if (resizeListeners.current) {
-                window.removeEventListener('mousemove', resizeListeners.current.move)
-                window.removeEventListener('mouseup', resizeListeners.current.up)
-                resizeListeners.current = null
-            }
-        }
-    }, [])
-
-    const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
-        e.preventDefault()
-        dragStartX.current = e.clientX
-        dragStartWidth.current = detailWidth
-
-        const onMouseMove = (ev: MouseEvent) => {
-            if (dragStartX.current === null) return
-            // Dragging left increases panel width (panel is on the right)
-            const delta = dragStartX.current - ev.clientX
-            const next = Math.max(MIN_DETAIL_WIDTH, Math.min(MAX_DETAIL_WIDTH, dragStartWidth.current + delta))
-            setDetailWidth(next)
-        }
-        const onMouseUp = () => {
-            dragStartX.current = null
-            window.removeEventListener('mousemove', onMouseMove)
-            window.removeEventListener('mouseup', onMouseUp)
-            resizeListeners.current = null
-        }
-        resizeListeners.current = { move: onMouseMove, up: onMouseUp }
-        window.addEventListener('mousemove', onMouseMove)
-        window.addEventListener('mouseup', onMouseUp)
-    }, [detailWidth])
-
-    const hasSummaryColumn = [
-        'traefik-ingressroutes',
-        'traefik-middlewares',
-        'traefik-middlewaretcps',
-        'traefik-services',
-        'traefik-tlsoptions',
-        'traefik-tlsstores',
-        'traefik-serverstransporttcps',
-        'nginx-virtualservers',
-        'nginx-virtualserverroutes',
-        'nginx-policies',
-        'nginx-transportservers',
-        'istio-virtualservices',
-        'istio-destinationrules',
-        'istio-gateways',
-        'istio-serviceentries',
-        'istio-peerauth',
-        'istio-authpolicies',
-        'istio-requestauth',
-    ].includes(section)
+    // Derived from SECTION_TO_CRD so no manual list to maintain
+    const hasSummaryColumn = section in SECTION_TO_CRD
+    const showNamespaceCol = selectedNamespace === '_all'
 
     return (
         <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden">
@@ -394,7 +253,7 @@ export default function ProviderResourcePanel({ section }: { section: ResourceKi
                                 <tr className="text-left text-[10px] font-black uppercase tracking-widest text-slate-500
                                                border-b border-slate-100 dark:border-white/5 bg-slate-50 dark:bg-white/[0.02]">
                                     <th className="px-4 py-2.5">Name</th>
-                                    <th className="px-4 py-2.5">Namespace</th>
+                                    {showNamespaceCol && <th className="px-4 py-2.5">Namespace</th>}
                                     {hasSummaryColumn && <th className="px-4 py-2.5">Summary</th>}
                                     <th className="px-4 py-2.5">Age</th>
                                 </tr>
@@ -405,7 +264,7 @@ export default function ProviderResourcePanel({ section }: { section: ResourceKi
                                     const ns = item?.metadata?.namespace ?? '—'
                                     const createdAt = item?.metadata?.creationTimestamp
                                     const isSelected = selectedItem === item
-                                    const summary = hasSummaryColumn ? itemSummary(section, item) : ''
+                                    const summary = hasSummaryColumn ? itemSummary(section, item as Record<string, unknown>) : ''
                                     return (
                                         <tr
                                             key={`${ns}/${name}-${i}`}
@@ -419,12 +278,12 @@ export default function ProviderResourcePanel({ section }: { section: ResourceKi
                                             <td className={`px-4 py-2.5 font-semibold font-mono ${isSelected ? 'text-blue-400' : 'text-slate-800 dark:text-slate-200'}`}>
                                                 {name}
                                             </td>
-                                            <td className="px-4 py-2.5 text-slate-500 font-mono">{ns}</td>
+                                            {showNamespaceCol && <td className="px-4 py-2.5 text-slate-500 font-mono">{ns}</td>}
                                             {hasSummaryColumn && (
                                                 <td className="px-4 py-2.5 text-slate-400">{summary || '—'}</td>
                                             )}
                                             <td className="px-4 py-2.5 text-slate-400">
-                                                {createdAt ? age(createdAt) : '—'}
+                                                {createdAt ? formatAge(createdAt) : '—'}
                                             </td>
                                         </tr>
                                     )
@@ -463,7 +322,13 @@ export default function ProviderResourcePanel({ section }: { section: ResourceKi
                             </div>
 
                             <div className="flex-1 min-h-0 overflow-hidden">
-                                <DetailPanel section={section} item={selectedItem} />
+                                <GenericCRDDetail
+                                    item={selectedItem as Record<string, unknown>}
+                                    context={selectedContext ?? ''}
+                                    namespace={selectedNamespace === '_all' ? null : (selectedNamespace ?? null)}
+                                    crdName={resolvedCrdName ?? ''}
+                                    onAfterSave={load}
+                                />
                             </div>
                         </div>
                     </>
