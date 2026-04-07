@@ -28,12 +28,17 @@ export default function UpdateBanner(): JSX.Element | null {
         setDismissed(false)
         setVisible(true)
       }),
-      w.onProgress((p) => setUpdate((prev) => {
-        const next = Math.round(p.percent)
-        return prev.status === 'downloading' && prev.percent === next
-          ? prev
-          : { status: 'downloading', percent: next }
-      })),
+      w.onProgress((p) => {
+        setUpdate((prev) => {
+          const next = Math.round(p.percent)
+          if (prev.status === 'downloading' && prev.percent === next) {
+            return prev
+          }
+          // Ensure the banner is visible when download progress is reported.
+          setVisible(true)
+          return { status: 'downloading', percent: next }
+        })
+      }),
       w.onDownloaded((info) => {
         setUpdate({ status: 'ready', version: info.version })
         setDismissed(false)
@@ -154,7 +159,7 @@ export default function UpdateBanner(): JSX.Element | null {
             className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-lg transition-colors"
           >
             <RefreshCw size={12} />
-            Restart &amp; Install
+            Restart & Install
           </button>
         </div>
       </div>
