@@ -224,7 +224,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   }, [logs, autoScroll])
 
 
-  const phase = pod.status.phase ?? 'Unknown'
+  const phase = pod.metadata.deletionTimestamp ? 'Terminating' : (pod.status.phase ?? 'Unknown')
   const filteredLogs = search
     ? logs.filter(l => l.toLowerCase().includes(search.toLowerCase()))
     : logs

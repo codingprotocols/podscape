@@ -320,7 +320,7 @@ function derivedHealth(pods: KubePod[], deployments: KubeDeployment[]) {
   let running = 0
 
   for (const pod of pods) {
-    if (pod.status.phase === 'Running') running++
+    if (pod.status.phase === 'Running' && !pod.metadata.deletionTimestamp) running++
     const restarts = podTotalRestarts(pod)
     const crashLooping = (pod.status.containerStatuses ?? []).some(
       cs => cs.state.waiting?.reason === 'CrashLoopBackOff'
@@ -393,7 +393,7 @@ export default function Dashboard(): JSX.Element {
     recentEvents, processedEvents, metricsById, warningCount
   } = useMemo(() => {
     // Stats calculation
-    const runningPods = pods.filter(p => p.status.phase === 'Running').length
+    const runningPods = pods.filter(p => p.status.phase === 'Running' && !p.metadata.deletionTimestamp).length
     const readyNodes = nodes.filter(getNodeReady).length
     const readyDeploys = deployments.filter(
       d => (d.status.readyReplicas ?? 0) >= (d.spec.replicas ?? 0) && (d.spec.replicas ?? 0) > 0

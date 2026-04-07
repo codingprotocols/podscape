@@ -3,6 +3,7 @@ export interface ObjectMeta {
   namespace?: string
   uid: string
   creationTimestamp: string
+  deletionTimestamp?: string
   labels?: Record<string, string>
   annotations?: Record<string, string>
   ownerReferences?: Array<{ apiVersion: string; kind: string; name: string; uid: string }>

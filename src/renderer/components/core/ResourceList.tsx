@@ -57,7 +57,7 @@ function RestartBadge({ count, onNavigateToDebug }: { count: number; onNavigateT
 }
 
 const PodRow = React.memo(function PodRow({ pod }: { pod: KubePod }) {
-  const phase = pod.status.phase ?? 'Unknown'
+  const phase = pod.metadata.deletionTimestamp ? 'Terminating' : (pod.status.phase ?? 'Unknown')
   const restarts = totalRestarts(pod)
   return (
     <>
