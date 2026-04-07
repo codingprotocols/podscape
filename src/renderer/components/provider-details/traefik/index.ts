@@ -1,7 +1,0 @@
-export { default as TraefikIngressRouteDetail } from './TraefikIngressRouteDetail'
-export { default as TraefikMiddlewareDetail } from './TraefikMiddlewareDetail'
-export { default as TraefikMiddlewareTCPDetail } from './TraefikMiddlewareTCPDetail'
-export { default as TraefikServiceDetail } from './TraefikServiceDetail'
-export { default as TraefikTLSOptionDetail } from './TraefikTLSOptionDetail'
-export { default as TraefikTLSStoreDetail } from './TraefikTLSStoreDetail'
-export { default as TraefikServersTransportTCPDetail } from './TraefikServersTransportTCPDetail'

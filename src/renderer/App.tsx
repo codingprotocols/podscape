@@ -5,6 +5,8 @@ import Sidebar from './components/core/Sidebar'
 import Dashboard from './components/core/Dashboard'
 import ResourceList, { SECTION_LABELS } from './components/core/ResourceList'
 import DetailPanel from './components/core/DetailPanel'
+import CRDDetail from './components/resource-details/cluster/CRDDetail'
+import { KubeCRD } from './types'
 import PortForwardPanel from './components/panels/PortForwardPanel'
 import EventsView from './components/panels/EventsView'
 import MetricsView from './components/panels/MetricsView'
@@ -119,6 +121,7 @@ export default function App(): JSX.Element {
     securityScanning,
     scanInBackground,
     setSection,
+    selectResource,
   } = useAppStore(useShallow(s => ({
     init: s.init,
     section: s.section,
@@ -137,6 +140,7 @@ export default function App(): JSX.Element {
     securityScanning: s.securityScanning,
     scanInBackground: s.scanInBackground,
     setSection: s.setSection,
+    selectResource: s.selectResource,
   })))
 
   const [sidecarCrashed, setSidecarCrashed] = useState(false)
@@ -270,6 +274,10 @@ export default function App(): JSX.Element {
               <Suspense fallback={null}><CostPanel /></Suspense>
             ) : (section as string).startsWith('istio-') || (section as string).startsWith('traefik-') || (section as string).startsWith('nginx-') ? (
               <Suspense fallback={null}><ProviderResourcePanel section={section} /></Suspense>
+            ) : section === 'crds' && selectedResource ? (
+              <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden animate-in fade-in duration-200">
+                <CRDDetail crd={selectedResource as KubeCRD} onBack={() => selectResource(null)} />
+              </div>
             ) : (LIST_SECTIONS as string[]).includes(section) ? (
               <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden">
                 <PageHeader
@@ -308,7 +316,7 @@ export default function App(): JSX.Element {
 
                 <div className="flex flex-1 min-w-0 overflow-hidden">
                   <ResourceList />
-                  {selectedResource && (
+                  {selectedResource && section !== 'crds' && (
                     <ErrorBoundary key={selectedResource.metadata.uid}>
                       <DetailPanel resource={selectedResource} section={section} />
                     </ErrorBoundary>

@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.6.0] — 2026-04-07
+
+### New features
+
+#### Dynamic CRD Browser
+- **Generic CRD instance browser:** Clicking any CRD in the Cluster → CRDs list now opens a full-page detail view instead of a cramped side panel. The page shows the CRD's metadata header, instance count, and a resizable list + detail split.
+- **Full-page CRD detail:** The CRD detail takes over the entire main content area, giving the instance list and detail pane room to breathe. A `← CRDs` breadcrumb in the header navigates back to the list.
+- **Instance list with resizable detail pane:** Click any instance to open its detail panel on the right; drag the divider to resize. Clicking the selected row again closes the panel.
+- **Tabbed instance detail (Metadata / Spec / YAML Edit):** Each instance shows a Metadata tab (name, namespace, API version, labels, annotations), a Spec tab (spec rendered as readable YAML), and a YAML Edit tab with full in-place edit and apply support.
+- **Spec as readable YAML:** The Spec tab renders the instance's spec as formatted YAML text — no more nested dropdowns. Scroll and read, just like `kubectl get -o yaml`.
+- **Universal provider resource browser:** All Istio, Traefik, and NGINX CRD sections use the same generic detail panel. Hand-crafted per-resource detail components have been removed (18 files). Summary columns remain for the most common sections (route counts, hosts, mTLS mode, etc.).
+- **Traefik v2 fallback:** If the cluster runs Traefik v2, CRD names are automatically rewritten from `.traefik.io` to `.traefik.containo.us`.
+
+### Improvements
+
+- **CRD row selection fix:** Switching between instances no longer collapses the detail panel. Selection uses the composite key `uid ?? namespace/name` so same-name resources in different namespaces are correctly distinguished.
+- **YAML state reset on item switch:** Navigating to a different instance immediately clears stale YAML from the previous selection — the YAML tab always fetches fresh content.
+- **Namespace column visibility:** The Namespace column in provider resource lists and CRD instance lists is shown only when viewing all namespaces (`_all`), keeping single-namespace views clean.
+
+---
+
 ## [2.5.0] — 2026-04-06
 
 ### New features

@@ -1,7 +1,0 @@
-export { default as IstioVirtualServiceDetail } from './IstioVirtualServiceDetail'
-export { default as IstioDestinationRuleDetail } from './IstioDestinationRuleDetail'
-export { default as IstioGatewayDetail } from './IstioGatewayDetail'
-export { default as IstioServiceEntryDetail } from './IstioServiceEntryDetail'
-export { default as IstioPeerAuthDetail } from './IstioPeerAuthDetail'
-export { default as IstioAuthPolicyDetail } from './IstioAuthPolicyDetail'
-export { default as IstioRequestAuthDetail } from './IstioRequestAuthDetail'
