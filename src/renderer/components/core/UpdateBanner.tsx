@@ -107,7 +107,17 @@ export default function UpdateBanner(): JSX.Element | null {
         </div>
         <div className="px-4 pb-4">
           <button
-            onClick={() => window.updater?.download()}
+            onClick={async () => {
+              try {
+                await window.updater?.download()
+              } catch (err: any) {
+                const message =
+                  typeof err === 'object' && err !== null && 'message' in err
+                    ? String((err as { message?: unknown }).message)
+                    : 'Update download failed.'
+                setUpdate({ status: 'error', message })
+              }
+            }}
             className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold rounded-lg transition-colors"
           >
             <Download size={12} />
