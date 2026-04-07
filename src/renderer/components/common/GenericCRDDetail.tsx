@@ -59,12 +59,12 @@ export function GenericCRDDetail({ item, context, namespace, crdName, onAfterSav
       const content = await window.kubectl.getYAML(context, nsArg, crdName, name)
       setYaml(content)
     } catch (err) {
-      setYamlError((err as Error).message ?? 'Failed to fetch YAML')
+      setYamlError((err as Error).message || 'Failed to fetch YAML')
       yamlFetchedRef.current = false
     } finally {
       setYamlLoading(false)
     }
-  }, [context, ns, crdName, name])
+  }, [context, namespace, crdName, name])
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'metadata', label: 'Metadata' },
@@ -181,11 +181,11 @@ export function GenericCRDDetail({ item, context, namespace, crdName, onAfterSav
                 onSave={async (newYaml) => {
                   try {
                     await applyYAML(newYaml)
-                    setYaml(null)
+                    setTab('metadata')
                     yamlFetchedRef.current = false
                     onAfterSave?.()
                   } catch (err) {
-                    setYamlError((err as Error).message ?? 'Failed to apply YAML')
+                    setYamlError((err as Error).message || 'Failed to apply YAML')
                   }
                 }}
               />
