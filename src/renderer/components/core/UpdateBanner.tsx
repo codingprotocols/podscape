@@ -155,7 +155,17 @@ export default function UpdateBanner(): JSX.Element | null {
         </div>
         <div className="px-4 pb-4">
           <button
-            onClick={() => window.updater?.install()}
+            onClick={async () => {
+              try {
+                await window.updater?.install()
+              } catch (err: unknown) {
+                const message =
+                  err instanceof Error && err.message
+                    ? err.message
+                    : 'Failed to install update.'
+                setUpdate({ status: 'error', message })
+              }
+            }}
             className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-lg transition-colors"
           >
             <RefreshCw size={12} />
