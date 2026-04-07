@@ -185,7 +185,7 @@ export function GenericCRDDetail({ item, context, namespace, crdName, onAfterSav
                     yamlFetchedRef.current = false
                     onAfterSave?.()
                   } catch (err) {
-                    setYamlError((err as Error).message ?? 'Failed to apply YAML')
+                    setYamlError((err as Error).message || 'Failed to apply YAML')
                   }
                 }}
               />
