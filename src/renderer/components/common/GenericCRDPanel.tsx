@@ -48,7 +48,7 @@ export function GenericCRDPanel({ crdName, context, namespace, onCountLoaded }: 
     } finally {
       setLoading(false)
     }
-  }, [context, namespace, crdName])
+  }, [context, namespace, crdName, onCountLoaded])
 
   useEffect(() => {
     setSelected(null)
@@ -84,9 +84,9 @@ export function GenericCRDPanel({ crdName, context, namespace, onCountLoaded }: 
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                {items.map(inst => (
+                {items.map((inst, index) => (
                   <tr
-                    key={getInstanceKey(inst) ?? ''}
+                    key={getInstanceKey(inst) ?? index}
                     onClick={() => {
                       const key = getInstanceKey(inst)
                       const selKey = getInstanceKey(selected ?? null)

@@ -31,7 +31,7 @@ describe('operationSlice', () => {
     })
 
     it('scaleDeployment calls kubectl scale and reloads section', async () => {
-        const slice = createOperationSlice(set, get, {} as any)
+        const slice = (createOperationSlice as any)(set, get)
         await slice.scaleDeployment('dep1', 3)
 
         expect(windowMock.kubectl.scale).toHaveBeenCalledWith('ctx1', 'ns1', 'dep1', 3)
@@ -39,14 +39,14 @@ describe('operationSlice', () => {
     })
 
     it('rolloutRestart calls kubectl rolloutRestart', async () => {
-        const slice = createOperationSlice(set, get, {} as any)
+        const slice = (createOperationSlice as any)(set, get)
         await slice.rolloutRestart('deployment', 'dep1')
 
         expect(windowMock.kubectl.rolloutRestart).toHaveBeenCalledWith('ctx1', 'ns1', 'deployment', 'dep1')
     })
 
     it('deleteResource calls kubectl deleteResource and clears selection', async () => {
-        const slice = createOperationSlice(set, get, {} as any)
+        const slice = (createOperationSlice as any)(set, get)
         await slice.deleteResource('pod', 'pod1')
 
         expect(windowMock.kubectl.deleteResource).toHaveBeenCalledWith('ctx1', 'ns1', 'pod', 'pod1')
@@ -56,7 +56,7 @@ describe('operationSlice', () => {
 
     it('applyYAML calls kubectl applyYAML', async () => {
         windowMock.kubectl.applyYAML.mockResolvedValue('applied')
-        const slice = createOperationSlice(set, get, {} as any)
+        const slice = (createOperationSlice as any)(set, get)
         const res = await slice.applyYAML('some yaml')
 
         expect(windowMock.kubectl.applyYAML).toHaveBeenCalledWith('ctx1', 'some yaml')
@@ -66,7 +66,7 @@ describe('operationSlice', () => {
     it('applyYAML propagates errors and does not reload section', async () => {
         const applyError = new Error('Go sidecar returned 422 for /apply: Apply failed: Pod spec fields are immutable after creation.')
         windowMock.kubectl.applyYAML.mockRejectedValue(applyError)
-        const slice = createOperationSlice(set, get, {} as any)
+        const slice = (createOperationSlice as any)(set, get)
 
         await expect(slice.applyYAML('some yaml')).rejects.toThrow('immutable')
         expect(state.loadSection).not.toHaveBeenCalled()
@@ -74,7 +74,7 @@ describe('operationSlice', () => {
 
     it('applyYAML returns empty string and skips fetch when no context', async () => {
         state.selectedContext = null
-        const slice = createOperationSlice(set, get, {} as any)
+        const slice = (createOperationSlice as any)(set, get)
         const res = await slice.applyYAML('some yaml')
 
         expect(windowMock.kubectl.applyYAML).not.toHaveBeenCalled()
@@ -83,7 +83,7 @@ describe('operationSlice', () => {
 
     it('startPortForward adds entry and calls kubectl portForward', () => {
         const entry = { id: 'pf1', name: 'p1', namespace: 'ns1', type: 'pod', localPort: 8080, remotePort: 80 }
-        const slice = createOperationSlice(set, get, {} as any)
+        const slice = (createOperationSlice as any)(set, get)
         slice.startPortForward(entry as any)
 
         expect(state.portForwards).toContain(entry)
@@ -92,7 +92,7 @@ describe('operationSlice', () => {
 
     it('startPortForward registers all three IPC listeners', () => {
         const entry = { id: 'pf2', name: 'p2', namespace: 'ns1', type: 'pod', localPort: 9090, remotePort: 90 }
-        const slice = createOperationSlice(set, get, {} as any)
+        const slice = (createOperationSlice as any)(set, get)
         slice.startPortForward(entry as any)
 
         expect(windowMock.kubectl.onPortForwardReady).toHaveBeenCalledWith('pf2', expect.any(Function))
@@ -110,7 +110,7 @@ describe('operationSlice', () => {
 
         const entry = { id: 'pf3', name: 'p3', namespace: 'ns1', type: 'pod', localPort: 7070, remotePort: 70 }
         state.portForwards = [entry]
-        const slice = createOperationSlice(set, get, {} as any)
+        const slice = (createOperationSlice as any)(set, get)
         slice.startPortForward(entry as any)
         slice.stopPortForward('pf3')
 
@@ -130,7 +130,7 @@ describe('operationSlice', () => {
 
         const entry = { id: 'pf4', name: 'p4', namespace: 'ns1', type: 'pod', localPort: 6060, remotePort: 60, status: 'starting' }
         state.portForwards = [entry]
-        const slice = createOperationSlice(set, get, {} as any)
+        const slice = (createOperationSlice as any)(set, get)
         slice.startPortForward(entry as any)
 
         readyCb!()
@@ -142,7 +142,7 @@ describe('operationSlice', () => {
 
     it('scaleDeployment propagates kubectl error without corrupting store', async () => {
         windowMock.kubectl.scale.mockRejectedValue(new Error('scale failed'))
-        const slice = createOperationSlice(set, get, {} as any)
+        const slice = (createOperationSlice as any)(set, get)
         await expect(slice.scaleDeployment('dep1', 5)).rejects.toThrow('scale failed')
         // loadSection must NOT have been called — caller handles error display
         expect(state.loadSection).not.toHaveBeenCalled()
@@ -150,13 +150,13 @@ describe('operationSlice', () => {
 
     it('rolloutRestart propagates kubectl error', async () => {
         windowMock.kubectl.rolloutRestart.mockRejectedValue(new Error('rollout error'))
-        const slice = createOperationSlice(set, get, {} as any)
+        const slice = (createOperationSlice as any)(set, get)
         await expect(slice.rolloutRestart('deployment', 'dep1')).rejects.toThrow('rollout error')
     })
 
     it('deleteResource propagates kubectl error and does not clear selectedResource', async () => {
         windowMock.kubectl.deleteResource.mockRejectedValue(new Error('delete error'))
-        const slice = createOperationSlice(set, get, {} as any)
+        const slice = (createOperationSlice as any)(set, get)
         await expect(slice.deleteResource('pod', 'pod1')).rejects.toThrow('delete error')
         // selectedResource must not have been cleared — the resource still exists
         expect(set).not.toHaveBeenCalledWith({ selectedResource: null })
@@ -172,7 +172,7 @@ describe('operationSlice', () => {
 
         const entry = { id: 'pf-err', name: 'perr', namespace: 'ns1', type: 'pod', localPort: 7070, remotePort: 70, status: 'starting' }
         state.portForwards = [entry]
-        const slice = createOperationSlice(set, get, {} as any)
+        const slice = (createOperationSlice as any)(set, get)
         slice.startPortForward(entry as any)
 
         errorCb!('connection refused')
@@ -189,7 +189,7 @@ describe('operationSlice', () => {
 
         const entry = { id: 'pf5', name: 'p5', namespace: 'ns1', type: 'pod', localPort: 5050, remotePort: 50, status: 'active' }
         state.portForwards = [entry]
-        const slice = createOperationSlice(set, get, {} as any)
+        const slice = (createOperationSlice as any)(set, get)
         slice.startPortForward(entry as any)
 
         exitCb!()

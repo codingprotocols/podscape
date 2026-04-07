@@ -39,12 +39,12 @@ describe('clusterSlice', () => {
 
     it('initializes hotbar from localStorage', () => {
         localStorageMock.setItem('podscape:hotbar', JSON.stringify(['ctx1', 'ctx2']))
-        const slice = createClusterSlice(set, get, {} as any)
+        const slice = (createClusterSlice as any)(set, get)
         expect(slice.hotbarContexts).toEqual(['ctx1', 'ctx2'])
     })
 
     it('toggleHotbarContext adds and removes contexts', () => {
-        const slice = createClusterSlice(set, get, {} as any)
+        const slice = (createClusterSlice as any)(set, get)
 
         // Add
         slice.toggleHotbarContext('ctx1')
@@ -63,7 +63,7 @@ describe('clusterSlice', () => {
         windowMock.kubectl.getNamespaces.mockResolvedValue(namespaces)
         state.preloadSearchResources = vi.fn()
 
-        const slice = createClusterSlice(set, get, {} as any)
+        const slice = (createClusterSlice as any)(set, get)
         const promise = slice.selectContext('my-ctx')
 
         // First set call clears state and sets loadingNamespaces: true
@@ -90,7 +90,7 @@ describe('clusterSlice', () => {
         windowMock.kubectl.switchContext.mockResolvedValue(undefined)
         windowMock.kubectl.getNamespaces.mockImplementation(() => new Promise(() => { })) // Never resolves
 
-        const slice = createClusterSlice(set, get, {} as any)
+        const slice = (createClusterSlice as any)(set, get)
         const promise = slice.selectContext('my-ctx')
 
         vi.advanceTimersByTime(15001)
@@ -103,7 +103,7 @@ describe('clusterSlice', () => {
     })
 
     it('selectNamespace updates state and calls loadSection', () => {
-        const slice = createClusterSlice(set, get, {} as any)
+        const slice = (createClusterSlice as any)(set, get)
         slice.selectNamespace('myns')
 
         expect(set).toHaveBeenCalledWith(expect.objectContaining({ selectedNamespace: 'myns', selectedResource: null, metricsError: null }))
@@ -121,7 +121,7 @@ describe('clusterSlice', () => {
             .mockResolvedValueOnce(undefined)  // rollback switch
         windowMock.kubectl.getNamespaces.mockRejectedValue(new Error('connection refused'))
 
-        const slice = createClusterSlice(set, get, {} as any)
+        const slice = (createClusterSlice as any)(set, get)
         await slice.selectContext('bad-ctx')
 
         // Store should be restored to the previous context
@@ -141,7 +141,7 @@ describe('clusterSlice', () => {
         windowMock.kubectl.getNamespaces.mockResolvedValue([{ name: 'ns1' }])
         state.preloadSearchResources = vi.fn()
 
-        const slice = createClusterSlice(set, get, {} as any)
+        const slice = (createClusterSlice as any)(set, get)
         await slice.selectContext('ok-ctx')
 
         expect(set).toHaveBeenCalledWith(expect.objectContaining({
@@ -154,7 +154,7 @@ describe('clusterSlice', () => {
         windowMock.kubectl.switchContext.mockResolvedValue(undefined)
         windowMock.kubectl.getNamespaces.mockRejectedValue(new Error('unreachable'))
 
-        const slice = createClusterSlice(set, get, {} as any)
+        const slice = (createClusterSlice as any)(set, get)
         await slice.selectContext('bad-ctx')
 
         expect(set).toHaveBeenCalledWith(expect.objectContaining({
@@ -178,7 +178,7 @@ describe('clusterSlice', () => {
         state.selectedContext = 'ctx-a'
         state.prometheusAvailable = null
 
-        const slice = createClusterSlice(set, get, {} as any)
+        const slice = (createClusterSlice as any)(set, get)
         const probe = slice.probePrometheus()
 
         // Context switches away before probe resolves
@@ -206,7 +206,7 @@ describe('clusterSlice', () => {
         windowMock.kubectl.getNamespaces.mockResolvedValue(nsB)
         state.preloadSearchResources = vi.fn()
 
-        const slice = createClusterSlice(set, get, {} as any)
+        const slice = (createClusterSlice as any)(set, get)
 
         const p1 = slice.selectContext('ctx-a')  // hangs at switchContext
         const p2 = slice.selectContext('ctx-b')  // completes immediately
@@ -230,7 +230,7 @@ describe('clusterSlice', () => {
         windowMock.kubectl.getNamespaces.mockResolvedValue([{ name: 'ns1' }])
         state.preloadSearchResources = vi.fn()
 
-        const slice = createClusterSlice(set, get, {} as any)
+        const slice = (createClusterSlice as any)(set, get)
         await slice.selectContext('new-ctx')
 
         // The first set call (state reset) should include section: 'dashboard'
@@ -244,7 +244,7 @@ describe('clusterSlice', () => {
         windowMock.kubectl.getNamespaces.mockResolvedValue([{ name: 'ns1' }])
         state.preloadSearchResources = vi.fn()
 
-        const slice = createClusterSlice(set, get, {} as any)
+        const slice = (createClusterSlice as any)(set, get)
         await slice.selectContext('new-ctx')
 
         // The first set call (state reset) must NOT include a section key
@@ -258,7 +258,7 @@ describe('clusterSlice', () => {
         windowMock.kubectl.getNamespaces.mockResolvedValue([{ name: 'ns1' }])
         state.preloadSearchResources = vi.fn()
 
-        const slice = createClusterSlice(set, get, {} as any)
+        const slice = (createClusterSlice as any)(set, get)
         await slice.selectContext('new-ctx')
 
         const firstSetCall = set.mock.calls[0][0]
@@ -271,7 +271,7 @@ describe('clusterSlice', () => {
         windowMock.kubectl.getNamespaces.mockResolvedValue([{ name: 'ns1' }])
         state.preloadSearchResources = vi.fn()
 
-        const slice = createClusterSlice(set, get, {} as any)
+        const slice = (createClusterSlice as any)(set, get)
         await slice.selectContext('new-ctx')
 
         const firstSetCall = set.mock.calls[0][0]
@@ -284,7 +284,7 @@ describe('clusterSlice', () => {
         windowMock.kubectl.getNamespaces.mockResolvedValue([{ name: 'ns1' }])
         state.preloadSearchResources = vi.fn()
 
-        const slice = createClusterSlice(set, get, {} as any)
+        const slice = (createClusterSlice as any)(set, get)
         await slice.selectContext('new-ctx')
 
         const firstSetCall = set.mock.calls[0][0]
@@ -298,7 +298,7 @@ describe('clusterSlice', () => {
         windowMock.kubectl.getNamespaces.mockResolvedValue([{ name: 'ns1' }])
         state.preloadSearchResources = vi.fn()
 
-        const slice = createClusterSlice(set, get, {} as any)
+        const slice = (createClusterSlice as any)(set, get)
         await slice.selectContext('new-ctx')
 
         const firstSetCall = set.mock.calls[0][0]
@@ -310,7 +310,7 @@ describe('clusterSlice', () => {
         state.section = 'pods'
         state.loadSection = vi.fn()
 
-        const slice = createClusterSlice(set, get, {} as any)
+        const slice = (createClusterSlice as any)(set, get)
         slice.selectNamespace('new-ns')
 
         expect(set).toHaveBeenCalledWith(expect.objectContaining({ metricsError: null }))
@@ -321,7 +321,7 @@ describe('clusterSlice', () => {
         windowMock.kubectl.getNamespaces.mockRejectedValue(new Error('namespace fetch failed'))
         state.preloadSearchResources = vi.fn()
 
-        const slice = createClusterSlice(set, get, {} as any)
+        const slice = (createClusterSlice as any)(set, get)
         await slice.selectContext('bad-ctx')
 
         const setCalls = set.mock.calls.map((c: any[]) => c[0])

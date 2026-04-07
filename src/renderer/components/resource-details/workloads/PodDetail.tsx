@@ -15,6 +15,11 @@ import CopyButton from '../../common/CopyButton'
 import TimeSeriesChart, { PrometheusTimeRangeBar } from '../../advanced/TimeSeriesChart'
 import { podCpuQuery, podMemoryQuery, podNetworkRxQuery, podNetworkTxQuery } from '../../../utils/prometheusQueries'
 
+const DEBUG_POD_PREFIX = 'podscape-debug-'
+const MAX_LOG_LINES = 2000
+const LOG_FLUSH_INTERVAL_MS = 100
+const AUTO_SCROLL_THRESHOLD_PX = 60
+
 interface Props {
   pod: KubePod
 }
@@ -33,7 +38,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const [logError, setLogError] = useState<string | null>(null)
   const [autoScroll, setAutoScroll] = useState(true)
   const [copyMsg, setCopyMsg] = useState('')
-  const isDebugPod = pod.metadata.name.startsWith('podscape-debug-')
+  const isDebugPod = pod.metadata.name.startsWith(DEBUG_POD_PREFIX)
   const [selectedContainer, setSelectedContainer] = useState(
     isDebugPod ? 'debug' : (pod.spec.containers[0]?.name ?? '')
   )
@@ -101,7 +106,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
         const batch = pendingLines.splice(0)
         setLogs(prev => {
           const next = prev.concat(batch)
-          return next.length > 2000 ? next.slice(-2000) : next
+          return next.length > MAX_LOG_LINES ? next.slice(-MAX_LOG_LINES) : next
         })
       }
 
@@ -110,7 +115,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
         (chunk) => {
           if (!isMountedRef.current) return
           pendingLines.push(...chunk.split('\n'))
-          if (!flushTimer) flushTimer = setTimeout(flush, 100)
+          if (!flushTimer) flushTimer = setTimeout(flush, LOG_FLUSH_INTERVAL_MS)
         },
         () => {
           // Flush any remaining buffered lines before marking the stream done.
@@ -310,7 +315,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
                  ${wrapLogs ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'}`}
       onScroll={e => {
         const el = e.currentTarget
-        setAutoScroll(el.scrollHeight - el.scrollTop - el.clientHeight < 60)
+        setAutoScroll(el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_THRESHOLD_PX)
       }}
     >
       {filteredLogs.length === 0

@@ -36,7 +36,7 @@ describe('resourceSlice', () => {
     })
 
     it('loadSection calls loadDashboard for dashboard section', async () => {
-        const slice = createResourceSlice(set, get, {} as any)
+        const slice = (createResourceSlice as any)(set, get)
         await slice.loadSection('dashboard')
         expect(state.loadDashboard).toHaveBeenCalled()
     })
@@ -45,7 +45,7 @@ describe('resourceSlice', () => {
         const pods = [{ metadata: { name: 'pod1' } }]
         windowMock.kubectl.getPods.mockResolvedValue(pods)
 
-        const slice = createResourceSlice(set, get, {} as any)
+        const slice = (createResourceSlice as any)(set, get)
         await slice.loadSection('pods')
 
         expect(windowMock.kubectl.getPods).toHaveBeenCalledWith('ctx1', 'ns1')
@@ -57,7 +57,7 @@ describe('resourceSlice', () => {
     it('loadSection handles errors', async () => {
         windowMock.kubectl.getPods.mockRejectedValue(new Error('Kube error'))
 
-        const slice = createResourceSlice(set, get, {} as any)
+        const slice = (createResourceSlice as any)(set, get)
         await slice.loadSection('pods')
 
         // loadSection now combines error + loadingResources in one set call
@@ -72,7 +72,7 @@ describe('resourceSlice', () => {
         windowMock.kubectl.getNodeMetrics.mockResolvedValue([])
         windowMock.kubectl.getEvents.mockResolvedValue([])
 
-        const slice = createResourceSlice(set, get, {} as any)
+        const slice = (createResourceSlice as any)(set, get)
         await slice.loadDashboard()
 
         expect(windowMock.kubectl.getNodes).toHaveBeenCalled()
@@ -82,7 +82,7 @@ describe('resourceSlice', () => {
 
     it('refresh calls loadSection with current section', () => {
         state.section = 'deployments'
-        const slice = createResourceSlice(set, get, {} as any)
+        const slice = (createResourceSlice as any)(set, get)
         slice.refresh()
         expect(state.loadSection).toHaveBeenCalledWith('deployments')
     })
@@ -95,7 +95,7 @@ describe('resourceSlice', () => {
         windowMock.kubectl.getPods.mockResolvedValue([])
         windowMock.kubectl.getDeployments.mockResolvedValue([])
 
-        const slice = createResourceSlice(set, get, {} as any)
+        const slice = (createResourceSlice as any)(set, get)
         await slice.loadDashboard()
 
         expect(state.error).toBe('nodes unreachable')
@@ -110,7 +110,7 @@ describe('resourceSlice', () => {
         windowMock.kubectl.getPods.mockResolvedValue([])
         windowMock.kubectl.getDeployments.mockResolvedValue([])
 
-        const slice = createResourceSlice(set, get, {} as any)
+        const slice = (createResourceSlice as any)(set, get)
         await slice.loadDashboard()
 
         expect(state.error).toBe('first error')
@@ -124,7 +124,7 @@ describe('resourceSlice', () => {
         windowMock.kubectl.getNodes.mockResolvedValue(nodes)
         state.selectedNamespace = 'some-ns' // should be ignored for cluster-scoped
 
-        const slice = createResourceSlice(set, get, {} as any)
+        const slice = (createResourceSlice as any)(set, get)
         await slice.loadSection('nodes')
 
         // Cluster-scoped fetch receives only the context — no namespace argument
@@ -135,7 +135,7 @@ describe('resourceSlice', () => {
     it('loadSection: namespaced section with no namespace clears state without fetching', async () => {
         state.selectedNamespace = null
 
-        const slice = createResourceSlice(set, get, {} as any)
+        const slice = (createResourceSlice as any)(set, get)
         await slice.loadSection('pods')
 
         expect(windowMock.kubectl.getPods).not.toHaveBeenCalled()
@@ -146,7 +146,7 @@ describe('resourceSlice', () => {
         state.selectedNamespace = '_all'
         windowMock.kubectl.getPods.mockResolvedValue([])
 
-        const slice = createResourceSlice(set, get, {} as any)
+        const slice = (createResourceSlice as any)(set, get)
         await slice.loadSection('pods')
 
         // _all means "all namespaces" — translated to null before the API call
@@ -159,8 +159,8 @@ describe('resourceSlice', () => {
         // SECTION_CONFIG spans both resourceSlice (namespaced + most cluster-scoped
         // resources) and clusterSlice (namespaces). Merge both initial states so the
         // check covers the full AppStore shape relevant to resource sections.
-        const resourceState = createResourceSlice(set, get, {} as any)
-        const clusterState = createClusterSlice(set, get, {} as any)
+        const resourceState = (createResourceSlice as any)(set, get)
+        const clusterState = (createClusterSlice as any)(set, get)
         const combinedState = { ...resourceState, ...clusterState }
 
         const missing: string[] = []
@@ -213,7 +213,7 @@ describe('resourceSlice', () => {
             )
             windowMock.kubectl.scanKubesecBatch.mockResolvedValue([])
 
-            const slice = createAnalysisSlice(set, get, {} as any)
+            const slice = (createAnalysisSlice as any)(set, get)
             await slice.scanSecurity()
 
             expect(state.trivyAvailable).toBe(false)
@@ -226,7 +226,7 @@ describe('resourceSlice', () => {
             windowMock.kubectl.scanSecurity.mockResolvedValue(fakeResults)
             windowMock.kubectl.scanKubesecBatch.mockResolvedValue([])
 
-            const slice = createAnalysisSlice(set, get, {} as any)
+            const slice = (createAnalysisSlice as any)(set, get)
             await slice.scanSecurity()
 
             expect(state.trivyAvailable).toBe(true)
@@ -238,7 +238,7 @@ describe('resourceSlice', () => {
             windowMock.kubectl.scanSecurity.mockRejectedValue(new Error('network timeout'))
             windowMock.kubectl.scanKubesecBatch.mockResolvedValue([])
 
-            const slice = createAnalysisSlice(set, get, {} as any)
+            const slice = (createAnalysisSlice as any)(set, get)
             await slice.scanSecurity()
 
             expect(state.error).toContain('network timeout')
@@ -259,7 +259,7 @@ describe('resourceSlice', () => {
                 { metadata: { name: 'dep-b', namespace: 'ns2', uid: '2', creationTimestamp: '', labels: {} }, kind: 'Deployment', apiVersion: 'apps/v1', spec: {}, status: {} },
             ]
 
-            const slice = createAnalysisSlice(set, get, {} as any)
+            const slice = (createAnalysisSlice as any)(set, get)
             await slice.scanSecurity()
 
             expect(state.kubesecBatchResults?.['ns1/dep-a/Deployment']).toEqual(batchResults[0])
@@ -270,7 +270,7 @@ describe('resourceSlice', () => {
             windowMock.kubectl.scanSecurity.mockResolvedValue({ Resources: [] })
             windowMock.kubectl.scanKubesecBatch.mockRejectedValue(new Error('kubesec error'))
 
-            const slice = createAnalysisSlice(set, get, {} as any)
+            const slice = (createAnalysisSlice as any)(set, get)
             await slice.scanSecurity()
 
             expect(state.kubesecBatchResults).toBeNull()
@@ -287,7 +287,7 @@ describe('resourceSlice', () => {
         windowMock.kubectl.getNodes.mockResolvedValue([])
         windowMock.kubectl.getHPAs.mockResolvedValue([])
 
-        const slice = createResourceSlice(set, get, {} as any)
+        const slice = (createResourceSlice as any)(set, get)
         await slice.loadSection('metrics')
 
         expect(state.metricsError).toBe('metrics-server not found')
@@ -302,14 +302,14 @@ describe('resourceSlice', () => {
         windowMock.kubectl.getNodes.mockResolvedValue([])
         windowMock.kubectl.getHPAs.mockResolvedValue([])
 
-        const slice = createResourceSlice(set, get, {} as any)
+        const slice = (createResourceSlice as any)(set, get)
         await slice.loadSection('metrics')
 
         expect(state.metricsError).toBeNull()
     })
 
     it('metricsError initialises to null', () => {
-        const slice = createResourceSlice(set, get, {} as any)
+        const slice = (createResourceSlice as any)(set, get)
         expect(slice.metricsError).toBeNull()
     })
 
@@ -325,7 +325,7 @@ describe('resourceSlice', () => {
         })
 
         it('openExec appends a new session and sets it as active', () => {
-            const slice = createOperationSlice(set, get, {} as any)
+            const slice = (createOperationSlice as any)(set, get)
             slice.openExec(target1)
 
             expect(state.execSessions).toHaveLength(1)
@@ -334,7 +334,7 @@ describe('resourceSlice', () => {
         })
 
         it('openExec twice appends two sessions, active is the second', () => {
-            const slice = createOperationSlice(set, get, {} as any)
+            const slice = (createOperationSlice as any)(set, get)
             slice.openExec(target1)
             slice.openExec(target2)
 
@@ -345,7 +345,7 @@ describe('resourceSlice', () => {
         })
 
         it('closeExec clears all sessions and activeExecId', () => {
-            const slice = createOperationSlice(set, get, {} as any)
+            const slice = (createOperationSlice as any)(set, get)
             slice.openExec(target1)
             slice.openExec(target2)
             slice.closeExec()
@@ -355,7 +355,7 @@ describe('resourceSlice', () => {
         })
 
         it('closeExecTab removes the tab and shifts active to next', () => {
-            const slice = createOperationSlice(set, get, {} as any)
+            const slice = (createOperationSlice as any)(set, get)
             slice.openExec(target1)
             slice.openExec(target2)
             const firstId = state.execSessions[0].id
@@ -371,7 +371,7 @@ describe('resourceSlice', () => {
         })
 
         it('closeExecTab on the last session leaves execSessions empty and activeExecId null', () => {
-            const slice = createOperationSlice(set, get, {} as any)
+            const slice = (createOperationSlice as any)(set, get)
             slice.openExec(target1)
             const id = state.execSessions[0].id
             slice.closeExecTab(id)
@@ -381,7 +381,7 @@ describe('resourceSlice', () => {
         })
 
         it('closeExecTab on a non-active tab leaves active unchanged', () => {
-            const slice = createOperationSlice(set, get, {} as any)
+            const slice = (createOperationSlice as any)(set, get)
             slice.openExec(target1)
             slice.openExec(target2)
             const firstId = state.execSessions[0].id
@@ -395,7 +395,7 @@ describe('resourceSlice', () => {
         })
 
         it('setActiveExecId switches the active tab', () => {
-            const slice = createOperationSlice(set, get, {} as any)
+            const slice = (createOperationSlice as any)(set, get)
             slice.openExec(target1)
             slice.openExec(target2)
             const firstId = state.execSessions[0].id

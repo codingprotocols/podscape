@@ -29,7 +29,7 @@ describe('providersSlice', () => {
 
     it('fetchProviders does nothing when selectedContext is null', async () => {
         state.selectedContext = null
-        const slice = createProvidersSlice(set, get, {} as any)
+        const slice = (createProvidersSlice as any)(set, get)
         await slice.fetchProviders()
         expect(windowMock.kubectl.getProviders).not.toHaveBeenCalled()
         expect(set).not.toHaveBeenCalled()
@@ -45,7 +45,7 @@ describe('providersSlice', () => {
         }
         windowMock.kubectl.getProviders.mockResolvedValue(mockProviders)
 
-        const slice = createProvidersSlice(set, get, {} as any)
+        const slice = (createProvidersSlice as any)(set, get)
         await slice.fetchProviders()
 
         // First set call: providersLoading: true
@@ -57,7 +57,7 @@ describe('providersSlice', () => {
     it('fetchProviders resets to defaults on error', async () => {
         windowMock.kubectl.getProviders.mockRejectedValue(new Error('network error'))
 
-        const slice = createProvidersSlice(set, get, {} as any)
+        const slice = (createProvidersSlice as any)(set, get)
         await slice.fetchProviders()
 
         // First set call: providersLoading: true
@@ -77,7 +77,7 @@ describe('providersSlice', () => {
 
         state.selectedContext = 'ctx-a'
 
-        const slice = createProvidersSlice(set, get, {} as any)
+        const slice = (createProvidersSlice as any)(set, get)
         const fetchPromise = slice.fetchProviders()
 
         // Context switches away before getProviders resolves.

@@ -30,7 +30,7 @@ function makeSlice(stateOverrides: Record<string, any> = {}) {
         }
     })
     const get = vi.fn(() => state)
-    const slice = createAnalysisSlice(set as any, get as any, {} as any)
+    const slice = (createAnalysisSlice as any)(set as any, get as any)
     Object.assign(state, slice)
     return { state, set, get, slice }
 }

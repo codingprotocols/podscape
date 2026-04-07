@@ -302,4 +302,23 @@ describe('ProviderResourcePanel — Traefik v2 group fallback', () => {
     const [, , crdArg] = mockGetCustomResource.mock.calls[0]
     expect(crdArg).toBe('ingressroutes.traefik.io')
   })
+
+  it('leaves CRD name unchanged when traefikVersion is undefined', async () => {
+    // Providers not yet detected — should not rewrite the CRD group
+    mockStore({ providers: { traefikVersion: undefined } })
+    const { default: Panel } = await import('./ProviderResourcePanel')
+    render(<Panel section="traefik-ingressroutes" />)
+    await waitFor(() => expect(mockGetCustomResource).toHaveBeenCalled())
+    const [, , crdArg] = mockGetCustomResource.mock.calls[0]
+    expect(crdArg).toBe('ingressroutes.traefik.io')
+  })
+
+  it('leaves CRD name unchanged when traefikVersion is an unexpected value', async () => {
+    mockStore({ providers: { traefikVersion: 'v4' } })
+    const { default: Panel } = await import('./ProviderResourcePanel')
+    render(<Panel section="traefik-ingressroutes" />)
+    await waitFor(() => expect(mockGetCustomResource).toHaveBeenCalled())
+    const [, , crdArg] = mockGetCustomResource.mock.calls[0]
+    expect(crdArg).toBe('ingressroutes.traefik.io')
+  })
 })

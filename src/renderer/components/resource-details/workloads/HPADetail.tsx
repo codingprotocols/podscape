@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { useAppStore } from '../../../store'
 import type { KubeHPA } from '../../../types'
 import { formatAge } from '../../../types'

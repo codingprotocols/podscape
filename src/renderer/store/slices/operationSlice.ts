@@ -1,4 +1,4 @@
-import { AppStore, StoreSlice, ExecTarget, ExecSession } from '../types'
+import { StoreSlice, ExecTarget, ExecSession } from '../types'
 import { PortForwardEntry } from '../../types'
 
 // Keyed by port-forward ID; holds the three IPC unsubscribe functions so they
