@@ -56,15 +56,29 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const [showAnalyzer, setShowAnalyzer] = useState(false)
   const logContainerRef = useRef<HTMLPreElement>(null)
   const fsLogContainerRef = useRef<HTMLPreElement>(null)
+  // Prevents programmatic scrollTop assignments from re-enabling autoScroll via onScroll.
+  const ignoringScrollRef = useRef(false)
   const panelRef = useRef<HTMLDivElement>(null)
   // Use a ref for activeStreamId so cleanup effects always have the latest value
   const activeStreamIdRef = useRef<string | null>(null)
   const isMountedRef = useRef(true)
+  // Always points to the latest startStream so the container-change effect can
+  // call it without adding startStream to its dependency array (which would
+  // cause infinite re-runs).
+  const startStreamRef = useRef<() => Promise<void>>(() => Promise.resolve())
+  // Component-level refs for the flush timer and pending lines so stopStream
+  // can cancel/clear them without needing access to startStream's local scope.
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingLinesRef = useRef<string[]>([])
 
   useEffect(() => {
     isMountedRef.current = true
     return () => {
       isMountedRef.current = false
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current)
+        flushTimerRef.current = null
+      }
       // Stop any active stream on unmount
       if (activeStreamIdRef.current) {
         window.kubectl.stopLogs(activeStreamIdRef.current).catch(() => { })
@@ -81,6 +95,13 @@ export default function PodDetail({ pod }: Props): JSX.Element {
       await window.kubectl.stopLogs(id).catch(() => { })
       activeStreamIdRef.current = null
     }
+    // Cancel pending flush and discard buffered lines immediately so no
+    // further log entries are appended after the user clicks Stop.
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current)
+      flushTimerRef.current = null
+    }
+    pendingLinesRef.current = []
     if (isMountedRef.current) setIsStreaming(false)
   }, [])
 
@@ -98,12 +119,11 @@ export default function PodDetail({ pod }: Props): JSX.Element {
 
       // Batch incoming log lines and flush every 100 ms to avoid a setState
       // call (and React re-render) on every single chunk from verbose pods.
-      const pendingLines: string[] = []
-      let flushTimer: ReturnType<typeof setTimeout> | null = null
+      pendingLinesRef.current = []
       const flush = () => {
-        flushTimer = null
-        if (!isMountedRef.current || pendingLines.length === 0) return
-        const batch = pendingLines.splice(0)
+        flushTimerRef.current = null
+        if (!isMountedRef.current || pendingLinesRef.current.length === 0) return
+        const batch = pendingLinesRef.current.splice(0)
         setLogs(prev => {
           const next = prev.concat(batch)
           return next.length > MAX_LOG_LINES ? next.slice(-MAX_LOG_LINES) : next
@@ -114,16 +134,19 @@ export default function PodDetail({ pod }: Props): JSX.Element {
         ctx, ns, pod.metadata.name, selectedContainer,
         (chunk) => {
           if (!isMountedRef.current) return
-          pendingLines.push(...chunk.split('\n'))
-          if (!flushTimer) flushTimer = setTimeout(flush, LOG_FLUSH_INTERVAL_MS)
+          // Discard chunks that arrive after stopStream cleared the active stream ref.
+          if (activeStreamIdRef.current !== streamId) return
+          pendingLinesRef.current.push(...chunk.split('\n'))
+          if (!flushTimerRef.current) flushTimerRef.current = setTimeout(flush, 100)
         },
         () => {
-          // Flush any remaining buffered lines before marking the stream done.
-          if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
-          flush()
-          // Guard against a stale onEnd from a previous stream (e.g. when stopLogs
-          // triggers ws.close() asynchronously after the next stream has already started).
+          // Only flush + update state when the stream ended naturally. When the
+          // user explicitly stops the stream, stopStream already cleared
+          // activeStreamIdRef and pendingLinesRef, so this guard prevents a
+          // spurious flush of stale buffered lines.
           if (activeStreamIdRef.current === streamId) {
+            if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null }
+            flush()
             activeStreamIdRef.current = null
             if (isMountedRef.current) setIsStreaming(false)
           }
@@ -137,6 +160,11 @@ export default function PodDetail({ pod }: Props): JSX.Element {
       }
     }
   }, [selectedContext, selectedNamespace, pod, selectedContainer, stopStream])
+
+  // Keep the ref up-to-date after every render so the container-change effect
+  // always calls the latest startStream (with the current container in closure).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { startStreamRef.current = startStream })
 
   const scanCurrentPod = useCallback(() => {
     scanResource(pod)
@@ -171,19 +199,28 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     fetchEvents()
 
     // Read directly from ref to avoid stale closure
+    const wasStreaming = activeStreamIdRef.current !== null
     const id = activeStreamIdRef.current
     if (id) {
       window.kubectl.stopLogs(id).catch(() => { })
       activeStreamIdRef.current = null
       setIsStreaming(false)
     }
+    // Auto-restart stream for the new container if one was active
+    if (wasStreaming) {
+      startStreamRef.current()
+    }
   }, [pod.metadata.uid, selectedContainer, selectedContext, scanCurrentPod])
 
   // Auto-scroll both normal and fullscreen log panes
   useEffect(() => {
     if (!autoScroll) return
+    ignoringScrollRef.current = true
     logContainerRef.current && (logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight)
     fsLogContainerRef.current && (fsLogContainerRef.current.scrollTop = fsLogContainerRef.current.scrollHeight)
+    // Reset after a tick so that scroll events from the above assignments are ignored
+    // but future user-initiated scroll events are handled normally.
+    setTimeout(() => { ignoringScrollRef.current = false }, 50)
   }, [logs, autoScroll])
 
 
@@ -314,6 +351,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
       className={`absolute inset-0 overflow-auto p-4 font-mono text-[11px] text-emerald-400/90 leading-relaxed scrollbar-hide
                  ${wrapLogs ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'}`}
       onScroll={e => {
+        if (ignoringScrollRef.current) return
         const el = e.currentTarget
         setAutoScroll(el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_THRESHOLD_PX)
       }}

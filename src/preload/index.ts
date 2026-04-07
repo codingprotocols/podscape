@@ -174,19 +174,27 @@ const kubectl = {
     onChunk: (chunk: string) => void,
     onEnd: () => void
   ): Promise<string> => {
+    // resolvedId is set once the IPC invoke returns the streamId so that
+    // chunk and end events from other streams are filtered out.
+    let resolvedId: string | null = null
     const chunkHandler = (
-      _e: Electron.IpcRendererEvent, _id: string, chunk: string
-    ): void => onChunk(chunk)
-    const endHandler = (
-      _e: Electron.IpcRendererEvent, _id: string
+      _e: Electron.IpcRendererEvent, id: string, chunk: string
     ): void => {
+      if (id === resolvedId) onChunk(chunk)
+    }
+    const endHandler = (
+      _e: Electron.IpcRendererEvent, id: string
+    ): void => {
+      if (resolvedId !== null && id !== resolvedId) return
       ipcRenderer.off('kubectl:logChunk', chunkHandler)
       ipcRenderer.off('kubectl:logEnd', endHandler)
       onEnd()
     }
     ipcRenderer.on('kubectl:logChunk', chunkHandler)
     ipcRenderer.on('kubectl:logEnd', endHandler)
-    return ipcRenderer.invoke('kubectl:streamLogs', context, namespace, pod, container)
+    const p = ipcRenderer.invoke('kubectl:streamLogs', context, namespace, pod, container) as Promise<string>
+    void p.then((id) => { resolvedId = id }).catch(() => {})
+    return p
   },
   stopLogs: (streamId: string) => ipcRenderer.invoke('kubectl:stopLogs', streamId),
   cancelAllStreams: (): Promise<void> => ipcRenderer.invoke('kubectl:cancelAllStreams'),
