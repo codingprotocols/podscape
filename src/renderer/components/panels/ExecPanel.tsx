@@ -144,18 +144,22 @@ function ExecTab({ session, active, theme }: ExecTabProps): JSX.Element {
 
 interface ExecPanelProps {
   embedded?: boolean
+  session?: ExecSession
 }
+
 
 // ── ExecPanel ─────────────────────────────────────────────────────────────────
 
-export function ExecPanel({ embedded }: ExecPanelProps): JSX.Element {
+export function ExecPanel({ embedded, session: propSession }: ExecPanelProps): JSX.Element | null {
+
   const {
     execSessions, activeExecId,
     closeExec,
     theme, selectedContext
   } = useAppStore()
 
-  const activeSession = execSessions.find(s => s.id === activeExecId) ?? execSessions[0]
+  const activeSession = propSession ?? (execSessions.find(s => s.id === activeExecId) ?? execSessions[0])
+
 
   const [panelMode, setPanelMode]   = useState<PanelMode>('idle')
   const [localPath, setLocalPath]   = useState('')

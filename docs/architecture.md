@@ -21,17 +21,29 @@ Renderer (React / TypeScript)
 ### Renderer (`src/renderer/`)
 
 - Built with **Vite + React + TypeScript + Tailwind CSS**.
-- State managed by a single **Zustand** store (`useAppStore`) split into six slices:
+- State managed by a single **Zustand** store (`useAppStore`) split into seven specialized slices:
+
 
 | Slice | Responsibility |
 |---|---|
 | `clusterSlice` | Context/namespace selection, RBAC denied tracking, provider detection trigger |
-| `navigationSlice` | Active section, theme, sidebar width, search state |
+| `navigationSlice` | Active section, theme, sidebar width, search state, tour state (`showTour`) |
+
 | `resourceSlice` | All 28 resource arrays, section loading, dashboard fetch, resource navigation |
 | `operationSlice` | Scale/delete/YAML modals, exec session management |
 | `analysisSlice` | Security scanning (kubesec + trivy), `scanInBackground` state for background scans, owner chain, debug pods, Prometheus config |
 | `costSlice` | Kubecost / OpenCost detection and namespace allocation tracking |
 | `providersSlice` | Istio/Traefik/NGINX provider detection state |
+
+- **Component Orchestration**: The root `App.tsx` acts as a high-level shell. UI complexity is delegated to:
+
+| Component | Responsibility |
+|---|---|
+| `Layout` | Structural shell (Sidebar, Production banners, Sidecar alerts) |
+| `SectionRouter` | Routing between sections via two module-level dispatch maps (`DIRECT_PANELS`, `LAZY_PANELS`) keyed by `ResourceKind`; provider sections resolved via `PROVIDER_SECTIONS` set from `config.ts` |
+| `OverlayManager` | Floating terminals, YAML editors, and global modals |
+| `ErrorBoundary` | Declarative error recovery for critical UI zones |
+
 
 - Talks to the sidecar via plain `fetch()` through IPC helpers (`checkedSidecarFetch` in `src/main/sidecar/api.ts`).
 
@@ -42,12 +54,13 @@ The sidecar is a standalone HTTP server compiled as `podscape-core`. It is the s
 | Package | Responsibility |
 |---|---|
 | `cmd/podscape-core/main.go` | Route registration, startup, token auth middleware, CORS |
-| `internal/handlers/` | HTTP handlers split across 13 files: `resources.go` (resource listers), `operations.go` (scale/delete/rollout), `cost.go`, `helm.go`, `security.go`, `network.go`, `tls.go`, `gitops.go`, `prometheus.go`, `ownerchain.go`, `customresource.go`, `providers.go`; `handlers.go` holds the `MakeHandler` RBAC factory and shared helpers |
+| `internal/handlers/` | HTTP handlers split across 13 files: `resources.go` (resource listers), `operations.go` (scale/delete/rollout), `cost.go`, `helm.go`, `security.go`, `network.go`, `tls.go`, `gitops.go`, `prometheus.go`, `ownerchain.go`, `customresource.go`, `providers.go`; `handlers.go` holds the `MakeHandler` RBAC factory and shared helpers. `operations.go` exposes `dynDelete`/`dynGet` private helpers that resolve GVRs via `k8sutil` and automatically retry with `KindGVRFallback` on NotFound (e.g. HPA `autoscaling/v2` → `v1` on pre-1.23 clusters). |
+| `internal/k8sutil/` | Canonical Kubernetes metadata: `KindGVR` (kind → GVR), `KindGVRFallback` (preferred version → older fallback, e.g. HPA `autoscaling/v2` → `v1`), `ClusterScopedKinds` |
 | `internal/client/` | Shared Kubernetes client initialisation (`ClientBundle`: REST config, clientset, apiextensions client) |
 | `internal/informers/` | K8s shared informers — cache resource lists in-memory for fast reads; skips informers for denied resources |
 | `internal/store/` | `ClusterStore` singleton: per-context `ContextCache` pool, active context pointer |
 | `internal/rbac/` | `CheckAccess` — concurrent `SelfSubjectAccessReview` probe (list + watch, 8-goroutine pool); `AllResources` descriptor table |
-| `internal/ops/` | Write operations shared between sidecar and MCP server: `ListResource`, `GetResource`, `Scale`, `Delete`, `RolloutRestart`, `RolloutUndo`, `ApplyYAML` |
+| `internal/ops/` | Write operations shared between sidecar and MCP server: `ListResource`, `GetResource`, `Scale`, `Delete`, `RolloutRestart`, `RolloutUndo`, `ApplyYAML`. GVR resolution delegates to `k8sutil` — `Delete` retries with `KindGVRFallback` on NotFound. |
 | `internal/portforward/` | Manages active tunnels, streams events over WebSocket |
 | `internal/exec/` | WebSocket-based container exec (PTY) |
 | `internal/logs/` | WebSocket-based log streaming |
@@ -84,7 +97,8 @@ The sidecar subprocess is managed by `src/main/sidecar/sidecar.ts`. Several mech
 
 **`isQuitting` guard in `index.ts`**: a module-level `isQuitting` flag is set in the `before-quit` handler. The `catch` block that wraps `startSidecar()` checks `if (isQuitting) return` before showing the error dialog — a second line of defence in case the `shuttingDown` flag race is lost.
 
-**Renderer crash recovery**: `App.tsx` listens for `sidecar:crashed` via `window.sidecar.onCrashed()`. When fired, it shows a red banner with a "Reconnect" button. Clicking the button calls `window.sidecar.restart()` (IPC channel `sidecar:restart`), which re-runs `startSidecar()` in the main process, and then reloads the renderer window.
+**Renderer crash recovery**: `Layout.tsx` (via `OverlayManager` and `NavigationSlice`) listens for `sidecar:crashed` via `window.sidecar.onCrashed()`. When fired, it shows a red banner with a "Reconnect" button. Clicking the button calls `window.sidecar.restart()` (IPC channel `sidecar:restart`), which re-runs `startSidecar()` in the main process, and then reloads the renderer window.
+
 
 | API | Channel | Direction |
 |---|---|---|
@@ -124,10 +138,11 @@ Podscape lets operators mark specific context names as "production" to guard aga
 
 `isProduction` is recomputed whenever `selectContext` runs or `setProdContexts` is called — there is no selector subscription overhead.
 
-**Visual indicators** (in `src/renderer/App.tsx`):
+**Visual indicators** (managed in `src/renderer/components/core/Layout.tsx`):
 
-- **Red ring**: the root `<div>` gains `ring-inset ring-4 ring-red-500/50` when `isProduction` is true, drawing a red border around the entire window.
-- **Production banner**: a fixed, centered banner reading "PRODUCTION CONTEXT ACTIVE" appears at the top of the window (z-index 10000) using `animate-in slide-in-from-top`.
+- **Red ring**: the root `<div>` gains `ring-inset ring-4 ring-red-500/50` when `isProduction` is true.
+- **Production banner**: a fixed, centered banner reading "PRODUCTION CONTEXT ACTIVE" at z-index 10000.
+
 
 **Persistence**: `prodContexts` is stored in `~/.podscape/settings.json` under the `prodContexts` key (an array of strings). On app launch, `settings_storage.ts` merges saved settings over defaults before the renderer hydrates the store.
 
@@ -157,7 +172,7 @@ On every successful context switch the renderer fires `fetchProviders()` against
 | NGINX Inc | `k8s.nginx.org` API group present |
 | NGINX Community | IngressClass controller field contains `ingress-nginx` |
 
-The `providers` value in the Zustand store drives conditional sidebar groups. `fetchProviders` captures the context at call time and discards results if the context changed while the request was in-flight (stale-context guard). On context switch, all provider flags reset to `false` and any active provider section (prefixed `istio-`, `traefik-`, `nginx-`) auto-navigates to `dashboard` to prevent stale CRD fetches.
+The `providers` value in the Zustand store drives conditional sidebar groups. `fetchProviders` captures the context at call time and discards results if the context changed while the request was in-flight (stale-context guard). On context switch, all provider flags reset to `false` and any active provider section (member of `PROVIDER_SECTIONS` in `src/renderer/config.ts`) auto-navigates to `dashboard` to prevent stale CRD fetches.
 
 ## MCP Server (`podscape-mcp`)
 

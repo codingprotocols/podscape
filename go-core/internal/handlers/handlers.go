@@ -17,8 +17,8 @@ import (
 	"github.com/podscape/go-core/internal/store"
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
+
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -33,51 +33,6 @@ var rbacCheckFunc = rbac.CheckAccess
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
-}
-
-// kindGVR maps the lowercase kind name used in API query params to its
-// Kubernetes GroupVersionResource. Used by HandleDelete and HandleGetYAML
-// to avoid duplicating a 25-case switch.
-var kindGVR = map[string]schema.GroupVersionResource{
-	"pod":                     {Group: "", Version: "v1", Resource: "pods"},
-	"deployment":              {Group: "apps", Version: "v1", Resource: "deployments"},
-	"service":                 {Group: "", Version: "v1", Resource: "services"},
-	"configmap":               {Group: "", Version: "v1", Resource: "configmaps"},
-	"secret":                  {Group: "", Version: "v1", Resource: "secrets"},
-	"ingress":                 {Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"},
-	"statefulset":             {Group: "apps", Version: "v1", Resource: "statefulsets"},
-	"daemonset":               {Group: "apps", Version: "v1", Resource: "daemonsets"},
-	"replicaset":              {Group: "apps", Version: "v1", Resource: "replicasets"},
-	"job":                     {Group: "batch", Version: "v1", Resource: "jobs"},
-	"cronjob":                 {Group: "batch", Version: "v1", Resource: "cronjobs"},
-	"horizontalpodautoscaler": {Group: "autoscaling", Version: "v1", Resource: "horizontalpodautoscalers"},
-	"poddisruptionbudget":     {Group: "policy", Version: "v1", Resource: "poddisruptionbudgets"},
-	"ingressclass":            {Group: "networking.k8s.io", Version: "v1", Resource: "ingressclasses"},
-	"networkpolicy":           {Group: "networking.k8s.io", Version: "v1", Resource: "networkpolicies"},
-	"endpoints":               {Group: "", Version: "v1", Resource: "endpoints"},
-	"pvc":                     {Group: "", Version: "v1", Resource: "persistentvolumeclaims"},
-	"pv":                      {Group: "", Version: "v1", Resource: "persistentvolumes"},
-	"storageclass":            {Group: "storage.k8s.io", Version: "v1", Resource: "storageclasses"},
-	"serviceaccount":          {Group: "", Version: "v1", Resource: "serviceaccounts"},
-	"role":                    {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "roles"},
-	"clusterrole":             {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterroles"},
-	"rolebinding":             {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "rolebindings"},
-	"clusterrolebinding":      {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterrolebindings"},
-	"node":                    {Group: "", Version: "v1", Resource: "nodes"},
-	"namespace":               {Group: "", Version: "v1", Resource: "namespaces"},
-	"crd":                     {Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"},
-	// Aliases — renderer components use both short and full names
-	"hpa":                      {Group: "autoscaling", Version: "v1", Resource: "horizontalpodautoscalers"},
-	"persistentvolumeclaim":    {Group: "", Version: "v1", Resource: "persistentvolumeclaims"},
-	"persistentvolume":         {Group: "", Version: "v1", Resource: "persistentvolumes"},
-	"customresourcedefinition": {Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"},
-}
-
-// clusterScopedKinds are not namespace-scoped; calls must omit the namespace.
-var clusterScopedKinds = map[string]bool{
-	"pv": true, "persistentvolume": true, "storageclass": true, "ingressclass": true,
-	"clusterrole": true, "clusterrolebinding": true,
-	"node": true, "namespace": true, "crd": true, "customresourcedefinition": true,
 }
 
 // listToIface converts a typed k8s list items slice into []interface{} for JSON
