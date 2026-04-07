@@ -32,12 +32,17 @@ Manage clusters, stream logs, exec into containers, inspect RBAC, visualise netw
 
 ## Features
 
+- **Command Palette (⌘K)** — instant access to any section or resource via powerful fuzzy search; jump between clusters and namespaces through the keyboard
 - **Multi-cluster support** — switch contexts and namespaces instantly; RBAC-aware startup skips resources the current user cannot access
 - **Full resource coverage** — pods, deployments, statefulsets, daemonsets, jobs, cronjobs, HPAs, PDBs, services, ingresses, network policies, configmaps, secrets, RBAC, storage, and more
 - **Log streaming** — real-time log tailing with multi-container support and search
 - **Exec into containers** — full PTY terminal sessions directly in the app
 - **Port forwarding** — one-click port-forward with live status, auto port detection, and clickable local URLs
-- **Helm management** — list releases, inspect values, view history, rollback
+- **Helm management** — list releases, inspect values, view history, rollback, and **direct upgrades** with automated update detection
+- **Connectivity Tester** — source-to-target network diagnostics (DNS, TCP, HTTP) with automated NetworkPolicy and endpoint failure analysis
+- **Production Context Protection** — visual banners and application-frame indicators when connected to sensitive clusters
+- **Cost Estimation** — real-time cost allocation and efficiency metrics via Kubecost / OpenCost integration
+- **CRD Browser** — explorer and editor for any Custom Resource Definition installed in the cluster
 - **Network topology** — force-directed graph of pod-to-service relationships
 - **Security scan** — per-pod security posture analysis (privileged containers, missing resource limits, host namespace access)
 - **TLS dashboard** — cluster-wide certificate inventory with expiry tracking
@@ -46,6 +51,7 @@ Manage clusters, stream logs, exec into containers, inspect RBAC, visualise netw
 - **Events & metrics** — filterable event list and pod/node metrics (requires metrics-server)
 - **Built-in terminal** — tabbed PTY terminal with kubectl pre-configured
 - **MCP server** — expose your cluster as tools for AI assistants via `podscape-mcp`
+- **Auto-Updater** — background update downloads and one-click installation for macOS and Windows
 
 ---
 
@@ -138,6 +144,7 @@ podscape-electron/
 │   ├── main/          # Electron main process (sidecar, IPC handlers, terminal)
 │   ├── preload/       # Context bridge — exposes window.kubectl, window.helm, etc.
 │   └── renderer/      # React app (components, store, routing)
+├── docs/              # In-depth feature guides and documentation
 ├── go-core/
 │   ├── cmd/
 │   │   ├── podscape-core/   # HTTP sidecar binary
