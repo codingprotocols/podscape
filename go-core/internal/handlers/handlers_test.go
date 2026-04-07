@@ -12,8 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/podscape/go-core/internal/k8sutil"
 	"github.com/podscape/go-core/internal/portforward"
 	"github.com/podscape/go-core/internal/store"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -740,46 +742,54 @@ func TestKindGVR_AliasesPresent(t *testing.T) {
 		{"node", "nodes", ""},
 	}
 	for _, tc := range cases {
+
 		t.Run(tc.kind, func(t *testing.T) {
-			gvr, ok := kindGVR[tc.kind]
+			gvr, ok := k8sutil.KindGVR[tc.kind]
+
 			if !ok {
-				t.Fatalf("kindGVR[%q] is missing", tc.kind)
+				t.Fatalf("k8sutil.KindGVR[%q] is missing", tc.kind)
 			}
+
 			if gvr.Resource != tc.resource {
-				t.Errorf("kindGVR[%q].Resource = %q, want %q", tc.kind, gvr.Resource, tc.resource)
+				t.Errorf("k8sutil.KindGVR[%q].Resource = %q, want %q", tc.kind, gvr.Resource, tc.resource)
 			}
+
 			if gvr.Group != tc.group {
-				t.Errorf("kindGVR[%q].Group = %q, want %q", tc.kind, gvr.Group, tc.group)
+				t.Errorf("k8sutil.KindGVR[%q].Group = %q, want %q", tc.kind, gvr.Group, tc.group)
 			}
+
 		})
 	}
 }
 
 func TestKindGVR_HPAAliasMatchesCanonical(t *testing.T) {
-	hpa := kindGVR["hpa"]
-	canonical := kindGVR["horizontalpodautoscaler"]
+	hpa := k8sutil.KindGVR["hpa"]
+	canonical := k8sutil.KindGVR["horizontalpodautoscaler"]
 	if hpa != canonical {
+
 		t.Errorf("hpa alias GVR %+v does not match canonical %+v", hpa, canonical)
 	}
 }
 
 func TestKindGVR_PVAliasMatchesCanonical(t *testing.T) {
-	pv := kindGVR["persistentvolume"]
-	canonical := kindGVR["pv"]
+	pv := k8sutil.KindGVR["persistentvolume"]
+	canonical := k8sutil.KindGVR["pv"]
 	if pv != canonical {
+
 		t.Errorf("persistentvolume alias GVR %+v does not match canonical pv %+v", pv, canonical)
 	}
 }
 
 func TestClusterScopedKinds_PVPresent(t *testing.T) {
 	// persistentvolume must be cluster-scoped so getYAML omits the namespace param.
-	if !clusterScopedKinds["persistentvolume"] {
+	if !k8sutil.ClusterScopedKinds["persistentvolume"] {
 		t.Error("persistentvolume must be in clusterScopedKinds")
 	}
-	if !clusterScopedKinds["pv"] {
+	if !k8sutil.ClusterScopedKinds["pv"] {
 		t.Error("pv must be in clusterScopedKinds")
 	}
 }
+
 
 // ── HandleHelmRollback input validation ───────────────────────────────────────
 

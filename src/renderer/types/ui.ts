@@ -1,0 +1,78 @@
+import { AnyKubeResource } from './k8s'
+
+export interface AppGroup {
+  name: string
+  namespace: string
+  resources: AnyKubeResource[]
+}
+
+// ─── Navigation ───────────────────────────────────────────────────────────────
+
+export type ResourceKind =
+  | 'unifiedlogs'
+  | 'multi-terminal'
+  | 'apps'
+  | 'dashboard'
+  | 'helm'
+  | 'pods'
+  | 'deployments'
+  | 'daemonsets'
+  | 'statefulsets'
+  | 'replicasets'
+  | 'jobs'
+  | 'cronjobs'
+  | 'hpas'
+  | 'pdbs'
+  | 'services'
+  | 'ingresses'
+  | 'ingressclasses'
+  | 'networkpolicies'
+  | 'endpoints'
+  | 'portforwards'
+  | 'configmaps'
+  | 'secrets'
+  | 'pvcs'
+  | 'pvs'
+  | 'storageclasses'
+  | 'serviceaccounts'
+  | 'roles'
+  | 'clusterroles'
+  | 'rolebindings'
+  | 'clusterrolebindings'
+  | 'nodes'
+  | 'namespaces'
+  | 'events'
+  | 'crds'
+  | 'metrics'
+  | 'settings'
+  | 'network'
+  | 'connectivity'
+  | 'debugpod'
+  | 'security'
+  | 'tls'
+  | 'gitops'
+  | 'cost'
+  // Istio service mesh
+
+  | 'istio-virtualservices'
+  | 'istio-destinationrules'
+  | 'istio-gateways'
+  | 'istio-serviceentries'
+  | 'istio-peerauth'
+  | 'istio-authpolicies'
+  | 'istio-requestauth'
+  // Traefik
+  | 'traefik-ingressroutes'
+  | 'traefik-ingressroutestcp'
+  | 'traefik-ingressroutesudp'
+  | 'traefik-middlewares'
+  | 'traefik-middlewaretcps'
+  | 'traefik-services'
+  | 'traefik-tlsoptions'
+  | 'traefik-tlsstores'
+  | 'traefik-serverstransporttcps'
+  // NGINX Inc (kubernetes-ingress, CRD-based)
+  | 'nginx-virtualservers'
+  | 'nginx-virtualserverroutes'
+  | 'nginx-policies'
+  | 'nginx-transportservers'

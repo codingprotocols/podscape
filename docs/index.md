@@ -42,13 +42,17 @@ cd go-core && go build ./cmd/podscape-core/ && cd ..
 npm run dev
 ```
 
-## Feature Overview (v2.5.0)
+## Feature Overview (v2.6.0)
+
 
 | Feature | Description |
 |---|---|
 | Resource Browser | 28 built-in Kubernetes resource types with live informer-backed cache |
 | RBAC-aware startup | Concurrent `SelfSubjectAccessReview` probe at startup; denied sections show an "Access denied" banner instead of errors |
-| Go Sidecar | Standalone `podscape-core` binary — HTTP server split across 12 handler files, shared informer cache, RBAC probe |
+| Modular Architecture | Refactored renderer shell (Layout/Router/Overlay) and granular type system for better maintainability |
+
+| Go Sidecar | Standalone `podscape-core` binary — HTTP server split across 16 handler files, shared informer cache, RBAC probe, and centralized resource metadata (`k8sutil`) |
+
 | Service Mesh Support | Istio, Traefik v2/v3, NGINX Inc, NGINX Community — auto-detected per cluster via API group discovery |
 | HPA v2 Metrics | Full `autoscaling/v2` metric display: resource, container-resource, Pods, External targets vs current |
 | CronJobs | Manual trigger support (instantiate Job from CronJob) and recent job history |

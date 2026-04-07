@@ -11,6 +11,7 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -25,6 +26,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/podscape/go-core/internal/client"
+	"github.com/podscape/go-core/internal/k8sutil"
 )
 
 // ErrUnsupportedResource is returned by ListResource and GetResource when the
@@ -59,39 +61,6 @@ func Scale(ctx context.Context, bundle *client.ClientBundle, ns, kind, name stri
 	})
 }
 
-// KindGVR maps lowercase kind names to GroupVersionResource for delete operations.
-var KindGVR = map[string]schema.GroupVersionResource{
-	"pod":                     {Group: "", Version: "v1", Resource: "pods"},
-	"deployment":              {Group: "apps", Version: "v1", Resource: "deployments"},
-	"service":                 {Group: "", Version: "v1", Resource: "services"},
-	"configmap":               {Group: "", Version: "v1", Resource: "configmaps"},
-	"secret":                  {Group: "", Version: "v1", Resource: "secrets"},
-	"ingress":                 {Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"},
-	"statefulset":             {Group: "apps", Version: "v1", Resource: "statefulsets"},
-	"daemonset":               {Group: "apps", Version: "v1", Resource: "daemonsets"},
-	"replicaset":              {Group: "apps", Version: "v1", Resource: "replicasets"},
-	"job":                     {Group: "batch", Version: "v1", Resource: "jobs"},
-	"cronjob":                 {Group: "batch", Version: "v1", Resource: "cronjobs"},
-	"hpa":                     {Group: "autoscaling", Version: "v2", Resource: "horizontalpodautoscalers"},
-	"pdb":                     {Group: "policy", Version: "v1", Resource: "poddisruptionbudgets"},
-	"networkpolicy":           {Group: "networking.k8s.io", Version: "v1", Resource: "networkpolicies"},
-	"pvc":                     {Group: "", Version: "v1", Resource: "persistentvolumeclaims"},
-	"pv":                      {Group: "", Version: "v1", Resource: "persistentvolumes"},
-	"storageclass":            {Group: "storage.k8s.io", Version: "v1", Resource: "storageclasses"},
-	"serviceaccount":          {Group: "", Version: "v1", Resource: "serviceaccounts"},
-	"role":                    {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "roles"},
-	"clusterrole":             {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterroles"},
-	"rolebinding":             {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "rolebindings"},
-	"clusterrolebinding":      {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterrolebindings"},
-	"node":                    {Group: "", Version: "v1", Resource: "nodes"},
-	"namespace":               {Group: "", Version: "v1", Resource: "namespaces"},
-}
-
-// ClusterScoped returns true if the kind is cluster-scoped.
-var ClusterScoped = map[string]bool{
-	"pv": true, "storageclass": true, "clusterrole": true,
-	"clusterrolebinding": true, "node": true, "namespace": true,
-}
 
 // dynClientFactory is an injectable factory used by Delete and ApplyYAML.
 // Tests replace this to inject a fake dynamic client without a real API server.
@@ -109,9 +78,10 @@ var restMapperFactory = func(cfg *rest.Config) (meta.RESTMapper, error) {
 	return restmapper.NewDeferredDiscoveryRESTMapper(memorycache.NewMemCacheClient(dc)), nil
 }
 
-// Delete removes a resource by kind and name.
+// Delete removes a resource by kind and name, retrying with the k8sutil fallback
+// GVR on NotFound (e.g. autoscaling/v1 if autoscaling/v2 is not available).
 func Delete(ctx context.Context, bundle *client.ClientBundle, ns, kind, name string) error {
-	gvr, ok := KindGVR[kind]
+	gvr, ok := k8sutil.KindGVR[kind]
 	if !ok {
 		return fmt.Errorf("unsupported kind: %s", kind)
 	}
@@ -119,10 +89,19 @@ func Delete(ctx context.Context, bundle *client.ClientBundle, ns, kind, name str
 	if err != nil {
 		return err
 	}
-	if ClusterScoped[kind] {
-		return dynClient.Resource(gvr).Delete(ctx, name, metav1.DeleteOptions{})
+	do := func(g schema.GroupVersionResource) error {
+		if k8sutil.ClusterScopedKinds[kind] {
+			return dynClient.Resource(g).Delete(ctx, name, metav1.DeleteOptions{})
+		}
+		return dynClient.Resource(g).Namespace(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	}
-	return dynClient.Resource(gvr).Namespace(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	err = do(gvr)
+	if apierrors.IsNotFound(err) {
+		if fallback, hasFallback := k8sutil.KindGVRFallback[kind]; hasFallback {
+			err = do(fallback)
+		}
+	}
+	return err
 }
 
 // RolloutRestart triggers a rolling restart by patching the restartedAt annotation.

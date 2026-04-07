@@ -43,6 +43,23 @@ npm run dev          # Start Electron + Vite dev server with hot reload
 
 ---
 
+## Codebase Structure
+
+### Renderer (`src/renderer/`)
+- `components/core/`: High-level orchestration components (`Layout`, `SectionRouter`, `OverlayManager`, `ErrorBoundary`).
+- `store/`: Zustand state management split into domain-specific slices.
+- `types/`: Granular TypeScript definitions (`api.ts`, `k8s.ts`, `ui.ts`, `utils.ts`, `common.ts`).
+- `config.ts`: Centralized UI configuration — `LIST_SECTIONS`, `CLUSTER_SCOPED_SECTIONS`, `PROVIDER_SECTIONS`, `SECTION_LABELS`, `COLUMNS` — all typed with `ResourceKind`. Adding a new section requires only updating this file and the appropriate dispatch map in `SectionRouter`.
+- `utils/prefetch.ts`: Background eager-loads lazy panel chunks after mount; failures are logged as warnings rather than swallowed silently.
+
+### Go Sidecar (`go-core/`)
+- `internal/handlers/`: HTTP resource handlers and operation logic.
+- `internal/k8sutil/`: Canonical Kubernetes resource metadata — `KindGVR`, `KindGVRFallback`, `ClusterScopedKinds`. This is the single source of truth for GVR resolution; `internal/ops` and `internal/handlers/operations.go` both delegate here. Adding a new resource type or alias requires only a change in this package.
+- `internal/rbac/`: Core RBAC probing engine.
+
+
+---
+
 ## Running Tests
 
 ```bash
@@ -111,8 +128,8 @@ Each job also uploads a `checksums-<platform>.txt` file to the GitHub release so
 
 ```bash
 # Create and push a release tag
-git tag v2.3.0
-git push origin v2.3.0
+git tag v2.6.0
+git push origin v2.6.0
 ```
 
 Required GitHub secret: `GH_TOKEN` with `contents: write` permission on the repository.

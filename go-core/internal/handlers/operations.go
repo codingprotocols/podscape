@@ -30,8 +30,11 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/podscape/go-core/internal/exec"
+	"github.com/podscape/go-core/internal/k8sutil"
 	"github.com/podscape/go-core/internal/ops"
 	"github.com/podscape/go-core/internal/store"
+
+
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -89,6 +92,43 @@ func HandleScale(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// dynDelete deletes a resource via the dynamic client, retrying with the
+// k8sutil fallback GVR on NotFound (which may mean the primary API version is
+// not registered on the server, e.g. autoscaling/v2 on pre-1.23 clusters).
+func dynDelete(ctx context.Context, client dynamic.Interface, kind, namespace, name string, gvr schema.GroupVersionResource) error {
+	do := func(g schema.GroupVersionResource) error {
+		if k8sutil.ClusterScopedKinds[kind] {
+			return client.Resource(g).Delete(ctx, name, metav1.DeleteOptions{})
+		}
+		return client.Resource(g).Namespace(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	}
+	err := do(gvr)
+	if errors.IsNotFound(err) {
+		if fallback, ok := k8sutil.KindGVRFallback[kind]; ok {
+			err = do(fallback)
+		}
+	}
+	return err
+}
+
+// dynGet fetches a resource via the dynamic client, retrying with the
+// k8sutil fallback GVR on NotFound (same version-skew rationale as dynDelete).
+func dynGet(ctx context.Context, client dynamic.Interface, kind, namespace, name string, gvr schema.GroupVersionResource) (*unstructured.Unstructured, error) {
+	do := func(g schema.GroupVersionResource) (*unstructured.Unstructured, error) {
+		if k8sutil.ClusterScopedKinds[kind] {
+			return client.Resource(g).Get(ctx, name, metav1.GetOptions{})
+		}
+		return client.Resource(g).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	}
+	obj, err := do(gvr)
+	if errors.IsNotFound(err) {
+		if fallback, ok := k8sutil.KindGVRFallback[kind]; ok {
+			obj, err = do(fallback)
+		}
+	}
+	return obj, err
+}
+
 func HandleDelete(w http.ResponseWriter, r *http.Request) {
 	namespace := r.URL.Query().Get("namespace")
 	kind := r.URL.Query().Get("kind")
@@ -99,7 +139,8 @@ func HandleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gvr, ok := kindGVR[kind]
+	gvr, ok := k8sutil.KindGVR[kind]
+
 	if !ok {
 		http.Error(w, fmt.Sprintf("unsupported kind: %s", kind), http.StatusBadRequest)
 		return
@@ -117,12 +158,7 @@ func HandleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if clusterScopedKinds[kind] {
-		err = dynClient.Resource(gvr).Delete(r.Context(), name, metav1.DeleteOptions{})
-	} else {
-		err = dynClient.Resource(gvr).Namespace(namespace).Delete(r.Context(), name, metav1.DeleteOptions{})
-	}
-
+	err = dynDelete(r.Context(), dynClient, kind, namespace, name, gvr)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			w.WriteHeader(http.StatusOK)
@@ -181,7 +217,8 @@ func HandleGetYAML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gvr, ok := kindGVR[kind]
+	gvr, ok := k8sutil.KindGVR[kind]
+
 	if !ok {
 		// Fall back to treating kind as "<resource>.<group>" for custom resources
 		// (e.g. "virtualservices.networking.istio.io" — the format CRDDetail uses
@@ -243,12 +280,7 @@ func HandleGetYAML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var obj *unstructured.Unstructured
-	if clusterScopedKinds[kind] {
-		obj, err = dynClient.Resource(gvr).Get(r.Context(), name, metav1.GetOptions{})
-	} else {
-		obj, err = dynClient.Resource(gvr).Namespace(namespace).Get(r.Context(), name, metav1.GetOptions{})
-	}
+	obj, err := dynGet(r.Context(), dynClient, kind, namespace, name, gvr)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -322,7 +354,7 @@ func HandleApplyYAML(w http.ResponseWriter, r *http.Request) {
 	// keeps field ownership clean and reduces payload size.
 	obj.SetManagedFields(nil)
 	delete(obj.Object, "status")
-	if metadata, ok := obj.Object["metadata"].(map[string]interface{}); ok {
+	if metadata, ok := obj.Object["metadata"].(map[string]any); ok {
 		delete(metadata, "uid")
 		delete(metadata, "resourceVersion")
 		delete(metadata, "creationTimestamp")
@@ -418,7 +450,7 @@ func HandleExecOneShot(w http.ResponseWriter, r *http.Request) {
 
 	err := exec.Exec(r.Context(), cs, cfg, namespace, pod, container, command, nil, out, errOut, false)
 
-	resp := map[string]interface{}{
+	resp := map[string]any{
 		"stdout": out.String(),
 		"stderr": errOut.String(),
 	}
@@ -723,9 +755,7 @@ func HandleRolloutUndo(w http.ResponseWriter, r *http.Request) {
 // a given timestamp, matching the style used by kubectl.
 func humanAge(t time.Time) string {
 	d := time.Since(t)
-	if d < 0 {
-		d = 0
-	}
+	d = max(d, 0)
 	switch {
 	case d < time.Minute:
 		return fmt.Sprintf("%ds", int(d.Seconds()))
@@ -833,7 +863,7 @@ func HandleCordonNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	patch := []byte(fmt.Sprintf(`{"spec":{"unschedulable":%v}}`, unschedulable))
+	patch := fmt.Appendf(nil, `{"spec":{"unschedulable":%v}}`, unschedulable)
 	if _, err := cs.CoreV1().Nodes().Patch(r.Context(), name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
