@@ -37,6 +37,14 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const [selectedContainer, setSelectedContainer] = useState(
     isDebugPod ? 'debug' : (pod.spec.containers[0]?.name ?? '')
   )
+
+  useEffect(() => {
+    // Reset selected container when switching to a different pod
+    setSelectedContainer(
+      isDebugPod ? 'debug' : (pod.spec.containers[0]?.name ?? '')
+    )
+  }, [pod.metadata.uid, isDebugPod, pod.spec.containers])
+
   const [search, setSearch] = useState('')
   const [logFullscreen, setLogFullscreen] = useState(false)
   const [wrapLogs, setWrapLogs] = useState(false)
@@ -125,6 +133,10 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     }
   }, [selectedContext, selectedNamespace, pod, selectedContainer, stopStream])
 
+  const scanCurrentPod = useCallback(() => {
+    scanResource(pod)
+  }, [scanResource, pod])
+
   // Stop stream when pod/container changes (no auto-start)
   useEffect(() => {
     setLogs([])
@@ -132,7 +144,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     setSearch('')
     setEvents([])
     // Trigger scan
-    scanResource(pod)
+    scanCurrentPod()
     // Fetch events for timeline
     const fetchEvents = async () => {
       if (!selectedContext) return
@@ -160,7 +172,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
       activeStreamIdRef.current = null
       setIsStreaming(false)
     }
-  }, [pod.metadata.uid, selectedContainer, selectedContext, scanResource])
+  }, [pod.metadata.uid, selectedContainer, selectedContext, scanCurrentPod])
 
   // Auto-scroll both normal and fullscreen log panes
   useEffect(() => {
@@ -303,7 +315,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     >
       {filteredLogs.length === 0
         ? (isStreaming
-          ? <span className="text-slate-600 animate-pulse"># Waiting for logs…{'\n'}</span>
+          ? <span className="text-slate-600 animate-pulse"># Waiting for logs...{'\n'}</span>
           : logs.length > 0
             ? <span className="text-slate-600"># No lines match search{'\n'}</span>
             : <span className="text-slate-600"># Press LOAD LOGS to stream logs{'\n'}</span>
@@ -385,8 +397,9 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger if typing in an input
-      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return
-      
+      const activeTag = document.activeElement?.tagName?.toLowerCase()
+      if (activeTag === 'input' || activeTag === 'textarea') return
+
       const isCmdOrCtrl = isMac ? e.metaKey : e.ctrlKey
 
       // CMD+T -> Open Shell
