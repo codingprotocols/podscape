@@ -303,7 +303,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     >
       {filteredLogs.length === 0
         ? (isStreaming
-          ? <span className="text-slate-600 animate-pulse"># Waiting for logs…{'\n'}</span>
+          ? <span className="text-slate-600 animate-pulse"># Waiting for logs...{'\n'}</span>
           : logs.length > 0
             ? <span className="text-slate-600"># No lines match search{'\n'}</span>
             : <span className="text-slate-600"># Press LOAD LOGS to stream logs{'\n'}</span>
