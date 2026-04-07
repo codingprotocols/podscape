@@ -64,7 +64,7 @@ export function GenericCRDDetail({ item, context, namespace, crdName, onAfterSav
     } finally {
       setYamlLoading(false)
     }
-  }, [context, ns, crdName, name])
+  }, [context, namespace, crdName, name])
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'metadata', label: 'Metadata' },
