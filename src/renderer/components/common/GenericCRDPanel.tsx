@@ -14,6 +14,17 @@ interface CRDInstance {
   [key: string]: unknown
 }
 
+const getInstanceKey = (inst: CRDInstance | null): string | null => {
+  if (!inst) return null
+  const { metadata } = inst
+  return metadata.uid ?? `${metadata.namespace ?? ''}/${metadata.name}`
+}
+
+const getMetadataKey = (meta: CRDInstance['metadata'] | null): string | null => {
+  if (!meta) return null
+  return meta.uid ?? `${meta.namespace ?? ''}/${meta.name}`
+}
+
 interface Props {
   /** CRD full name e.g. "virtualservices.networking.istio.io" */
   crdName: string
@@ -80,17 +91,14 @@ export function GenericCRDPanel({ crdName, context, namespace, onCountLoaded }: 
               <tbody className="divide-y divide-slate-100 dark:divide-white/5">
                 {items.map(inst => (
                   <tr
-                    key={inst.metadata.uid ?? `${inst.metadata.namespace ?? ''}/${inst.metadata.name}`}
+                    key={getInstanceKey(inst) ?? ''}
                     onClick={() => {
-                      const key = inst.metadata.uid ?? `${inst.metadata.namespace ?? ''}/${inst.metadata.name}`
-                      const selKey = selected ? (selected.metadata.uid ?? `${selected.metadata.namespace ?? ''}/${selected.metadata.name}`) : null
+                      const key = getInstanceKey(inst)
+                      const selKey = getInstanceKey(selected ?? null)
                       setSelected(selKey === key ? null : inst)
                     }}
                     className={`cursor-pointer hover:bg-white/5 transition-colors ${
-                      (selected?.metadata.uid
-                        ? selected.metadata.uid === inst.metadata.uid
-                        : selected?.metadata.name === inst.metadata.name && selected?.metadata.namespace === inst.metadata.namespace)
-                        ? 'bg-blue-500/5' : ''
+                      getInstanceKey(selected ?? null) === getInstanceKey(inst) ? 'bg-blue-500/5' : ''
                     }`}
                   >
                     <td className="px-4 py-3">
