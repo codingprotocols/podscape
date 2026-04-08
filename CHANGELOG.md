@@ -35,6 +35,28 @@
 - **Dangling `provider-details` export removed** from `components/index.ts` (directory does not exist).
 - **Unused `LOG_FLUSH_INTERVAL_MS` constant removed** from `PodDetail.tsx`.
 
+### Reliability & architecture
+
+#### File copy (Debug Pod)
+- **`copyToContainer` no longer requires `tar` in the container:** Replaced the `tar xf -` approach (which failed on minimal images like busybox/alpine) with `sh -c "mkdir -p '…' && cat > '…'"`. Raw bytes are piped directly — works in every container that has `/bin/sh`. The `tar` npm package has been removed from `dependencies`.
+- **`copyToContainer` moved to sidecar:** The main process no longer constructs tar archives. The Go sidecar owns all file I/O using `archive/tar` from the standard library.
+- **`copyFromContainer` is now fully streaming:** The sidecar streams the file directly via `cat` to the HTTP response body; the main process pipes it to disk with `stream/promises.pipeline` + `fs.createWriteStream`. Memory usage is constant regardless of file size. Partial files are deleted on error.
+
+#### Memory leaks & listener cleanup
+- **`useLogBuffer.reset()` cancels pending flush:** Calling `reset()` no longer risks a stale timer firing after the buffer is cleared.
+- **Security scan listener deduplication:** `analysisSlice.scanSecurity` now tracks the active `onSecurityProgress` listener in a module-level ref and tears it down before registering a new one, preventing duplicate progress lines when scans overlap.
+- **Port forwards cleaned up on context switch:** `clusterSlice.selectContext` calls `stopAllPortForwards()` before switching, removing all IPC listener subscriptions and clearing the `portForwards` state.
+- **CronJob refresh timer cleaned up on unmount:** `CronJobDetail` now tracks the `setTimeout` in a `useRef` and clears it on unmount, preventing stale callbacks from firing after the component is gone.
+- **WebSocket `removeAllListeners()` before close:** All log-stream and exec-stream teardown paths call `ws.removeAllListeners()` before `ws.close()`, preventing stale `close` event handlers from firing after deliberate teardown.
+
+#### Context switch correctness
+- **Log streams cancelled on context switch:** `switchContext` now calls `cancelAllLogStreams()` before sending the switch request to the sidecar, preventing stream ID collisions across contexts.
+- **`before-quit` ordering fixed:** The app now cancels all log and exec streams before stopping the sidecar, preventing IPC handlers from firing against a dead process during shutdown.
+
+#### Static imports (production safety)
+- **`ws`, `net` no longer dynamically required:** `import WebSocket from 'ws'` and `import { createServer } from 'net'` replace `require()` calls that would fail in production asar bundles if the packages were not listed in `dependencies`.
+- **`@types/ws` added** to `devDependencies` for full TypeScript coverage of the WebSocket API.
+
 ---
 
 ## [2.6.0] — 2026-04-07

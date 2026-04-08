@@ -193,7 +193,11 @@ const kubectl = {
     ipcRenderer.on('kubectl:logChunk', chunkHandler)
     ipcRenderer.on('kubectl:logEnd', endHandler)
     const p = ipcRenderer.invoke('kubectl:streamLogs', context, namespace, pod, container) as Promise<string>
-    void p.then((id) => { resolvedId = id }).catch(() => {})
+    void p.then((id) => { resolvedId = id }).catch(() => {
+      // IPC invoke failed — remove listeners so they don't accumulate.
+      ipcRenderer.off('kubectl:logChunk', chunkHandler)
+      ipcRenderer.off('kubectl:logEnd', endHandler)
+    })
     return p
   },
   stopLogs: (streamId: string) => ipcRenderer.invoke('kubectl:stopLogs', streamId),

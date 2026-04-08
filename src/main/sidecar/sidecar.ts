@@ -1,4 +1,5 @@
 import { ChildProcess, spawn } from 'child_process'
+import { createServer } from 'net'
 import { join } from 'path'
 import { existsSync, chmodSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
@@ -15,13 +16,12 @@ let shuttingDown = false
 
 async function findFreePort(preferred: number): Promise<number> {
   return new Promise((resolve) => {
-    const net = require('net')
-    const server = net.createServer()
+    const server = createServer()
     server.listen(preferred, '127.0.0.1', () => {
       server.close(() => resolve(preferred))
     })
     server.on('error', () => {
-      const s2 = net.createServer()
+      const s2 = createServer()
       s2.listen(0, '127.0.0.1', () => {
         const port = (s2.address() as any).port
         s2.close(() => resolve(port))

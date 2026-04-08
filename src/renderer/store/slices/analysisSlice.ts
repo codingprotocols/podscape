@@ -18,6 +18,11 @@ export interface AnalysisSlice {
     scanSecurity: (options?: CustomScanOptions, background?: boolean) => Promise<void>
 }
 
+// Holds the unsubscribe fn for the currently active security scan progress listener.
+// Ensures at most one listener is registered at a time even if scanSecurity() is
+// called again before a previous scan completes.
+let activeProgressUnsub: (() => void) | null = null
+
 export const createAnalysisSlice: StoreSlice<AnalysisSlice> = (set, get) => ({
     scanResults: {},
     isScanning: false,
@@ -93,6 +98,8 @@ export const createAnalysisSlice: StoreSlice<AnalysisSlice> = (set, get) => ({
         // Suppress trivy lines that are internal noise and not useful to the user.
         const TRIVY_NOISE_RE = /Unable to parse (container|image)|unable to parse digest/i
 
+        // Tear down any previous scan's listener before registering a new one.
+        if (activeProgressUnsub) { activeProgressUnsub(); activeProgressUnsub = null }
         // Wire up the progress relay before starting the scan so no lines are missed.
         const unsubProgress = window.kubectl.onSecurityProgress((line: string) => {
             const clean = line.replace(TRIVY_PREFIX_RE, '').trim()
@@ -102,6 +109,7 @@ export const createAnalysisSlice: StoreSlice<AnalysisSlice> = (set, get) => ({
             // Keep only the last 10 lines to avoid unbounded growth.
             set(s => ({ securityScanProgressLines: [...s.securityScanProgressLines.slice(-9), clean] }))
         })
+        activeProgressUnsub = unsubProgress
 
         try {
             const [trivyResult, kubesecResult] = await Promise.allSettled([
@@ -121,7 +129,7 @@ export const createAnalysisSlice: StoreSlice<AnalysisSlice> = (set, get) => ({
 
             // --- trivy ---
             let error: string | null = null
-            const stateUpdate: Record<string, any> = { securityScanning: false }
+            const stateUpdate: Record<string, any> = {}
 
             if (runTrivy) {
                 if (trivyResult.status === 'fulfilled') {
@@ -183,6 +191,8 @@ export const createAnalysisSlice: StoreSlice<AnalysisSlice> = (set, get) => ({
             }
         } finally {
             unsubProgress()
+            activeProgressUnsub = null
+            set({ securityScanning: false })
         }
     },
 })

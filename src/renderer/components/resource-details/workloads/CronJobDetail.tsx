@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import type { KubeCronJob, KubeJob } from '../../../types'
 import { formatAge } from '../../../types'
 import { Clock, Play, FileCode, X, Activity, History, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
@@ -40,6 +40,11 @@ export default function CronJobDetail({ cronJob: cj }: Props): JSX.Element {
 
   const [triggerState, setTriggerState] = useState<TriggerState>('idle')
   const [triggerMsg, setTriggerMsg] = useState('')
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (refreshTimerRef.current !== null) clearTimeout(refreshTimerRef.current)
+  }, [])
 
   const fetchRecentJobs = async () => {
     if (!selectedContext) return
@@ -78,7 +83,8 @@ export default function CronJobDetail({ cronJob: cj }: Props): JSX.Element {
       setTriggerState('done')
       setTriggerMsg(`Created job: ${jobName}`)
       // Refresh recent jobs after a short delay so the new job appears
-      setTimeout(fetchRecentJobs, 1000)
+      if (refreshTimerRef.current !== null) clearTimeout(refreshTimerRef.current)
+      refreshTimerRef.current = setTimeout(fetchRecentJobs, 1000)
     } catch (err) {
       setTriggerState('error')
       setTriggerMsg((err as Error).message)

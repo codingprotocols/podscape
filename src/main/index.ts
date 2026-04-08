@@ -144,6 +144,10 @@ app.on('before-quit', async (event) => {
     event.preventDefault()
     isQuitting = true
     console.log('[Main] Stopping sidecar before quit...')
+    // Close all WebSocket streams before stopping the sidecar so listeners
+    // don't fire with errors after the sidecar process is gone.
+    cancelAllLogStreams()
+    cancelAllExecStreams()
     try {
       await stopSidecar()
     } catch (err) {
