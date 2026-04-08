@@ -587,15 +587,25 @@ func sanitizeCPToLocalPath(localPath string) (string, error) {
 	}
 
 	homeDir, _ := os.UserHomeDir()
-	allowedRoots := []string{filepath.Clean(os.TempDir())}
+	rawAllowedRoots := []string{os.TempDir()}
 	if homeDir != "" {
-		allowedRoots = append(allowedRoots, filepath.Clean(homeDir))
+		rawAllowedRoots = append(rawAllowedRoots, homeDir)
 	}
 
-	allowed := false
-	for _, root := range allowedRoots {
-		rel, relErr := filepath.Rel(root, absPath)
-		if relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+	var allowed bool
+	for _, root := range rawAllowedRoots {
+		cleanRoot := filepath.Clean(root)
+		absRoot, errRoot := filepath.Abs(cleanRoot)
+		if errRoot != nil {
+			continue
+		}
+		// Ensure the root has a trailing path separator so prefix checks are unambiguous.
+		rootWithSep := absRoot
+		if !strings.HasSuffix(rootWithSep, string(os.PathSeparator)) {
+			rootWithSep += string(os.PathSeparator)
+		}
+
+		if absPath == absRoot || strings.HasPrefix(absPath, rootWithSep) {
 			allowed = true
 			break
 		}
