@@ -582,10 +582,20 @@ func sanitizeCPToLocalPath(localPath string) (string, error) {
 	if filepath.IsAbs(localPath) {
 		return "", fmt.Errorf("absolute paths are not allowed")
 	}
+	if vol := filepath.VolumeName(localPath); vol != "" {
+		return "", fmt.Errorf("volume-qualified paths are not allowed")
+	}
 
 	cleanInput := filepath.Clean(localPath)
 	if cleanInput == "." {
 		return "", fmt.Errorf("path is invalid")
+	}
+
+	normalized := filepath.ToSlash(cleanInput)
+	for _, part := range strings.Split(normalized, "/") {
+		if part == ".." {
+			return "", fmt.Errorf("parent directory references are not allowed")
+		}
 	}
 
 	homeDir, _ := os.UserHomeDir()
@@ -605,25 +615,13 @@ func sanitizeCPToLocalPath(localPath string) (string, error) {
 			continue
 		}
 
-		candidate := filepath.Join(realRoot, cleanInput)
-		absCandidate, err := filepath.Abs(filepath.Clean(candidate))
-		if err != nil {
-			continue
-		}
-		realCandidate, err := filepath.EvalSymlinks(absCandidate)
-		if err != nil {
+		candidate := filepath.Clean(filepath.Join(realRoot, cleanInput))
+		rel, err := filepath.Rel(realRoot, candidate)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) {
 			continue
 		}
 
-		rootWithSep := realRoot
-		if !strings.HasSuffix(rootWithSep, string(os.PathSeparator)) {
-			rootWithSep += string(os.PathSeparator)
-		}
-		if realCandidate != realRoot && !strings.HasPrefix(realCandidate, rootWithSep) {
-			continue
-		}
-
-		info, err := os.Stat(realCandidate)
+		info, err := os.Stat(candidate)
 		if err != nil {
 			continue
 		}
@@ -631,7 +629,7 @@ func sanitizeCPToLocalPath(localPath string) (string, error) {
 			continue
 		}
 
-		return realCandidate, nil
+		return candidate, nil
 	}
 
 	return "", fmt.Errorf("path is outside allowed directories or not accessible")
