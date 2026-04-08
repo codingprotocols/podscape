@@ -3,7 +3,8 @@ import { useAppStore } from '../../store'
 import type { HelmRelease } from '../../types'
 import { formatAge } from '../../types'
 import HelmRepoBrowser from './HelmRepoBrowser'
-import { Activity, HardDrive, RefreshCw, Package, Trash2, X, Globe } from 'lucide-react'
+import { Activity, HardDrive, Package, Trash2, X, Globe } from 'lucide-react'
+import { RefreshButton } from '../common'
 import PageHeader from '../core/PageHeader'
 import { useDragResize } from '../../hooks/useDragResize'
 
@@ -141,13 +142,11 @@ export default function HelmPanel(): JSX.Element {
               </div>
             )}
 
-            <button onClick={load} disabled={loading}
-              className="flex items-center gap-2 px-5 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300
-                         glass-panel hover:bg-white/10 dark:hover:bg-white/5 rounded-xl shadow-sm
-                         disabled:opacity-50 active:scale-95 leading-none">
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-              Sync
-            </button>
+            <RefreshButton 
+              onClick={load}
+              loading={loading}
+              label="Refresh"
+            />
           </div>
         </PageHeader>
 

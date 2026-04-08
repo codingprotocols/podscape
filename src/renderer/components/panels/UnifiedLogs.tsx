@@ -1,7 +1,9 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react'
+import React, { useEffect, useState, useRef, useMemo } from 'react'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { Search, Play, Square, Trash2, Terminal } from 'lucide-react'
 import PageHeader from '../core/PageHeader'
+import { useAutoScroll, useLogBuffer } from '../../hooks'
 
 /**
  * Exported for unit testing: given a map of active stream IDs, determines
@@ -39,63 +41,49 @@ const POD_COLORS = [
 ]
 
 export default function UnifiedLogs(): JSX.Element {
-  const { pods, selectedContext, selectedNamespace, loadSection } = useAppStore()
+  const { pods, selectedContext, selectedNamespace, loadSection } = useAppStore(useShallow(s => ({
+    pods: s.pods,
+    selectedContext: s.selectedContext,
+    selectedNamespace: s.selectedNamespace,
+    loadSection: s.loadSection,
+  })))
   const [selectedPods, setSelectedPods] = useState<string[]>([])
-  const [logs, setLogs] = useState<LogEntry[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [podSearchTerm, setPodSearchTerm] = useState('')
-  const [autoScroll, setAutoScroll] = useState(true)
   const streamIds = useRef<Record<string, string>>({})
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const { items: logs, append, reset, cancelFlush } = useLogBuffer<LogEntry>({ maxItems: 1000, flushIntervalMs: 100 })
+  const { ref: scrollRef, autoScroll, setAutoScroll, handleScroll } = useAutoScroll<HTMLDivElement>({
+    bottomThresholdPx: 60,
+    ignoreProgrammaticMs: 50,
+    scrollTrigger: logs.length,
+  })
   const podSearchRef = useRef<HTMLDivElement>(null)
-  const ignoringScrollRef = useRef(false)
   const [showPodResults, setShowPodResults] = useState(false)
-  // Throttle log state updates: accumulate chunks into a buffer and flush at
-  // most once per 100 ms so that high-throughput streams don't trigger a React
-  // re-render on every individual log line.
-  const pendingBuffer = useRef<LogEntry[]>([])
-  const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const flushPending = useCallback(() => {
-    flushTimer.current = null
-    if (pendingBuffer.current.length === 0) return
-    const toFlush = pendingBuffer.current
-    pendingBuffer.current = []
-    setLogs(prev => [...prev, ...toFlush].slice(-1000))
-  }, [])
+  const availablePods = useMemo(() => pods.filter(p => p.status.phase === 'Running'), [pods])
 
-  const scheduleFlush = useCallback(() => {
-    if (flushTimer.current === null) {
-      flushTimer.current = setTimeout(flushPending, 100)
-    }
-  }, [flushPending])
-
-  const availablePods = pods.filter(p => p.status.phase === 'Running')
-  
-  const filteredPods = podSearchTerm.trim().length > 0 
-    ? availablePods.filter(p => 
-        p.metadata.name.toLowerCase().includes(podSearchTerm.toLowerCase()) ||
-        (p.metadata.namespace || 'default').toLowerCase().includes(podSearchTerm.toLowerCase())
-      )
-    : []
+  const filteredPods = useMemo(() => {
+    if (!podSearchTerm.trim()) return []
+    const lower = podSearchTerm.toLowerCase()
+    return availablePods.filter(p =>
+      p.metadata.name.toLowerCase().includes(lower) ||
+      (p.metadata.namespace || 'default').toLowerCase().includes(lower)
+    )
+  }, [availablePods, podSearchTerm])
 
   // Keep the pods list fresh so the "Add pods" search always has results
   useEffect(() => { loadSection('pods') }, [selectedNamespace])
 
   useEffect(() => {
     return () => {
-      if (flushTimer.current !== null) clearTimeout(flushTimer.current)
-      stopAllStreams()
+      // Inline cleanup to avoid stale closure over stopAllStreams.
+      cancelFlush()
+      const toStop = Object.values(streamIds.current)
+      streamIds.current = {}
+      for (const sid of toStop) { window.kubectl.stopLogs(sid).catch(() => {}) }
     }
-  }, [])
-
-  useEffect(() => {
-    if (!autoScroll || !scrollRef.current) return
-    ignoringScrollRef.current = true
-    scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    setTimeout(() => { ignoringScrollRef.current = false }, 50)
-  }, [logs, autoScroll])
+  }, [cancelFlush])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -117,11 +105,11 @@ export default function UnifiedLogs(): JSX.Element {
       }
       streamIds.current = {}
       setSelectedPods([])
-      setLogs([])
+      reset()
       setIsStreaming(false)
     }
     cleanup().catch(err => console.error('[UnifiedLogs] cleanup failed:', err))
-  }, [selectedContext])
+  }, [reset, selectedContext])
 
   useEffect(() => {
     const syncPods = async () => {
@@ -144,13 +132,10 @@ export default function UnifiedLogs(): JSX.Element {
   }, [pods])
 
   const stopAllStreams = async () => {
-    // Cancel pending flush timer and discard buffered lines — we don't want
-    // in-flight chunks to appear after the user clicked Stop.
-    if (flushTimer.current !== null) {
-      clearTimeout(flushTimer.current)
-      flushTimer.current = null
-    }
-    pendingBuffer.current = []
+    // Cancel pending flush timer and discard in-flight buffered lines — we
+    // don't want chunks that arrive after Stop to appear. Flushed log history
+    // is preserved so the user can still read it.
+    cancelFlush()
     // Clear streamIds first so any onChunk callbacks still in flight are
     // discarded by the guard inside startStreaming's closure.
     const toStop = Object.values(streamIds.current)
@@ -164,13 +149,9 @@ export default function UnifiedLogs(): JSX.Element {
   const startStreaming = async () => {
     if (!selectedContext) return
     setIsStreaming(true)
-    setLogs([])
     // Reset the buffer so leftover chunks from a previous session don't bleed in.
-    pendingBuffer.current = []
-    if (flushTimer.current !== null) {
-      clearTimeout(flushTimer.current)
-      flushTimer.current = null
-    }
+    cancelFlush()
+    reset()
 
     for (let i = 0; i < selectedPods.length; i++) {
         const podName = selectedPods[i]
@@ -201,10 +182,17 @@ export default function UnifiedLogs(): JSX.Element {
                     // Accumulate into the shared buffer and schedule a single
                     // flush — at most one setState every 100 ms regardless of
                     // how many lines arrive per chunk.
-                    pendingBuffer.current.push(...newEntries)
-                    scheduleFlush()
+                    append(newEntries)
                 },
-                () => {}
+                () => {
+                    // When the websocket closes, onEnd fires. Guard so we don't
+                    // clear a newer stream for the same podName.
+                    if (streamIds.current[podName] !== sid) return
+                    delete streamIds.current[podName]
+                    if (shouldResetStreaming(streamIds.current)) {
+                      setIsStreaming(false)
+                    }
+                }
             )
             streamIds.current[podName] = sid
         } catch (err) {
@@ -228,10 +216,19 @@ export default function UnifiedLogs(): JSX.Element {
     setSelectedPods([])
   }
 
-  const filteredLogs = logs.filter(l => 
-    l.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    l.podName.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const searchTermLower = searchTerm.toLowerCase()
+  const filteredLogs = useMemo(() => {
+    if (!searchTermLower) return logs
+    return logs.filter(l =>
+      l.message.toLowerCase().includes(searchTermLower) ||
+      l.podName.toLowerCase().includes(searchTermLower)
+    )
+  }, [logs, searchTermLower])
+
+  const highlightRegex = useMemo(() => {
+    if (!searchTerm) return null
+    return new RegExp(`(${escapeRegExp(searchTerm)})`, 'gi')
+  }, [searchTerm])
 
   const subtitle = isStreaming
     ? `${selectedPods.length} pod${selectedPods.length !== 1 ? 's' : ''} streaming · ${logs.length} lines`
@@ -274,7 +271,7 @@ export default function UnifiedLogs(): JSX.Element {
 
         {/* Clear logs */}
         <button
-          onClick={() => setLogs([])}
+          onClick={() => reset()}
           title="Clear Logs"
           className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-all"
         >
@@ -376,11 +373,7 @@ export default function UnifiedLogs(): JSX.Element {
         <div
           ref={scrollRef}
           className="h-full overflow-auto p-6 font-mono text-[12px] selection:bg-blue-500/30 leading-relaxed"
-          onScroll={e => {
-            if (ignoringScrollRef.current) return
-            const el = e.currentTarget
-            setAutoScroll(el.scrollHeight - el.scrollTop - el.clientHeight < 60)
-          }}
+          onScroll={handleScroll}
         >
           {filteredLogs.map(l => (
             <div key={l.id} className="flex gap-6 py-0.5 hover:bg-slate-100 dark:hover:bg-white/[0.02] group transition-colors">
@@ -391,13 +384,15 @@ export default function UnifiedLogs(): JSX.Element {
                 {l.podName}
               </span>
               <span className="text-slate-600 dark:text-slate-300 break-all">
-                {searchTerm ? (
-                  l.message.split(new RegExp(`(${escapeRegExp(searchTerm)})`, 'gi')).map((part, i) =>
-                    part.toLowerCase() === searchTerm.toLowerCase()
+                {highlightRegex ? (
+                  l.message.split(highlightRegex).map((part, i) =>
+                    part.toLowerCase() === searchTermLower
                       ? <span key={i} className="bg-blue-500/40 text-white px-0.5 rounded-sm">{part}</span>
                       : <span key={i}>{part}</span>
                   )
-                ) : l.message}
+                ) : (
+                  l.message
+                )}
               </span>
             </div>
           ))}

@@ -1,11 +1,20 @@
-import { vi, describe, it, expect } from 'vitest'
+// @vitest-environment jsdom
+import React from 'react'
+import { vi, describe, it, expect, afterEach } from 'vitest'
+import { render, fireEvent, screen, waitFor, act, cleanup } from '@testing-library/react'
+import * as matchers from '@testing-library/jest-dom/matchers'
+
+expect.extend(matchers)
+
+afterEach(() => cleanup())
 
 // UnifiedLogs.tsx imports useAppStore, which creates the Zustand store on
 // module load and immediately calls localStorage.getItem. Mock the store
 // module so the import doesn't trigger real store initialization.
-vi.mock('../store', () => ({ useAppStore: vi.fn() }))
+vi.mock('../../store', () => ({ useAppStore: vi.fn() }))
 
-import { shouldResetStreaming, escapeRegExp } from './UnifiedLogs'
+import { useAppStore } from '../../store'
+import UnifiedLogs, { shouldResetStreaming, escapeRegExp } from './UnifiedLogs'
 
 // ── shouldResetStreaming ────────────────────────────────────────────────────
 // Guards the fix for "isStreaming stuck when all streamLogs calls throw":
@@ -62,4 +71,157 @@ describe('escapeRegExp', () => {
         const parts = 'An ERROR occurred'.split(re)
         expect(parts).toContain('ERROR')
     })
+})
+
+describe('UnifiedLogs stream lifecycle', () => {
+  it('sets streaming false when the last stream ends naturally', async () => {
+    const pods = [
+      {
+        metadata: { name: 'pod-a', uid: 'pod-a-uid', namespace: 'default' },
+        status: { phase: 'Running' },
+        spec: { containers: [{ name: 'c-a' }] },
+      },
+    ] as any
+
+    ;(useAppStore as any).mockReturnValue({
+      pods,
+      selectedContext: 'ctx-1',
+      selectedNamespace: 'default',
+      loadSection: vi.fn(),
+    })
+
+    let capturedOnEnd: (() => void) | null = null
+    const streamLogsMock = vi.fn(
+      async (
+        _ctx: string,
+        _ns: string,
+        _pod: string,
+        _container: string,
+        _onChunk: (chunk: string) => void,
+        onEnd: () => void,
+      ) => {
+        capturedOnEnd = onEnd
+        return 'sid-1'
+      },
+    )
+
+    ;(window as any).kubectl = {
+      streamLogs: streamLogsMock,
+      stopLogs: vi.fn().mockResolvedValue(undefined),
+    }
+
+    render(React.createElement(UnifiedLogs))
+
+    const addPodInput = screen.getByPlaceholderText('Add pods to stream...') as HTMLInputElement
+    fireEvent.change(addPodInput, { target: { value: 'pod-a' } })
+
+    // Click the search result for the pod.
+    const podButton = screen.getByText('pod-a').closest('button') as HTMLButtonElement
+    fireEvent.click(podButton)
+
+    const startButton = screen.getByText('Start Stream').closest('button') as HTMLButtonElement
+    expect(startButton.disabled).toBe(false)
+
+    fireEvent.click(startButton)
+    expect(screen.getByText('Stop All')).toBeInTheDocument()
+
+    expect(capturedOnEnd).not.toBeNull()
+    // Give `startStreaming()` a chance to complete its `await streamLogs(...)`
+    // so the `sid` referenced in `onEnd` is initialized.
+    await Promise.resolve()
+    act(() => {
+      capturedOnEnd?.()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Start Stream')).toBeInTheDocument()
+    })
+  })
+
+  it('clears buffered logs when Clear Logs is clicked', async () => {
+    vi.useFakeTimers()
+
+    const pods = [
+      {
+        metadata: { name: 'pod-a', uid: 'pod-a-uid', namespace: 'default' },
+        status: { phase: 'Running' },
+        spec: { containers: [{ name: 'c-a' }] },
+      },
+    ] as any
+
+    ;(useAppStore as any).mockReturnValue({
+      pods,
+      selectedContext: 'ctx-1',
+      selectedNamespace: 'default',
+      loadSection: vi.fn(),
+    })
+
+    let capturedOnChunk: ((chunk: string) => void) | null = null
+    let capturedOnEnd: (() => void) | null = null
+
+    const streamLogsMock = vi.fn(
+      async (
+        _ctx: string,
+        _ns: string,
+        _pod: string,
+        _container: string,
+        onChunk: (chunk: string) => void,
+        onEnd: () => void,
+      ) => {
+        capturedOnChunk = onChunk
+        capturedOnEnd = onEnd
+        return 'sid-1'
+      },
+    )
+
+    ;(window as any).kubectl = {
+      streamLogs: streamLogsMock,
+      stopLogs: vi.fn().mockResolvedValue(undefined),
+    }
+
+    render(React.createElement(UnifiedLogs))
+
+    const addPodInput = screen.getByPlaceholderText('Add pods to stream...') as HTMLInputElement
+    fireEvent.change(addPodInput, { target: { value: 'pod-a' } })
+    const podButton = screen.getByText('pod-a').closest('button') as HTMLButtonElement
+    fireEvent.click(podButton)
+
+    const startButton = screen.getByText('Start Stream').closest('button') as HTMLButtonElement
+    fireEvent.click(startButton)
+    expect(screen.getByText('Stop All')).toBeInTheDocument()
+
+    // Emit one log line into the buffer.
+    expect(capturedOnChunk).not.toBeNull()
+    // Give `startStreaming()` a chance to complete its `await streamLogs(...)`
+    // so `sid` referenced in the `onChunk` closure is initialized.
+    await Promise.resolve()
+    act(() => {
+      capturedOnChunk?.('hello world\n')
+    })
+
+    // Let `useLogBuffer` flush (flushIntervalMs = 100 in UnifiedLogs).
+    act(() => {
+      vi.advanceTimersByTime(120)
+    })
+
+    expect(screen.getByText('hello world')).toBeInTheDocument()
+
+    // Clear the logs UI.
+    const clearButton = screen.getByTitle('Clear Logs')
+    act(() => {
+      fireEvent.click(clearButton)
+    })
+    // Allow `useAutoScroll`'s ignore window timer (50ms) to settle.
+    act(() => {
+      vi.advanceTimersByTime(60)
+    })
+
+    expect(screen.getByText('Stream Pending')).toBeInTheDocument()
+
+    // Avoid leaking fake timers to other tests.
+    vi.useRealTimers()
+
+    // Silence unused capture.
+    void capturedOnEnd
+  })
 })

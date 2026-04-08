@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAppStore } from '../../store'
 import {
-  AlertTriangle, CheckCircle, Clock, X, Lock, Info, Search, RefreshCw
+  AlertTriangle, CheckCircle, Clock, X, Lock, Info, Search
 } from 'lucide-react'
+import { RefreshButton } from '../common'
 import PageHeader from '../core/PageHeader'
 
 interface TLSCertInfo {
@@ -410,14 +411,11 @@ export default function TLSCertDashboard() {
               />
             </div>
 
-            <button
+            <RefreshButton
               onClick={load}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-slate-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl transition-all disabled:opacity-40"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
+              loading={loading}
+              label="Refresh"
+            />
           </div>
         </div>
       </PageHeader>

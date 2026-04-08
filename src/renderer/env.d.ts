@@ -10,6 +10,13 @@ interface UpdaterAPI {
   install: () => Promise<void>
 }
 
+interface SidecarAPI {
+  onCrashed: (cb: (info: { code: number | null; signal: string | null }) => void) => () => void
+  restart: () => Promise<void>
+}
+
 declare interface Window {
   updater?: UpdaterAPI
+  sidecar?: SidecarAPI
+  electron: any
 }

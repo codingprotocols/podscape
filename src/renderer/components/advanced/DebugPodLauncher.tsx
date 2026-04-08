@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import PageHeader from '../core/PageHeader'
 import type { DebugPodEntry } from '../../types'
 
@@ -65,7 +66,17 @@ export default function DebugPodLauncher() {
     selectedContext, selectedNamespace, namespaces,
     debugPods, addDebugPod, removeDebugPod, updateDebugPod,
     openExec, loadSection,
-  } = useAppStore()
+  } = useAppStore(useShallow(s => ({
+    selectedContext: s.selectedContext,
+    selectedNamespace: s.selectedNamespace,
+    namespaces: s.namespaces,
+    debugPods: s.debugPods,
+    addDebugPod: s.addDebugPod,
+    removeDebugPod: s.removeDebugPod,
+    updateDebugPod: s.updateDebugPod,
+    openExec: s.openExec,
+    loadSection: s.loadSection,
+  })))
 
   const [selectedImage, setSelectedImage] = useState<string>(DEBUG_IMAGES[0].name)
   const [customImage, setCustomImage] = useState('')
@@ -140,12 +151,13 @@ export default function DebugPodLauncher() {
   }
 
   const stop = async (pod: DebugPodEntry) => {
+    if (!selectedContext) return
     setDeleteError(null)
     // Remove immediately from the UI — don't wait for the cluster round-trip
     removeDebugPod(pod.name)
     useAppStore.setState(s => ({ pods: s.pods.filter(p => p.metadata.name !== pod.name) }))
     // Fire delete in the background; show error only if it truly fails
-    window.kubectl.deleteResource(selectedContext!, pod.namespace, 'pod', pod.name)
+    window.kubectl.deleteResource(selectedContext, pod.namespace, 'pod', pod.name)
       .catch((err: unknown) => {
         const msg = (err as Error).message ?? String(err)
         if (!msg.toLowerCase().includes('not found')) {

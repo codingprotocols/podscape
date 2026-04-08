@@ -94,6 +94,8 @@ declare global {
             getOwnerChain: (kind: string, name: string, namespace: string) => Promise<OwnerChainResponse>
             getTLSCerts: (namespace?: string) => Promise<any[]>
             getGitOps: (namespace?: string) => Promise<any>
+            reconcileGitOps: (kind: string, name: string, namespace: string) => Promise<void>
+            suspendGitOps: (kind: string, name: string, namespace: string, suspend: boolean) => Promise<void>
             getProviders: () => Promise<ProviderSet>
         }
         helm: {

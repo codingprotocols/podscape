@@ -14,10 +14,11 @@ import OwnerChain from '../../advanced/OwnerChain'
 import CopyButton from '../../common/CopyButton'
 import TimeSeriesChart, { PrometheusTimeRangeBar } from '../../advanced/TimeSeriesChart'
 import { podCpuQuery, podMemoryQuery, podNetworkRxQuery, podNetworkTxQuery } from '../../../utils/prometheusQueries'
+import { useAutoScroll, useLogBuffer } from '../../../hooks'
 
 const DEBUG_POD_PREFIX = 'podscape-debug-'
 const MAX_LOG_LINES = 2000
-const LOG_FLUSH_INTERVAL_MS = 100
+
 const AUTO_SCROLL_THRESHOLD_PX = 60
 
 interface Props {
@@ -33,7 +34,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const [activeTab, setActiveTab] = useState<'logs' | 'metrics' | 'analysis' | 'lifecycle'>('logs')
   const [events, setEvents] = useState<KubeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
-  const [logs, setLogs] = useState<string[]>([])
+  const { items: logs, append, reset, cancelFlush } = useLogBuffer<string>({ maxItems: MAX_LOG_LINES, flushIntervalMs: 100 })
   const [isStreaming, setIsStreaming] = useState(false)
   const [logError, setLogError] = useState<string | null>(null)
   const [autoScroll, setAutoScroll] = useState(true)
@@ -54,10 +55,20 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const [logFullscreen, setLogFullscreen] = useState(false)
   const [wrapLogs, setWrapLogs] = useState(false)
   const [showAnalyzer, setShowAnalyzer] = useState(false)
-  const logContainerRef = useRef<HTMLPreElement>(null)
-  const fsLogContainerRef = useRef<HTMLPreElement>(null)
-  // Prevents programmatic scrollTop assignments from re-enabling autoScroll via onScroll.
-  const ignoringScrollRef = useRef(false)
+  const normalLogAutoScroll = useAutoScroll<HTMLPreElement>({
+    bottomThresholdPx: AUTO_SCROLL_THRESHOLD_PX,
+    ignoreProgrammaticMs: 50,
+    autoScroll,
+    setAutoScroll,
+    scrollTrigger: logs.length,
+  })
+  const fullscreenLogAutoScroll = useAutoScroll<HTMLPreElement>({
+    bottomThresholdPx: AUTO_SCROLL_THRESHOLD_PX,
+    ignoreProgrammaticMs: 50,
+    autoScroll,
+    setAutoScroll,
+    scrollTrigger: logs.length,
+  })
   const panelRef = useRef<HTMLDivElement>(null)
   // Use a ref for activeStreamId so cleanup effects always have the latest value
   const activeStreamIdRef = useRef<string | null>(null)
@@ -66,26 +77,20 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   // call it without adding startStream to its dependency array (which would
   // cause infinite re-runs).
   const startStreamRef = useRef<() => Promise<void>>(() => Promise.resolve())
-  // Component-level refs for the flush timer and pending lines so stopStream
-  // can cancel/clear them without needing access to startStream's local scope.
-  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pendingLinesRef = useRef<string[]>([])
 
   useEffect(() => {
     isMountedRef.current = true
     return () => {
       isMountedRef.current = false
-      if (flushTimerRef.current) {
-        clearTimeout(flushTimerRef.current)
-        flushTimerRef.current = null
-      }
+      cancelFlush()
+      reset()
       // Stop any active stream on unmount
       if (activeStreamIdRef.current) {
         window.kubectl.stopLogs(activeStreamIdRef.current).catch(() => { })
         activeStreamIdRef.current = null
       }
     }
-  }, [])
+  }, [cancelFlush, reset])
 
   // ── Stream helpers ────────────────────────────────────────────────────────
 
@@ -95,20 +100,15 @@ export default function PodDetail({ pod }: Props): JSX.Element {
       await window.kubectl.stopLogs(id).catch(() => { })
       activeStreamIdRef.current = null
     }
-    // Cancel pending flush and discard buffered lines immediately so no
-    // further log entries are appended after the user clicks Stop.
-    if (flushTimerRef.current) {
-      clearTimeout(flushTimerRef.current)
-      flushTimerRef.current = null
-    }
-    pendingLinesRef.current = []
+    // Cancel pending flush so no further log entries are appended after the user clicks Stop.
+    cancelFlush()
     if (isMountedRef.current) setIsStreaming(false)
-  }, [])
+  }, [cancelFlush])
 
   const startStream = useCallback(async () => {
     await stopStream()
     if (!isMountedRef.current) return
-    setLogs([])
+    reset()
     setLogError(null)
     setIsStreaming(true)
     try {
@@ -117,27 +117,13 @@ export default function PodDetail({ pod }: Props): JSX.Element {
         ? (pod.metadata.namespace ?? '')
         : (selectedNamespace ?? '')
 
-      // Batch incoming log lines and flush every 100 ms to avoid a setState
-      // call (and React re-render) on every single chunk from verbose pods.
-      pendingLinesRef.current = []
-      const flush = () => {
-        flushTimerRef.current = null
-        if (!isMountedRef.current || pendingLinesRef.current.length === 0) return
-        const batch = pendingLinesRef.current.splice(0)
-        setLogs(prev => {
-          const next = prev.concat(batch)
-          return next.length > MAX_LOG_LINES ? next.slice(-MAX_LOG_LINES) : next
-        })
-      }
-
       const streamId = await window.kubectl.streamLogs(
         ctx, ns, pod.metadata.name, selectedContainer,
         (chunk) => {
           if (!isMountedRef.current) return
           // Discard chunks that arrive after stopStream cleared the active stream ref.
           if (activeStreamIdRef.current !== streamId) return
-          pendingLinesRef.current.push(...chunk.split('\n'))
-          if (!flushTimerRef.current) flushTimerRef.current = setTimeout(flush, 100)
+          append(chunk.split('\n'))
         },
         () => {
           // Only flush + update state when the stream ended naturally. When the
@@ -145,8 +131,6 @@ export default function PodDetail({ pod }: Props): JSX.Element {
           // activeStreamIdRef and pendingLinesRef, so this guard prevents a
           // spurious flush of stale buffered lines.
           if (activeStreamIdRef.current === streamId) {
-            if (flushTimerRef.current) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null }
-            flush()
             activeStreamIdRef.current = null
             if (isMountedRef.current) setIsStreaming(false)
           }
@@ -159,7 +143,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
         setIsStreaming(false)
       }
     }
-  }, [selectedContext, selectedNamespace, pod, selectedContainer, stopStream])
+  }, [append, selectedContext, selectedNamespace, pod, selectedContainer, stopStream, reset])
 
   // Keep the ref up-to-date after every render so the container-change effect
   // always calls the latest startStream (with the current container in closure).
@@ -172,7 +156,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
 
   // Stop stream when pod/container changes (no auto-start)
   useEffect(() => {
-    setLogs([])
+    reset()
     setLogError(null)
     setSearch('')
     setEvents([])
@@ -210,19 +194,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     if (wasStreaming) {
       startStreamRef.current()
     }
-  }, [pod.metadata.uid, selectedContainer, selectedContext, scanCurrentPod])
-
-  // Auto-scroll both normal and fullscreen log panes
-  useEffect(() => {
-    if (!autoScroll) return
-    ignoringScrollRef.current = true
-    logContainerRef.current && (logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight)
-    fsLogContainerRef.current && (fsLogContainerRef.current.scrollTop = fsLogContainerRef.current.scrollHeight)
-    // Reset after a tick so that scroll events from the above assignments are ignored
-    // but future user-initiated scroll events are handled normally.
-    setTimeout(() => { ignoringScrollRef.current = false }, 50)
-  }, [logs, autoScroll])
-
+  }, [pod.metadata.uid, selectedContainer, selectedContext, scanCurrentPod, reset])
 
   const phase = pod.metadata.deletionTimestamp ? 'Terminating' : (pod.status.phase ?? 'Unknown')
   const filteredLogs = search
@@ -280,7 +252,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
               <>
                 <ToolbarButton onClick={copyLogs} icon={<Copy className="w-3 h-3" />} title={copyMsg || "Copy Logs"} active={!!copyMsg} />
                 <ToolbarButton onClick={downloadLogs} icon={<Download className="w-3 h-3" />} title="Download" />
-                <ToolbarButton onClick={() => setLogs([])} icon={<Trash2 className="w-3 h-3" />} title="Clear" />
+                <ToolbarButton onClick={() => reset()} icon={<Trash2 className="w-3 h-3" />} title="Clear" />
                 <div className="w-[1px] h-3 bg-slate-200 dark:bg-slate-800 mx-0.5" />
               </>
             )}
@@ -345,16 +317,15 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     </div>
   )
 
-  const LogContent = (containerRef: React.RefObject<HTMLPreElement>) => (
+  const LogContent = (
+    containerRef: React.RefObject<HTMLPreElement>,
+    onScroll: (event: React.UIEvent<HTMLPreElement>) => void,
+  ) => (
     <pre
       ref={containerRef}
       className={`absolute inset-0 overflow-auto p-4 font-mono text-[11px] text-emerald-400/90 leading-relaxed scrollbar-hide
                  ${wrapLogs ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'}`}
-      onScroll={e => {
-        if (ignoringScrollRef.current) return
-        const el = e.currentTarget
-        setAutoScroll(el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_THRESHOLD_PX)
-      }}
+      onScroll={onScroll}
     >
       {filteredLogs.length === 0
         ? (isStreaming
@@ -424,7 +395,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
             {autoScroll ? 'AUTO-SCROLL ON' : 'AUTO-SCROLL OFF'}
           </button>
         </div>
-        {LogContent(fsLogContainerRef)}
+        {LogContent(fullscreenLogAutoScroll.ref, fullscreenLogAutoScroll.handleScroll)}
       </div>
     </div>
   ) : null
@@ -678,7 +649,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
                 )}
 
                 <div className="flex-1 relative m-6 mt-3 mb-6 bg-slate-950 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800/50 shadow-inner">
-                  {LogContent(logContainerRef)}
+                  {LogContent(normalLogAutoScroll.ref, normalLogAutoScroll.handleScroll)}
                   {logs.length > 0 && (
                     <button
                       onClick={() => setAutoScroll(v => !v)}

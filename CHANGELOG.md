@@ -1,5 +1,42 @@
 # Changelog
 
+## [2.7.0] — 2026-04-08
+
+### New features
+
+#### Unified Logs
+- **Page header with search:** Unified Logs now uses the standard `PageHeader` layout. Log search has moved to the top-right, consistent with other panels.
+- **Inline pod pills:** Selected pod pills and the "Add pods" search dropdown are now in the same controls row as Start/Stop, Clear, and Auto-scroll — no separate row.
+- **Dynamic subtitle:** The page subtitle shows the live streaming state ("2 pods streaming · 145 lines", "3 pods selected", etc.).
+
+#### Debug Pod Launcher
+- **Instant pod removal:** Clicking Delete now removes the pod from the Workloads → Pods list immediately (optimistic update), without waiting for Kubernetes graceful termination.
+- **Delete error surfacing:** If deletion fails, a red error message is shown in the panel instead of silently swallowing the error.
+
+### Improvements
+
+- **`RefreshButton` component:** Refresh button extracted into a shared `RefreshButton` component, eliminating repetition across Dashboard, HelmPanel, GitOpsPanel, TLSCertDashboard, ProviderResourcePanel, CronJobDetail, DeploymentDetail, HelmReleaseDetail, and HelmRepoBrowser.
+- **Auto-scroll guard (Unified Logs):** Programmatic `scrollTop` assignments are now guarded with a 50 ms `ignoringScrollRef` window — matching the fix already in PodDetail — so they no longer fight user-initiated scrolls.
+- **Auto-scroll re-enable on scroll-to-bottom:** Scrolling back to the bottom in Unified Logs re-enables auto-scroll automatically, consistent with PodDetail behaviour.
+- **Pod list refresh after delete:** Deleting a debug pod now also calls `loadSection('pods')` to sync the workloads list with the real cluster state.
+- **"Stop" renamed to "Delete"** in the Debug Pod Launcher to accurately reflect the action.
+
+### Fixes
+
+- **Log streaming stop (PodDetail):** Stopping a stream now cancels the flush timer and discards buffered lines, so in-flight chunks no longer appear after clicking Stop.
+- **Log streaming stop (Unified Logs):** Same fix applied — `pendingBuffer` is cleared and `streamIds` is wiped before calling `stopLogs`, so late-arriving chunks are discarded by the stream ID guard in the `onChunk` callback.
+- **Multi-container auto-restart:** Switching containers in a multi-container pod (e.g. Airflow) while streaming now automatically restarts the stream for the newly selected container via a `startStreamRef` always-current ref pattern.
+- **Exec error overlay:** Shell errors no longer auto-close after 500 ms. A persistent overlay shows the full error message until the tab is closed.
+- **Pod search in Unified Logs:** Pods are now fetched via `loadSection('pods')` on mount and on namespace change, so the "Add pods" search works even when navigating directly to Unified Logs without visiting the Pods section first.
+- **Debug pod deletion sandbox:** Removed a `fetch()` call to the sidecar from the renderer — `sandbox: true` in the Electron window blocks direct HTTP calls to localhost. Deletion now goes through the correct IPC path (`window.kubectl.deleteResource`).
+- **`RefreshButton` title prop:** Caller-supplied `title` no longer gets overridden by the internal `label` fallback. Spread order fixed and resolved as `props.title ?? label`.
+- **"Sync" label corrected to "Refresh":** GitOpsPanel and HelmPanel refresh buttons were mislabelled "Sync" (a GitOps reconciliation concept); reverted to "Refresh".
+- **`window.sidecar` typed:** Replaced `any` with a typed `SidecarAPI` interface (`onCrashed`, `restart`) in `env.d.ts`.
+- **Dangling `provider-details` export removed** from `components/index.ts` (directory does not exist).
+- **Unused `LOG_FLUSH_INTERVAL_MS` constant removed** from `PodDetail.tsx`.
+
+---
+
 ## [2.6.0] — 2026-04-07
 
 ### New features

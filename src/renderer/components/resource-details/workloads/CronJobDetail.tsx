@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import type { KubeCronJob, KubeJob } from '../../../types'
 import { formatAge } from '../../../types'
-import { Clock, Play, FileCode, X, Activity, History, Loader2, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react'
+import { Clock, Play, FileCode, X, Activity, History, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { RefreshButton } from '../../common'
 import YAMLViewer from '../../common/YAMLViewer'
 import { useYAMLEditor } from '../../../hooks/useYAMLEditor'
 import { useAppStore } from '../../../store'
@@ -179,14 +180,11 @@ export default function CronJobDetail({ cronJob: cj }: Props): JSX.Element {
           <section>
             <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-4 flex items-center justify-between gap-2">
               <span className="flex items-center gap-2"><Play size={12} /> Recent Jobs</span>
-              <button
+              <RefreshButton
                 onClick={fetchRecentJobs}
-                disabled={jobsLoading}
-                className="text-slate-500 hover:text-slate-300 transition-colors disabled:opacity-50"
+                loading={jobsLoading}
                 title="Refresh jobs"
-              >
-                <RefreshCw size={11} className={jobsLoading ? 'animate-spin' : ''} />
-              </button>
+              />
             </h4>
             <div className="space-y-2">
               {jobsLoading && recentJobs.length === 0 ? (
