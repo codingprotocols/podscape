@@ -586,6 +586,11 @@ func sanitizeCPToLocalPath(localPath string) (string, error) {
 		return "", fmt.Errorf("failed to resolve absolute path")
 	}
 
+	realPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return "", fmt.Errorf("file not accessible")
+	}
+
 	homeDir, _ := os.UserHomeDir()
 	rawAllowedRoots := []string{os.TempDir()}
 	if homeDir != "" {
@@ -599,13 +604,17 @@ func sanitizeCPToLocalPath(localPath string) (string, error) {
 		if errRoot != nil {
 			continue
 		}
+		realRoot, errRoot := filepath.EvalSymlinks(absRoot)
+		if errRoot != nil {
+			continue
+		}
 		// Ensure the root has a trailing path separator so prefix checks are unambiguous.
-		rootWithSep := absRoot
+		rootWithSep := realRoot
 		if !strings.HasSuffix(rootWithSep, string(os.PathSeparator)) {
 			rootWithSep += string(os.PathSeparator)
 		}
 
-		if absPath == absRoot || strings.HasPrefix(absPath, rootWithSep) {
+		if realPath == realRoot || strings.HasPrefix(realPath, rootWithSep) {
 			allowed = true
 			break
 		}
@@ -614,7 +623,7 @@ func sanitizeCPToLocalPath(localPath string) (string, error) {
 		return "", fmt.Errorf("path is outside allowed directories")
 	}
 
-	info, err := os.Stat(absPath)
+	info, err := os.Stat(realPath)
 	if err != nil {
 		return "", fmt.Errorf("file not accessible")
 	}
@@ -622,7 +631,7 @@ func sanitizeCPToLocalPath(localPath string) (string, error) {
 		return "", fmt.Errorf("path is not a regular file")
 	}
 
-	return absPath, nil
+	return realPath, nil
 }
 
 func HandleCreateDebugPod(w http.ResponseWriter, r *http.Request) {
