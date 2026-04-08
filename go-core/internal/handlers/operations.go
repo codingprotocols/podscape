@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -549,7 +550,13 @@ func HandleCPTo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	f, err := os.Open(localPath)
+	safeLocalPath, err := sanitizeCPToLocalPath(localPath)
+	if err != nil {
+		http.Error(w, "invalid localPath: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	f, err := os.Open(safeLocalPath)
 	if err != nil {
 		http.Error(w, "failed to open local file: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -566,6 +573,46 @@ func HandleCPTo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+func sanitizeCPToLocalPath(localPath string) (string, error) {
+	if strings.TrimSpace(localPath) == "" {
+		return "", fmt.Errorf("path is empty")
+	}
+
+	cleanPath := filepath.Clean(localPath)
+	absPath, err := filepath.Abs(cleanPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve absolute path")
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	allowedRoots := []string{filepath.Clean(os.TempDir())}
+	if homeDir != "" {
+		allowedRoots = append(allowedRoots, filepath.Clean(homeDir))
+	}
+
+	allowed := false
+	for _, root := range allowedRoots {
+		rel, relErr := filepath.Rel(root, absPath)
+		if relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return "", fmt.Errorf("path is outside allowed directories")
+	}
+
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return "", fmt.Errorf("file not accessible")
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("path is not a regular file")
+	}
+
+	return absPath, nil
 }
 
 func HandleCreateDebugPod(w http.ResponseWriter, r *http.Request) {
