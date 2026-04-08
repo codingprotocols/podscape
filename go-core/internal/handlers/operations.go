@@ -579,16 +579,13 @@ func sanitizeCPToLocalPath(localPath string) (string, error) {
 	if strings.TrimSpace(localPath) == "" {
 		return "", fmt.Errorf("path is empty")
 	}
-
-	cleanPath := filepath.Clean(localPath)
-	absPath, err := filepath.Abs(cleanPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to resolve absolute path")
+	if filepath.IsAbs(localPath) {
+		return "", fmt.Errorf("absolute paths are not allowed")
 	}
 
-	realPath, err := filepath.EvalSymlinks(absPath)
-	if err != nil {
-		return "", fmt.Errorf("file not accessible")
+	cleanInput := filepath.Clean(localPath)
+	if cleanInput == "." {
+		return "", fmt.Errorf("path is invalid")
 	}
 
 	homeDir, _ := os.UserHomeDir()
@@ -597,7 +594,6 @@ func sanitizeCPToLocalPath(localPath string) (string, error) {
 		rawAllowedRoots = append(rawAllowedRoots, homeDir)
 	}
 
-	var allowed bool
 	for _, root := range rawAllowedRoots {
 		cleanRoot := filepath.Clean(root)
 		absRoot, errRoot := filepath.Abs(cleanRoot)
@@ -608,30 +604,37 @@ func sanitizeCPToLocalPath(localPath string) (string, error) {
 		if errRoot != nil {
 			continue
 		}
-		// Ensure the root has a trailing path separator so prefix checks are unambiguous.
+
+		candidate := filepath.Join(realRoot, cleanInput)
+		absCandidate, err := filepath.Abs(filepath.Clean(candidate))
+		if err != nil {
+			continue
+		}
+		realCandidate, err := filepath.EvalSymlinks(absCandidate)
+		if err != nil {
+			continue
+		}
+
 		rootWithSep := realRoot
 		if !strings.HasSuffix(rootWithSep, string(os.PathSeparator)) {
 			rootWithSep += string(os.PathSeparator)
 		}
-
-		if realPath == realRoot || strings.HasPrefix(realPath, rootWithSep) {
-			allowed = true
-			break
+		if realCandidate != realRoot && !strings.HasPrefix(realCandidate, rootWithSep) {
+			continue
 		}
-	}
-	if !allowed {
-		return "", fmt.Errorf("path is outside allowed directories")
+
+		info, err := os.Stat(realCandidate)
+		if err != nil {
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+
+		return realCandidate, nil
 	}
 
-	info, err := os.Stat(realPath)
-	if err != nil {
-		return "", fmt.Errorf("file not accessible")
-	}
-	if !info.Mode().IsRegular() {
-		return "", fmt.Errorf("path is not a regular file")
-	}
-
-	return realPath, nil
+	return "", fmt.Errorf("path is outside allowed directories or not accessible")
 }
 
 func HandleCreateDebugPod(w http.ResponseWriter, r *http.Request) {
