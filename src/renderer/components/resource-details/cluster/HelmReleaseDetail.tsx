@@ -42,45 +42,26 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
   }, [release.chart])
 
   const checkForUpdates = async () => {
-    if (!window.helm.repoSearch) return
+    if (!window.helm.repoLatest) return
     setCheckingUpdate(true)
     setIsCustomChart(false)
     try {
-      // Use explicit chart_name if available, fallback to manual parsing
-      let chartName = release.chart_name
+      const chartName = release.chart_name || (() => {
+        const s = release.chart || ''
+        const i = s.lastIndexOf('-')
+        return i === -1 ? '' : s.substring(0, i)
+      })()
       if (!chartName) {
-        const chartStr = release.chart || ''
-        const lastHyphen = chartStr.lastIndexOf('-')
-        if (lastHyphen === -1) {
-          setIsCustomChart(true)
-          return
-        }
-        chartName = chartStr.substring(0, lastHyphen)
-      }
-      
-      // 2. Search for the chart in repos
-      const res = await window.helm.repoSearch(chartName, 10, 0) as { charts: Array<{ name: string; version: string }> }
-      if (res && res.charts && res.charts.length > 0) {
-        // Look for exact match (e.g. searching "nginx" might return "bitnami/nginx")
-        const currentVersion = release.chart_version || release.chart.split('-').pop() || ''
-        
-        // Prioritize a chart that matches our current version (likely the repo we used)
-        let match = res.charts.find(c => (c.name.endsWith('/' + chartName) || c.name === chartName) && c.version === currentVersion)
-        
-        // Fallback to first name match if no version match found
-        if (!match) {
-          match = res.charts.find(c => c.name.endsWith('/' + chartName) || c.name === chartName)
-        }
-
-        if (match) {
-          setLatestVersion(match.version)
-          setLatestChartName(match.name)
-        } else {
-          setIsCustomChart(true)
-        }
-      } else {
         setIsCustomChart(true)
+        return
       }
+      const res = await window.helm.repoLatest(chartName) as { version: string; chartName: string } | null
+      if (!res) {
+        setIsCustomChart(true)
+        return
+      }
+      setLatestVersion(res.version)
+      setLatestChartName(res.chartName)
     } catch (err) {
       console.warn('Failed to check for chart updates', err)
       setIsCustomChart(true)
@@ -103,9 +84,7 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
   }
 
   const currentChartVersion = release.chart_version || release.chart.split('-').pop() || ''
-  const isUpdateAvailable = latestVersion && latestVersion !== currentChartVersion 
-    // Basic semver check logic (can be improved with a lib)
-    && latestVersion > currentChartVersion 
+  const isUpdateAvailable = latestVersion && latestVersion !== currentChartVersion
 
   const loadHistory = async () => {
     setLoadingHistory(true)
