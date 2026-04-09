@@ -107,14 +107,20 @@ func getActionConfig(kubeconfig, context, namespace string) (*action.Configurati
 	key := kubeconfig + "\x00" + context + "\x00" + namespace
 	configCacheMu.Lock()
 	defer configCacheMu.Unlock()
-	if e, ok := configCache[key]; ok && time.Now().Before(e.expiry) {
+	
+	now := time.Now()
+	if e, ok := configCache[key]; ok && now.Before(e.expiry) {
+		// Sliding expiration: reset TTL on use so active sessions stay cached.
+		e.expiry = now.Add(configCacheTTL)
+		configCache[key] = e
 		return e.cfg, nil
 	}
+
 	cfg, err := newActionConfig(kubeconfig, context, namespace)
 	if err != nil {
 		return nil, err
 	}
-	configCache[key] = configCacheEntry{cfg: cfg, expiry: time.Now().Add(configCacheTTL)}
+	configCache[key] = configCacheEntry{cfg: cfg, expiry: now.Add(configCacheTTL)}
 	return cfg, nil
 }
 

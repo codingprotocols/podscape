@@ -231,8 +231,8 @@ export default function HelmPanel(): JSX.Element {
                       {!selected && (
                         <>
                           <td className="px-8 py-4 text-xs font-bold text-slate-500 dark:text-slate-500 font-mono tracking-tighter uppercase leading-none">{String(r.namespace || '')}</td>
-                          <td className="px-8 py-4 text-xs text-slate-600 dark:text-slate-400 font-mono whitespace-nowrap">{String(r.chart || '')}</td>
-                          <td className="px-8 py-4 text-xs text-slate-500 dark:text-slate-400 font-bold whitespace-nowrap">{String(r.app_version || '—')}</td>
+                          <td className="px-8 py-4 text-xs text-slate-600 dark:text-slate-400 font-mono whitespace-nowrap lg:max-w-xs truncate">{String(r.chart_name || r.chart || '')}</td>
+                          <td className="px-8 py-4 text-xs text-slate-500 dark:text-slate-400 font-bold whitespace-nowrap">{String(r.chart_version || '—')}</td>
                         </>
                       )}
                       <td className="px-8 py-4 whitespace-nowrap"><StatusBadge status={r.status} /></td>
@@ -267,15 +267,6 @@ export default function HelmPanel(): JSX.Element {
             className="flex flex-col shrink-0 h-full overflow-hidden border-l border-slate-200 dark:border-white/5 animate-in slide-in-from-right-4 duration-300"
             style={{ width: detailWidth }}
           >
-            <div className="flex items-center justify-end px-3 py-1.5 shrink-0 border-b border-slate-200 dark:border-white/5 bg-white/5">
-              <button
-                onClick={() => setSelected(null)}
-                className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
-                title="Close (Esc)"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
             <div className="flex-1 min-h-0 overflow-auto">
               <HelmReleaseDetail
                 key={`${selected.namespace}/${selected.name}/${selected.revision}`}
@@ -283,6 +274,7 @@ export default function HelmPanel(): JSX.Element {
                 context={selectedContext}
                 onUninstall={setUninstallTarget}
                 onUpgraded={load}
+                onClose={() => setSelected(null)}
               />
             </div>
           </div>
