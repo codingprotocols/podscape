@@ -10,7 +10,7 @@ interface Props {
   release: HelmRelease
   context: string
   onUninstall: (r: HelmRelease) => void
-  onUpgraded: () => void
+  onUpgraded: () => Promise<void>
 }
 
 export default function HelmReleaseDetail({ release, context, onUninstall, onUpgraded }: Props): JSX.Element {
@@ -29,6 +29,7 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
   const [upgradeVersion, setUpgradeVersion] = useState<string | null>(null)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [isCustomChart, setIsCustomChart] = useState(false)
+  const [refreshingRepos, setRefreshingRepos] = useState(false)
 
   useEffect(() => {
     if (activeTab === 'history' && history.length === 0) {
@@ -45,20 +46,32 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
     setCheckingUpdate(true)
     setIsCustomChart(false)
     try {
-      // 1. Get base chart name from release.chart (name-version)
-      const chartStr = release.chart || ''
-      const lastHyphen = chartStr.lastIndexOf('-')
-      if (lastHyphen === -1) {
-        setIsCustomChart(true)
-        return
+      // Use explicit chart_name if available, fallback to manual parsing
+      let chartName = release.chart_name
+      if (!chartName) {
+        const chartStr = release.chart || ''
+        const lastHyphen = chartStr.lastIndexOf('-')
+        if (lastHyphen === -1) {
+          setIsCustomChart(true)
+          return
+        }
+        chartName = chartStr.substring(0, lastHyphen)
       }
-      const chartName = chartStr.substring(0, lastHyphen)
       
       // 2. Search for the chart in repos
       const res = await window.helm.repoSearch(chartName, 10, 0) as { charts: Array<{ name: string; version: string }> }
       if (res && res.charts && res.charts.length > 0) {
         // Look for exact match (e.g. searching "nginx" might return "bitnami/nginx")
-        const match = res.charts.find(c => c.name.endsWith('/' + chartName) || c.name === chartName)
+        const currentVersion = release.chart_version || release.chart.split('-').pop() || ''
+        
+        // Prioritize a chart that matches our current version (likely the repo we used)
+        let match = res.charts.find(c => (c.name.endsWith('/' + chartName) || c.name === chartName) && c.version === currentVersion)
+        
+        // Fallback to first name match if no version match found
+        if (!match) {
+          match = res.charts.find(c => c.name.endsWith('/' + chartName) || c.name === chartName)
+        }
+
         if (match) {
           setLatestVersion(match.version)
           setLatestChartName(match.name)
@@ -76,7 +89,20 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
     }
   }
 
-  const currentChartVersion = release.chart.split('-').pop() ?? ''
+  const handleRefreshRepos = async () => {
+    if (!window.helm.repoRefresh) return
+    setRefreshingRepos(true)
+    try {
+      await window.helm.repoRefresh()
+      await checkForUpdates()
+    } catch (err) {
+      console.warn('Failed to refresh repos', err)
+    } finally {
+      setRefreshingRepos(false)
+    }
+  }
+
+  const currentChartVersion = release.chart_version || release.chart.split('-').pop() || ''
   const isUpdateAvailable = latestVersion && latestVersion !== currentChartVersion 
     // Basic semver check logic (can be improved with a lib)
     && latestVersion > currentChartVersion 
@@ -116,9 +142,11 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
     setUpgradeError(null)
     try {
       await window.helm.upgrade(context, release.namespace, release.name, newValues, latestChartName ?? undefined, upgradeVersion ?? undefined)
+      await onUpgraded()
+      // Brief delay to ensure k8s storage propagation for follow-up checks
+      await new Promise(resolve => setTimeout(resolve, 1000))
       setValues(null)
       setUpgradeVersion(null)
-      onUpgraded()
     } catch (err) {
       setUpgradeError((err as Error).message ?? 'Upgrade failed')
     } finally {
@@ -158,6 +186,13 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
             >
               <FileCode size={14} className="group-hover:text-blue-400 transition-colors" />
               {loadingValues ? 'Loading...' : 'Values YAML'}
+            </button>
+            <button
+               onClick={() => onUpgraded()}
+               className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 text-slate-400 hover:text-blue-500 border border-white/5 hover:border-blue-500/20 transition-all group"
+               title="Refresh Release Info"
+            >
+               <RefreshCw size={14} className="group-active:animate-spin" />
             </button>
             <StatusBadge status={release.status} />
           </div>
@@ -199,26 +234,49 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
                         <RefreshCw size={10} className="animate-spin" /> Checking for updates...
                       </div>
                     ) : isUpdateAvailable ? (
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-500/10 text-blue-400 rounded-lg border border-blue-500/20 w-fit shadow-[0_0_12px_-2px_rgba(59,130,246,0.2)]">
-                          <Activity size={11} className="shrink-0" />
-                          <span className="text-[9px] font-black uppercase tracking-wider">Update available: {latestVersion}</span>
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-500/10 text-blue-400 rounded-lg border border-blue-500/20 w-fit shadow-[0_0_12px_-2px_rgba(59,130,246,0.2)]">
+                              <Activity size={11} className="shrink-0" />
+                              <span className="text-[9px] font-black uppercase tracking-wider">Update available: {latestVersion}</span>
+                            </div>
+                            <span className="text-[8px] font-bold text-slate-500 uppercase tracking-tighter px-1">from {latestChartName}</span>
+                          </div>
+                          <button 
+                            onClick={handleInitiateUpgrade}
+                            className="text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-600/20 transition-all active:scale-95 flex items-center gap-1.5"
+                          >
+                            <RefreshCw size={10} /> Upgrade
+                          </button>
                         </div>
+                      ) : latestVersion ? (
+                        <div className="flex items-center gap-3">
+                          <span className="text-[9px] font-black text-emerald-500/60 uppercase tracking-widest flex items-center gap-1.5 px-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/40" /> Latest version
+                          </span>
+                          <button 
+                            onClick={handleRefreshRepos}
+                            disabled={refreshingRepos}
+                            className="text-slate-500 hover:text-blue-500 transition-colors p-1"
+                            title="Refresh Helm Repositories"
+                          >
+                            <RefreshCw size={10} className={refreshingRepos ? 'animate-spin' : ''} />
+                          </button>
+                        </div>
+                    ) : isCustomChart ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] font-black text-slate-500/60 uppercase tracking-widest flex items-center gap-1.5 px-1">
+                          <div className="w-1.5 h-1.5 rounded-full bg-slate-500/30" /> Local / Custom Chart
+                        </span>
                         <button 
-                          onClick={handleInitiateUpgrade}
-                          className="text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-600/20 transition-all active:scale-95 flex items-center gap-1.5"
+                          onClick={handleRefreshRepos}
+                          disabled={refreshingRepos}
+                          className="text-slate-500 hover:text-blue-500 transition-colors p-1"
+                          title="Refresh Helm Repositories"
                         >
-                          <RefreshCw size={10} /> Upgrade
+                          <RefreshCw size={10} className={refreshingRepos ? 'animate-spin' : ''} />
                         </button>
                       </div>
-                    ) : latestVersion ? (
-                      <span className="text-[9px] font-black text-emerald-500/60 uppercase tracking-widest flex items-center gap-1.5 px-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/40" /> Latest version
-                      </span>
-                    ) : isCustomChart ? (
-                      <span className="text-[9px] font-black text-slate-500/60 uppercase tracking-widest flex items-center gap-1.5 px-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-slate-500/30" /> Local / Custom Chart
-                      </span>
                     ) : null}
                   </dd>
                 </div>

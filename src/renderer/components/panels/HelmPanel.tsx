@@ -58,6 +58,17 @@ export default function HelmPanel(): JSX.Element {
 
   useEffect(() => { load() }, [load])
 
+  // Keep the selected release in sync with the updated releases list
+  // (e.g. after an upgrade or refresh, to show the new version/revision).
+  useEffect(() => {
+    if (selected) {
+      const found = releases.find(r => r.name === selected.name && r.namespace === selected.namespace)
+      if (found && found !== selected) {
+        setSelected(found)
+      }
+    }
+  }, [releases])
+
   const handleUninstall = async (r: HelmRelease) => {
     if (!r || !selectedContext) return
     setUninstalling(true)
@@ -267,7 +278,7 @@ export default function HelmPanel(): JSX.Element {
             </div>
             <div className="flex-1 min-h-0 overflow-auto">
               <HelmReleaseDetail
-                key={`${selected.namespace}/${selected.name}`}
+                key={`${selected.namespace}/${selected.name}/${selected.revision}`}
                 release={selected}
                 context={selectedContext}
                 onUninstall={setUninstallTarget}

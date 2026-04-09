@@ -45,6 +45,8 @@ export interface HelmRelease {
   updated: string
   status: string
   chart: string
+  chart_name?: string
+  chart_version?: string
   app_version: string
 }
 
@@ -53,6 +55,8 @@ export interface HelmHistoryEntry {
   updated: string
   status: string
   chart: string
+  chart_name?: string
+  chart_version?: string
   app_version: string
   description: string
 }

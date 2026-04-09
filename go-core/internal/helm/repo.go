@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
+	semver "github.com/Masterminds/semver/v3"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
@@ -162,6 +164,15 @@ func (m *HelmRepoManager) Search(query string, limit, offset int) SearchResult {
 		}
 	}
 
+	// Sort results to ensure deterministic ordering (avoids map iteration randomness).
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].Name != all[j].Name {
+			return all[i].Name < all[j].Name
+		}
+		// Fallback to simple string comparison for version consistency
+		return all[i].Version > all[j].Version
+	})
+
 	total := len(all)
 	if offset >= total {
 		return SearchResult{Charts: []ChartEntry{}, Total: total}
@@ -204,6 +215,69 @@ func (m *HelmRepoManager) GetVersions(repoName, chartName string) ([]ChartEntry,
 		})
 	}
 	return result, nil
+}
+
+// LatestVersion returns the globally highest semver version of a chart across
+// all loaded repo indices. chartName is the bare chart name without repo prefix
+// (e.g. "nginx", not "bitnami/nginx").
+//
+// If multiple repos carry the chart, the one with the highest semver wins.
+// If a version string cannot be parsed as semver, it is skipped for comparison
+// purposes; if ALL candidates fail to parse, the raw version string from the
+// first matched entry is returned as a fallback.
+//
+// Returns found=false when no repo contains a chart with that name.
+func (m *HelmRepoManager) LatestVersion(chartName string) (version, fullName string, found bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var bestVer *semver.Version
+	var bestRaw, bestFull string
+	var fallbackRaw, fallbackFull string
+	hasFallback := false
+
+	for repoName, idx := range m.indices {
+		for entryName, versions := range idx.Entries {
+			if len(versions) == 0 {
+				continue
+			}
+			// entryName is always the bare chart name in the index (no repo prefix).
+			// e.g. idx.Entries["nginx"] — repoName holds the "bitnami" prefix.
+			if entryName != chartName {
+				continue
+			}
+			full := repoName + "/" + entryName
+			// versions[0] is the latest for this repo (Helm sorts descending)
+			raw := versions[0].Metadata.Version
+
+			// Record first match as fallback in case all are unparseable
+			if !hasFallback {
+				fallbackRaw = raw
+				fallbackFull = full
+				hasFallback = true
+			}
+
+			v, err := semver.NewVersion(raw)
+			if err != nil {
+				// Not parseable — skip for semver comparison, keep as fallback
+				continue
+			}
+			if bestVer == nil || v.GreaterThan(bestVer) {
+				bestVer = v
+				bestRaw = raw
+				bestFull = full
+			}
+		}
+	}
+
+	if bestVer != nil {
+		return bestRaw, bestFull, true
+	}
+	if hasFallback {
+		// All versions were unparseable — return raw string from first match
+		return fallbackRaw, fallbackFull, true
+	}
+	return "", "", false
 }
 
 // GetValues fetches the default values.yaml for a specific chart version.

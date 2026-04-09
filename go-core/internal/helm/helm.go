@@ -197,13 +197,20 @@ func RollbackRelease(kubeconfig, context, namespace, releaseName string, revisio
 		client.Version = revision
 		return struct{}{}, client.Run(releaseName)
 	})
+	if err == nil {
+		evictActionConfig(kubeconfig, context, namespace)
+	}
 	return err
 }
 
 func UninstallRelease(kubeconfig, context, namespace, releaseName string) (*release.UninstallReleaseResponse, error) {
-	return helmRun(kubeconfig, context, namespace, false, func(cfg *action.Configuration) (*release.UninstallReleaseResponse, error) {
+	res, err := helmRun(kubeconfig, context, namespace, false, func(cfg *action.Configuration) (*release.UninstallReleaseResponse, error) {
 		return action.NewUninstall(cfg).Run(releaseName)
 	})
+	if err == nil {
+		evictActionConfig(kubeconfig, context, namespace)
+	}
+	return res, err
 }
 
 func UpgradeRelease(kubeconfig, context, namespace, releaseName, chartName, version, valuesYAML string) error {
@@ -244,5 +251,8 @@ func UpgradeRelease(kubeconfig, context, namespace, releaseName, chartName, vers
 		_, err := client.Run(releaseName, chartToUpgrade, vals)
 		return struct{}{}, err
 	})
+	if err == nil {
+		evictActionConfig(kubeconfig, context, namespace)
+	}
 	return err
 }

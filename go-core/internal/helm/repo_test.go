@@ -194,6 +194,110 @@ func TestGetVersions_PathTraversalInputs_AreRejected(t *testing.T) {
 	}
 }
 
+func TestLatestVersion_EmptyIndex_NotFound(t *testing.T) {
+	m := &HelmRepoManager{indices: make(map[string]*repo.IndexFile)}
+	_, _, found := m.LatestVersion("nginx")
+	if found {
+		t.Error("expected found=false for empty index")
+	}
+}
+
+func TestLatestVersion_SingleRepo_ReturnsLatest(t *testing.T) {
+	m := &HelmRepoManager{
+		indices: map[string]*repo.IndexFile{
+			"bitnami": {
+				Entries: map[string]repo.ChartVersions{
+					"nginx": {
+						{Metadata: &chart.Metadata{Name: "nginx", Version: "15.0.0"}},
+						{Metadata: &chart.Metadata{Name: "nginx", Version: "14.1.0"}},
+					},
+				},
+			},
+		},
+	}
+	version, fullName, found := m.LatestVersion("nginx")
+	if !found {
+		t.Fatal("expected found=true")
+	}
+	if version != "15.0.0" {
+		t.Errorf("expected version=15.0.0, got %s", version)
+	}
+	if fullName != "bitnami/nginx" {
+		t.Errorf("expected fullName=bitnami/nginx, got %s", fullName)
+	}
+}
+
+func TestLatestVersion_MultipleRepos_ReturnsGlobalMax(t *testing.T) {
+	m := &HelmRepoManager{
+		indices: map[string]*repo.IndexFile{
+			"bitnami": {
+				Entries: map[string]repo.ChartVersions{
+					"nginx": {
+						{Metadata: &chart.Metadata{Name: "nginx", Version: "15.0.0"}},
+					},
+				},
+			},
+			"stable": {
+				Entries: map[string]repo.ChartVersions{
+					"nginx": {
+						{Metadata: &chart.Metadata{Name: "nginx", Version: "9.5.0"}},
+					},
+				},
+			},
+		},
+	}
+	version, _, found := m.LatestVersion("nginx")
+	if !found {
+		t.Fatal("expected found=true")
+	}
+	// 15.0.0 > 9.5.0 semver-wise
+	if version != "15.0.0" {
+		t.Errorf("expected global max 15.0.0, got %s", version)
+	}
+}
+
+func TestLatestVersion_ChartNotInAnyRepo_NotFound(t *testing.T) {
+	m := &HelmRepoManager{
+		indices: map[string]*repo.IndexFile{
+			"bitnami": {
+				Entries: map[string]repo.ChartVersions{
+					"postgres": {
+						{Metadata: &chart.Metadata{Name: "postgres", Version: "1.0.0"}},
+					},
+				},
+			},
+		},
+	}
+	_, _, found := m.LatestVersion("nginx")
+	if found {
+		t.Error("expected found=false when chart not in any repo")
+	}
+}
+
+func TestLatestVersion_UnparseableVersions_FallsBackToRaw(t *testing.T) {
+	m := &HelmRepoManager{
+		indices: map[string]*repo.IndexFile{
+			"custom": {
+				Entries: map[string]repo.ChartVersions{
+					"myapp": {
+						{Metadata: &chart.Metadata{Name: "myapp", Version: "not-a-version"}},
+					},
+				},
+			},
+		},
+	}
+	version, fullName, found := m.LatestVersion("myapp")
+	if !found {
+		t.Fatal("expected found=true (fallback to raw string)")
+	}
+	if version != "not-a-version" {
+		t.Errorf("expected raw fallback version, got %s", version)
+	}
+	if fullName != "custom/myapp" {
+		t.Errorf("expected fullName=custom/myapp, got %s", fullName)
+	}
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 type stubError struct{ msg string }

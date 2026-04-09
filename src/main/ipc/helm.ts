@@ -17,6 +17,8 @@ export function transformRelease(r: any) {
     updated: info.last_deployed || info.LastDeployed || '',
     status: String(info.status || info.Status || 'unknown'),
     chart: metadata.name ? `${metadata.name}-${metadata.version || ''}` : 'unknown',
+    chart_name: metadata.name || '',
+    chart_version: metadata.version || '',
     app_version: metadata.appVersion || metadata.AppVersion || '',
     description: info.description || info.Description || '',
   }
