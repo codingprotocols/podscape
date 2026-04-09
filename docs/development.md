@@ -126,12 +126,6 @@ Releases are triggered by pushing a `v*` git tag. The workflow (`.github/workflo
 
 Each job also uploads a `checksums-<platform>.txt` file to the GitHub release so users can verify downloads with SHA256.
 
-```bash
-# Create and push a release tag
-git tag v2.6.0
-git push origin v2.6.0
-```
-
 Required GitHub secret: `GH_TOKEN` with `contents: write` permission on the repository.
 
 ---
