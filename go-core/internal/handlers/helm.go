@@ -282,6 +282,37 @@ func HandleHelmRepoRefresh(w http.ResponseWriter, r *http.Request) {
 	sseEvent(w, flusher, "result", "ok")
 }
 
+// HandleHelmRepoLatest returns the globally latest version of a chart across
+// all loaded repo indices.
+//
+// Query params:
+//   - chart (required): bare chart name, e.g. "nginx"
+//
+// Responses:
+//   - 200: {"version":"15.0.0","chartName":"bitnami/nginx"}
+//   - 400: chart param missing
+//   - 404: chart not found in any loaded repo
+func HandleHelmRepoLatest(w http.ResponseWriter, r *http.Request) {
+	chartName := r.URL.Query().Get("chart")
+	if chartName == "" {
+		http.Error(w, "chart parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	mgr := helm.GetRepoManager()
+	version, fullName, found := mgr.LatestVersion(chartName)
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"version":   version,
+		"chartName": fullName,
+	})
+}
+
 func HandleHelmInstall(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

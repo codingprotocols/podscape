@@ -114,6 +114,7 @@ func main() {
 	http.HandleFunc("/helm/repos/versions", handlers.HandleHelmRepoVersions)
 	http.HandleFunc("/helm/repos/values", handlers.HandleHelmRepoValues)
 	http.HandleFunc("/helm/repos/refresh", handlers.HandleHelmRepoRefresh)
+	http.HandleFunc("/helm/repos/latest", handlers.HandleHelmRepoLatest)
 	http.HandleFunc("/helm/install", handlers.HandleHelmInstall)
 
 	// Node operations
