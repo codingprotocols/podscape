@@ -6,7 +6,7 @@ import type { ExecSession } from '../../store'
 import { useAppStore } from '../../store'
 import { getTerminalTheme, TERM_FONT } from '../../utils/terminalTheme'
 import { isMac } from '../../utils/platform'
-import { Upload, Download, X, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
+import { Upload, Download, X, CheckCircle2, AlertCircle, Loader2, Terminal as TerminalIcon } from 'lucide-react'
 
 type PanelMode = 'idle' | 'upload' | 'download'
 type TransferPhase = 'idle' | 'running' | 'done' | 'error'
@@ -47,6 +47,8 @@ function ExecTab({ session, active, theme }: ExecTabProps): JSX.Element {
   const offDataRef  = useRef<(() => void) | null>(null)
   const offExitRef  = useRef<(() => void) | null>(null)
   const fitRef      = useRef<FitAddon | null>(null)
+  const [startError, setStartError] = useState<string | null>(null)
+  const [sessionEnded, setSessionEnded] = useState(false)
 
   const { selectedContext, closeExecTab } = useAppStore()
 
@@ -88,12 +90,12 @@ function ExecTab({ session, active, theme }: ExecTabProps): JSX.Element {
         offDataRef.current = window.exec.onData(ptyId, data => term.write(data))
         offExitRef.current = window.exec.onExit(ptyId, () => {
           term.write('\r\n\x1b[38;5;244m[Process exited]\x1b[0m\r\n')
-          setTimeout(() => closeExecTab(session.id), 500)
+          setSessionEnded(true)
         })
         term.onData(data => window.exec.write(ptyId, data))
       })
       .catch(err => {
-        term.write(`\x1b[31mError: ${err.message}\x1b[0m\r\n`)
+        setStartError(err.message ?? 'Failed to start session')
       })
 
     const ro = new ResizeObserver(() => {
@@ -136,6 +138,29 @@ function ExecTab({ session, active, theme }: ExecTabProps): JSX.Element {
       style={{ display: active ? 'block' : 'none' }}
     >
       <div ref={containerRef} className="w-full h-full" />
+
+      {/* Start error — shown when exec.start() rejects (e.g. no shell, RBAC denied) */}
+      {startError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 bg-[#0d1117]/95 backdrop-blur-sm p-8">
+          <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center">
+            <AlertCircle size={28} className="text-red-400" />
+          </div>
+          <div className="text-center max-w-md">
+            <p className="text-[11px] font-black text-red-400 uppercase tracking-widest mb-3">Failed to open shell</p>
+            <pre className="text-xs text-slate-300 font-mono bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-left whitespace-pre-wrap break-words leading-relaxed">
+              {startError}
+            </pre>
+          </div>
+        </div>
+      )}
+
+      {/* Session ended banner — process exited (user typed exit, container restarted, etc.) */}
+      {sessionEnded && !startError && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 px-5 py-3 rounded-2xl bg-slate-900/90 border border-white/10 backdrop-blur-md shadow-xl animate-in slide-in-from-bottom-2 duration-200">
+          <TerminalIcon size={13} className="text-slate-500 shrink-0" />
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Session ended</span>
+        </div>
+      )}
     </div>
   )
 }

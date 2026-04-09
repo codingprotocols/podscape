@@ -16,6 +16,7 @@ describe('clusterSlice', () => {
             loadSection: vi.fn(),
             fetchProviders: vi.fn(),
             probeCost: vi.fn(),
+            stopAllPortForwards: vi.fn(),
             hotbarContexts: [],
             prodContexts: [],
         }

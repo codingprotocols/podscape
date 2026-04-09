@@ -77,7 +77,7 @@ export default function ConfigMapDetail({ configMap: cm }: Props): JSX.Element {
                   <span className="text-[10px] font-black text-slate-500 dark:text-slate-600 uppercase tracking-widest">
                     {selectedValue.split('\n').length} lines
                   </span>
-                  <CopyButton value={selectedValue} />
+                  {!isYAML && !isJSON && <CopyButton value={selectedValue} />}
                 </div>
               </div>
               <div className="flex-1 min-h-0">

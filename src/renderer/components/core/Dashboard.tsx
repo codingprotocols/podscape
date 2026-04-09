@@ -16,9 +16,9 @@ import {
   AlertTriangle,
   LayoutGrid,
   Cpu,
-  CheckCircle2,
-  RefreshCw
+  CheckCircle2
 } from 'lucide-react'
+import { RefreshButton } from '../common'
 
 // ─── Ring chart (SVG donut) ───────────────────────────────────────────────────
 
@@ -320,7 +320,7 @@ function derivedHealth(pods: KubePod[], deployments: KubeDeployment[]) {
   let running = 0
 
   for (const pod of pods) {
-    if (pod.status.phase === 'Running') running++
+    if (pod.status.phase === 'Running' && !pod.metadata.deletionTimestamp) running++
     const restarts = podTotalRestarts(pod)
     const crashLooping = (pod.status.containerStatuses ?? []).some(
       cs => cs.state.waiting?.reason === 'CrashLoopBackOff'
@@ -393,7 +393,7 @@ export default function Dashboard(): JSX.Element {
     recentEvents, processedEvents, metricsById, warningCount
   } = useMemo(() => {
     // Stats calculation
-    const runningPods = pods.filter(p => p.status.phase === 'Running').length
+    const runningPods = pods.filter(p => p.status.phase === 'Running' && !p.metadata.deletionTimestamp).length
     const readyNodes = nodes.filter(getNodeReady).length
     const readyDeploys = deployments.filter(
       d => (d.status.readyReplicas ?? 0) >= (d.spec.replicas ?? 0) && (d.spec.replicas ?? 0) > 0
@@ -473,17 +473,11 @@ export default function Dashboard(): JSX.Element {
                   <span className="w-6 h-px bg-slate-200 dark:bg-white/5" />
                   Cluster Overview
                 </h2>
-                <button
+                <RefreshButton
                   onClick={refresh}
-                  disabled={loadingResources}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider
-                             text-slate-500 hover:text-slate-800 dark:hover:text-slate-200
-                             hover:bg-slate-100 dark:hover:bg-white/[0.06] rounded-xl
-                             disabled:opacity-40 active:scale-95 transition-all border border-slate-200 dark:border-white/[0.06]"
-                >
-                  <RefreshCw className={`w-3 h-3 ${loadingResources ? 'animate-spin' : ''}`} />
-                  Refresh
-                </button>
+                  loading={loadingResources}
+                  label="Refresh"
+                />
               </div>
               <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard

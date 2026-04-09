@@ -15,6 +15,7 @@ export interface OperationSlice {
     applyYAML: (yaml: string) => Promise<string>
     startPortForward: (entry: PortForwardEntry) => void
     stopPortForward: (id: string) => void
+    stopAllPortForwards: () => void
     execSessions: ExecSession[]
     activeExecId: string | null
     openExec: (target: ExecTarget) => void
@@ -120,5 +121,13 @@ export const createOperationSlice: StoreSlice<OperationSlice> = (set, get) => ({
         }
         window.kubectl.stopPortForward(id)
         set(s => ({ portForwards: s.portForwards.filter(f => f.id !== id) }))
+    },
+    stopAllPortForwards: () => {
+        for (const [id, unsubs] of pfUnsubs) {
+            unsubs.forEach(fn => fn())
+            window.kubectl.stopPortForward(id)
+        }
+        pfUnsubs.clear()
+        set({ portForwards: [] })
     },
 })

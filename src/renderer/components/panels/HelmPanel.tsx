@@ -3,8 +3,10 @@ import { useAppStore } from '../../store'
 import type { HelmRelease } from '../../types'
 import { formatAge } from '../../types'
 import HelmRepoBrowser from './HelmRepoBrowser'
-import { Activity, HardDrive, RefreshCw, Package, Trash2, X, Globe } from 'lucide-react'
+import { Activity, HardDrive, Package, Trash2, X, Globe } from 'lucide-react'
+import { RefreshButton } from '../common'
 import PageHeader from '../core/PageHeader'
+import { useDragResize } from '../../hooks/useDragResize'
 
 import HelmReleaseDetail from '../resource-details/cluster/HelmReleaseDetail'
 
@@ -20,6 +22,11 @@ export default function HelmPanel(): JSX.Element {
   const [filter, setFilter] = useState('')
   const [uninstallTarget, setUninstallTarget] = useState<HelmRelease | null>(null)
   const [uninstalling, setUninstalling] = useState(false)
+  const { width: detailWidth, onMouseDown: handleResizeMouseDown } = useDragResize(
+    Math.round(window.innerWidth / 2),
+    300,
+    Math.round(window.innerWidth * 0.8)
+  )
 
   // If arriving from CostPanel install button, switch to browser tab and carry hint.
   useEffect(() => {
@@ -76,7 +83,7 @@ export default function HelmPanel(): JSX.Element {
   return (
     <div className="flex flex-1 min-w-0 min-h-0 bg-white dark:bg-[hsl(var(--bg-dark))] transition-colors duration-200">
       {/* List */}
-      <div className={`flex flex-col min-w-0 min-h-0 overflow-hidden transition-all duration-300 ${selected ? 'flex-[0.4]' : 'flex-1'}`}>
+      <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
         {/* Toolbar */}
         <PageHeader
           title={activeTab === 'releases' ? 'Helm Releases' : 'Repository Browser'}
@@ -90,8 +97,8 @@ export default function HelmPanel(): JSX.Element {
           }
         >
           <div className="flex items-center gap-6">
-            {/* Tab switcher */}
-            <div className="flex items-center gap-1 bg-slate-100 dark:bg-white/5 rounded-xl p-1">
+            {/* Tab switcher — hidden when a release detail is open */}
+            {!selected && <div className="flex items-center gap-1 bg-slate-100 dark:bg-white/5 rounded-xl p-1">
               <button
                 onClick={() => setActiveTab('releases')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all ${
@@ -114,7 +121,7 @@ export default function HelmPanel(): JSX.Element {
                 <Package size={11} />
                 Repository
               </button>
-            </div>
+            </div>}
           </div>
 
           <div className="flex items-center gap-4">
@@ -135,13 +142,11 @@ export default function HelmPanel(): JSX.Element {
               </div>
             )}
 
-            <button onClick={load} disabled={loading}
-              className="flex items-center gap-2 px-5 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300
-                         glass-panel hover:bg-white/10 dark:hover:bg-white/5 rounded-xl shadow-sm
-                         disabled:opacity-50 active:scale-95 leading-none">
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-              Sync
-            </button>
+            <RefreshButton 
+              onClick={load}
+              loading={loading}
+              label="Refresh"
+            />
           </div>
         </PageHeader>
 
@@ -240,26 +245,37 @@ export default function HelmPanel(): JSX.Element {
 
       {/* Detail Pane */}
       {selected && selectedContext && (
-        <div className="flex flex-col flex-[0.6] min-w-0 h-full overflow-hidden border-l border-slate-200 dark:border-white/5 animate-in slide-in-from-right-4 duration-300">
-           <div className="flex items-center justify-end px-3 py-1.5 shrink-0 border-b border-slate-200 dark:border-white/5 bg-white/5">
-            <button
-              onClick={() => setSelected(null)}
-              className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
-              title="Close (Esc)"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+        <>
+          {/* Drag resize handle */}
+          <div
+            onMouseDown={handleResizeMouseDown}
+            className="w-1 cursor-col-resize bg-slate-100 dark:bg-white/5 hover:bg-blue-500/40 transition-colors shrink-0 select-none"
+            title="Drag to resize"
+          />
+          <div
+            className="flex flex-col shrink-0 h-full overflow-hidden border-l border-slate-200 dark:border-white/5 animate-in slide-in-from-right-4 duration-300"
+            style={{ width: detailWidth }}
+          >
+            <div className="flex items-center justify-end px-3 py-1.5 shrink-0 border-b border-slate-200 dark:border-white/5 bg-white/5">
+              <button
+                onClick={() => setSelected(null)}
+                className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                title="Close (Esc)"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-auto">
+              <HelmReleaseDetail
+                key={`${selected.namespace}/${selected.name}`}
+                release={selected}
+                context={selectedContext}
+                onUninstall={setUninstallTarget}
+                onUpgraded={load}
+              />
+            </div>
           </div>
-          <div className="flex-1 min-h-0 overflow-auto">
-            <HelmReleaseDetail
-              key={`${selected.namespace}/${selected.name}`}
-              release={selected}
-              context={selectedContext}
-              onUninstall={setUninstallTarget}
-              onUpgraded={load}
-            />
-          </div>
-        </div>
+        </>
       )}
 
       {/* Uninstall confirm modal */}

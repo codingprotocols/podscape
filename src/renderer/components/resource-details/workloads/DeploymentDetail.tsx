@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import type { RolloutRevision } from '../../../../../common/constants'
+import type { RolloutRevision } from '../../../../common/constants'
 import type { KubeDeployment, KubeEvent } from '../../../types'
 import { formatAge } from '../../../types'
 import { useAppStore } from '../../../store'
@@ -7,6 +7,7 @@ import ScaleDialog from '../../common/ScaleDialog'
 import YAMLViewer from '../../common/YAMLViewer'
 import AnalysisView from '../../advanced/AnalysisView'
 import { FileCode, X, Activity, Layers, History, Settings, Zap, RefreshCw } from 'lucide-react'
+import { RefreshButton } from '../../common'
 import { useYAMLEditor } from '../../../hooks/useYAMLEditor'
 import OwnerChain from '../../advanced/OwnerChain'
 import TimeSeriesChart, { PrometheusTimeRangeBar } from '../../advanced/TimeSeriesChart'
@@ -263,10 +264,11 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
                 <History size={12} /> Rollout Timeline
               </h4>
               <div className="flex gap-2">
-                <button onClick={loadHistory} disabled={historyLoading}
-                  className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 transition-all outline-none">
-                  {historyLoading ? '...' : 'Refresh'}
-                </button>
+                <RefreshButton
+                  onClick={loadHistory}
+                  loading={historyLoading}
+                  label="Refresh"
+                />
                 <button onClick={() => handleUndo()} disabled={undoLoading}
                   className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-amber-600/10 text-amber-500 border border-amber-500/20 hover:bg-amber-600/20 transition-all outline-none">
                   {undoLoading ? 'Rolling back...' : 'Undo Last'}

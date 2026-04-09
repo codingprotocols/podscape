@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Search, RefreshCw, Package, ChevronRight, Globe, Tag, PlusCircle } from 'lucide-react'
+import { RefreshButton } from '../common'
 import HelmInstallDialog from './HelmInstallDialog'
 import type { HelmInstallHint } from '../../store/slices/navigationSlice'
 
@@ -163,14 +164,12 @@ export default function HelmRepoBrowser({ installHint, onHintConsumed }: Props):
           <div className="px-4 py-4 border-b border-slate-100 dark:border-white/5 shrink-0">
             <div className="flex items-center justify-between mb-1">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Repositories</span>
-              <button
+              <RefreshButton
                 onClick={handleRefresh}
-                disabled={refreshing}
-                className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-blue-500 transition-colors disabled:opacity-40"
+                loading={refreshing}
                 title="Update all repos"
-              >
-                <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
-              </button>
+                className="!px-2 !py-1.5"
+              />
             </div>
           </div>
 

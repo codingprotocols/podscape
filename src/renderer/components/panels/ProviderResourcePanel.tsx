@@ -4,7 +4,8 @@ import { useDragResize } from '../../hooks/useDragResize'
 import { GenericCRDDetail } from '../common/GenericCRDDetail'
 import { ResourceKind, formatAge } from '../../types'
 import PageHeader from '../core/PageHeader'
-import { RefreshCw, X } from 'lucide-react'
+import { X } from 'lucide-react'
+import { RefreshButton } from '../common'
 
 // Maps the ResourceKind value to the Kubernetes CRD plural resource name used
 // by getCustomResource (which passes it as the endpoint path to the sidecar).
@@ -68,7 +69,8 @@ function itemSummary(section: ResourceKind, item: Record<string, unknown>): stri
     const spec = (item?.spec ?? {}) as Record<string, unknown>
     switch (section) {
         case 'traefik-ingressroutes': {
-            const n = (spec.routes ?? []).length
+            const routes = (spec.routes as unknown[]) ?? []
+            const n = routes.length
             return `${n} route${n !== 1 ? 's' : ''}`
         }
         case 'traefik-middlewares': {
@@ -114,15 +116,18 @@ function itemSummary(section: ResourceKind, item: Record<string, unknown>): stri
         case 'nginx-transportservers':
             return safeStr(((item?.spec as Record<string, unknown>)?.listener as Record<string, unknown>)?.protocol)
         case 'istio-virtualservices': {
-            const httpCount = (spec.http ?? []).length
-            const tcpCount = (spec.tcp ?? []).length
+            const http = (spec.http as unknown[]) ?? []
+            const tcp = (spec.tcp as unknown[]) ?? []
+            const httpCount = http.length
+            const tcpCount = tcp.length
             const total = httpCount + tcpCount
             return total > 0 ? `${total} route${total !== 1 ? 's' : ''}` : '—'
         }
         case 'istio-destinationrules':
             return safeStr(spec.host)
         case 'istio-gateways': {
-            const serverCount = (spec.servers ?? []).length
+            const servers = (spec.servers as unknown[]) ?? []
+            const serverCount = servers.length
             return `${serverCount} server${serverCount !== 1 ? 's' : ''}`
         }
         case 'istio-serviceentries':
@@ -132,11 +137,14 @@ function itemSummary(section: ResourceKind, item: Record<string, unknown>): stri
         case 'istio-authpolicies':
             return safeStr(spec.action, 'ALLOW')
         case 'istio-requestauth': {
-            const n = (spec.jwtRules ?? []).length
+            const rules = (spec.jwtRules as unknown[]) ?? []
+            const n = rules.length
             return `${n} JWT rule${n !== 1 ? 's' : ''}`
         }
-        case 'traefik-middlewaretcps':
-            return (spec.ipAllowList?.sourceRange ?? []).length > 0 ? 'IP Allow List' : '—'
+        case 'traefik-middlewaretcps': {
+            const sourceRange = (spec.ipAllowList as Record<string, unknown>)?.sourceRange as unknown[] ?? []
+            return sourceRange.length > 0 ? 'IP Allow List' : '—'
+        }
         case 'traefik-tlsstores':
             return safeStr((spec.defaultCertificate as Record<string, unknown>)?.secretName,
                 spec.defaultGeneratedCert ? 'Generated' : '—')
@@ -207,16 +215,11 @@ export default function ProviderResourcePanel({ section }: { section: ResourceKi
                 title={label}
                 subtitle={selectedNamespace === '_all' ? 'all namespaces' : (selectedNamespace ?? 'cluster-wide')}
             >
-                <button
+                <RefreshButton
                     onClick={load}
-                    disabled={loading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-600 dark:text-slate-300
-                               bg-slate-100 dark:bg-white/[0.06] border border-slate-200 dark:border-white/10
-                               rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
-                >
-                    <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-                    Refresh
-                </button>
+                    loading={loading}
+                    label="Refresh"
+                />
             </PageHeader>
 
             {/* Main body: list + optional detail panel */}

@@ -1,6 +1,9 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react'
+import React, { useEffect, useState, useRef, useMemo } from 'react'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { Search, Play, Square, Trash2, Terminal } from 'lucide-react'
+import PageHeader from '../core/PageHeader'
+import { useAutoScroll, useLogBuffer } from '../../hooks'
 
 /**
  * Exported for unit testing: given a map of active stream IDs, determines
@@ -38,58 +41,49 @@ const POD_COLORS = [
 ]
 
 export default function UnifiedLogs(): JSX.Element {
-  const { pods, selectedContext } = useAppStore()
+  const { pods, selectedContext, selectedNamespace, loadSection } = useAppStore(useShallow(s => ({
+    pods: s.pods,
+    selectedContext: s.selectedContext,
+    selectedNamespace: s.selectedNamespace,
+    loadSection: s.loadSection,
+  })))
   const [selectedPods, setSelectedPods] = useState<string[]>([])
-  const [logs, setLogs] = useState<LogEntry[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [podSearchTerm, setPodSearchTerm] = useState('')
-  const [autoScroll, setAutoScroll] = useState(true)
   const streamIds = useRef<Record<string, string>>({})
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const { items: logs, append, reset, cancelFlush } = useLogBuffer<LogEntry>({ maxItems: 1000, flushIntervalMs: 100 })
+  const { ref: scrollRef, autoScroll, setAutoScroll, handleScroll } = useAutoScroll<HTMLDivElement>({
+    bottomThresholdPx: 60,
+    ignoreProgrammaticMs: 50,
+    scrollTrigger: logs.length,
+  })
   const podSearchRef = useRef<HTMLDivElement>(null)
   const [showPodResults, setShowPodResults] = useState(false)
-  // Throttle log state updates: accumulate chunks into a buffer and flush at
-  // most once per 100 ms so that high-throughput streams don't trigger a React
-  // re-render on every individual log line.
-  const pendingBuffer = useRef<LogEntry[]>([])
-  const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const flushPending = useCallback(() => {
-    flushTimer.current = null
-    if (pendingBuffer.current.length === 0) return
-    const toFlush = pendingBuffer.current
-    pendingBuffer.current = []
-    setLogs(prev => [...prev, ...toFlush].slice(-1000))
-  }, [])
+  const availablePods = useMemo(() => pods.filter(p => p.status.phase === 'Running'), [pods])
 
-  const scheduleFlush = useCallback(() => {
-    if (flushTimer.current === null) {
-      flushTimer.current = setTimeout(flushPending, 100)
-    }
-  }, [flushPending])
+  const filteredPods = useMemo(() => {
+    if (!podSearchTerm.trim()) return []
+    const lower = podSearchTerm.toLowerCase()
+    return availablePods.filter(p =>
+      p.metadata.name.toLowerCase().includes(lower) ||
+      (p.metadata.namespace || 'default').toLowerCase().includes(lower)
+    )
+  }, [availablePods, podSearchTerm])
 
-  const availablePods = pods.filter(p => p.status.phase === 'Running')
-  
-  const filteredPods = podSearchTerm.trim().length > 0 
-    ? availablePods.filter(p => 
-        p.metadata.name.toLowerCase().includes(podSearchTerm.toLowerCase()) ||
-        (p.metadata.namespace || 'default').toLowerCase().includes(podSearchTerm.toLowerCase())
-      )
-    : []
+  // Keep the pods list fresh so the "Add pods" search always has results
+  useEffect(() => { loadSection('pods') }, [selectedNamespace])
 
   useEffect(() => {
     return () => {
-      if (flushTimer.current !== null) clearTimeout(flushTimer.current)
-      stopAllStreams()
+      // Inline cleanup to avoid stale closure over stopAllStreams.
+      cancelFlush()
+      const toStop = Object.values(streamIds.current)
+      streamIds.current = {}
+      for (const sid of toStop) { window.kubectl.stopLogs(sid).catch(() => {}) }
     }
-  }, [])
-
-  useEffect(() => {
-    if (autoScroll && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
-  }, [logs, autoScroll])
+  }, [cancelFlush])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -111,11 +105,11 @@ export default function UnifiedLogs(): JSX.Element {
       }
       streamIds.current = {}
       setSelectedPods([])
-      setLogs([])
+      reset()
       setIsStreaming(false)
     }
     cleanup().catch(err => console.error('[UnifiedLogs] cleanup failed:', err))
-  }, [selectedContext])
+  }, [reset, selectedContext])
 
   useEffect(() => {
     const syncPods = async () => {
@@ -138,30 +132,26 @@ export default function UnifiedLogs(): JSX.Element {
   }, [pods])
 
   const stopAllStreams = async () => {
-    // Cancel any pending throttle timer and flush the buffer one final time
-    // so lines that arrived just before stop aren't silently dropped.
-    if (flushTimer.current !== null) {
-      clearTimeout(flushTimer.current)
-      flushTimer.current = null
-      flushPending()
-    }
-    for (const sid of Object.values(streamIds.current)) {
-      await window.kubectl.stopLogs(sid)
-    }
+    // Cancel pending flush timer and discard in-flight buffered lines — we
+    // don't want chunks that arrive after Stop to appear. Flushed log history
+    // is preserved so the user can still read it.
+    cancelFlush()
+    // Clear streamIds first so any onChunk callbacks still in flight are
+    // discarded by the guard inside startStreaming's closure.
+    const toStop = Object.values(streamIds.current)
     streamIds.current = {}
+    for (const sid of toStop) {
+      await window.kubectl.stopLogs(sid).catch(() => {})
+    }
     setIsStreaming(false)
   }
 
   const startStreaming = async () => {
     if (!selectedContext) return
     setIsStreaming(true)
-    setLogs([])
     // Reset the buffer so leftover chunks from a previous session don't bleed in.
-    pendingBuffer.current = []
-    if (flushTimer.current !== null) {
-      clearTimeout(flushTimer.current)
-      flushTimer.current = null
-    }
+    cancelFlush()
+    reset()
 
     for (let i = 0; i < selectedPods.length; i++) {
         const podName = selectedPods[i]
@@ -178,6 +168,8 @@ export default function UnifiedLogs(): JSX.Element {
             const sid = await window.kubectl.streamLogs(
                 selectedContext, namespace, podName, containerName,
                 (chunk) => {
+                    // Discard chunks that arrive after stopAllStreams cleared streamIds.
+                    if (streamIds.current[podName] !== sid) return
                     const lines = chunk.split('\n').filter(Boolean)
                     const newEntries: LogEntry[] = lines.map(line => ({
                         id: crypto.randomUUID(),
@@ -190,10 +182,17 @@ export default function UnifiedLogs(): JSX.Element {
                     // Accumulate into the shared buffer and schedule a single
                     // flush — at most one setState every 100 ms regardless of
                     // how many lines arrive per chunk.
-                    pendingBuffer.current.push(...newEntries)
-                    scheduleFlush()
+                    append(newEntries)
                 },
-                () => {}
+                () => {
+                    // When the websocket closes, onEnd fires. Guard so we don't
+                    // clear a newer stream for the same podName.
+                    if (streamIds.current[podName] !== sid) return
+                    delete streamIds.current[podName]
+                    if (shouldResetStreaming(streamIds.current)) {
+                      setIsStreaming(false)
+                    }
+                }
             )
             streamIds.current[podName] = sid
         } catch (err) {
@@ -217,64 +216,96 @@ export default function UnifiedLogs(): JSX.Element {
     setSelectedPods([])
   }
 
-  const filteredLogs = logs.filter(l => 
-    l.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    l.podName.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const searchTermLower = searchTerm.toLowerCase()
+  const filteredLogs = useMemo(() => {
+    if (!searchTermLower) return logs
+    return logs.filter(l =>
+      l.message.toLowerCase().includes(searchTermLower) ||
+      l.podName.toLowerCase().includes(searchTermLower)
+    )
+  }, [logs, searchTermLower])
+
+  const highlightRegex = useMemo(() => {
+    if (!searchTerm) return null
+    return new RegExp(`(${escapeRegExp(searchTerm)})`, 'gi')
+  }, [searchTerm])
+
+  const subtitle = isStreaming
+    ? `${selectedPods.length} pod${selectedPods.length !== 1 ? 's' : ''} streaming · ${logs.length} lines`
+    : selectedPods.length > 0
+      ? `${selectedPods.length} pod${selectedPods.length !== 1 ? 's' : ''} selected`
+      : 'Stream logs from multiple pods'
 
   return (
     <div className="flex flex-col flex-1 bg-slate-50 dark:bg-[hsl(var(--bg-dark))] h-full overflow-hidden transition-colors duration-200">
-      {/* Local Controls bar (no PageHeader) */}
-      <div className="px-8 py-4 border-b border-slate-200 dark:border-white/5 bg-white dark:bg-white/[0.02] flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => { if (isStreaming) stopAllStreams(); else startStreaming() }}
-            disabled={selectedPods.length === 0}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-30
-              ${isStreaming 
-                ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500/20' 
-                : 'bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-500/20'}`}
-          >
-            {isStreaming ? <Square className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />}
-            {isStreaming ? 'Stop All' : 'Start Stream'}
-          </button>
-          
-          <div className="h-6 w-px bg-slate-100 dark:bg-white/10 mx-1" />
-          
-          <button
-             onClick={() => setLogs([])}
-             title="Clear Logs"
-             className="p-2.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-all"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-          <button
-             onClick={() => setAutoScroll(!autoScroll)}
-             title={autoScroll ? "Autoscroll On" : "Autoscroll Off"}
-             className={`p-2.5 rounded-xl border transition-all ${autoScroll ? 'bg-blue-500/20 border-blue-500/40 text-blue-500 font-bold' : 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-400 dark:text-slate-500 font-bold'}`}
-          >
-            <span className="text-[10px] uppercase font-black tracking-tighter">Auto</span>
-          </button>
-        </div>
 
-        <div className="relative group min-w-[300px]" ref={podSearchRef}>
+      {/* Page Header — title + log search */}
+      <PageHeader title="Unified Logs" subtitle={subtitle}>
+        <div className="relative group">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+          <input
+            type="text"
+            placeholder="Search logs..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="pl-9 pr-4 py-2 text-[11px] font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl
+                       focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all w-64"
+          />
+        </div>
+      </PageHeader>
+
+      {/* Controls sub-header */}
+      <div className="px-8 py-3 border-b border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex items-center gap-4 shrink-0">
+        {/* Stream toggle */}
+        <button
+          onClick={() => { if (isStreaming) stopAllStreams(); else startStreaming() }}
+          disabled={selectedPods.length === 0}
+          className={`flex items-center gap-2 px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-30
+            ${isStreaming
+              ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500/20'
+              : 'bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-500/20'}`}
+        >
+          {isStreaming ? <Square className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />}
+          {isStreaming ? 'Stop All' : 'Start Stream'}
+        </button>
+
+        {/* Clear logs */}
+        <button
+          onClick={() => reset()}
+          title="Clear Logs"
+          className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-all"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+
+        {/* Auto-scroll toggle */}
+        <button
+          onClick={() => setAutoScroll(v => !v)}
+          title={autoScroll ? 'Auto-scroll on — click to disable' : 'Auto-scroll off — click to enable'}
+          className={`px-3 py-2 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all
+            ${autoScroll
+              ? 'bg-blue-500/10 border-blue-500/30 text-blue-500'
+              : 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-400 dark:text-slate-500'}`}
+        >
+          Auto-scroll
+        </button>
+
+        <div className="h-5 w-px bg-slate-200 dark:bg-white/10" />
+
+        {/* Add pods search */}
+        <div className="relative group" ref={podSearchRef}>
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
           <input
             type="text"
             placeholder="Add pods to stream..."
             value={podSearchTerm}
-            onChange={e => {
-              setPodSearchTerm(e.target.value)
-              setShowPodResults(true)
-            }}
+            onChange={e => { setPodSearchTerm(e.target.value); setShowPodResults(true) }}
             onFocus={() => setShowPodResults(true)}
             disabled={isStreaming}
-            className="w-full pl-9 pr-4 py-2 text-[11px] font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl
-                       focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+            className="pl-9 pr-4 py-2 text-[11px] font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl
+                       focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all w-72"
           />
-          
-          {/* Search Results (Floating) */}
-          {(showPodResults && podSearchTerm.trim().length > 0) && (
+          {showPodResults && podSearchTerm.trim().length > 0 && (
             <div className="absolute top-full left-0 right-0 mt-2 max-h-[200px] overflow-y-auto p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl z-50 rounded-xl animate-in fade-in slide-in-from-top-2 duration-200">
               <div className="flex flex-col gap-1">
                 {filteredPods.map(p => {
@@ -285,19 +316,17 @@ export default function UnifiedLogs(): JSX.Element {
                       disabled={isStreaming || isSelected}
                       onClick={() => togglePod(p.metadata.name)}
                       className={`px-3 py-2 rounded-lg text-[10px] font-bold border transition-all items-center flex justify-between group/item
-                        ${isSelected 
-                          ? 'bg-blue-500/10 border-blue-500/10 text-blue-500/50 cursor-default' 
+                        ${isSelected
+                          ? 'bg-blue-500/10 border-blue-500/10 text-blue-500/50 cursor-default'
                           : 'bg-white dark:bg-transparent border-slate-100 dark:border-transparent text-slate-600 dark:text-slate-300 hover:bg-blue-500/5 hover:border-blue-500/20 hover:text-blue-500 dark:hover:text-blue-400'}`}
                     >
                       <div className="flex items-center gap-2 overflow-hidden">
                         <span className="truncate">{p.metadata.name}</span>
                         <span className="opacity-40 font-medium whitespace-nowrap text-[9px] uppercase tracking-tighter">[{p.metadata.namespace || 'default'}]</span>
                       </div>
-                      {isSelected ? (
-                         <span className="text-[8px] uppercase tracking-widest bg-blue-500/20 px-1.5 py-0.5 rounded text-blue-600 dark:text-blue-400">Syncing</span>
-                      ) : (
-                         <Play className="w-2.5 h-2.5 opacity-0 group-hover/item:opacity-100 transition-opacity" />
-                      )}
+                      {isSelected
+                        ? <span className="text-[8px] uppercase tracking-widest bg-blue-500/20 px-1.5 py-0.5 rounded text-blue-600 dark:text-blue-400">Added</span>
+                        : <Play className="w-2.5 h-2.5 opacity-0 group-hover/item:opacity-100 transition-opacity" />}
                     </button>
                   )
                 })}
@@ -305,46 +334,46 @@ export default function UnifiedLogs(): JSX.Element {
             </div>
           )}
         </div>
+
+        {/* Selected pod pills */}
+        {selectedPods.length > 0 && (
+          <>
+            <div className="h-5 w-px bg-slate-200 dark:bg-white/10" />
+            <div className="flex items-center gap-2 flex-wrap">
+              {selectedPods.map(name => (
+                <div
+                  key={name}
+                  className="px-3 py-1 rounded-lg bg-blue-500/10 border border-blue-400/20 dark:border-blue-500/30 text-blue-600 dark:text-blue-400 text-[10px] font-black flex items-center gap-2 animate-in zoom-in-95 duration-200"
+                >
+                  <span className="truncate max-w-[140px]">{name}</span>
+                  <button
+                    disabled={isStreaming}
+                    onClick={() => togglePod(name)}
+                    className="hover:text-rose-400 transition-colors shrink-0 p-0.5 disabled:opacity-30"
+                  >
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                  </button>
+                </div>
+              ))}
+              {!isStreaming && (
+                <button
+                  onClick={clearAll}
+                  className="text-[9px] font-black text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300 uppercase tracking-widest transition-colors"
+                >
+                  Clear All
+                </button>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
-      <div className="flex flex-col flex-1 min-h-0 bg-white dark:bg-slate-950 shadow-inner">
-        {/* Selected Pods Pill Area */}
-        <div className="flex items-center gap-3 px-8 py-3 bg-slate-50 dark:bg-white/[0.02] border-b border-slate-100 dark:border-white/[0.05] shrink-0">
-          <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] whitespace-nowrap">Streams:</span>
-          <div className="flex flex-wrap gap-2 overflow-x-auto scrollbar-hide py-1">
-            {selectedPods.map((name) => (
-              <div
-                key={name}
-                className="px-3 py-1 rounded-lg bg-blue-500/10 border border-blue-400/20 dark:border-blue-500/30 text-blue-600 dark:text-blue-400 text-[10px] font-black flex items-center gap-2 animate-in zoom-in-95 duration-200"
-              >
-                <span className="truncate max-w-[150px]">{name}</span>
-                <button 
-                  disabled={isStreaming}
-                  onClick={() => togglePod(name)}
-                  className="hover:text-rose-400 transition-colors shrink-0 p-0.5"
-                >
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                </button>
-              </div>
-            ))}
-            {selectedPods.length === 0 && (
-              <span className="text-[10px] font-bold text-slate-600 italic">No pods active</span>
-            )}
-          </div>
-            {selectedPods.length > 0 && !isStreaming && (
-            <button 
-              onClick={clearAll} 
-              className="ml-auto text-[9px] font-black text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300 uppercase tracking-widest transition-colors"
-            >
-              Clear All
-            </button>
-          )}
-        </div>
-
-        {/* Log Terminal Content */}
-        <div 
+      {/* Log content */}
+      <div className="flex-1 min-h-0 bg-white dark:bg-slate-950">
+        <div
           ref={scrollRef}
-          className="flex-1 overflow-auto p-6 font-mono text-[12px] selection:bg-blue-500/30 scroll-smooth leading-relaxed"
+          className="h-full overflow-auto p-6 font-mono text-[12px] selection:bg-blue-500/30 leading-relaxed"
+          onScroll={handleScroll}
         >
           {filteredLogs.map(l => (
             <div key={l.id} className="flex gap-6 py-0.5 hover:bg-slate-100 dark:hover:bg-white/[0.02] group transition-colors">
@@ -355,13 +384,15 @@ export default function UnifiedLogs(): JSX.Element {
                 {l.podName}
               </span>
               <span className="text-slate-600 dark:text-slate-300 break-all">
-                {searchTerm ? (
-                  l.message.split(new RegExp(`(${escapeRegExp(searchTerm)})`, 'gi')).map((part, i) =>
-                    part.toLowerCase() === searchTerm.toLowerCase() 
-                      ? <span key={i} className="bg-blue-500/40 text-white px-0.5 rounded-sm">{part}</span> 
+                {highlightRegex ? (
+                  l.message.split(highlightRegex).map((part, i) =>
+                    part.toLowerCase() === searchTermLower
+                      ? <span key={i} className="bg-blue-500/40 text-white px-0.5 rounded-sm">{part}</span>
                       : <span key={i}>{part}</span>
                   )
-                ) : l.message}
+                ) : (
+                  l.message
+                )}
               </span>
             </div>
           ))}
@@ -373,21 +404,6 @@ export default function UnifiedLogs(): JSX.Element {
               <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400 dark:text-slate-600">Stream Pending</p>
             </div>
           )}
-        </div>
-        
-        {/* Terminal Footer / Search */}
-        <div className="px-8 py-2 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-white/[0.05] flex items-center gap-4 shrink-0">
-          <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-            <Search size={12} className="text-slate-400 dark:text-slate-600" />
-            Filter Log Output
-          </div>
-          <input
-            type="text"
-            placeholder="Search within logs..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 text-[11px] font-bold text-slate-700 dark:text-slate-300 placeholder:text-slate-300 dark:placeholder:text-slate-700 font-mono"
-          />
         </div>
       </div>
     </div>

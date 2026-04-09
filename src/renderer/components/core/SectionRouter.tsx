@@ -1,7 +1,8 @@
 import React, { Suspense } from 'react'
 import { useAppStore } from '../../store'
 import { useShallow } from 'zustand/react/shallow'
-import { Search, RefreshCw } from 'lucide-react'
+import { Search } from 'lucide-react'
+import { RefreshButton } from '../common'
 import { LIST_SECTIONS, CLUSTER_SCOPED_SECTIONS, SECTION_LABELS, PROVIDER_SECTIONS } from '../../config'
 import { KubeCRD, ResourceKind } from '../../types'
 
@@ -128,15 +129,11 @@ export default function SectionRouter(): JSX.Element {
                 />
               </div>
 
-              <button
+              <RefreshButton
                 onClick={refresh}
-                disabled={loadingResources}
-                className="flex items-center gap-2 px-5 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300
-                           glass-panel hover:bg-white/10 dark:hover:bg-white/5 rounded-xl shadow-sm
-                           disabled:opacity-50 active:scale-95 border border-slate-200 dark:border-white/5"
-              >
-                <RefreshCw className={`w-4 h-4 transition-transform duration-700 ${loadingResources ? 'animate-spin' : ''}`} />
-              </button>
+                loading={loadingResources}
+                title="Refresh"
+              />
             </div>
           </PageHeader>
 

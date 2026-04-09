@@ -1,14 +1,15 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -518,20 +519,17 @@ func HandleCPFrom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Stream raw file bytes from the container using cat.
-	// The client writes them directly to disk — no tar needed for download.
-	content := &bytes.Buffer{}
-	stderrBuf := &captureWriter{}
-	catErr := exec.Exec(r.Context(), cs, cfg, namespace, pod, container,
-		[]string{"cat", srcPath}, nil, content, stderrBuf, false)
-	if catErr != nil {
-		http.Error(w, "failed to read file from container: "+catErr.Error(), http.StatusInternalServerError)
-		log.Printf("CP FROM cat failed for %s/%s %s: %v (stderr: %s)", namespace, pod, srcPath, catErr, stderrBuf.String())
-		return
-	}
-
+	// Stream raw bytes directly from the container to the HTTP response.
+	// Headers must be set before exec starts — once bytes begin flowing we
+	// can no longer change the status code, but that is acceptable: any
+	// mid-stream error will close the connection and the Node client will
+	// surface it as a network error.
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Write(content.Bytes())
+	stderrBuf := &captureWriter{}
+	if err := exec.Exec(r.Context(), cs, cfg, namespace, pod, container,
+		[]string{"cat", srcPath}, nil, w, stderrBuf, false); err != nil {
+		log.Printf("CP FROM cat failed for %s/%s %s: %v (stderr: %s)", namespace, pod, srcPath, err, stderrBuf.String())
+	}
 }
 
 func HandleCPTo(w http.ResponseWriter, r *http.Request) {
@@ -539,8 +537,9 @@ func HandleCPTo(w http.ResponseWriter, r *http.Request) {
 	pod := r.URL.Query().Get("pod")
 	container := r.URL.Query().Get("container")
 	destPath := r.URL.Query().Get("path")
+	localPath := r.URL.Query().Get("localPath")
 
-	if pod == "" || namespace == "" || destPath == "" {
+	if pod == "" || namespace == "" || destPath == "" || localPath == "" {
 		http.Error(w, "missing required parameters", http.StatusBadRequest)
 		return
 	}
@@ -551,18 +550,89 @@ func HandleCPTo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The client packs the file as a tar with just the basename as the entry name.
-	// Extract to the parent directory of destPath so the file lands at destPath.
-	// stdout/stderr go to a buffer — writing them to w would trigger "superfluous WriteHeader".
-	destDir := path.Dir(destPath)
-	outBuf := &captureWriter{}
-	command := []string{"tar", "xf", "-", "-C", destDir}
-	err := exec.Exec(r.Context(), cs, cfg, namespace, pod, container, command, r.Body, outBuf, outBuf, false)
+	safeLocalPath, err := sanitizeCPToLocalPath(localPath)
 	if err != nil {
+		http.Error(w, "invalid localPath: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	f, err := os.Open(safeLocalPath)
+	if err != nil {
+		http.Error(w, "failed to open local file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+
+	// Pipe raw bytes directly using "cat >" — no tar dependency required in the container.
+	// mkdir -p ensures the parent directory exists; single-quoted paths guard against spaces.
+	destDir := path.Dir(destPath)
+	command := []string{"sh", "-c", fmt.Sprintf("mkdir -p '%s' && cat > '%s'", destDir, destPath)}
+	outBuf := &captureWriter{}
+	if err := exec.Exec(r.Context(), cs, cfg, namespace, pod, container, command, f, outBuf, outBuf, false); err != nil {
 		http.Error(w, "CP TO failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+func sanitizeCPToLocalPath(localPath string) (string, error) {
+	if strings.TrimSpace(localPath) == "" {
+		return "", fmt.Errorf("path is empty")
+	}
+	if filepath.IsAbs(localPath) {
+		return "", fmt.Errorf("absolute paths are not allowed")
+	}
+	if vol := filepath.VolumeName(localPath); vol != "" {
+		return "", fmt.Errorf("volume-qualified paths are not allowed")
+	}
+
+	cleanInput := filepath.Clean(localPath)
+	if cleanInput == "." {
+		return "", fmt.Errorf("path is invalid")
+	}
+
+	normalized := filepath.ToSlash(cleanInput)
+	for _, part := range strings.Split(normalized, "/") {
+		if part == ".." {
+			return "", fmt.Errorf("parent directory references are not allowed")
+		}
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	rawAllowedRoots := []string{os.TempDir()}
+	if homeDir != "" {
+		rawAllowedRoots = append(rawAllowedRoots, homeDir)
+	}
+
+	for _, root := range rawAllowedRoots {
+		cleanRoot := filepath.Clean(root)
+		absRoot, errRoot := filepath.Abs(cleanRoot)
+		if errRoot != nil {
+			continue
+		}
+		realRoot, errRoot := filepath.EvalSymlinks(absRoot)
+		if errRoot != nil {
+			continue
+		}
+
+		candidate := filepath.Clean(filepath.Join(realRoot, cleanInput))
+		rel, err := filepath.Rel(realRoot, candidate)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) {
+			continue
+		}
+
+		info, err := os.Stat(candidate)
+		if err != nil {
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+
+		return candidate, nil
+	}
+
+	return "", fmt.Errorf("path is outside allowed directories or not accessible")
 }
 
 func HandleCreateDebugPod(w http.ResponseWriter, r *http.Request) {

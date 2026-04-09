@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { FileCode, X, Activity, HardDrive, History, Trash2, Shield, RefreshCw } from 'lucide-react'
+import { RefreshButton } from '../../common'
 import type { HelmRelease, HelmHistoryEntry } from '../../../types'
 import { formatAge } from '../../../types'
 import YAMLViewer from '../../common/YAMLViewer'
@@ -252,13 +253,11 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
               <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest flex items-center gap-2">
                 <History size={12} /> Revision History
               </h4>
-              <button 
-                onClick={loadHistory} 
-                disabled={loadingHistory}
-                className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 transition-all outline-none"
-              >
-                {loadingHistory ? '...' : 'Refresh'}
-              </button>
+              <RefreshButton
+                onClick={loadHistory}
+                loading={loadingHistory}
+                label="Refresh"
+              />
             </div>
 
             {rbError && (

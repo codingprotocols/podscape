@@ -1,5 +1,64 @@
 # Changelog
 
+## [2.7.0] — 2026-04-08
+
+### New features
+
+#### Unified Logs
+- **Page header with search:** Unified Logs now uses the standard `PageHeader` layout. Log search has moved to the top-right, consistent with other panels.
+- **Inline pod pills:** Selected pod pills and the "Add pods" search dropdown are now in the same controls row as Start/Stop, Clear, and Auto-scroll — no separate row.
+- **Dynamic subtitle:** The page subtitle shows the live streaming state ("2 pods streaming · 145 lines", "3 pods selected", etc.).
+
+#### Debug Pod Launcher
+- **Instant pod removal:** Clicking Delete now removes the pod from the Workloads → Pods list immediately (optimistic update), without waiting for Kubernetes graceful termination.
+- **Delete error surfacing:** If deletion fails, a red error message is shown in the panel instead of silently swallowing the error.
+
+### Improvements
+
+- **`RefreshButton` component:** Refresh button extracted into a shared `RefreshButton` component, eliminating repetition across Dashboard, HelmPanel, GitOpsPanel, TLSCertDashboard, ProviderResourcePanel, CronJobDetail, DeploymentDetail, HelmReleaseDetail, and HelmRepoBrowser.
+- **Auto-scroll guard (Unified Logs):** Programmatic `scrollTop` assignments are now guarded with a 50 ms `ignoringScrollRef` window — matching the fix already in PodDetail — so they no longer fight user-initiated scrolls.
+- **Auto-scroll re-enable on scroll-to-bottom:** Scrolling back to the bottom in Unified Logs re-enables auto-scroll automatically, consistent with PodDetail behaviour.
+- **Pod list refresh after delete:** Deleting a debug pod now also calls `loadSection('pods')` to sync the workloads list with the real cluster state.
+- **"Stop" renamed to "Delete"** in the Debug Pod Launcher to accurately reflect the action.
+
+### Fixes
+
+- **Log streaming stop (PodDetail):** Stopping a stream now cancels the flush timer and discards buffered lines, so in-flight chunks no longer appear after clicking Stop.
+- **Log streaming stop (Unified Logs):** Same fix applied — `pendingBuffer` is cleared and `streamIds` is wiped before calling `stopLogs`, so late-arriving chunks are discarded by the stream ID guard in the `onChunk` callback.
+- **Multi-container auto-restart:** Switching containers in a multi-container pod (e.g. Airflow) while streaming now automatically restarts the stream for the newly selected container via a `startStreamRef` always-current ref pattern.
+- **Exec error overlay:** Shell errors no longer auto-close after 500 ms. A persistent overlay shows the full error message until the tab is closed.
+- **Pod search in Unified Logs:** Pods are now fetched via `loadSection('pods')` on mount and on namespace change, so the "Add pods" search works even when navigating directly to Unified Logs without visiting the Pods section first.
+- **Debug pod deletion sandbox:** Removed a `fetch()` call to the sidecar from the renderer — `sandbox: true` in the Electron window blocks direct HTTP calls to localhost. Deletion now goes through the correct IPC path (`window.kubectl.deleteResource`).
+- **`RefreshButton` title prop:** Caller-supplied `title` no longer gets overridden by the internal `label` fallback. Spread order fixed and resolved as `props.title ?? label`.
+- **"Sync" label corrected to "Refresh":** GitOpsPanel and HelmPanel refresh buttons were mislabelled "Sync" (a GitOps reconciliation concept); reverted to "Refresh".
+- **`window.sidecar` typed:** Replaced `any` with a typed `SidecarAPI` interface (`onCrashed`, `restart`) in `env.d.ts`.
+- **Dangling `provider-details` export removed** from `components/index.ts` (directory does not exist).
+- **Unused `LOG_FLUSH_INTERVAL_MS` constant removed** from `PodDetail.tsx`.
+
+### Reliability & architecture
+
+#### File copy (Debug Pod)
+- **`copyToContainer` no longer requires `tar` in the container:** Replaced the `tar xf -` approach (which failed on minimal images like busybox/alpine) with `sh -c "mkdir -p '…' && cat > '…'"`. Raw bytes are piped directly — works in every container that has `/bin/sh`. The `tar` npm package has been removed from `dependencies`.
+- **`copyToContainer` moved to sidecar:** The main process no longer constructs tar archives. The Go sidecar owns all file I/O using `archive/tar` from the standard library.
+- **`copyFromContainer` is now fully streaming:** The sidecar streams the file directly via `cat` to the HTTP response body; the main process pipes it to disk with `stream/promises.pipeline` + `fs.createWriteStream`. Memory usage is constant regardless of file size. Partial files are deleted on error.
+
+#### Memory leaks & listener cleanup
+- **`useLogBuffer.reset()` cancels pending flush:** Calling `reset()` no longer risks a stale timer firing after the buffer is cleared.
+- **Security scan listener deduplication:** `analysisSlice.scanSecurity` now tracks the active `onSecurityProgress` listener in a module-level ref and tears it down before registering a new one, preventing duplicate progress lines when scans overlap.
+- **Port forwards cleaned up on context switch:** `clusterSlice.selectContext` calls `stopAllPortForwards()` before switching, removing all IPC listener subscriptions and clearing the `portForwards` state.
+- **CronJob refresh timer cleaned up on unmount:** `CronJobDetail` now tracks the `setTimeout` in a `useRef` and clears it on unmount, preventing stale callbacks from firing after the component is gone.
+- **WebSocket `removeAllListeners()` before close:** All log-stream and exec-stream teardown paths call `ws.removeAllListeners()` before `ws.close()`, preventing stale `close` event handlers from firing after deliberate teardown.
+
+#### Context switch correctness
+- **Log streams cancelled on context switch:** `switchContext` now calls `cancelAllLogStreams()` before sending the switch request to the sidecar, preventing stream ID collisions across contexts.
+- **`before-quit` ordering fixed:** The app now cancels all log and exec streams before stopping the sidecar, preventing IPC handlers from firing against a dead process during shutdown.
+
+#### Static imports (production safety)
+- **`ws`, `net` no longer dynamically required:** `import WebSocket from 'ws'` and `import { createServer } from 'net'` replace `require()` calls that would fail in production asar bundles if the packages were not listed in `dependencies`.
+- **`@types/ws` added** to `devDependencies` for full TypeScript coverage of the WebSocket API.
+
+---
+
 ## [2.6.0] — 2026-04-07
 
 ### New features

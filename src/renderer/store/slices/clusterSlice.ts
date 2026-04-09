@@ -164,6 +164,8 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             // Cancel any in-flight log/exec streams from the previous context before
             // switching, so stale data doesn't arrive after the switch completes.
             try { await window.kubectl.cancelAllStreams() } catch {}
+            // Stop all active port forwards — they belong to the previous context.
+            get().stopAllPortForwards()
             // Tell the sidecar to switch its clientset + informer cache to the new
             // context BEFORE fetching any data. Without this the sidecar keeps
             // serving the previous context's cache.

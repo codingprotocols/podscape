@@ -12,7 +12,7 @@ export default function KubeConfigOnboarding(): JSX.Element {
             if (state.kubeconfigOk) {
                 // Sidecar started in no-kubeconfig mode — restart it now so it
                 // loads the newly configured kubeconfig before init() runs.
-                await (window as any).sidecar?.restart()
+                await window.sidecar?.restart()
                 await init()
             }
         } catch (e) {

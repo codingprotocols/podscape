@@ -31,7 +31,7 @@ export default function Layout({ children }: LayoutProps): JSX.Element {
   const [sidecarRestarting, setSidecarRestarting] = useState(false)
 
   useEffect(() => {
-    const unlisten = (window as any).sidecar?.onCrashed(() => {
+    const unlisten = window.sidecar?.onCrashed(() => {
       setSidecarCrashed(true)
     })
     return () => { if (unlisten) unlisten() }
@@ -40,7 +40,7 @@ export default function Layout({ children }: LayoutProps): JSX.Element {
   const handleSidecarRestart = async () => {
     setSidecarRestarting(true)
     try {
-      await (window as any).sidecar?.restart()
+      await window.sidecar?.restart()
       setSidecarCrashed(false)
       window.location.reload()
     } catch (err) {

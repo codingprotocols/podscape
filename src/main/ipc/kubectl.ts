@@ -1,4 +1,9 @@
 import http from 'http'
+import { createWriteStream } from 'fs'
+import { unlink } from 'fs/promises'
+import { pipeline } from 'stream/promises'
+import { Readable } from 'stream'
+import WebSocket from 'ws'
 import { ipcMain } from 'electron'
 import { checkedSidecarFetch, sidecarFetch } from '../sidecar/api'
 import { activeSidecarPort } from '../sidecar/runtime'
@@ -30,6 +35,9 @@ export class KubectlProvider {
   }
 
   async switchContext(context: string): Promise<void> {
+    // Cancel all active log streams before switching — they belong to the old context
+    // and their stream IDs would collide with new streams on the same pod names.
+    cancelAllLogStreams()
     await checkedSidecarFetch(`/config/switch?context=${encodeURIComponent(context)}`)
   }
 
@@ -209,27 +217,26 @@ export class KubectlProvider {
     _context: string, namespace: string, pod: string, container: string,
     localPath: string, remotePath: string
   ): Promise<void> {
-    const tar = require('tar')
-    const { basename, dirname } = require('path')
-    const tarStream = tar.c({ gzip: false, C: dirname(localPath) }, [basename(localPath)])
-    const url = `/cp/to?namespace=${namespace}&pod=${pod}&container=${container}&path=${encodeURIComponent(remotePath)}`
-    await checkedSidecarFetch(url, {
-      method: 'POST',
-      body: tarStream as any,
-      // @ts-ignore
-      duplex: 'half'
-    })
+    const url = `/cp/to?namespace=${namespace}&pod=${pod}&container=${container}&path=${encodeURIComponent(remotePath)}&localPath=${encodeURIComponent(localPath)}`
+    await checkedSidecarFetch(url, { method: 'POST' })
   }
 
   async copyFromContainer(
     _context: string, namespace: string, pod: string, container: string,
     remotePath: string, localPath: string
   ): Promise<void> {
-    const { writeFile } = require('fs/promises')
     const url = `/cp/from?namespace=${namespace}&pod=${pod}&container=${container}&path=${encodeURIComponent(remotePath)}`
     const res = await checkedSidecarFetch(url)
-    const buffer = await res.arrayBuffer()
-    await writeFile(localPath, Buffer.from(buffer))
+    if (!res.body) throw new Error('No response body from sidecar')
+    const dest = createWriteStream(localPath)
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await pipeline(Readable.fromWeb(res.body as any), dest)
+    } catch (err) {
+      // Clean up the partial file so the caller doesn't see a corrupted download.
+      await unlink(localPath).catch(() => {})
+      throw err
+    }
   }
 
   async scanSecurity(): Promise<any> {
@@ -273,8 +280,9 @@ const activeStreams = new Map<string, any>()
 
 export function cancelAllLogStreams(): void {
   for (const [id, ws] of activeStreams) {
-    try { ws.close() } catch {}
+    ws.removeAllListeners()
     activeStreams.delete(id)
+    try { ws.close() } catch {}
   }
 }
 
@@ -339,12 +347,13 @@ export function registerKubectlHandlers(): void {
 
   ipcMain.handle('kubectl:streamLogs', async (event, ctx, ns, pod, container) => {
     const streamId = `${ctx}/${ns}/${pod}${container ? '/' + container : ''}`
-    if (activeStreams.has(streamId)) { 
-      activeStreams.get(streamId)!.close()
+    if (activeStreams.has(streamId)) {
+      const old = activeStreams.get(streamId)!
+      old.removeAllListeners()
       activeStreams.delete(streamId)
+      try { old.close() } catch {}
     }
 
-    const WebSocket = require('ws')
     const ws = new WebSocket(`ws://${SIDECAR_HOST}:${activeSidecarPort}/logs?pod=${pod}&namespace=${ns}&container=${container || ''}`, {
       headers: { 'X-Podscape-Token': sidecarToken }
     })
@@ -362,6 +371,7 @@ export function registerKubectlHandlers(): void {
 
     ws.on('close', (code: number, reason: string) => {
       console.log(`[Logs] WS closed for stream ${streamId}. Code: ${code}, Reason: ${reason || 'no reason'}`)
+      ws.removeAllListeners()
       activeStreams.delete(streamId)
       if (!sender.isDestroyed()) sender.send('kubectl:logEnd', streamId)
     })
@@ -370,9 +380,11 @@ export function registerKubectlHandlers(): void {
   })
 
   ipcMain.handle('kubectl:stopLogs', async (_e, streamId) => {
-    if (activeStreams.has(streamId)) {
-      activeStreams.get(streamId)!.close()
+    const ws = activeStreams.get(streamId)
+    if (ws) {
+      ws.removeAllListeners()
       activeStreams.delete(streamId)
+      try { ws.close() } catch {}
     }
   })
 
