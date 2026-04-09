@@ -317,6 +317,8 @@ const helm = {
   repoList: () => ipcRenderer.invoke('helm:repoList'),
   repoSearch: (query: string, limit: number, offset: number) =>
     ipcRenderer.invoke('helm:repoSearch', query, limit, offset),
+  repoLatest: (chartName: string) =>
+    ipcRenderer.invoke('helm:repoLatest', chartName),
   repoVersions: (repoName: string, chartName: string) =>
     ipcRenderer.invoke('helm:repoVersions', repoName, chartName),
   repoValues: (repoName: string, chartName: string, version: string) =>

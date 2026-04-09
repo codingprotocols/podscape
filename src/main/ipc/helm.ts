@@ -1,6 +1,6 @@
 import http from 'http'
 import { ipcMain } from 'electron'
-import { checkedSidecarFetch } from '../sidecar/api'
+import { checkedSidecarFetch, sidecarFetch } from '../sidecar/api'
 import { activeSidecarPort } from '../sidecar/runtime'
 import { sidecarToken } from '../sidecar/auth'
 import { SIDECAR_HOST } from '../../common/constants'
@@ -100,6 +100,13 @@ export function registerHelmHandlers(): void {
       offset: String(offset),
     })
     const res = await checkedSidecarFetch(`/helm/repos/search?${params}`)
+    return res.json()
+  })
+
+  ipcMain.handle('helm:repoLatest', async (_e, chartName: string) => {
+    const res = await sidecarFetch(`/helm/repos/latest?chart=${encodeURIComponent(chartName)}`)
+    if (res.status === 404) return null
+    if (!res.ok) throw new Error(`Go sidecar returned ${res.status} for /helm/repos/latest`)
     return res.json()
   })
 
