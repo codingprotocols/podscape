@@ -301,15 +301,12 @@ export default function Sidebar(): JSX.Element {
         >
           <div className="w-8 h-[1px] bg-white/5 mb-3" />
 
-          <RailBtn
-            icon={ICONS.feedback}
-            label="Feedback"
-            onClick={() => openExternal('https://github.com/codingprotocols/podscape/issues/new')}
-          />
+          <div className="w-8 h-[1px] bg-white/5 mb-3" />
+
           <RailBtn
             icon={ICONS.help}
             label="Ask a Question"
-            onClick={() => openExternal('https://github.com/codingprotocols/podscape/discussions/new')}
+            onClick={() => openExternal('https://github.com/codingprotocols/podscape/discussions/new?category=q-a')}
           />
           <RailBtn
             icon={ICONS.heart}

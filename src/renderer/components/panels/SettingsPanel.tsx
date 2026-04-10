@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { isMac } from '../../utils/platform'
 import Editor from '@monaco-editor/react'
 import { useAppStore } from '../../store'
-import { Save, CheckCircle, Monitor, Terminal, FileCode, Activity, DollarSign } from 'lucide-react'
+import { Save, CheckCircle, Monitor, Terminal, FileCode, Activity, DollarSign, Shield, RefreshCw, AlertCircle } from 'lucide-react'
 
 interface SettingsForm {
   shellPath: string
@@ -21,6 +21,10 @@ export default function SettingsPanel(): JSX.Element {
   const [probing, setProbing] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'no-update' | 'downloading' | 'ready' | 'error'>('idle')
+  const [updateInfo, setUpdateInfo] = useState<{ version: string } | null>(null)
+  const [updateProgress, setUpdateProgress] = useState(0)
+  const [updateError, setUpdateError] = useState<string | null>(null)
 
   // ── Kubeconfig editor state ────────────────────────────────────────────────
   const [kubeconfigPath, setKubeconfigPath] = useState('')
@@ -49,6 +53,39 @@ export default function SettingsPanel(): JSX.Element {
   useEffect(() => {
     setForm(f => ({ ...f, theme }))
   }, [theme])
+
+  useEffect(() => {
+    const updater = window.updater
+    if (!updater) return
+
+    const unsubChecking = updater.onChecking(() => setUpdateStatus('checking'))
+    const unsubAvailable = updater.onAvailable((info) => {
+      setUpdateStatus('available')
+      setUpdateInfo(info)
+    })
+    const unsubNotAvailable = updater.onNotAvailable(() => setUpdateStatus('no-update'))
+    const unsubProgress = updater.onProgress((p) => {
+      setUpdateStatus('downloading')
+      setUpdateProgress(p.percent)
+    })
+    const unsubDownloaded = updater.onDownloaded((info) => {
+      setUpdateStatus('ready')
+      setUpdateInfo(info)
+    })
+    const unsubError = updater.onError((msg) => {
+      setUpdateStatus('error')
+      setUpdateError(msg)
+    })
+
+    return () => {
+      unsubChecking?.()
+      unsubAvailable?.()
+      unsubNotAvailable?.()
+      unsubProgress?.()
+      unsubDownloaded?.()
+      unsubError?.()
+    }
+  }, [])
 
   const handleSave = async () => {
     setError(null)
@@ -109,7 +146,7 @@ export default function SettingsPanel(): JSX.Element {
         <div className="max-w-4xl mx-auto px-8 md:px-12 py-10 space-y-12">
           
           {/* ── Status Bar for Saves ────────────────────────────────────────── */}
-          <div className="flex items-center justify-between sticky top-0 z-10 py-4 mb-4 bg-white/80 dark:bg-white/10 backdrop-blur-xl border-b border-slate-200 dark:border-white/5 rounded-2xl px-6">
+          <div className="flex items-center justify-between sticky top-0 z-10 py-4 bg-white/80 dark:bg-white/10 backdrop-blur-xl border-b border-slate-200 dark:border-white/5 rounded-2xl px-6">
             <div className="min-w-0">
                <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Application Control</h2>
             </div>
@@ -317,7 +354,7 @@ export default function SettingsPanel(): JSX.Element {
           </section>
 
           {/* ── Prometheus ──────────────────────────────────────────────────── */}
-          <section className="space-y-6 pb-20">
+          <section className="space-y-6">
             <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] flex items-center gap-3">
               <Activity size={14} />
               Performance Metrics
@@ -386,7 +423,7 @@ export default function SettingsPanel(): JSX.Element {
           </section>
 
           {/* ── Cost (Kubecost / OpenCost) ──────────────────────────────────────── */}
-          <section className="space-y-6 pb-20">
+          <section className="space-y-6">
             <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] flex items-center gap-3">
               <DollarSign size={14} />
               FinOps
@@ -451,6 +488,100 @@ export default function SettingsPanel(): JSX.Element {
                   </div>
                 </div>
               </div>
+            </div>
+          </section>
+          
+          {/* ── Update Center ────────────────────────────────────────────────── */}
+          <section className="space-y-6 pb-12">
+            <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] flex items-center gap-3">
+              <Shield size={14} />
+              Update Center
+              <span className="flex-1 h-px bg-slate-100 dark:bg-white/5" />
+            </h3>
+            <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-3xl overflow-hidden shadow-sm">
+                <div className="px-8 py-6 bg-white dark:bg-white/5 flex items-center justify-between border-b border-slate-100 dark:border-white/5">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
+                      <Shield className="w-5 h-5 text-blue-500" />
+                    </div>
+                    <div>
+                      <h4 className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Version v2.8.0</h4>
+                      <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-tighter">Stay secure with the latest patches</p>
+                    </div>
+                  </div>
+                  
+                  {updateStatus === 'ready' ? (
+                    <button
+                      onClick={() => window.updater?.install()}
+                      className="px-6 py-2.5 text-[10px] font-black uppercase tracking-wider text-white
+                                bg-emerald-600 hover:bg-emerald-500 rounded-xl shadow-lg shadow-emerald-500/20
+                                transition-all active:scale-95"
+                    >
+                      Restart to Update
+                    </button>
+                  ) : updateStatus === 'available' ? (
+                    <button
+                      onClick={() => window.updater?.download()}
+                      className="px-6 py-2.5 text-[10px] font-black uppercase tracking-wider text-white
+                                bg-blue-600 hover:bg-blue-500 rounded-xl shadow-lg shadow-blue-500/20
+                                transition-all active:scale-95 flex items-center gap-2"
+                    >
+                      Download {updateInfo?.version}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => window.updater?.check()}
+                      disabled={updateStatus === 'checking' || updateStatus === 'downloading'}
+                      className={`px-6 py-2.5 text-[10px] font-black uppercase tracking-wider text-white
+                                 ${updateStatus === 'checking' ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-500'}
+                                 rounded-xl shadow-lg shadow-blue-500/20
+                                 transition-all active:scale-95 flex items-center gap-2`}
+                    >
+                      {updateStatus === 'checking' && <RefreshCw className="w-3 h-3 animate-spin" />}
+                      {updateStatus === 'checking' ? 'Checking…' : 'Check for Updates'}
+                    </button>
+                  )}
+                </div>
+
+                <div className="p-8">
+                  {updateStatus === 'downloading' && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-blue-400">
+                        <span>Downloading Update…</span>
+                        <span>{Math.round(updateProgress)}%</span>
+                      </div>
+                      <div className="h-1.5 w-full bg-slate-200 dark:bg-white/10 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-blue-500 transition-all duration-300 ease-out"
+                          style={{ width: `${updateProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {updateStatus === 'no-update' && (
+                    <div className="flex items-center gap-3 text-emerald-500 bg-emerald-500/5 border border-emerald-500/10 p-4 rounded-2xl animate-in fade-in slide-in-from-top-2">
+                       <CheckCircle size={14} />
+                       <span className="text-[10px] font-black uppercase tracking-widest">You are running the latest version of Podscape</span>
+                    </div>
+                  )}
+
+                  {updateStatus === 'error' && (
+                    <div className="flex items-center gap-3 text-rose-500 bg-rose-500/5 border border-rose-500/10 p-4 rounded-2xl animate-in fade-in slide-in-from-top-2">
+                       <AlertCircle size={14} />
+                       <div className="flex flex-col">
+                         <span className="text-[10px] font-black uppercase tracking-widest">Update check failed</span>
+                         <span className="text-[9px] font-medium opacity-70 mt-0.5">{updateError}</span>
+                       </div>
+                    </div>
+                  )}
+
+                  {updateStatus === 'idle' && (
+                    <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+                      Automatic updates are enabled. You can manually check for the latest releases and security patches here.
+                    </p>
+                  )}
+                </div>
             </div>
           </section>
 

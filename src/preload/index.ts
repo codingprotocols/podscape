@@ -365,10 +365,18 @@ const kubeconfig = {
 // ─── updater API ──────────────────────────────────────────────────────────────
 
 const updater = {
+  onChecking: (cb: () => void): (() => void) => {
+    ipcRenderer.on('updater:checking', cb)
+    return () => ipcRenderer.off('updater:checking', cb)
+  },
   onAvailable: (cb: (info: { version: string }) => void): (() => void) => {
     const h = (_e: Electron.IpcRendererEvent, info: { version: string }): void => cb(info)
     ipcRenderer.on('updater:available', h)
     return () => ipcRenderer.off('updater:available', h)
+  },
+  onNotAvailable: (cb: () => void): (() => void) => {
+    ipcRenderer.on('updater:not-available', cb)
+    return () => ipcRenderer.off('updater:not-available', cb)
   },
   onProgress: (cb: (p: { percent: number }) => void): (() => void) => {
     const h = (_e: Electron.IpcRendererEvent, p: { percent: number }): void => cb(p)

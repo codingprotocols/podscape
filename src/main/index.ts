@@ -11,6 +11,7 @@ import { registerHelmHandlers } from './ipc/helm'
 import { registerDialogHandlers } from './ipc/dialog'
 import { startSidecar, stopSidecar } from './sidecar/sidecar'
 import { setupUpdater } from './system/updater'
+import { setupMenu } from './menu'
 
 async function createSplashWindow(): Promise<BrowserWindow> {
   const splash = new BrowserWindow({
@@ -101,6 +102,7 @@ app.whenReady().then(async () => {
   registerHelmHandlers()
   registerDialogHandlers()
   setupUpdater()
+  setupMenu()
 
   ipcMain.handle('sidecar:restart', async () => {
     await startSidecar()

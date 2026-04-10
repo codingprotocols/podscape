@@ -1,4 +1,38 @@
-# Changelog
+## [2.8.0] — 2026-04-10
+
+### New features
+
+#### Update Center
+- **In-app update dashboard:** Dedicated "Update Center" at the bottom of the Settings panel. Users can manually check for updates, view current version and stay secure with the latest release info.
+- **Download progress:** Real-time progress bar shows download percentage for in-flight updates.
+- **One-click restart:** Replaced background auto-install with an explicit "Restart to Update" button once the download is ready.
+
+#### Helm Management
+- **Pruned upgrade workflow:** Completely removed the Helm upgrade functionality to harden Podscape as a focused auditing and management tool.
+- **Improved version detection:** Refactored Helm version checking to use a unified `repoLatest` endpoint, supporting semver comparisons across multiple repositories.
+- **Performance:** Implemented lazy loading for Helm repository indices to reduce memory overhead and initialization time.
+- **Semver sorting:** Improved version sorting logic to correctly handle pre-release and metadata tags in Helm charts.
+
+#### Native Application Menu
+- **Custom menubar:** Replaced the default Electron menu with a tailored application menu bar (macOS native menu).
+- **Help & Docs integration:** Added direct links to Official Documentation, GitHub Discussions, and Issue Reporting.
+- **Check for Updates link:** Added "Check for Updates..." to the app menu (macOS) and Help menu (Win/Linux).
+
+### Improvements
+
+- **Pod Status UI Refactor:** Redesigned Pod detail header with a more modern semantic color palette (Dual-mode Emerald/Amber tokens). Header title now includes the `. POD` resource type marker.
+- **Restart Analysis Navigation:** Clicking the pod restart badge now selects the pod and automatically triggers the "Restart Analyzer" tool instead of a hard redirect to the debug section.
+
+### Fixes
+
+- **"Ask a Question" URL fix:** Added `?category=q-a` to the GitHub Discussions link to ensure users land directly on the relevant category and avoid the "Page not recognized" error.
+- **Settings panel spacing:** Removed redundant margins and excessive padding-bottom from Prometheus, Cost, and Update Center sections for a cleaner, more consistent layout.
+- **TypeScript `window.updater` type:** Fixed "possibly undefined" errors in the renderer by updating the global `env.d.ts` declaration and implementing defensive optional chaining for IPC calls.
+- **YAML Editor options:** Added configurable editor options to YAML components, including font size and line number toggles for better readability.
+- **Security (CodeQL):** implemented path sanitization for various file-system operations to resolve CodeQL findings related to uncontrolled data in path expressions.
+- **Dependency cleanup:** Removed unused imports and deleted redundant test files following the Helm architecture refactor.
+
+---
 
 ## [2.7.0] — 2026-04-08
 
