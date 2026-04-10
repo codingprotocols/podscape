@@ -10,11 +10,11 @@ interface Props {
   release: HelmRelease
   context: string
   onUninstall: (r: HelmRelease) => void
-  onUpgraded: () => Promise<void>
+  onRefresh: () => Promise<void>
   onClose?: () => void
 }
 
-export default function HelmReleaseDetail({ release, context, onUninstall, onUpgraded, onClose }: Props): JSX.Element {
+export default function HelmReleaseDetail({ release, context, onUninstall, onRefresh, onClose }: Props): JSX.Element {
   const [activeTab, setActiveTab] = useState<'overview' | 'history'>('overview')
   const [values, setValues] = useState<string | null>(null)
   const [loadingValues, setLoadingValues] = useState(false)
@@ -24,7 +24,6 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null)
   const [rollingBack, setRollingBack] = useState(false)
   const [rbError, setRbError] = useState<string | null>(null)
-  const [upgradeError, setUpgradeError] = useState<string | null>(null)
   const [latestVersion, setLatestVersion] = useState<string | null>(null)
   const [latestChartName, setLatestChartName] = useState<string | null>(null)
   const [chartDetails, setChartDetails] = useState<{
@@ -33,11 +32,11 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
     sources?: string[],
     keywords?: string[]
   } | null>(null)
-  const [upgradeVersion, setUpgradeVersion] = useState<string | null>(null)
-  const [isUpgrading, setIsUpgrading] = useState(false)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [isCustomChart, setIsCustomChart] = useState(false)
   const [refreshingRepos, setRefreshingRepos] = useState(false)
+  const [onlineVersion, setOnlineVersion] = useState<string | null>(null)
+  const [onlineRepo, setOnlineRepo] = useState<string | null>(null)
 
   useEffect(() => {
     if (activeTab === 'history' && history.length === 0) {
@@ -51,6 +50,7 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
 
   const checkForUpdates = async () => {
     if (!window.helm.repoLatest) return
+    const currentVersion = release.chart_version || release.chart.split('-').pop() || ''
     setCheckingUpdate(true)
     setIsCustomChart(false)
     try {
@@ -76,7 +76,6 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
       }
       if (res && res.charts && res.charts.length > 0) {
         // Look for exact match (e.g. searching "nginx" might return "bitnami/nginx")
-        const currentVersion = release.chart_version || release.chart.split('-').pop() || ''
         
         // Prioritize a chart that matches our current version (likely the repo we used)
         let match = res.charts.find(c => (c.name.endsWith('/' + chartName) || c.name === chartName) && c.version === currentVersion)
@@ -100,6 +99,37 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
         }
       } else {
         setIsCustomChart(true)
+      }
+
+      // 3. Artifact Hub Background Check
+      try {
+        const url = `https://artifacthub.io/api/v1/packages/search?ts_query_web=${chartName}&kind=0&limit=5`
+        const ahRes = await fetch(url)
+        if (ahRes.ok) {
+          const data = await ahRes.json()
+          const ahMatch = data.packages?.find((p: any) => p.name === chartName || p.normalized_name === chartName)
+          if (ahMatch) {
+            const currentMajor = currentVersion.split('.')[0]
+            const ahMajor = ahMatch.version.split('.')[0]
+            
+            // If AH version matches our major version scheme but local repo doesn't,
+            // or if AH version is a more plausible next step, prioritize it.
+            if (ahMatch.version !== latestVersion) {
+              setOnlineVersion(ahMatch.version)
+              setOnlineRepo(ahMatch.repository.name)
+              
+              const localMajor = latestVersion?.split('.')[0]
+              if (ahMajor === currentMajor && localMajor !== currentMajor) {
+                // Local repo (e.g. Bitnami) is using a different versioning scheme.
+                // Reset local latestVersion to avoid showing confusing update
+                setLatestVersion(null)
+                setLatestChartName(null)
+              }
+            }
+          }
+        }
+      } catch (ahErr) {
+        console.warn('Artifact Hub check failed', ahErr)
       }
     } catch (err) {
       console.warn('Failed to check for chart updates', err)
@@ -151,46 +181,6 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
     }
   }
 
-  const handleInitiateUpgrade = async () => {
-    if (!latestVersion || !latestChartName) return
-    setUpgradeVersion(latestVersion)
-    setIsUpgrading(true)
-    try {
-      setLoadingValues(true)
-      // Base the upgrade on CURRENT values to preserve user configuration
-      const vals = await window.helm.values(context, release.namespace, release.name)
-      setValues(vals)
-    } catch (err) {
-      console.error('Failed to pre-fetch current values for upgrade', err)
-      // Fallback to repo values if current fail
-      try {
-        const vals = await window.helm.repoValues(latestChartName.split('/')[0], latestChartName.split('/')[1], latestVersion)
-        setValues(vals)
-      } catch (repoErr) {
-        console.error('Failed to fetch repo values for upgrade', repoErr)
-        setValuesError('Failed to fetch both current and remote chart values. Please check network connectivity.')
-      }
-    } finally {
-      setLoadingValues(false)
-    }
-  }
-
-  const handleUpgrade = async (newValues: string) => {
-    setUpgradeError(null)
-    try {
-      await window.helm.upgrade(context, release.namespace, release.name, newValues, latestChartName ?? undefined, upgradeVersion ?? undefined)
-      await onUpgraded()
-      // Brief delay to ensure k8s storage propagation for follow-up checks
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      setValues(null)
-      setUpgradeVersion(null)
-      setIsUpgrading(false)
-    } catch (err) {
-      setUpgradeError((err as Error).message ?? 'Upgrade failed')
-    } finally {
-      // Done
-    }
-  }
 
   const handleRollback = async () => {
     if (rollbackTarget === null) return
@@ -226,7 +216,7 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
               {loadingValues ? 'Loading...' : 'Values YAML'}
             </button>
             <button
-               onClick={() => onUpgraded()}
+               onClick={() => onRefresh()}
                className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 text-slate-400 hover:text-blue-500 border border-white/5 hover:border-blue-500/20 transition-all group"
                title="Refresh Release Info"
             >
@@ -289,12 +279,6 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
                             </div>
                             <span className="text-[8px] font-bold text-slate-500 uppercase tracking-tighter px-1">Source: {latestChartName}</span>
                           </div>
-                          <button 
-                            onClick={handleInitiateUpgrade}
-                            className="text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-600/20 transition-all active:scale-95 flex items-center gap-1.5"
-                          >
-                            <RefreshCw size={10} /> Upgrade
-                          </button>
                         </div>
                       ) : latestVersion ? (
                         <div className="flex items-center gap-3">
@@ -311,6 +295,30 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
                           </button>
                         </div>
                     ) : null}
+                    {onlineVersion && onlineVersion !== currentChartVersion && (
+                      <div className="flex items-center gap-3 mt-1">
+                        <div className="flex flex-col gap-1.5">
+                          <div className={`flex items-center gap-2 px-2.5 py-1 rounded-lg border w-fit shadow-sm transition-all duration-300 ${
+                            !latestVersion ? 'bg-blue-600 text-white border-blue-500 shadow-blue-500/20 pulse-subtle' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'
+                          }`}>
+                            <Activity size={12} className={!latestVersion ? 'animate-pulse' : ''} />
+                            <div className="flex flex-col">
+                              <span className="text-[9px] font-black uppercase tracking-widest">
+                                {latestVersion ? 'Also Available Online' : 'Update Available Online'}
+                              </span>
+                              <span className="text-[11px] font-bold leading-none">{onlineVersion}</span>
+                            </div>
+                          </div>
+                          <span className="text-[8px] font-black text-slate-500 uppercase tracking-tighter px-1 flex items-center gap-1.5">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 2L2 7l10 5 10-5-10-5M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                            Artifact Hub · {onlineRepo}
+                          </span>
+                        </div>
+                        {!latestVersion && refreshingRepos && (
+                           <div className="text-[9px] font-black text-blue-500 uppercase tracking-widest animate-pulse">Syncing...</div>
+                        )}
+                      </div>
+                    )}
                   </dd>
                 </div>
                 <MetaRow label="Version" value={release.chart_version || '—'} mono />
@@ -496,16 +504,13 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
                 </div>
                 <div className="flex flex-col">
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest">
-                    {loadingValues ? 'Loading Values…' : upgradeVersion ? `Upgrade to ${upgradeVersion}` : `Edit — ${release.name}`}
+                    {loadingValues ? 'Loading Values…' : `Edit — ${release.name}`}
                   </h3>
-                  {upgradeVersion && !loadingValues && (
-                    <p className="text-[10px] font-bold text-blue-500 uppercase tracking-tighter mt-0.5">Review configuration before applying update</p>
-                  )}
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => { setValues(null); setValuesError(null); setLoadingValues(false); setUpgradeVersion(null) }}
+                onClick={() => { setValues(null); setValuesError(null); setLoadingValues(false); }}
                 className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors focus:outline-none"
               >
                 <X size={20} strokeWidth={2.5} />
@@ -527,16 +532,8 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
               ) : values !== null ? (
                 <div className="flex flex-col h-full bg-slate-950">
                   <div className="flex-1 min-h-0 relative">
-                    <YAMLViewer editable
-                      content={values}
-                      onSave={handleUpgrade}
-                    />
+                    <YAMLViewer content={values} />
                   </div>
-                   {upgradeError && (
-                    <div className="px-6 py-3 bg-red-500/10 border-t border-red-500/20 text-red-400 text-[10px] font-black uppercase tracking-widest shrink-0">
-                      {upgradeError}
-                    </div>
-                  )}
                 </div>
               ) : null}
             </div>

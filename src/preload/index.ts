@@ -309,8 +309,6 @@ const helm = {
     ipcRenderer.invoke('helm:rollback', context, namespace, release, revision),
   uninstall: (context: string, namespace: string, release: string): Promise<string> =>
     ipcRenderer.invoke('helm:uninstall', context, namespace, release),
-  upgrade: (context: string, namespace: string, release: string, values: string): Promise<string> =>
-    ipcRenderer.invoke('helm:upgrade', context, namespace, release, values),
 
   // Helm repo browser
   repoAdd: (name: string, url: string) => ipcRenderer.invoke('helm:repoAdd', name, url),

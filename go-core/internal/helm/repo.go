@@ -150,23 +150,36 @@ func (m *HelmRepoManager) ListRepos() ([]map[string]string, error) {
 // Search searches all loaded indices for charts matching query.
 func (m *HelmRepoManager) Search(query string, limit, offset int) SearchResult {
 	var all []ChartEntry
-	
-	repoFile, err := repo.LoadFile(m.settings.RepositoryConfig)
-	if err != nil {
-		return SearchResult{Charts: []ChartEntry{}, Total: 0}
+
+	var repos []string
+	if m.settings != nil {
+		repoFile, err := repo.LoadFile(m.settings.RepositoryConfig)
+		if err == nil {
+			for _, r := range repoFile.Repositories {
+				repos = append(repos, r.Name)
+			}
+		}
 	}
 
-	for _, r := range repoFile.Repositories {
-		idx, err := m.getIndex(r.Name)
+	// Fallback to currently loaded indices (mostly for unit tests)
+	if len(repos) == 0 {
+		m.mu.RLock()
+		for name := range m.indices {
+			repos = append(repos, name)
+		}
+		m.mu.RUnlock()
+	}
+
+	for _, repoName := range repos {
+		idx, err := m.getIndex(repoName)
 		if err != nil {
 			continue
 		}
-		repoName := r.Name
-		for chartName, versions := range idx.Entries {
-			if len(versions) == 0 {
+		for chartName, versionList := range idx.Entries {
+			if len(versionList) == 0 {
 				continue
 			}
-			v := versions[0] // latest version
+			v := versionList[0] // latest version for search purposes
 			fullName := repoName + "/" + chartName
 			if query != "" {
 				q := strings.ToLower(query)
@@ -267,9 +280,23 @@ func compareVersions(v1, v2 string) int {
 //
 // Returns found=false when no repo contains a chart with that name.
 func (m *HelmRepoManager) LatestVersion(chartName string) (version, fullName string, found bool) {
-	repoFile, err := repo.LoadFile(m.settings.RepositoryConfig)
-	if err != nil {
-		return "", "", false
+	var repos []string
+	if m.settings != nil {
+		repoFile, err := repo.LoadFile(m.settings.RepositoryConfig)
+		if err == nil {
+			for _, r := range repoFile.Repositories {
+				repos = append(repos, r.Name)
+			}
+		}
+	}
+
+	// Fallback for tests
+	if len(repos) == 0 {
+		m.mu.RLock()
+		for name := range m.indices {
+			repos = append(repos, name)
+		}
+		m.mu.RUnlock()
 	}
 
 	var bestVer *semver.Version
@@ -277,12 +304,11 @@ func (m *HelmRepoManager) LatestVersion(chartName string) (version, fullName str
 	var fallbackRaw, fallbackFull string
 	hasFallback := false
 
-	for _, r := range repoFile.Repositories {
-		idx, err := m.getIndex(r.Name)
+	for _, repoName := range repos {
+		idx, err := m.getIndex(repoName)
 		if err != nil {
 			continue
 		}
-		repoName := r.Name
 		for entryName, versionList := range idx.Entries {
 			if len(versionList) == 0 {
 				continue

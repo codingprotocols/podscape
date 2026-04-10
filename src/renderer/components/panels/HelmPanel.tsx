@@ -273,7 +273,7 @@ export default function HelmPanel(): JSX.Element {
                 release={selected}
                 context={selectedContext}
                 onUninstall={setUninstallTarget}
-                onUpgraded={load}
+                onRefresh={load}
                 onClose={() => setSelected(null)}
               />
             </div>

@@ -109,45 +109,6 @@ func HandleHelmRollback(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func HandleHelmUpgrade(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	namespace := r.URL.Query().Get("namespace")
-	releaseName := r.URL.Query().Get("release")
-	if namespace == "" || releaseName == "" {
-		http.Error(w, "namespace and release are required", http.StatusBadRequest)
-		return
-	}
-
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB hard limit
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		var maxErr *http.MaxBytesError
-		if errors.As(err, &maxErr) {
-			http.Error(w, "request body exceeds 1 MB limit", http.StatusRequestEntityTooLarge)
-		} else {
-			http.Error(w, "failed to read request body", http.StatusBadRequest)
-		}
-		return
-	}
-
-	chartName := r.URL.Query().Get("chart")
-	version := r.URL.Query().Get("version")
-
-	store.Store.RLock()
-	kubeconfig := store.Store.Kubeconfig
-	context := store.Store.ActiveContextName
-	store.Store.RUnlock()
-
-	if err := helm.UpgradeRelease(kubeconfig, context, namespace, releaseName, chartName, version, string(body)); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
-}
 
 func HandleHelmUninstall(w http.ResponseWriter, r *http.Request) {
 	namespace := r.URL.Query().Get("namespace")

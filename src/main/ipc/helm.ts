@@ -58,21 +58,6 @@ export function registerHelmHandlers(): void {
     return 'Rollback successful'
   })
 
-  // Upgrade release with new values (supports version upgrades if chart/version are provided)
-  ipcMain.handle('helm:upgrade', async (_event, _context: string, namespace: string, release: string, values: string, chart?: string, version?: string) => {
-    const params = new URLSearchParams({
-      namespace,
-      release,
-    })
-    if (chart) params.append('chart', chart)
-    if (version) params.append('version', version)
-
-    await checkedSidecarFetch(
-      `/helm/upgrade?${params.toString()}`,
-      { method: 'POST', headers: { 'Content-Type': 'text/yaml' }, body: values }
-    )
-    return 'Upgrade successful'
-  })
 
   // Uninstall release
   ipcMain.handle('helm:uninstall', async (_event, _context: string, namespace: string, release: string) => {
