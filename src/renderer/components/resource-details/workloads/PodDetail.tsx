@@ -29,6 +29,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const {
     selectedContext, selectedNamespace, openExec,
     scanResults, scanResource, isScanning, prometheusAvailable,
+    pendingResourceAction, setPendingResourceAction
   } = useAppStore()
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const [activeTab, setActiveTab] = useState<'logs' | 'metrics' | 'analysis' | 'lifecycle'>('logs')
@@ -55,6 +56,13 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const [logFullscreen, setLogFullscreen] = useState(false)
   const [wrapLogs, setWrapLogs] = useState(false)
   const [showAnalyzer, setShowAnalyzer] = useState(false)
+  useEffect(() => {
+    if (pendingResourceAction === 'analyze-restarts') {
+      setShowAnalyzer(true)
+      setPendingResourceAction(null)
+    }
+  }, [pendingResourceAction, setPendingResourceAction])
+
   const normalLogAutoScroll = useAutoScroll<HTMLPreElement>({
     bottomThresholdPx: AUTO_SCROLL_THRESHOLD_PX,
     ignoreProgrammaticMs: 50,

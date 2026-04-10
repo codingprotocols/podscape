@@ -68,7 +68,10 @@ const PodRow = React.memo(function PodRow({ pod }: { pod: KubePod }) {
         <Badge text={phase} cls={podPhaseBg(phase)} />
       </td>
       <td className="px-6 py-3 text-xs">
-        <RestartBadge count={restarts} onNavigateToDebug={() => useAppStore.getState().setSection('debugpod')} />
+        <RestartBadge count={restarts} onNavigateToDebug={() => {
+          useAppStore.getState().selectResource(pod)
+          useAppStore.getState().setPendingResourceAction('analyze-restarts')
+        }} />
       </td>
       <td className="px-6 py-3 text-xs text-slate-500 font-mono truncate max-w-[140px]">{pod.spec.nodeName ?? '—'}</td>
       <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(pod.metadata.creationTimestamp)}</td>
