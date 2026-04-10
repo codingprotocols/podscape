@@ -25,7 +25,9 @@ export interface NavigationSlice {
     helmInstallHint: HelmInstallHint | null
     setHelmInstallHint: (hint: HelmInstallHint | null) => void
     showTour: boolean
-    setShowTour: (show: boolean) => void
+    setShowTour: (show) => void
+    pendingResourceAction: 'analyze-restarts' | null
+    setPendingResourceAction: (action: 'analyze-restarts' | null) => void
 }
 
 
@@ -72,5 +74,7 @@ export const createNavigationSlice: StoreSlice<NavigationSlice> = (set, get) => 
     setHelmInstallHint: (helmInstallHint) => set({ helmInstallHint }),
     showTour: false,
     setShowTour: (showTour) => set({ showTour }),
+    pendingResourceAction: null,
+    setPendingResourceAction: (pendingResourceAction) => set({ pendingResourceAction }),
 })
 

@@ -29,6 +29,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const {
     selectedContext, selectedNamespace, openExec,
     scanResults, scanResource, isScanning, prometheusAvailable,
+    pendingResourceAction, setPendingResourceAction
   } = useAppStore()
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const [activeTab, setActiveTab] = useState<'logs' | 'metrics' | 'analysis' | 'lifecycle'>('logs')
@@ -55,6 +56,13 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const [logFullscreen, setLogFullscreen] = useState(false)
   const [wrapLogs, setWrapLogs] = useState(false)
   const [showAnalyzer, setShowAnalyzer] = useState(false)
+  useEffect(() => {
+    if (pendingResourceAction === 'analyze-restarts') {
+      setShowAnalyzer(true)
+      setPendingResourceAction(null)
+    }
+  }, [pendingResourceAction, setPendingResourceAction])
+
   const normalLogAutoScroll = useAutoScroll<HTMLPreElement>({
     bottomThresholdPx: AUTO_SCROLL_THRESHOLD_PX,
     ignoreProgrammaticMs: 50,
@@ -456,8 +464,8 @@ export default function PodDetail({ pod }: Props): JSX.Element {
         <div className="px-6 py-6 border-b border-slate-100 dark:border-white/5 shrink-0 bg-white/5">
           <div className="flex items-start gap-4">
             <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-black text-slate-900 dark:text-white font-mono truncate tracking-tight">{pod.metadata.name}</h3>
-              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{pod.metadata.namespace}</p>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white font-mono truncate tracking-tight">{pod.metadata.name}</h3>
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{pod.metadata.namespace} · POD</p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button
@@ -489,15 +497,15 @@ export default function PodDetail({ pod }: Props): JSX.Element {
         <div className="flex-1 overflow-y-auto min-h-0 scrollbar-hide">
           {/* Metadata */}
           <div className="px-6 py-4 border-b border-slate-100 dark:border-white/5 shrink-0">
-            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] mb-3">Resource Info</h4>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-2.5">
-              <MetaRow label="Node" value={pod.spec.nodeName ?? '—'} mono copyable />
-              <MetaRow label="Pod IP" value={pod.status.podIP ?? '—'} mono copyable />
-              <MetaRow label="Host IP" value={pod.status.hostIP ?? '—'} mono copyable />
-              <MetaRow label="QoS Class" value={pod.status.qosClass ?? '—'} />
-              <MetaRow label="Created" value={formatAge(pod.metadata.creationTimestamp) + ' ago'} />
-              <MetaRow label="Restart Policy" value={String(pod.spec.restartPolicy ?? 'Always')} />
-            </dl>
+            <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] mb-4">Resource Info</h4>
+            <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-2xl p-4 space-y-2.5">
+              <InfoRow label="Node" value={pod.spec.nodeName} mono copyable />
+              <InfoRow label="Pod IP" value={pod.status.podIP} mono copyable />
+              <InfoRow label="Host IP" value={pod.status.hostIP} mono copyable />
+              <InfoRow label="QoS Class" value={pod.status.qosClass} />
+              <InfoRow label="Created" value={formatAge(pod.metadata.creationTimestamp) + ' ago'} />
+              <InfoRow label="Restart Policy" value={String(pod.spec.restartPolicy ?? 'Always')} />
+            </div>
           </div>
 
           {/* Containers */}
@@ -801,14 +809,14 @@ function LogLine({ line, search }: { line: string; search: string }): JSX.Elemen
   )
 }
 
-function MetaRow({ label, value, mono, copyable }: { label: string; value: string; mono?: boolean; copyable?: boolean }) {
+function InfoRow({ label, value, mono, copyable }: { label: string; value?: string; mono?: boolean; copyable?: boolean }) {
   return (
-    <div className="min-w-0">
-      <dt className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-tighter mb-0.5">{label}</dt>
-      <dd className={`text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate flex items-center gap-1 ${mono ? 'font-mono' : ''}`}>
-        <span className="truncate">{value}</span>
-        {copyable && value !== '—' && <CopyButton value={value} size={11} />}
-      </dd>
+    <div className="flex items-center justify-between gap-4 py-1">
+      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none">{label}</span>
+      <div className={`text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate flex items-center gap-1.5 ${mono ? 'font-mono' : ''}`}>
+        <span className="truncate">{value || '—'}</span>
+        {copyable && value && value !== '—' && <CopyButton value={value} size={11} />}
+      </div>
     </div>
   )
 }
