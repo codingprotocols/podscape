@@ -95,6 +95,10 @@ func (m *HelmRepoManager) LoadIndices() error {
 
 // getIndex returns a cached index for the repo, loading it from disk if needed.
 func (m *HelmRepoManager) getIndex(repoName string) (*repo.IndexFile, error) {
+	if !isSafeHelmIdentifier(repoName) {
+		return nil, fmt.Errorf("invalid Helm identifier %q: must not contain path separators or '..'", repoName)
+	}
+
 	m.mu.RLock()
 	idx, ok := m.indices[repoName]
 	m.mu.RUnlock()
