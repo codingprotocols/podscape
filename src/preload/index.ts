@@ -309,14 +309,14 @@ const helm = {
     ipcRenderer.invoke('helm:rollback', context, namespace, release, revision),
   uninstall: (context: string, namespace: string, release: string): Promise<string> =>
     ipcRenderer.invoke('helm:uninstall', context, namespace, release),
-  upgrade: (context: string, namespace: string, release: string, values: string): Promise<string> =>
-    ipcRenderer.invoke('helm:upgrade', context, namespace, release, values),
 
   // Helm repo browser
   repoAdd: (name: string, url: string) => ipcRenderer.invoke('helm:repoAdd', name, url),
   repoList: () => ipcRenderer.invoke('helm:repoList'),
   repoSearch: (query: string, limit: number, offset: number) =>
     ipcRenderer.invoke('helm:repoSearch', query, limit, offset),
+  repoLatest: (chartName: string) =>
+    ipcRenderer.invoke('helm:repoLatest', chartName),
   repoVersions: (repoName: string, chartName: string) =>
     ipcRenderer.invoke('helm:repoVersions', repoName, chartName),
   repoValues: (repoName: string, chartName: string, version: string) =>

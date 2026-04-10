@@ -108,8 +108,9 @@ declare global {
             upgrade: (context: string, namespace: string, release: string, values: string, chart?: string, version?: string) => Promise<string>
             repoAdd: (name: string, url: string) => Promise<{ ok: boolean }>
             repoList: () => Promise<Array<{ name: string; url: string }>>
-            repoSearch: (query: string, limit: number, offset: number) => Promise<{ charts: Array<{ name: string; repo: string; description: string; version: string; appVersion: string }>; total: number }>
-            repoVersions: (repoName: string, chartName: string) => Promise<Array<{ version: string; appVersion: string; description: string }>>
+            repoSearch: (query: string, limit: number, offset: number) => Promise<{ charts: Array<{ name: string; repo: string; description: string; version: string; appVersion: string; home?: string; sources?: string[]; keywords?: string[] }>; total: number }>
+            repoLatest: (chartName: string) => Promise<{ version: string; chartName: string; description?: string; home?: string; sources?: string[]; keywords?: string[] } | null>
+            repoVersions: (repoName: string, chartName: string) => Promise<Array<{ version: string; appVersion: string; description: string; home?: string; sources?: string[]; keywords?: string[] }>>
             repoValues: (repoName: string, chartName: string, version: string) => Promise<string>
             repoRefresh: () => Promise<void>
             install: (chart: string, version: string, releaseName: string, namespace: string, values: string, context: string) => Promise<void>

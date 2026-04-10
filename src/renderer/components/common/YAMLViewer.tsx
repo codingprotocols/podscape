@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+import { Search, Download, AlignLeft } from 'lucide-react'
 import Editor, { DiffEditor } from '@monaco-editor/react'
 import { useAppStore } from '../../store'
 import YAMLEditor from './YAMLEditor'
@@ -14,6 +15,8 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
   const [value, setValue] = useState(content)
   const [showConfirm, setShowConfirm] = useState(false)
   const [showDiff, setShowDiff] = useState(false)
+  const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on')
+  const editorRef = useRef<any>(null)
 
   // Sync editor content when the prop changes (e.g. switching resources or ConfigMap keys)
   useEffect(() => {
@@ -38,6 +41,12 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
     a.download = 'resource.yaml'
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  const handleSearch = () => {
+    if (editorRef.current) {
+      editorRef.current.trigger('toolbar', 'actions.find', {})
+    }
   }
 
   const handleSave = async () => {
@@ -68,6 +77,20 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
     }
   }
 
+  // Handle Cmd+S
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        if (editable && onSave && !saving) {
+          e.preventDefault()
+          handleSave()
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [editable, onSave, saving, value, showConfirm])
+
   return (
     <div className="flex flex-col h-full min-h-[400px] bg-slate-50 dark:bg-[hsl(var(--bg-dark))]">
       {/* Toolbar */}
@@ -80,22 +103,38 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
           {editable && onSave && (
             <button
               onClick={() => setShowDiff(!showDiff)}
-              className={`flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold transition-colors uppercase tracking-wider rounded-lg border ${
-                showDiff ? 'bg-amber-500/10 border-amber-500 text-amber-500' : 'text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-800 dark:hover:text-slate-100'
-              }`}
+              className={`flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold transition-colors uppercase tracking-wider rounded-lg border ${showDiff ? 'bg-amber-500/10 border-amber-500 text-amber-500' : 'text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-800 dark:hover:text-slate-100'
+                }`}
             >
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M4 4l5 5" /></svg>
               {showDiff ? 'Exit Diff' : 'Diff'}
             </button>
           )}
+          <button
+            onClick={() => setWordWrap(v => v === 'on' ? 'off' : 'on')}
+            title="Toggle Word Wrap"
+            className={`flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold transition-colors uppercase tracking-wider rounded-lg border ${wordWrap === 'on' ? 'bg-blue-500/10 border-blue-500/20 text-blue-500' : 'text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-800 dark:hover:text-slate-100'
+              }`}
+          >
+            <AlignLeft size={11} strokeWidth={2.5} />
+            Wrap
+          </button>
           {saveMsg && <span className={`text-[10px] font-bold ${saveMsg.startsWith('Error') ? 'text-red-500' : 'text-emerald-500'}`}>{saveMsg.toUpperCase()}</span>}
           {copyMsg && <span className="text-[10px] font-bold text-blue-500">COPIED!</span>}
+          <button
+            onClick={handleSearch}
+            title="Search (Cmd+F)"
+            className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors uppercase tracking-wider"
+          >
+            <Search size={11} strokeWidth={2.5} />
+            Find
+          </button>
           <button
             onClick={handleDownload}
             title="Download YAML"
             className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors uppercase tracking-wider"
           >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" /></svg>
+            <Download size={11} strokeWidth={2.5} />
             Download
           </button>
           <button
@@ -125,11 +164,10 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
       </div>
 
       {saveError && (
-        <div className={`px-4 py-3 border-b flex items-start gap-3 shrink-0 ${
-          saveError.kind === 'immutable'
+        <div className={`px-4 py-3 border-b flex items-start gap-3 shrink-0 ${saveError.kind === 'immutable'
             ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/40'
             : 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/40'
-        }`}>
+          }`}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
             className={`mt-0.5 shrink-0 ${saveError.kind === 'immutable' ? 'text-amber-500' : 'text-red-500'}`}>
             <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01" />
@@ -167,6 +205,8 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
             onChange={v => editable && setValue(v)}
             readOnly={!editable}
             height="100%"
+            wordWrap={wordWrap}
+            onMount={(editor) => (editorRef.current = editor)}
           />
         )}
       </div>
@@ -182,6 +222,13 @@ export function ApplyYAMLPanel(): JSX.Element {
   const [result, setResult] = useState('')
   const [applying, setApplying] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
+  const editorRef = useRef<any>(null)
+
+  const handleSearch = () => {
+    if (editorRef.current) {
+      editorRef.current.trigger('toolbar', 'actions.find', {})
+    }
+  }
 
   const handleApply = async () => {
     if (isProduction && !showConfirm) {
@@ -204,25 +251,34 @@ export function ApplyYAMLPanel(): JSX.Element {
   return (
     <div className="flex flex-col h-full bg-white dark:bg-[hsl(var(--bg-dark))]">
       <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 dark:border-white/5 shrink-0 bg-white dark:bg-white/5 backdrop-blur-xl">
-        <div>
-          <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Apply YAML</h2>
-          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">
+        <div className="flex flex-col">
+          <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight leading-none mb-1">Apply YAML</h2>
+          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">
             {selectedContext ? `Target: ${selectedContext}` : 'Select a cluster'}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {showConfirm && (
-            <span className="text-[10px] font-black text-red-500 animate-pulse tracking-widest">PRODUCTION OVERRIDE?</span>
-          )}
+        <div className="flex items-center gap-4">
           <button
-            onClick={handleApply}
-            onMouseLeave={() => setShowConfirm(false)}
-            disabled={applying}
-            className={`px-6 py-2 text-xs font-black text-white rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-50 uppercase tracking-widest
-                       ${showConfirm ? 'bg-red-600 hover:bg-red-700 shadow-red-500/30 scale-105' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'}`}
+            onClick={handleSearch}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
           >
-            {applying ? 'Applying…' : showConfirm ? 'Confirm Apply' : 'KUBECTL APPLY'}
+            <Search size={14} strokeWidth={2.5} />
+            Find
           </button>
+          <div className="flex items-center gap-3">
+            {showConfirm && (
+              <span className="text-[10px] font-black text-red-500 animate-pulse tracking-widest">PRODUCTION OVERRIDE?</span>
+            )}
+            <button
+              onClick={handleApply}
+              onMouseLeave={() => setShowConfirm(false)}
+              disabled={applying}
+              className={`px-6 py-2 text-xs font-black text-white rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-50 uppercase tracking-widest
+                       ${showConfirm ? 'bg-red-600 hover:bg-red-700 shadow-red-500/30 scale-105' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'}`}
+            >
+              {applying ? 'Applying…' : showConfirm ? 'Confirm Apply' : 'KUBECTL APPLY'}
+            </button>
+          </div>
         </div>
       </div>
       <div className="flex-1 min-h-0">
@@ -240,6 +296,7 @@ export function ApplyYAMLPanel(): JSX.Element {
             padding: { top: 16 },
             fontFamily: "'JetBrains Mono', 'Fira Code', 'Menlo', monospace",
           }}
+          onMount={(editor) => (editorRef.current = editor)}
         />
       </div>
       {result && (

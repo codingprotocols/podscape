@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -109,45 +108,6 @@ func HandleHelmRollback(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func HandleHelmUpgrade(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	namespace := r.URL.Query().Get("namespace")
-	releaseName := r.URL.Query().Get("release")
-	if namespace == "" || releaseName == "" {
-		http.Error(w, "namespace and release are required", http.StatusBadRequest)
-		return
-	}
-
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB hard limit
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		var maxErr *http.MaxBytesError
-		if errors.As(err, &maxErr) {
-			http.Error(w, "request body exceeds 1 MB limit", http.StatusRequestEntityTooLarge)
-		} else {
-			http.Error(w, "failed to read request body", http.StatusBadRequest)
-		}
-		return
-	}
-
-	chartName := r.URL.Query().Get("chart")
-	version := r.URL.Query().Get("version")
-
-	store.Store.RLock()
-	kubeconfig := store.Store.Kubeconfig
-	context := store.Store.ActiveContextName
-	store.Store.RUnlock()
-
-	if err := helm.UpgradeRelease(kubeconfig, context, namespace, releaseName, chartName, version, string(body)); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
-}
 
 func HandleHelmUninstall(w http.ResponseWriter, r *http.Request) {
 	namespace := r.URL.Query().Get("namespace")
@@ -280,6 +240,37 @@ func HandleHelmRepoRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sseEvent(w, flusher, "result", "ok")
+}
+
+// HandleHelmRepoLatest returns the globally latest version of a chart across
+// all loaded repo indices.
+//
+// Query params:
+//   - chart (required): bare chart name, e.g. "nginx"
+//
+// Responses:
+//   - 200: {"version":"15.0.0","chartName":"bitnami/nginx"}
+//   - 400: chart param missing
+//   - 404: chart not found in any loaded repo
+func HandleHelmRepoLatest(w http.ResponseWriter, r *http.Request) {
+	chartName := r.URL.Query().Get("chart")
+	if chartName == "" {
+		http.Error(w, "chart parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	mgr := helm.GetRepoManager()
+	version, fullName, found := mgr.LatestVersion(chartName)
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"version":   version,
+		"chartName": fullName,
+	})
 }
 
 func HandleHelmInstall(w http.ResponseWriter, r *http.Request) {

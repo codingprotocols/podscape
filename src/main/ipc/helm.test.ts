@@ -17,6 +17,8 @@ describe('transformRelease', () => {
       updated: '2024-01-01T00:00:00Z',
       status: 'deployed',
       chart: 'nginx-1.2.3',
+      chart_name: 'nginx',
+      chart_version: '1.2.3',
       app_version: '1.25',
       description: 'Install complete',
     })
@@ -48,6 +50,8 @@ describe('transformRelease', () => {
       updated: '',
       status: 'unknown',
       chart: 'unknown',
+      chart_name: '',
+      chart_version: '',
       app_version: '',
       description: '',
     })

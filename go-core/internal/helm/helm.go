@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/release"
 	"sigs.k8s.io/yaml"
@@ -107,14 +105,20 @@ func getActionConfig(kubeconfig, context, namespace string) (*action.Configurati
 	key := kubeconfig + "\x00" + context + "\x00" + namespace
 	configCacheMu.Lock()
 	defer configCacheMu.Unlock()
-	if e, ok := configCache[key]; ok && time.Now().Before(e.expiry) {
+	
+	now := time.Now()
+	if e, ok := configCache[key]; ok && now.Before(e.expiry) {
+		// Sliding expiration: reset TTL on use so active sessions stay cached.
+		e.expiry = now.Add(configCacheTTL)
+		configCache[key] = e
 		return e.cfg, nil
 	}
+
 	cfg, err := newActionConfig(kubeconfig, context, namespace)
 	if err != nil {
 		return nil, err
 	}
-	configCache[key] = configCacheEntry{cfg: cfg, expiry: time.Now().Add(configCacheTTL)}
+	configCache[key] = configCacheEntry{cfg: cfg, expiry: now.Add(configCacheTTL)}
 	return cfg, nil
 }
 
@@ -197,52 +201,19 @@ func RollbackRelease(kubeconfig, context, namespace, releaseName string, revisio
 		client.Version = revision
 		return struct{}{}, client.Run(releaseName)
 	})
+	if err == nil {
+		evictActionConfig(kubeconfig, context, namespace)
+	}
 	return err
 }
 
 func UninstallRelease(kubeconfig, context, namespace, releaseName string) (*release.UninstallReleaseResponse, error) {
-	return helmRun(kubeconfig, context, namespace, false, func(cfg *action.Configuration) (*release.UninstallReleaseResponse, error) {
+	res, err := helmRun(kubeconfig, context, namespace, false, func(cfg *action.Configuration) (*release.UninstallReleaseResponse, error) {
 		return action.NewUninstall(cfg).Run(releaseName)
 	})
-}
-
-func UpgradeRelease(kubeconfig, context, namespace, releaseName, chartName, version, valuesYAML string) error {
-	// Parse values before acquiring a connection — fail fast on bad YAML.
-	vals := map[string]interface{}{}
-	if valuesYAML != "" {
-		if err := yaml.Unmarshal([]byte(valuesYAML), &vals); err != nil {
-			return fmt.Errorf("invalid YAML values: %w", err)
-		}
+	if err == nil {
+		evictActionConfig(kubeconfig, context, namespace)
 	}
-
-	_, err := helmRun(kubeconfig, context, namespace, false, func(cfg *action.Configuration) (struct{}, error) {
-		client := action.NewUpgrade(cfg)
-		client.Namespace = namespace
-		client.Version = version
-
-		var chartToUpgrade *chart.Chart
-		if chartName != "" {
-			// Upgrade to a new chart version from a repo
-			settings := newSettings(kubeconfig, context)
-			chartPath, err := client.LocateChart(chartName, settings)
-			if err != nil {
-				return struct{}{}, fmt.Errorf("failed to locate chart %s: %w", chartName, err)
-			}
-			chartToUpgrade, err = loader.Load(chartPath)
-			if err != nil {
-				return struct{}{}, fmt.Errorf("failed to load chart from %s: %w", chartPath, err)
-			}
-		} else {
-			// Values-only upgrade for the current chart
-			rel, err := action.NewGet(cfg).Run(releaseName)
-			if err != nil {
-				return struct{}{}, fmt.Errorf("failed to get current release: %w", err)
-			}
-			chartToUpgrade = rel.Chart
-		}
-
-		_, err := client.Run(releaseName, chartToUpgrade, vals)
-		return struct{}{}, err
-	})
-	return err
+	return res, err
 }
+

@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
+	semver "github.com/Masterminds/semver/v3"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
@@ -30,11 +32,14 @@ func isSafeHelmIdentifier(s string) bool {
 
 // ChartEntry is one chart in search results.
 type ChartEntry struct {
-	Name        string `json:"name"`
-	Repo        string `json:"repo"`
-	Description string `json:"description"`
-	Version     string `json:"version"`
-	AppVersion  string `json:"appVersion"`
+	Name        string   `json:"name"`
+	Repo        string   `json:"repo"`
+	Description string   `json:"description"`
+	Version     string   `json:"version"`
+	AppVersion  string   `json:"appVersion"`
+	Home        string   `json:"home,omitempty"`
+	Sources     []string `json:"sources,omitempty"`
+	Keywords    []string `json:"keywords,omitempty"`
 }
 
 // SearchResult is the paginated response for /helm/repos/search.
@@ -84,29 +89,43 @@ func helmCacheFileName(repoName string) string {
 
 // LoadIndices reads all cached repo index files from disk.
 func (m *HelmRepoManager) LoadIndices() error {
-	repoFile, err := repo.LoadFile(m.settings.RepositoryConfig)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
+	// Logic moved to getIndex (lazy loading) to save memory
+	return nil
+}
+
+// getIndex returns a cached index for the repo, loading it from disk if needed.
+func (m *HelmRepoManager) getIndex(repoName string) (*repo.IndexFile, error) {
+	if !isSafeHelmIdentifier(repoName) {
+		return nil, fmt.Errorf("invalid Helm identifier %q: must not contain path separators or '..'", repoName)
 	}
 
+	m.mu.RLock()
+	idx, ok := m.indices[repoName]
+	m.mu.RUnlock()
+	if ok {
+		return idx, nil
+	}
+
+	// Load from disk
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	for _, r := range repoFile.Repositories {
-		indexPath := filepath.Join(m.settings.RepositoryCache, helmCacheFileName(r.Name))
-		if _, err := os.Stat(indexPath); os.IsNotExist(err) {
-			continue
-		}
-		idx, err := repo.LoadIndexFile(indexPath)
-		if err != nil {
-			continue
-		}
-		m.indices[r.Name] = idx
+	// Double check
+	if idx, ok := m.indices[repoName]; ok {
+		return idx, nil
 	}
-	return nil
+
+	indexPath := filepath.Join(m.settings.RepositoryCache, helmCacheFileName(repoName))
+	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("index not found for repo %s: try refreshing", repoName)
+	}
+
+	idx, err := repo.LoadIndexFile(indexPath)
+	if err != nil {
+		return nil, err
+	}
+	m.indices[repoName] = idx
+	return idx, nil
 }
 
 // ListRepos returns the configured repositories.
@@ -134,16 +153,37 @@ func (m *HelmRepoManager) ListRepos() ([]map[string]string, error) {
 
 // Search searches all loaded indices for charts matching query.
 func (m *HelmRepoManager) Search(query string, limit, offset int) SearchResult {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
 	var all []ChartEntry
-	for repoName, idx := range m.indices {
-		for chartName, versions := range idx.Entries {
-			if len(versions) == 0 {
+
+	var repos []string
+	if m.settings != nil {
+		repoFile, err := repo.LoadFile(m.settings.RepositoryConfig)
+		if err == nil {
+			for _, r := range repoFile.Repositories {
+				repos = append(repos, r.Name)
+			}
+		}
+	}
+
+	// Fallback to currently loaded indices (mostly for unit tests)
+	if len(repos) == 0 {
+		m.mu.RLock()
+		for name := range m.indices {
+			repos = append(repos, name)
+		}
+		m.mu.RUnlock()
+	}
+
+	for _, repoName := range repos {
+		idx, err := m.getIndex(repoName)
+		if err != nil {
+			continue
+		}
+		for chartName, versionList := range idx.Entries {
+			if len(versionList) == 0 {
 				continue
 			}
-			v := versions[0] // latest version
+			v := versionList[0] // latest version for search purposes
 			fullName := repoName + "/" + chartName
 			if query != "" {
 				q := strings.ToLower(query)
@@ -158,9 +198,21 @@ func (m *HelmRepoManager) Search(query string, limit, offset int) SearchResult {
 				Description: v.Description,
 				Version:     v.Version,
 				AppVersion:  v.AppVersion,
+				Home:        v.Home,
+				Sources:     v.Sources,
+				Keywords:    v.Keywords,
 			})
 		}
 	}
+
+	// Sort results to ensure deterministic ordering (avoids map iteration randomness).
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].Name != all[j].Name {
+			return all[i].Name < all[j].Name
+		}
+		// Use proper semver comparison for version consistency
+		return compareVersions(all[i].Version, all[j].Version) > 0
+	})
 
 	total := len(all)
 	if offset >= total {
@@ -181,12 +233,9 @@ func (m *HelmRepoManager) GetVersions(repoName, chartName string) ([]ChartEntry,
 		}
 	}
 
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	idx, ok := m.indices[repoName]
-	if !ok {
-		return nil, fmt.Errorf("repository %q not found or not loaded", repoName)
+	idx, err := m.getIndex(repoName)
+	if err != nil {
+		return nil, err
 	}
 	versions, ok := idx.Entries[chartName]
 	if !ok {
@@ -201,9 +250,120 @@ func (m *HelmRepoManager) GetVersions(repoName, chartName string) ([]ChartEntry,
 			Description: v.Description,
 			Version:     v.Version,
 			AppVersion:  v.AppVersion,
+			Home:        v.Home,
+			Sources:     v.Sources,
+			Keywords:    v.Keywords,
 		})
 	}
+	
+	// Sort versions descending
+	sort.Slice(result, func(i, j int) bool {
+		return compareVersions(result[i].Version, result[j].Version) > 0
+	})
+	
 	return result, nil
+}
+
+func compareVersions(v1, v2 string) int {
+	sv1, err1 := semver.NewVersion(v1)
+	sv2, err2 := semver.NewVersion(v2)
+	if err1 != nil || err2 != nil {
+		return strings.Compare(v1, v2)
+	}
+	return sv1.Compare(sv2)
+}
+
+// LatestVersion returns the globally highest semver version of a chart across
+// all loaded repo indices. chartName is the bare chart name without repo prefix
+// (e.g. "nginx", not "bitnami/nginx").
+//
+// If multiple repos carry the chart, the one with the highest semver wins.
+// If a version string cannot be parsed as semver, it is skipped for comparison
+// purposes; if ALL candidates fail to parse, the raw version string from the
+// first matched entry is returned as a fallback.
+//
+// Returns found=false when no repo contains a chart with that name.
+func (m *HelmRepoManager) LatestVersion(chartName string) (version, fullName string, found bool) {
+	var repos []string
+	if m.settings != nil {
+		repoFile, err := repo.LoadFile(m.settings.RepositoryConfig)
+		if err == nil {
+			for _, r := range repoFile.Repositories {
+				repos = append(repos, r.Name)
+			}
+		}
+	}
+
+	// Fallback for tests
+	if len(repos) == 0 {
+		m.mu.RLock()
+		for name := range m.indices {
+			repos = append(repos, name)
+		}
+		m.mu.RUnlock()
+	}
+
+	var bestVer *semver.Version
+	var bestRaw, bestFull string
+	var fallbackRaw, fallbackFull string
+	hasFallback := false
+
+	for _, repoName := range repos {
+		idx, err := m.getIndex(repoName)
+		if err != nil {
+			continue
+		}
+		for entryName, versionList := range idx.Entries {
+			if len(versionList) == 0 {
+				continue
+			}
+			if entryName != chartName {
+				continue
+			}
+			full := repoName + "/" + entryName
+			
+			// Strictly identify the latest CHART version in this repo using semver.
+			var repoBestVer *semver.Version
+			var repoBestRaw string
+			
+			for _, ver := range versionList {
+				raw := ver.Metadata.Version
+				v, err := semver.NewVersion(raw)
+				if err != nil {
+					continue
+				}
+				if repoBestVer == nil || v.GreaterThan(repoBestVer) {
+					repoBestVer = v
+					repoBestRaw = raw
+				}
+			}
+
+			// If no semver versions found, fall back to the first entry's version.
+			if repoBestVer == nil && !hasFallback {
+				fallbackRaw = versionList[0].Metadata.Version
+				fallbackFull = full
+				hasFallback = true
+				continue
+			}
+
+			if repoBestVer != nil {
+				if bestVer == nil || repoBestVer.GreaterThan(bestVer) {
+					bestVer = repoBestVer
+					bestRaw = repoBestRaw
+					bestFull = full
+				}
+			}
+		}
+	}
+
+	if bestVer != nil {
+		return bestRaw, bestFull, true
+	}
+	if hasFallback {
+		// All versions were unparseable — return raw string from first match
+		return fallbackRaw, fallbackFull, true
+	}
+	return "", "", false
 }
 
 // GetValues fetches the default values.yaml for a specific chart version.

@@ -8,6 +8,8 @@ interface Props {
   readOnly?: boolean
   language?: string
   height?: string
+  wordWrap?: 'on' | 'off'
+  onMount?: (editor: any) => void
 }
 
 /**
@@ -20,6 +22,8 @@ export default function YAMLEditor({
   readOnly = false,
   language = 'yaml',
   height = '100%',
+  wordWrap = 'on',
+  onMount,
 }: Props): JSX.Element {
   const { theme } = useAppStore()
 
@@ -34,6 +38,7 @@ export default function YAMLEditor({
         </div>
       }
       onChange={v => !readOnly && onChange && onChange(v ?? '')}
+      onMount={(editor) => onMount && onMount(editor)}
       theme={theme === 'dark' ? 'vs-dark' : 'light'}
       options={{
         readOnly,
@@ -42,7 +47,7 @@ export default function YAMLEditor({
         fontSize: 12,
         lineNumbers: 'on',
         renderWhitespace: 'none',
-        wordWrap: 'on',
+        wordWrap,
         padding: { top: 12, bottom: 12 },
         overviewRulerLanes: 0,
         hideCursorInOverviewRuler: true,

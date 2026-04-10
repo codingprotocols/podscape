@@ -10,10 +10,11 @@ interface Props {
   release: HelmRelease
   context: string
   onUninstall: (r: HelmRelease) => void
-  onUpgraded: () => void
+  onRefresh: () => Promise<void>
+  onClose?: () => void
 }
 
-export default function HelmReleaseDetail({ release, context, onUninstall, onUpgraded }: Props): JSX.Element {
+export default function HelmReleaseDetail({ release, context, onUninstall, onRefresh, onClose }: Props): JSX.Element {
   const [activeTab, setActiveTab] = useState<'overview' | 'history'>('overview')
   const [values, setValues] = useState<string | null>(null)
   const [loadingValues, setLoadingValues] = useState(false)
@@ -23,12 +24,19 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null)
   const [rollingBack, setRollingBack] = useState(false)
   const [rbError, setRbError] = useState<string | null>(null)
-  const [upgradeError, setUpgradeError] = useState<string | null>(null)
   const [latestVersion, setLatestVersion] = useState<string | null>(null)
   const [latestChartName, setLatestChartName] = useState<string | null>(null)
-  const [upgradeVersion, setUpgradeVersion] = useState<string | null>(null)
+  const [chartDetails, setChartDetails] = useState<{
+    description?: string,
+    home?: string,
+    sources?: string[],
+    keywords?: string[]
+  } | null>(null)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [isCustomChart, setIsCustomChart] = useState(false)
+  const [refreshingRepos, setRefreshingRepos] = useState(false)
+  const [onlineVersion, setOnlineVersion] = useState<string | null>(null)
+  const [onlineRepo, setOnlineRepo] = useState<string | null>(null)
 
   useEffect(() => {
     if (activeTab === 'history' && history.length === 0) {
@@ -41,32 +49,87 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
   }, [release.chart])
 
   const checkForUpdates = async () => {
-    if (!window.helm.repoSearch) return
+    if (!window.helm.repoLatest) return
+    const currentVersion = release.chart_version || release.chart.split('-').pop() || ''
     setCheckingUpdate(true)
     setIsCustomChart(false)
     try {
-      // 1. Get base chart name from release.chart (name-version)
-      const chartStr = release.chart || ''
-      const lastHyphen = chartStr.lastIndexOf('-')
-      if (lastHyphen === -1) {
+      const chartName = release.chart_name || (() => {
+        const s = release.chart || ''
+        const i = s.lastIndexOf('-')
+        return i === -1 ? '' : s.substring(0, i)
+      })()
+      if (!chartName) {
         setIsCustomChart(true)
         return
       }
-      const chartName = chartStr.substring(0, lastHyphen)
-      
       // 2. Search for the chart in repos
-      const res = await window.helm.repoSearch(chartName, 10, 0) as { charts: Array<{ name: string; version: string }> }
+      const res = await window.helm.repoSearch(chartName, 10, 0) as { 
+        charts: Array<{ 
+          name: string; 
+          version: string;
+          description?: string;
+          home?: string;
+          sources?: string[];
+          keywords?: string[];
+        }> 
+      }
       if (res && res.charts && res.charts.length > 0) {
         // Look for exact match (e.g. searching "nginx" might return "bitnami/nginx")
-        const match = res.charts.find(c => c.name.endsWith('/' + chartName) || c.name === chartName)
+        
+        // Prioritize a chart that matches our current version (likely the repo we used)
+        let match = res.charts.find(c => (c.name.endsWith('/' + chartName) || c.name === chartName) && c.version === currentVersion)
+        
+        // Fallback to first name match if no version match found
+        if (!match) {
+          match = res.charts.find(c => c.name.endsWith('/' + chartName) || c.name === chartName)
+        }
+
         if (match) {
           setLatestVersion(match.version)
           setLatestChartName(match.name)
+          setChartDetails({
+            description: match.description,
+            home: match.home,
+            sources: match.sources,
+            keywords: match.keywords
+          })
         } else {
           setIsCustomChart(true)
         }
       } else {
         setIsCustomChart(true)
+      }
+
+      // 3. Artifact Hub Background Check
+      try {
+        const url = `https://artifacthub.io/api/v1/packages/search?ts_query_web=${chartName}&kind=0&limit=5`
+        const ahRes = await fetch(url)
+        if (ahRes.ok) {
+          const data = await ahRes.json()
+          const ahMatch = data.packages?.find((p: any) => p.name === chartName || p.normalized_name === chartName)
+          if (ahMatch) {
+            const currentMajor = currentVersion.split('.')[0]
+            const ahMajor = ahMatch.version.split('.')[0]
+            
+            // If AH version matches our major version scheme but local repo doesn't,
+            // or if AH version is a more plausible next step, prioritize it.
+            if (ahMatch.version !== latestVersion) {
+              setOnlineVersion(ahMatch.version)
+              setOnlineRepo(ahMatch.repository.name)
+              
+              const localMajor = latestVersion?.split('.')[0]
+              if (ahMajor === currentMajor && localMajor !== currentMajor) {
+                // Local repo (e.g. Bitnami) is using a different versioning scheme.
+                // Reset local latestVersion to avoid showing confusing update
+                setLatestVersion(null)
+                setLatestChartName(null)
+              }
+            }
+          }
+        }
+      } catch (ahErr) {
+        console.warn('Artifact Hub check failed', ahErr)
       }
     } catch (err) {
       console.warn('Failed to check for chart updates', err)
@@ -76,10 +139,21 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
     }
   }
 
-  const currentChartVersion = release.chart.split('-').pop() ?? ''
-  const isUpdateAvailable = latestVersion && latestVersion !== currentChartVersion 
-    // Basic semver check logic (can be improved with a lib)
-    && latestVersion > currentChartVersion 
+  const handleRefreshRepos = async () => {
+    if (!window.helm.repoRefresh) return
+    setRefreshingRepos(true)
+    try {
+      await window.helm.repoRefresh()
+      await checkForUpdates()
+    } catch (err) {
+      console.warn('Failed to refresh repos', err)
+    } finally {
+      setRefreshingRepos(false)
+    }
+  }
+
+  const currentChartVersion = release.chart_version || release.chart.split('-').pop() || ''
+  const isUpdateAvailable = latestVersion && latestVersion !== currentChartVersion
 
   const loadHistory = async () => {
     setLoadingHistory(true)
@@ -107,24 +181,6 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
     }
   }
 
-  const handleInitiateUpgrade = async () => {
-    setUpgradeVersion(latestVersion)
-    await handleViewValues()
-  }
-
-  const handleUpgrade = async (newValues: string) => {
-    setUpgradeError(null)
-    try {
-      await window.helm.upgrade(context, release.namespace, release.name, newValues, latestChartName ?? undefined, upgradeVersion ?? undefined)
-      setValues(null)
-      setUpgradeVersion(null)
-      onUpgraded()
-    } catch (err) {
-      setUpgradeError((err as Error).message ?? 'Upgrade failed')
-    } finally {
-      // Done
-    }
-  }
 
   const handleRollback = async () => {
     if (rollbackTarget === null) return
@@ -159,7 +215,23 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
               <FileCode size={14} className="group-hover:text-blue-400 transition-colors" />
               {loadingValues ? 'Loading...' : 'Values YAML'}
             </button>
+            <button
+               onClick={() => onRefresh()}
+               className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 text-slate-400 hover:text-blue-500 border border-white/5 hover:border-blue-500/20 transition-all group"
+               title="Refresh Release Info"
+            >
+               <RefreshCw size={14} className="group-active:animate-spin" />
+            </button>
             <StatusBadge status={release.status} />
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all group"
+                title="Close (Esc)"
+              >
+                <X size={16} className="group-hover:rotate-90 transition-transform duration-300" />
+              </button>
+            )}
           </div>
         </div>
         <div className="flex gap-2 mt-4">
@@ -199,50 +271,115 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
                         <RefreshCw size={10} className="animate-spin" /> Checking for updates...
                       </div>
                     ) : isUpdateAvailable ? (
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-500/10 text-blue-400 rounded-lg border border-blue-500/20 w-fit shadow-[0_0_12px_-2px_rgba(59,130,246,0.2)]">
-                          <Activity size={11} className="shrink-0" />
-                          <span className="text-[9px] font-black uppercase tracking-wider">Update available: {latestVersion}</span>
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-500/10 text-blue-400 rounded-lg border border-blue-500/20 w-fit shadow-[0_0_12px_-2px_rgba(59,130,246,0.2)]">
+                              <Activity size={11} className="shrink-0" />
+                              <span className="text-[9px] font-black uppercase tracking-wider">Update available: {latestVersion}</span>
+                            </div>
+                            <span className="text-[8px] font-bold text-slate-500 uppercase tracking-tighter px-1">Source: {latestChartName}</span>
+                          </div>
                         </div>
-                        <button 
-                          onClick={handleInitiateUpgrade}
-                          className="text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-600/20 transition-all active:scale-95 flex items-center gap-1.5"
-                        >
-                          <RefreshCw size={10} /> Upgrade
-                        </button>
-                      </div>
-                    ) : latestVersion ? (
-                      <span className="text-[9px] font-black text-emerald-500/60 uppercase tracking-widest flex items-center gap-1.5 px-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/40" /> Latest version
-                      </span>
-                    ) : isCustomChart ? (
-                      <span className="text-[9px] font-black text-slate-500/60 uppercase tracking-widest flex items-center gap-1.5 px-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-slate-500/30" /> Local / Custom Chart
-                      </span>
+                      ) : latestVersion ? (
+                        <div className="flex items-center gap-3">
+                          <span className="text-[9px] font-black text-emerald-500/60 uppercase tracking-widest flex items-center gap-1.5 px-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/40" /> Latest version
+                          </span>
+                          <button 
+                            onClick={handleRefreshRepos}
+                            disabled={refreshingRepos}
+                            className="text-slate-500 hover:text-blue-500 transition-colors p-1"
+                            title="Refresh Helm Repositories"
+                          >
+                            <RefreshCw size={10} className={refreshingRepos ? 'animate-spin' : ''} />
+                          </button>
+                        </div>
                     ) : null}
+                    {onlineVersion && onlineVersion !== currentChartVersion && (
+                      <div className="flex items-center gap-3 mt-1">
+                        <div className="flex flex-col gap-1.5">
+                          <div className={`flex items-center gap-2 px-2.5 py-1 rounded-lg border w-fit shadow-sm transition-all duration-300 ${
+                            !latestVersion ? 'bg-blue-600 text-white border-blue-500 shadow-blue-500/20 pulse-subtle' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'
+                          }`}>
+                            <Activity size={12} className={!latestVersion ? 'animate-pulse' : ''} />
+                            <div className="flex flex-col">
+                              <span className="text-[9px] font-black uppercase tracking-widest">
+                                {latestVersion ? 'Also Available Online' : 'Update Available Online'}
+                              </span>
+                              <span className="text-[11px] font-bold leading-none">{onlineVersion}</span>
+                            </div>
+                          </div>
+                          <span className="text-[8px] font-black text-slate-500 uppercase tracking-tighter px-1 flex items-center gap-1.5">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 2L2 7l10 5 10-5-10-5M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                            Artifact Hub · {onlineRepo}
+                          </span>
+                        </div>
+                        {!latestVersion && refreshingRepos && (
+                           <div className="text-[9px] font-black text-blue-500 uppercase tracking-widest animate-pulse">Syncing...</div>
+                        )}
+                      </div>
+                    )}
                   </dd>
                 </div>
-                <MetaRow label="App Version" value={release.app_version || '—'} mono />
+                <MetaRow label="Version" value={release.chart_version || '—'} mono />
                 <MetaRow label="Revision" value={String(release.revision)} mono />
                 <MetaRow label="Updated" value={release.updated ? formatAge(release.updated) + ' ago' : '—'} />
-                <MetaRow label="Status" value={release.status} />
                 <MetaRow label="Namespace" value={release.namespace} mono />
               </dl>
             </div>
             
             <div className="p-6">
-              <div className="p-4 rounded-2xl bg-blue-500/5 border border-blue-500/10">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500">
-                    <Activity size={14} />
+              {chartDetails && (
+                <div className="mt-8 space-y-6">
+                  {chartDetails.description && (
+                    <div>
+                      <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                        <Activity size={12} /> Description
+                      </h4>
+                      <p className="text-xs text-slate-400 leading-relaxed font-medium">
+                        {chartDetails.description}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 gap-6">
+                    {chartDetails.home && (
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Homepage</h4>
+                        <a href={chartDetails.home} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:text-blue-300 font-bold truncate block transition-colors">
+                          {chartDetails.home}
+                        </a>
+                      </div>
+                    )}
+
+                    {chartDetails.sources && chartDetails.sources.length > 0 && (
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Sources</h4>
+                        <div className="flex flex-col gap-1.5">
+                          {chartDetails.sources.map((src, i) => (
+                            <a key={i} href={src} target="_blank" rel="noopener noreferrer" className="text-[11px] text-slate-400 hover:text-slate-200 truncate transition-colors font-mono">
+                              {src}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {chartDetails.keywords && chartDetails.keywords.length > 0 && (
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Keywords</h4>
+                        <div className="flex flex-wrap gap-1.5">
+                          {chartDetails.keywords.map((kw, i) => (
+                            <span key={i} className="px-2 py-0.5 rounded bg-white/5 text-[9px] font-bold text-slate-500 uppercase border border-white/5">
+                              {kw}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Active Status</h4>
                 </div>
-                <p className="text-xs text-slate-400 font-medium leading-relaxed">
-                  This release is currently <span className="text-emerald-400 font-bold uppercase">{release.status}</span>. 
-                  View revision history to see previous versions or perform a rollback.
-                </p>
-              </div>
+              )}
             </div>
           </>
         )}
@@ -285,7 +422,7 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 dark:divide-white/[0.04]">
-                    {[...history].reverse().map(entry => (
+                    {[...history].sort((a, b) => b.revision - a.revision).map(entry => (
                       <tr key={entry.revision} className="hover:bg-white/[0.02] transition-colors relative group">
                         <td className="px-4 py-4 font-mono font-bold text-slate-200">#{entry.revision}</td>
                         <td className="px-4 py-4"><StatusBadge status={entry.status} /></td>
@@ -365,13 +502,15 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
                     : <FileCode size={18} className="text-blue-500" />
                   }
                 </div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest">
-                  {loadingValues ? 'Loading Values…' : upgradeVersion ? `Upgrade to ${upgradeVersion}` : `Edit — ${release.name}`}
-                </h3>
+                <div className="flex flex-col">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-widest">
+                    {loadingValues ? 'Loading Values…' : `Edit — ${release.name}`}
+                  </h3>
+                </div>
               </div>
               <button
                 type="button"
-                onClick={() => { setValues(null); setValuesError(null); setLoadingValues(false); setUpgradeVersion(null) }}
+                onClick={() => { setValues(null); setValuesError(null); setLoadingValues(false); }}
                 className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors focus:outline-none"
               >
                 <X size={20} strokeWidth={2.5} />
@@ -391,17 +530,11 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onUpg
                   <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
                 </div>
               ) : values !== null ? (
-                <>
-                  <YAMLViewer editable
-                    content={values}
-                    onSave={handleUpgrade}
-                  />
-                   {upgradeError && (
-                    <div className="px-6 py-3 bg-red-500/10 border-t border-red-500/20 text-red-400 text-[10px] font-black uppercase tracking-widest shrink-0">
-                      {upgradeError}
-                    </div>
-                  )}
-                </>
+                <div className="flex flex-col h-full bg-slate-950">
+                  <div className="flex-1 min-h-0 relative">
+                    <YAMLViewer content={values} />
+                  </div>
+                </div>
               ) : null}
             </div>
           </div>

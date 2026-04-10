@@ -1,6 +1,6 @@
 import http from 'http'
 import { ipcMain } from 'electron'
-import { checkedSidecarFetch } from '../sidecar/api'
+import { checkedSidecarFetch, sidecarFetch } from '../sidecar/api'
 import { activeSidecarPort } from '../sidecar/runtime'
 import { sidecarToken } from '../sidecar/auth'
 import { SIDECAR_HOST } from '../../common/constants'
@@ -17,6 +17,8 @@ export function transformRelease(r: any) {
     updated: info.last_deployed || info.LastDeployed || '',
     status: String(info.status || info.Status || 'unknown'),
     chart: metadata.name ? `${metadata.name}-${metadata.version || ''}` : 'unknown',
+    chart_name: metadata.name || '',
+    chart_version: metadata.version || '',
     app_version: metadata.appVersion || metadata.AppVersion || '',
     description: info.description || info.Description || '',
   }
@@ -56,21 +58,6 @@ export function registerHelmHandlers(): void {
     return 'Rollback successful'
   })
 
-  // Upgrade release with new values (supports version upgrades if chart/version are provided)
-  ipcMain.handle('helm:upgrade', async (_event, _context: string, namespace: string, release: string, values: string, chart?: string, version?: string) => {
-    const params = new URLSearchParams({
-      namespace,
-      release,
-    })
-    if (chart) params.append('chart', chart)
-    if (version) params.append('version', version)
-
-    await checkedSidecarFetch(
-      `/helm/upgrade?${params.toString()}`,
-      { method: 'POST', headers: { 'Content-Type': 'text/yaml' }, body: values }
-    )
-    return 'Upgrade successful'
-  })
 
   // Uninstall release
   ipcMain.handle('helm:uninstall', async (_event, _context: string, namespace: string, release: string) => {
@@ -98,6 +85,13 @@ export function registerHelmHandlers(): void {
       offset: String(offset),
     })
     const res = await checkedSidecarFetch(`/helm/repos/search?${params}`)
+    return res.json()
+  })
+
+  ipcMain.handle('helm:repoLatest', async (_e, chartName: string) => {
+    const res = await sidecarFetch(`/helm/repos/latest?chart=${encodeURIComponent(chartName)}`)
+    if (res.status === 404) return null
+    if (!res.ok) throw new Error(`Go sidecar returned ${res.status} for /helm/repos/latest`)
     return res.json()
   })
 
