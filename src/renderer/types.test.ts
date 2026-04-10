@@ -15,10 +15,10 @@ describe('formatAge', () => {
 
 describe('podPhaseBg', () => {
   it('returns tailwind class for Running', () => {
-    expect(podPhaseBg('Running')).toContain('green')
+    expect(podPhaseBg('Running')).toContain('emerald')
   })
   it('returns tailwind class for Pending', () => {
-    expect(podPhaseBg('Pending')).toContain('yellow')
+    expect(podPhaseBg('Pending')).toContain('amber')
   })
   it('returns tailwind class for Failed', () => {
     expect(podPhaseBg('Failed')).toContain('red')
