@@ -5,7 +5,6 @@ import PageHeader from '../core/PageHeader'
 import type { ResourceKind } from '../../types'
 import {
   type NodeKind, type EdgeKind, type GraphNode, type GraphEdge, type Graph,
-  type EdgeStyleResult, type PolicyHull, type EdgeClass,
   edgeStyle,
 } from './NetworkPanel.utils'
 
