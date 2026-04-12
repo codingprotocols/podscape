@@ -14,6 +14,18 @@ interface SettingsForm {
   tourCompleted: boolean
 }
 
+interface CloudClusterGuideBoxProps {
+  title: string
+  description: React.ReactNode
+}
+
+const CloudClusterGuideBox = ({ title, description }: CloudClusterGuideBoxProps) => (
+  <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-6 space-y-3">
+    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{title}</p>
+    <p className="text-[11px] text-slate-500 leading-relaxed font-medium">{description}</p>
+  </div>
+)
+
 export default function SettingsPanel(): JSX.Element {
   const { theme, setTheme, init, prodContexts, probePrometheus, prometheusAvailable, probeCost, costAvailable, selectedContext } = useAppStore()
   const [form, setForm] = useState<SettingsForm>({ shellPath: '', theme, kubeconfigPath: '', prodContexts: [], prometheusUrls: {}, costUrls: {}, tourCompleted: false })
@@ -443,10 +455,14 @@ export default function SettingsPanel(): JSX.Element {
               </div>
 
               <div className="p-8 space-y-6">
-                <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-6 space-y-3">
-                  <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Cloud Cluster Guide (EKS/GKE/AKS)</p>
-                  <p className="text-[11px] text-slate-500 leading-relaxed font-medium">Use Built-in Port Forwards for easy access. Map Kubecost to local port <code className="bg-blue-500/20 px-1 rounded text-blue-300">9090</code> or OpenCost to <code className="bg-blue-500/20 px-1 rounded text-blue-300">9003</code> for auto-detection.</p>
-                </div>
+                <CloudClusterGuideBox
+                  title="Cloud Cluster Guide (EKS/GKE/AKS)"
+                  description={
+                    <>
+                      Use Built-in Port Forwards for easy access. Map Kubecost to local port <code className="bg-blue-500/20 px-1 rounded text-blue-300">9090</code> or OpenCost to <code className="bg-blue-500/20 px-1 rounded text-blue-300">9003</code> for auto-detection.
+                    </>
+                  }
+                />
 
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
