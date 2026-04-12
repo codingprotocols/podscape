@@ -85,3 +85,67 @@ export function workloadBadgeLabel(workloadKind: string | undefined): string {
 export function workloadIcon(workloadKind: string | undefined): string {
   return (workloadKind && WORKLOAD_ICON[workloadKind]) ?? '●'
 }
+
+// ─── Pod replica collapse ─────────────────────────────────────────────────────
+
+export function collapsePodReplicas(graph: Graph, expandedWorkloads: Set<string>): Graph {
+  // Build workload → owned pod IDs map from controller-pod edges
+  const workloadPods = new Map<string, string[]>()
+  for (const edge of graph.edges) {
+    if (edge.kind !== 'controller-pod') continue
+    if (!workloadPods.has(edge.source)) workloadPods.set(edge.source, [])
+    workloadPods.get(edge.source)!.push(edge.target)
+  }
+
+  // Determine which pods collapse and what their group node ID is
+  const collapsedPodIds = new Set<string>()
+  const podGroupNodes: GraphNode[] = []
+  const podToGroup = new Map<string, string>()  // old podId → groupNodeId
+
+  for (const [workloadId, podIds] of workloadPods) {
+    if (expandedWorkloads.has(workloadId) || podIds.length === 0) continue
+    const workloadNode = graph.nodes.find(n => n.id === workloadId)
+    if (!workloadNode) continue
+
+    const groupId = `podgroup:${workloadId}`
+    podGroupNodes.push({
+      id: groupId,
+      kind: 'pod',
+      name: `${workloadNode.name}-*`,
+      namespace: workloadNode.namespace,
+      replicaCount: podIds.length,
+    })
+    for (const podId of podIds) {
+      collapsedPodIds.add(podId)
+      podToGroup.set(podId, groupId)
+    }
+  }
+
+  // Filter nodes: remove collapsed pods, add group nodes
+  const nodes: GraphNode[] = [
+    ...graph.nodes.filter(n => !collapsedPodIds.has(n.id)),
+    ...podGroupNodes,
+  ]
+
+  // Redirect and deduplicate edges
+  const edgeMap = new Map<string, GraphEdge>()
+  for (const edge of graph.edges) {
+    // Drop controller-pod edges to collapsed pods
+    if (edge.kind === 'controller-pod' && collapsedPodIds.has(edge.target)) continue
+
+    const newSource = podToGroup.get(edge.source) ?? edge.source
+    const newTarget = podToGroup.get(edge.target) ?? edge.target
+    const dedupeKey = `${edge.kind}--${newSource}--${newTarget}`
+
+    if (!edgeMap.has(dedupeKey)) {
+      edgeMap.set(dedupeKey, {
+        ...edge,
+        id: `${edge.id}--r`,
+        source: newSource,
+        target: newTarget,
+      })
+    }
+  }
+
+  return { nodes, edges: Array.from(edgeMap.values()), namespaces: graph.namespaces }
+}
