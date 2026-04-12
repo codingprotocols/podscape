@@ -47,7 +47,7 @@ export default function SettingsPanel(): JSX.Element {
     }).catch(err => {
       console.error('[SettingsPanel] Failed to load kubeconfig:', err)
     })
-  }, [])
+  }, [prodContexts])
 
   // Keep form.theme in sync with store theme
   useEffect(() => {
