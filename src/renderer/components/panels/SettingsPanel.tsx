@@ -505,7 +505,7 @@ export default function SettingsPanel(): JSX.Element {
                       <Shield className="w-5 h-5 text-blue-500" />
                     </div>
                     <div>
-                      <h4 className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Version v2.8.0</h4>
+                      <h4 className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Version v{appVersion}</h4>
                       <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-tighter">Stay secure with the latest patches</p>
                     </div>
                   </div>
