@@ -57,3 +57,31 @@ export function edgeStyle(kind: EdgeKind): EdgeStyleResult {
     case 'controller-workload': return { color: '#fbbf24', dur: '2.0s', class: 'infra' }
   }
 }
+
+// ─── Workload display helpers ─────────────────────────────────────────────────
+
+const WORKLOAD_BADGE: Record<string, string> = {
+  Deployment: 'Deploy',
+  ReplicaSet: 'RS',
+  DaemonSet: 'DS',
+  StatefulSet: 'STS',
+  Job: 'Job',
+  CronJob: 'Cron',
+}
+
+const WORKLOAD_ICON: Record<string, string> = {
+  Deployment: '▣',
+  ReplicaSet: '◫',
+  DaemonSet: '◉',
+  StatefulSet: '⬡',
+  Job: '▷',
+  CronJob: '⏱',
+}
+
+export function workloadBadgeLabel(workloadKind: string | undefined): string {
+  return (workloadKind && WORKLOAD_BADGE[workloadKind]) ?? 'workload'
+}
+
+export function workloadIcon(workloadKind: string | undefined): string {
+  return (workloadKind && WORKLOAD_ICON[workloadKind]) ?? '●'
+}

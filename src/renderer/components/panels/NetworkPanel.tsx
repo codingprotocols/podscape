@@ -5,7 +5,7 @@ import PageHeader from '../core/PageHeader'
 import type { ResourceKind } from '../../types'
 import {
   type NodeKind, type EdgeKind, type GraphNode, type GraphEdge, type Graph,
-  edgeStyle,
+  edgeStyle, workloadBadgeLabel, workloadIcon,
 } from './NetworkPanel.utils'
 
 interface NodePos { x: number; y: number; vx: number; vy: number }
@@ -62,7 +62,7 @@ const ALL_EDGE_COLORS = ['#8b5cf6', '#f472b6', '#a78bfa', '#60a5fa', '#3b82f6', 
 
 const KIND_DEFS: { kind: NodeKind; label: string; color: string }[] = [
   { kind: 'ingress', label: 'Ingress', color: '#a78bfa' },
-  { kind: 'workload', label: 'Workload', color: '#fbbf24' },
+  { kind: 'workload', label: 'Workload (Deploy/DS/STS/Job…)', color: '#fbbf24' },
   { kind: 'service', label: 'Service', color: '#60a5fa' },
   { kind: 'pod', label: 'Pod', color: '#34d399' },
   { kind: 'pvc', label: 'PVC', color: '#f87171' },
@@ -440,7 +440,7 @@ function NodeTooltip({ node, x, y, dark }: { node: GraphNode; x: number; y: numb
         <span className="font-bold text-slate-900 dark:text-white truncate max-w-[150px]" title={node.name}>{node.name}</span>
       </div>
       <div className="space-y-1 text-slate-500 dark:text-slate-400">
-        <div><span className="text-slate-400 dark:text-slate-500">Kind</span> · <span className="text-slate-600 dark:text-slate-300 capitalize">{node.kind}</span></div>
+        <div><span className="text-slate-400 dark:text-slate-500">Kind</span> · <span className="text-slate-600 dark:text-slate-300 capitalize">{node.kind === 'workload' && node.workloadKind ? node.workloadKind : node.kind}</span></div>
         {node.namespace && <div><span className="text-slate-400 dark:text-slate-500">NS</span> · <span className="text-slate-600 dark:text-slate-300">{node.namespace}</span></div>}
         {node.phase && <div><span className="text-slate-400 dark:text-slate-500">Phase</span> · <span style={{ color }}>{node.phase}</span></div>}
         {node.serviceType && <div><span className="text-slate-400 dark:text-slate-500">Type</span> · <span className="text-slate-600 dark:text-slate-300">{node.serviceType}</span></div>}
@@ -692,7 +692,9 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
                         : <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
                       }
                       <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: color + 'bb' }}>
-                        {n.kind === 'policy' ? 'NetPol' : n.kind}
+                        {n.kind === 'policy' ? 'NetPol'
+                          : n.kind === 'workload' ? workloadBadgeLabel(n.workloadKind)
+                          : n.kind}
                       </span>
                     </div>
                     <span className="text-xs font-semibold text-slate-900 dark:text-white truncate leading-tight" title={n.name}>
@@ -988,7 +990,11 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
             const isMatch = matchedIds ? matchedIds.has(n.id) : true
             const nodeOpacity = searchActive && !isMatch ? 0.12 : 1
             const label = n.name.length > 14 ? n.name.slice(0, 12) + '..' : n.name
-            const kindIcon = n.kind === 'ingress' ? '⬡' : n.kind === 'service' ? '◈' : n.kind === 'policy' ? '🛡' : '●'
+            const kindIcon = n.kind === 'ingress' ? '⬡'
+              : n.kind === 'service' ? '◈'
+              : n.kind === 'policy' ? '🛡'
+              : n.kind === 'workload' ? workloadIcon(n.workloadKind)
+              : '●'
             const strokeW = active ? 2.5 : isMatch && searchActive ? 3 : 1.8
             return (
               <g key={n.id} data-nid={n.id} style={{ cursor: 'pointer', opacity: nodeOpacity, transition: 'opacity 0.2s' }}
@@ -1033,9 +1039,18 @@ const KIND_TO_SECTION: Record<NodeKind, ResourceKind> = {
   service: 'services',
   pod: 'pods',
   policy: 'networkpolicies',
-  workload: 'deployments',
+  workload: 'deployments',   // fallback only
   pvc: 'pvcs',
   node: 'nodes',
+}
+
+const WORKLOAD_KIND_TO_SECTION: Record<string, ResourceKind> = {
+  Deployment: 'deployments',
+  ReplicaSet: 'replicasets',
+  DaemonSet: 'daemonsets',
+  StatefulSet: 'statefulsets',
+  Job: 'jobs',
+  CronJob: 'cronjobs',
 }
 
 export default function NetworkPanel(): JSX.Element {
@@ -1100,12 +1115,11 @@ export default function NetworkPanel(): JSX.Element {
   }
 
   const handleNodeClick = useCallback((node: GraphNode) => {
-    const section = KIND_TO_SECTION[node.kind]
-    // For now, we don't have the full resource object in the topology node
-    // unless we enrich it or do another fetch.
-    // Let's at least navigate to the section.
-    setSection(section)
-    // TODO: Implement selection using name/namespace if needed
+    if (node.kind === 'workload' && node.workloadKind) {
+      setSection(WORKLOAD_KIND_TO_SECTION[node.workloadKind] ?? 'deployments')
+    } else {
+      setSection(KIND_TO_SECTION[node.kind])
+    }
   }, [setSection])
 
   return (
