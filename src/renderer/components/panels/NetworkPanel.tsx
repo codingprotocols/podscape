@@ -3,36 +3,11 @@ import { useAppStore } from '../../store'
 import { Shield } from 'lucide-react'
 import PageHeader from '../core/PageHeader'
 import type { ResourceKind } from '../../types'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type NodeKind = 'ingress' | 'service' | 'pod' | 'policy' | 'workload' | 'pvc' | 'node'
-type EdgeKind = 'ing-svc' | 'svc-pod' | 'policy-pod' | 'pol-ingress' | 'pol-egress' | 'pod-pvc' | 'pod-node' | 'controller-pod' | 'controller-workload'
-
-interface GraphNode {
-  id: string
-  kind: NodeKind
-  name: string
-  namespace: string
-  phase?: string
-  serviceType?: string
-  ports?: string[]
-  workloadKind?: string
-}
-
-interface GraphEdge {
-  id: string
-  source: string
-  target: string
-  kind: EdgeKind
-  label?: string
-}
-
-interface Graph {
-  nodes: GraphNode[]
-  edges: GraphEdge[]
-  namespaces: string[]
-}
+import {
+  type NodeKind, type EdgeKind, type GraphNode, type GraphEdge, type Graph,
+  type EdgeStyleResult, type PolicyHull, type EdgeClass,
+  edgeStyle,
+} from './NetworkPanel.utils'
 
 interface NodePos { x: number; y: number; vx: number; vy: number }
 
@@ -81,22 +56,6 @@ function nodeBg(n: GraphNode, dark: boolean): string {
 function nodeBorder(n: GraphNode, dark: boolean): string {
   const c = nodeColor(n)
   return dark ? `${c}35` : `${c}25`
-}
-
-// ─── Edge style helper (single source of truth) ───────────────────────────────
-
-function edgeStyle(kind: EdgeKind): { color: string; dur: string } {
-  switch (kind) {
-    case 'ing-svc':             return { color: '#8b5cf6', dur: '1.5s' }
-    case 'policy-pod':          return { color: '#f472b6', dur: '2.5s' }
-    case 'pol-ingress':         return { color: '#a78bfa', dur: '1.8s' }
-    case 'pol-egress':          return { color: '#60a5fa', dur: '1.8s' }
-    case 'pod-pvc':             return { color: '#f87171', dur: '3.0s' }
-    case 'pod-node':            return { color: '#06b6d4', dur: '3.0s' }
-    case 'controller-pod':      return { color: '#fbbf24', dur: '2.0s' }
-    case 'controller-workload': return { color: '#fbbf24', dur: '2.0s' }
-    default:                    return { color: '#3b82f6', dur: '2.5s' } // svc-pod
-  }
 }
 
 // All unique edge colors (for predefining arrow markers)
