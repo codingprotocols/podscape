@@ -103,7 +103,7 @@ export function collapsePodReplicas(graph: Graph, expandedWorkloads: Set<string>
   const podToGroup = new Map<string, string>()  // old podId → groupNodeId
 
   for (const [workloadId, podIds] of workloadPods) {
-    if (expandedWorkloads.has(workloadId) || podIds.length === 0) continue
+    if (expandedWorkloads.has(workloadId)) continue
     const workloadNode = graph.nodes.find(n => n.id === workloadId)
     if (!workloadNode) continue
 
@@ -140,7 +140,7 @@ export function collapsePodReplicas(graph: Graph, expandedWorkloads: Set<string>
     if (!edgeMap.has(dedupeKey)) {
       edgeMap.set(dedupeKey, {
         ...edge,
-        id: `${edge.id}--r`,
+        id: `${edge.kind}::${newSource}::${newTarget}`,
         source: newSource,
         target: newTarget,
       })

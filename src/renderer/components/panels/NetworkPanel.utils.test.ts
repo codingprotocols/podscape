@@ -178,6 +178,36 @@ describe('collapsePodReplicas', () => {
     expect(result.nodes.filter(n => n.kind === 'pod')).toHaveLength(2)
   })
 
+  it('ignores controller-pod edges whose workload node is absent from the graph', () => {
+    const g = makeGraph({
+      nodes: [{ id: 'pod:uid1', kind: 'pod', name: 'orphan', namespace: 'ns' }],
+      edges: [{ id: 'e1', source: 'workload:ns:Deployment:ghost', target: 'pod:uid1', kind: 'controller-pod' }],
+    })
+    const result = collapsePodReplicas(g, new Set())
+    // pod should remain uncollapsed because the workload node is missing
+    expect(result.nodes).toHaveLength(1)
+    expect(result.nodes[0].id).toBe('pod:uid1')
+  })
+
+  it('redirects pod-pvc edges where the collapsed pod is the source', () => {
+    const g = makeGraph({
+      nodes: [
+        { id: 'workload:ns:Deployment:myapp', kind: 'workload', name: 'myapp', namespace: 'ns', workloadKind: 'Deployment' },
+        { id: 'pod:uid1', kind: 'pod', name: 'myapp-abc', namespace: 'ns' },
+        { id: 'pvc:ns:data', kind: 'pvc', name: 'data', namespace: 'ns' },
+      ],
+      edges: [
+        { id: 'e1', source: 'workload:ns:Deployment:myapp', target: 'pod:uid1', kind: 'controller-pod' },
+        { id: 'e2', source: 'pod:uid1', target: 'pvc:ns:data', kind: 'pod-pvc' },
+      ],
+    })
+    const result = collapsePodReplicas(g, new Set())
+    const pvcEdge = result.edges.find(e => e.kind === 'pod-pvc')
+    expect(pvcEdge).toBeDefined()
+    expect(pvcEdge!.source).toBe('podgroup:workload:ns:Deployment:myapp')
+    expect(pvcEdge!.target).toBe('pvc:ns:data')
+  })
+
   it('deduplicates redirected edges', () => {
     const g = makeGraph({
       nodes: [
