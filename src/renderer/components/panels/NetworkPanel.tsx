@@ -5,7 +5,7 @@ import PageHeader from '../core/PageHeader'
 import type { ResourceKind } from '../../types'
 import {
   type NodeKind, type EdgeKind, type GraphNode, type GraphEdge, type Graph,
-  edgeStyle, workloadBadgeLabel, workloadIcon, collapsePodReplicas,
+  edgeStyle, workloadBadgeLabel, workloadIcon, collapsePodReplicas, computePolicyHulls,
 } from './NetworkPanel.utils'
 
 interface NodePos { x: number; y: number; vx: number; vy: number }
@@ -400,13 +400,12 @@ function Legend({ dark }: { dark: boolean }) {
       <div className="border-t border-slate-200 dark:border-slate-700 pt-2.5 space-y-1.5">
         <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Edges</p>
         {([
-          ['#8b5cf6', 'Ingress → Service'],
-          ['#fbbf24', 'Controller relationship'],
-          ['#3b82f6', 'Service → Pod'],
-          ['#f472b6', 'Policy governs Pod'],
-          ['#f87171', 'Pod uses PVC'],
-          ['#06b6d4', 'Pod on Node'],
-        ] as [string, string][]).map(([c, lbl]) => (
+          ['#8b5cf6', 'Ingress → Service', false],
+          ['#fbbf24', 'Controller relationship', true],
+          ['#3b82f6', 'Service → Pod', false],
+          ['#f87171', 'Pod uses PVC', true],
+          ['#06b6d4', 'Pod on Node', true],
+        ] as [string, string, boolean][]).map(([c, lbl, dashed]) => (
           <div key={lbl} className="flex items-center gap-2.5">
             <svg width="22" height="8" className="shrink-0">
               <defs>
@@ -415,11 +414,22 @@ function Legend({ dark }: { dark: boolean }) {
                 </marker>
               </defs>
               <line x1="1" y1="4" x2="16" y2="4" stroke={c} strokeWidth="2"
+                strokeDasharray={dashed ? '4 3' : undefined}
                 markerEnd={`url(#lgnd-arr-${c.slice(1)})`} />
             </svg>
             <span className="text-[11px] text-slate-600 dark:text-slate-300">{lbl}</span>
           </div>
         ))}
+      </div>
+      <div className="border-t border-slate-200 dark:border-slate-700 pt-2.5 mt-2 space-y-1.5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Zones</p>
+        <div className="flex items-center gap-2.5">
+          <svg width="22" height="14" className="shrink-0">
+            <rect x="1" y="1" width="20" height="12" fill="#f472b612"
+              stroke="#f472b6" strokeWidth="1" strokeDasharray="4 3" rx="2" />
+          </svg>
+          <span className="text-[11px] text-slate-600 dark:text-slate-300">Network Policy zone</span>
+        </div>
       </div>
     </div>
   )
@@ -520,6 +530,24 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
 
   const { positions, lanes } = useMemo(() => computeTopoPositions(graph, groupByNs), [graph, groupByNs])
 
+  const hulls = useMemo(
+    () => computePolicyHulls(graph, positions, NODE_W, NODE_H),
+    [graph, positions]
+  )
+
+  // Override policy node positions: pin to top-center of their hull
+  const finalPositions = useMemo(() => {
+    if (!hulls.length) return positions
+    const overridden = new Map(positions)
+    for (const hull of hulls) {
+      overridden.set(hull.policyNode.id, {
+        x: hull.rect.x + hull.rect.w / 2,
+        y: hull.rect.y - NODE_H / 2 - 4,
+      })
+    }
+    return overridden
+  }, [positions, hulls])
+
   // Search: matched node IDs and connected edge IDs
   const matchedIds = useMemo(() => {
     if (!searchQuery.trim()) return null
@@ -533,11 +561,11 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
   }, [hoveredNodeId, graph.edges])
 
   const fitToScreen = useCallback(() => {
-    if (!svgRef.current || !positions.size) return
+    if (!svgRef.current || !finalPositions.size) return
     const { width: svgW, height: svgH } = svgRef.current.getBoundingClientRect()
     if (svgW === 0 || svgH === 0) { requestAnimationFrame(fitToScreen); return }
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-    for (const p of positions.values()) {
+    for (const p of finalPositions.values()) {
       minX = Math.min(minX, p.x - NODE_W / 2); maxX = Math.max(maxX, p.x + NODE_W / 2)
       minY = Math.min(minY, p.y - NODE_H / 2); maxY = Math.max(maxY, p.y + NODE_H / 2)
     }
@@ -550,7 +578,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
     setPan({ x: svgW / 2 - cx * newScale, y: svgH / 2 - cy * newScale })
     setScale(newScale)
-  }, [positions, lanes])
+  }, [finalPositions, lanes])
 
   useEffect(() => { requestAnimationFrame(fitToScreen) }, [graph, groupByNs])  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (fitTrigger > 0) fitToScreen() }, [fitTrigger, fitToScreen])
@@ -560,7 +588,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
     if (!matchedIds || matchedIds.size === 0 || !svgRef.current) return
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
     for (const id of matchedIds) {
-      const p = positions.get(id)
+      const p = finalPositions.get(id)
       if (!p) continue
       minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x)
       minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y)
@@ -596,12 +624,12 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
     if (groupByNs) return {} as Record<string, number>
     const left: Record<string, number> = {}
     for (const n of graph.nodes) {
-      const p = positions.get(n.id)
+      const p = finalPositions.get(n.id)
       if (!p) continue
       if (left[n.kind] === undefined || p.x < left[n.kind]) left[n.kind] = p.x
     }
     return left
-  }, [positions, graph.nodes, groupByNs])
+  }, [finalPositions, graph.nodes, groupByNs])
 
   const searchActive = !!matchedIds
 
@@ -630,6 +658,24 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
             )
           })}
 
+          {/* Policy hull zones — rendered before edges and nodes */}
+          {hulls.map(hull => (
+            <g key={hull.policyId}>
+              <rect
+                x={hull.rect.x} y={hull.rect.y}
+                width={hull.rect.w} height={hull.rect.h}
+                fill="#f472b612" stroke="#f472b6" strokeWidth={1}
+                strokeDasharray="6 4" rx={12}
+              />
+              <text
+                x={hull.rect.x + 10} y={hull.rect.y + 16}
+                fontSize={9} fontWeight={700} fill="#f472b6" fillOpacity={0.7}
+                style={{ userSelect: 'none', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                🛡 {hull.policyNode.name}
+              </text>
+            </g>
+          ))}
+
           {/* Flat mode row labels */}
           {!groupByNs && (['ingress', 'service', 'policy', 'pod'] as NodeKind[]).map(kind => {
             const lx = rowLabelX[kind]
@@ -646,7 +692,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
 
           {/* Edges */}
           {graph.edges.map(edge => {
-            const s = positions.get(edge.source), t = positions.get(edge.target)
+            const s = finalPositions.get(edge.source), t = finalPositions.get(edge.target)
             if (!s || !t) return null
             const { color, dur, class: edgeClass } = edgeStyle(edge.kind)
             // Policy edges replaced by hull zones in topology view
@@ -678,7 +724,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
 
           {/* Nodes */}
           {graph.nodes.map(n => {
-            const p = positions.get(n.id)
+            const p = finalPositions.get(n.id)
             if (!p) return null
             const color = nodeColor(n)
             const bg = nodeBg(n, dark)
