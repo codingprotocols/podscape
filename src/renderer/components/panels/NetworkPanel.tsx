@@ -5,7 +5,7 @@ import PageHeader from '../core/PageHeader'
 import type { ResourceKind } from '../../types'
 import {
   type NodeKind, type EdgeKind, type GraphNode, type GraphEdge, type Graph,
-  edgeStyle, workloadBadgeLabel, workloadIcon, computePolicyHulls, collapseWorkloadReplicas,
+  edgeStyle, workloadBadgeLabel, workloadIcon, computePolicyHulls,
 } from './NetworkPanel.utils'
 
 interface NodePos { x: number; y: number; vx: number; vy: number }
@@ -82,15 +82,37 @@ function GraphDefs() {
   return (
     <defs>
       <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-        <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+        <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur" />
+        <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.4 0" />
         <feMerge>
-          <feMergeNode in="blur" />
+          <feMergeNode />
           <feMergeNode in="SourceGraphic" />
         </feMerge>
       </filter>
+      
+      {/* Node Gradients for 3D effect */}
+      {KIND_DEFS.map(k => (
+        <radialGradient key={k.filterKey} id={`grad-${k.filterKey}`} cx="30%" cy="30%" r="70%">
+          <stop offset="0%" stopColor="white" stopOpacity="0.4" />
+          <stop offset="100%" stopColor={k.color} stopOpacity="0.9" />
+        </radialGradient>
+      ))}
+      <radialGradient id="grad-pod-pending" cx="30%" cy="30%" r="70%">
+        <stop offset="0%" stopColor="white" stopOpacity="0.4" />
+        <stop offset="100%" stopColor="#fbbf24" stopOpacity="0.9" />
+      </radialGradient>
+      <radialGradient id="grad-pod-failed" cx="30%" cy="30%" r="70%">
+        <stop offset="0%" stopColor="white" stopOpacity="0.4" />
+        <stop offset="100%" stopColor="#f87171" stopOpacity="0.9" />
+      </radialGradient>
+      <radialGradient id="grad-pod-running" cx="30%" cy="30%" r="70%">
+        <stop offset="0%" stopColor="white" stopOpacity="0.4" />
+        <stop offset="100%" stopColor="#34d399" stopOpacity="0.9" />
+      </radialGradient>
+
       {ALL_EDGE_COLORS.map(c => (
-        <marker key={c} id={`arr-${c.slice(1)}`} markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-          <path d="M0 0L6 3L0 6z" fill={c} />
+        <marker key={c} id={`arr-${c.slice(1)}`} markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0 0L6 3L0 6z" fill={c} fillOpacity={0.6} />
         </marker>
       ))}
     </defs>
@@ -284,13 +306,17 @@ function nodeLaneRowY(n: GraphNode): number {
 }
 
 function computeTopoPositions(graph: Graph, groupByNs: boolean) {
+  const nodes = graph?.nodes || []
+  const edges = graph?.edges || []
+  const namespaces = graph?.namespaces || []
+
   const positions = new Map<string, { x: number; y: number }>()
   const lanes: LaneDef[] = []
 
   if (!groupByNs) {
     // Group nodes by their effective row y, preserving kind-within-row order
     const byRowY = new Map<number, GraphNode[]>()
-    for (const n of graph.nodes) {
+    for (const n of nodes) {
       const y = nodeRowY(n)
       if (!byRowY.has(y)) byRowY.set(y, [])
       byRowY.get(y)!.push(n)
@@ -303,10 +329,9 @@ function computeTopoPositions(graph: Graph, groupByNs: boolean) {
     return { positions, lanes }
   }
 
-  const { namespaces } = graph
 
   const laneWidths = namespaces.map(ns => {
-    const nsNodes = graph.nodes.filter(n => n.namespace === ns)
+    const nsNodes = nodes.filter(n => n.namespace === ns)
     const rowCounts = new Map<number, number>()
     for (const n of nsNodes) {
       const y = nodeLaneRowY(n)
@@ -316,13 +341,13 @@ function computeTopoPositions(graph: Graph, groupByNs: boolean) {
     return Math.max(LANE_MIN_W, mx * (NODE_W + H_GAP) - H_GAP + LANE_PAD_X * 2)
   })
 
-  const totalW = laneWidths.reduce((s, w) => s + w, 0) + (namespaces.length - 1) * LANE_GAP
+  const totalW = laneWidths.reduce((s, w) => s + w, 0) + ((namespaces?.length || 0) - 1) * LANE_GAP
   let curX = -totalW / 2
 
   namespaces.forEach((ns, nsIdx) => {
     const lw = laneWidths[nsIdx]
     const laneCenter = curX + lw / 2
-    const nsNodes = graph.nodes.filter(n => n.namespace === ns)
+    const nsNodes = nodes.filter(n => n.namespace === ns)
 
     // Group by row y, then position within each row
     const byRowY = new Map<number, GraphNode[]>()
@@ -411,12 +436,33 @@ const LEGEND_ENTRIES = [
   { icon: '🛡', color: '#f472b6', label: 'Network Policy' },
 ]
 
+function ZoomControls({ scale, setScale, onFit }: { scale: number; setScale: React.Dispatch<React.SetStateAction<number>>; onFit: () => void }) {
+  return (
+    <div className="absolute bottom-6 right-6 flex flex-col gap-2 z-10">
+      <button onClick={() => setScale(s => Math.min(s * 1.2, 5))}
+        className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 shadow-xl text-slate-600 dark:text-slate-300 hover:scale-105 active:scale-95 transition-all">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 5v14M5 12h14" /></svg>
+      </button>
+      <button onClick={() => setScale(s => Math.max(s / 1.2, 0.1))}
+        className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 shadow-xl text-slate-600 dark:text-slate-300 hover:scale-105 active:scale-95 transition-all">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M5 12h14" /></svg>
+      </button>
+      <button onClick={onFit}
+        className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 shadow-xl text-slate-600 dark:text-slate-300 hover:scale-105 active:scale-95 transition-all">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
+      </button>
+    </div>
+  )
+}
+
 function Legend({ dark }: { dark: boolean }) {
   return (
     <div className={`absolute bottom-6 left-6 z-10
                     bg-white/80 dark:bg-slate-900/80 backdrop-blur-md
                     border ${dark ? 'border-slate-800/60' : 'border-slate-200/60'}
-                    rounded-2xl shadow-2xl px-4 py-4 min-w-[210px] transition-all duration-300`}>
+                    rounded-2xl shadow-2xl px-4 py-4 min-w-[210px] 
+                    max-h-[calc(100vh-180px)] overflow-y-auto
+                    transition-all duration-300`}>
       <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-400 dark:text-slate-500 mb-3.5">Legend</p>
       <div className="space-y-1.5 mb-3">
         {LEGEND_ENTRIES.map(e => (
@@ -571,13 +617,13 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
   const matchedIds = useMemo(() => {
     if (!searchQuery.trim()) return null
     const q = searchQuery.toLowerCase()
-    return new Set(graph.nodes.filter(n => n.name.toLowerCase().includes(q)).map(n => n.id))
-  }, [searchQuery, graph.nodes])
+    return new Set((graph?.nodes || []).filter(n => n.name.toLowerCase().includes(q)).map(n => n.id))
+  }, [searchQuery, graph?.nodes])
 
   const connectedEdgeIds = useMemo(() => {
     if (!hoveredNodeId) return null
-    return new Set(graph.edges.filter(e => e.source === hoveredNodeId || e.target === hoveredNodeId).map(e => e.id))
-  }, [hoveredNodeId, graph.edges])
+    return new Set((graph?.edges || []).filter(e => e.source === hoveredNodeId || e.target === hoveredNodeId).map(e => e.id))
+  }, [hoveredNodeId, graph?.edges])
 
   const fitToScreen = useCallback(() => {
     if (!svgRef.current || !finalPositions.size) return
@@ -642,7 +688,8 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
   const rowLabelX = useMemo(() => {
     if (groupByNs) return {} as Record<string, number>
     const left: Record<string, number> = {}
-    for (const n of graph.nodes) {
+    const nodes = graph?.nodes || []
+    for (const n of nodes) {
       const p = finalPositions.get(n.id)
       if (!p) continue
       // Give RSes their own label key so they sit in the RS row, not the workload row
@@ -650,7 +697,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
       if (left[key] === undefined || p.x < left[key]) left[key] = p.x
     }
     return left
-  }, [finalPositions, graph.nodes, groupByNs])
+  }, [finalPositions, graph?.nodes, groupByNs])
 
   const searchActive = !!matchedIds
 
@@ -816,6 +863,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
         </g>
       </svg>
       {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} dark={dark} />}
+      <ZoomControls scale={scale} setScale={setScale} onFit={fitToScreen} />
     </div>
   )
 }
@@ -843,7 +891,7 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
 
   // Run simulation asynchronously with rAF — shows ring layout immediately, animates into place
   useEffect(() => {
-    if (!graph.nodes.length) { setSimPos(new Map()); return }
+    if (!graph || !graph.nodes || graph.nodes.length === 0) { setSimPos(new Map()); return }
     const { positions, step } = createSimulator(graph, groupByNs)
     setSimPos(new Map(positions))   // Show ring layout immediately
     setDragOverrides(new Map())
@@ -878,33 +926,34 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
   const matchedIds = useMemo(() => {
     if (!searchQuery.trim()) return null
     const q = searchQuery.toLowerCase()
-    return new Set(graph.nodes.filter(n => n.name.toLowerCase().includes(q)).map(n => n.id))
-  }, [searchQuery, graph.nodes])
+    return new Set((graph?.nodes || []).filter(n => n.name.toLowerCase().includes(q)).map(n => n.id))
+  }, [searchQuery, graph?.nodes])
 
   // Connected edge IDs for hover highlighting
   const connectedEdgeIds = useMemo(() => {
     if (!hoveredNodeId) return null
-    return new Set(graph.edges.filter(e => e.source === hoveredNodeId || e.target === hoveredNodeId).map(e => e.id))
-  }, [hoveredNodeId, graph.edges])
+    return new Set((graph?.edges || []).filter(e => e.source === hoveredNodeId || e.target === hoveredNodeId).map(e => e.id))
+  }, [hoveredNodeId, graph?.edges])
 
   // Pre-compute edge offsets for fan-out (parallel edges between same node pair)
   const edgeOffsets = useMemo(() => {
     const counts = new Map<string, number>()
     const indices = new Map<string, number>()
-    for (const edge of graph.edges) {
+    const edges = graph?.edges || []
+    for (const edge of edges) {
       const key = [edge.source, edge.target].sort().join('~')
       indices.set(edge.id, counts.get(key) ?? 0)
       counts.set(key, (counts.get(key) ?? 0) + 1)
     }
     const offsets = new Map<string, number>()
-    for (const edge of graph.edges) {
+    for (const edge of edges) {
       const key = [edge.source, edge.target].sort().join('~')
       const idx = indices.get(edge.id) ?? 0
       const total = counts.get(key) ?? 1
       offsets.set(edge.id, (idx - (total - 1) / 2) * 24)
     }
     return offsets
-  }, [graph.edges])
+  }, [graph?.edges])
 
   const fitToScreen = useCallback(() => {
     if (!svgRef.current || !nodePos.size) return
@@ -946,7 +995,9 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
     if (!groupByNs) return new Map<string, { x: number; y: number; w: number; h: number; nsIdx: number }>()
     const PAD = 50
     const raw = new Map<string, { minX: number; maxX: number; minY: number; maxY: number }>()
-    for (const n of graph.nodes) {
+    const nodes = graph?.nodes || []
+    const namespaces = graph?.namespaces || []
+    for (const n of nodes) {
       const p = nodePos.get(n.id)
       if (!p) continue
       const b = raw.get(n.namespace)
@@ -955,7 +1006,7 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
     }
     const result = new Map<string, { x: number; y: number; w: number; h: number; nsIdx: number }>()
     for (const [ns, b] of raw) {
-      const idx = graph.namespaces.indexOf(ns)
+      const idx = namespaces.indexOf(ns)
       result.set(ns, { 
         x: b.minX - PAD, 
         y: b.minY - PAD, 
@@ -965,7 +1016,7 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
       })
     }
     return result
-  }, [nodePos, groupByNs, graph.nodes, graph.namespaces])
+  }, [nodePos, groupByNs, graph?.nodes, graph?.namespaces])
 
   const onWheel = (e: React.WheelEvent<SVGSVGElement>) => {
     e.preventDefault()
@@ -1007,7 +1058,7 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
       if (movedX < 4 && movedY < 4) {
         // treat as click: find node and navigate
         const id = dragRef.current.id
-        const node = graph.nodes.find(n => n.id === id)
+        const node = (graph?.nodes || []).find(n => n.id === id)
         if (node) onNodeClick(node)
       }
     }
@@ -1027,17 +1078,25 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
       >
         <GraphDefs />
         <g transform={`translate(${pan.x},${pan.y}) scale(${scale})`}>
-          {/* Namespace bounding boxes */}
+          {/* Namespace Glass Islands */}
           {groupByNs && Array.from(nsBounds.entries()).map(([ns, b]) => {
             const c = nsColor(b.nsIdx)
             return (
               <g key={ns}>
+                {/* Outer halo */}
+                <rect x={b.x - 12} y={b.y - 12} width={b.w + 24} height={b.h + 24}
+                  fill={c.bg} fillOpacity={0.03} stroke={c.border} strokeWidth={0.5} rx={32} />
+                {/* Glass panel */}
                 <rect x={b.x} y={b.y} width={b.w} height={b.h}
-                  fill={c.bg} stroke={c.border} strokeWidth={1} strokeDasharray="8 6" rx={24} 
-                  className="transition-all duration-500" />
-                <text x={b.x + 14} y={b.y + 24}
-                  fontSize={12} fontWeight={800} fill={c.text} fillOpacity={0.6}
-                  style={{ userSelect: 'none', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                  fill={c.bg} fillOpacity={0.08} stroke={c.border} strokeWidth={1.5} rx={24} 
+                  className="transition-all duration-500"
+                  style={{ filter: 'blur(0.5px)' }} />
+                {/* Header-like label area */}
+                <rect x={b.x + 12} y={b.y + 12} width={Math.min(b.w - 24, 120)} height={24} rx={6}
+                  fill={c.bg} fillOpacity={0.2} />
+                <text x={b.x + 20} y={b.y + 28}
+                  fontSize={10} fontWeight={900} fill={c.text} fillOpacity={0.8}
+                  style={{ userSelect: 'none', textTransform: 'uppercase', letterSpacing: '0.15em' }}>
                   {ns}
                 </text>
               </g>
@@ -1071,16 +1130,22 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
                   strokeDasharray={isInfra ? '5 6' : undefined}
                   markerEnd={`url(#arr-${color.slice(1)})`} />
                 {animate && isConnected && !isInfra && (
-                  <path d={path} fill="none" stroke={color} strokeWidth={2} strokeOpacity={0.85} strokeDasharray="7 9">
-                    {/* @ts-ignore */}
-                    <animate attributeName="stroke-dashoffset" from="16" to="0" dur={dur} repeatCount="indefinite" />
-                  </path>
-                )}
-                {animate && isConnected && !isInfra && (
-                  <circle r="2" fill={color} filter="url(#glow)">
-                    {/* @ts-ignore */}
-                    <animateMotion dur={dur} repeatCount="indefinite" path={path} />
-                  </circle>
+                  <g>
+                    {/* Primary flow particle */}
+                    <circle r="2.5" fill={color} filter="url(#glow)">
+                      {/* @ts-ignore */}
+                      <animateMotion dur={dur} repeatCount="indefinite" path={path} />
+                    </circle>
+                    {/* Tail particles */}
+                    <circle r="1.5" fill={color} fillOpacity={0.6}>
+                      {/* @ts-ignore */}
+                      <animateMotion dur={dur} begin="0.1s" repeatCount="indefinite" path={path} />
+                    </circle>
+                    <circle r="1" fill={color} fillOpacity={0.3}>
+                      {/* @ts-ignore */}
+                      <animateMotion dur={dur} begin="0.2s" repeatCount="indefinite" path={path} />
+                    </circle>
+                  </g>
                 )}
                 {edge.label && <EdgeLabel x={lx} y={ly - 8} label={edge.label} color={color} />}
               </g>
@@ -1102,38 +1167,54 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
               : n.kind === 'policy' ? '🛡'
               : n.kind === 'workload' ? workloadIcon(n.workloadKind)
               : '●'
-            const strokeW = active ? 2.5 : isMatch && searchActive ? 3 : 1.8
+
+            const gradientId = n.kind === 'pod' 
+              ? `grad-pod-${(n.phase || 'running').toLowerCase()}`
+              : `grad-${n.kind === 'workload' ? n.workloadKind : n.kind}`
+
             return (
               <g key={n.id} data-nid={n.id} style={{ cursor: 'pointer', opacity: nodeOpacity, transition: 'opacity 0.2s' }}
                 onMouseEnter={e => { setTooltip({ node: n, x: e.clientX, y: e.clientY }); setHoveredNodeId(n.id) }}
                 onMouseMove={e => setTooltip(t => t ? { ...t, x: e.clientX, y: e.clientY } : null)}
                 onMouseLeave={() => { setTooltip(null); setHoveredNodeId(null) }}
               >
-                <circle cx={p.x} cy={p.y} r={NODE_R + 4} fill={color} fillOpacity={isMatch && searchActive ? 0.18 : 0.08} />
+                {/* Status Glow Ring */}
+                {(n.phase === 'Running' || n.kind !== 'pod') && (
+                  <circle cx={p.x} cy={p.y} r={NODE_R + 6} fill={color} fillOpacity={0.15}>
+                    <animate attributeName="r" values={`${NODE_R+4};${NODE_R+8};${NODE_R+4}`} dur="3s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" values="0.1;0.2;0.1" dur="3s" repeatCount="indefinite" />
+                  </circle>
+                )}
+                
+                {/* 3D Sphere Node */}
                 <circle cx={p.x} cy={p.y} r={NODE_R}
-                  fill={bg} stroke={color} strokeWidth={strokeW}
+                  fill={`url(#${gradientId})`} 
+                  stroke={active ? 'white' : color} 
+                  strokeWidth={active ? 2 : 1.2}
                   style={{ filter: active ? 'url(#glow)' : 'none' }}
                   className="transition-all duration-300"
                 />
-                <text x={p.x} y={p.y - 4} textAnchor="middle" fontSize={11}
-                  fill={color} fillOpacity={0.7} style={{ userSelect: 'none' }}>
+                
+                {/* Glassy Overlay for sheen */}
+                <circle cx={p.x} cy={p.y} r={NODE_R} fill="white" fillOpacity={0.05} pointerEvents="none" />
+                
+                <text x={p.x} y={p.y - 3} textAnchor="middle" fontSize={11}
+                  fill={dark ? 'white' : 'black'} fillOpacity={0.6} style={{ userSelect: 'none', filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.2))' }}>
                   {kindIcon}
                 </text>
-                <text x={p.x} y={p.y + 8} textAnchor="middle" fontSize={9} fontWeight={600}
-                  fill={color} style={{ userSelect: 'none' }}>
+                <text x={p.x} y={p.y + 9} textAnchor="middle" fontSize={8.5} fontWeight={700}
+                  fill={dark ? 'white' : 'black'} fillOpacity={0.8} style={{ userSelect: 'none' }}>
                   {label}
                 </text>
-                {!groupByNs && (
-                  <text x={p.x} y={p.y + NODE_R + 14} textAnchor="middle" fontSize={8}
-                    fill="#64748b" style={{ userSelect: 'none' }}>
-                    {n.namespace.length > 14 ? n.namespace.slice(0, 13) + '…' : n.namespace}
-                  </text>
-                )}
+
+                {/* Legend-style badge for replica counts */}
                 {n.replicaCount && n.replicaCount > 1 && (
-                  <text x={p.x + NODE_R - 2} y={p.y - NODE_R + 6} textAnchor="middle" fontSize={8} fontWeight={700}
-                    fill={color} fillOpacity={0.75} style={{ userSelect: 'none' }}>
-                    ×{n.replicaCount}
-                  </text>
+                  <g transform={`translate(${p.x + 14}, ${p.y - 18})`}>
+                    <rect x={0} y={0} width={18} height={12} rx={4} fill={color} fillOpacity={0.9} />
+                    <text x={9} y={9} textAnchor="middle" fontSize={8} fontWeight={900} fill="white">
+                      {n.replicaCount}
+                    </text>
+                  </g>
                 )}
               </g>
             )
@@ -1201,26 +1282,31 @@ export default function NetworkPanel(): JSX.Element {
   useEffect(() => { load(panelNs) }, [panelNs, load])
 
   const graph = useMemo(() => {
-    // Collapse sibling workloads (e.g. old ReplicaSets) when 2+ exist under the same controller
-    const collapsed = collapseWorkloadReplicas(rawGraph, new Set())
-    if (visibleFilters.size === KIND_DEFS.length) return collapsed
-    const nodes = collapsed.nodes.filter(n =>
+    const rNodes = rawGraph?.nodes || []
+    const rEdges = rawGraph?.edges || []
+    const rNss = rawGraph?.namespaces || []
+
+    if (visibleFilters.size === KIND_DEFS.length) {
+      return { nodes: rNodes, edges: rEdges, namespaces: rNss }
+    }
+
+    const nodes = rNodes.filter(n =>
       n.kind === 'workload' ? visibleFilters.has(n.workloadKind ?? '') : visibleFilters.has(n.kind)
     )
     const nodeIds = new Set(nodes.map(n => n.id))
-    const edges = collapsed.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target))
+    const edges = rEdges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target))
     const nss = [...new Set(nodes.map(n => n.namespace))].sort()
     return { nodes, edges, namespaces: nss }
   }, [rawGraph, visibleFilters])
 
   // O(n) single-pass count map keyed by filterKey (workloadKind for workloads, NodeKind otherwise)
   const filterCounts = useMemo(() =>
-    rawGraph.nodes.reduce((acc, n) => {
+    (rawGraph?.nodes || []).reduce((acc, n) => {
       const key = n.kind === 'workload' ? (n.workloadKind ?? '') : n.kind
       acc[key] = (acc[key] ?? 0) + 1
       return acc
     }, {} as Record<string, number>),
-    [rawGraph.nodes]
+    [rawGraph?.nodes]
   )
 
   const toggleFilter = (key: string) => {
@@ -1267,7 +1353,7 @@ export default function NetworkPanel(): JSX.Element {
           </div>
 
           {/* Fit to screen */}
-          <button onClick={() => setFitTrigger(t => t + 1)} disabled={loading || graph.nodes.length === 0}
+          <button onClick={() => setFitTrigger(t => t + 1)} disabled={loading || !graph?.nodes?.length}
             title="Fit to screen"
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg
                        bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700
@@ -1294,8 +1380,8 @@ export default function NetworkPanel(): JSX.Element {
 
       </PageHeader>
 
-      {/* Tab bar + controls */}
-      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-white/5 pl-8 pr-6 shrink-0 flex-wrap bg-white/5 backdrop-blur-md">
+      {/* Tab bar + Main Filters Row */}
+      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-white/5 pl-8 pr-6 shrink-0 bg-white/5 backdrop-blur-md overflow-x-auto scrollbar-hide">
         {/* Tabs */}
         <div className="flex shrink-0">
           {(['topology', 'map'] as const).map(t => (
@@ -1308,7 +1394,7 @@ export default function NetworkPanel(): JSX.Element {
         </div>
 
         {/* Kind filter pills */}
-        <div className="flex items-center gap-1.5 pl-3 border-l border-slate-200 dark:border-slate-700 py-2">
+        <div className="flex items-center gap-1.5 pl-3 border-l border-slate-200 dark:border-slate-700 py-2 shrink-0">
           {KIND_DEFS.map(({ filterKey, color, label }) => (
             <KindPill key={filterKey} color={color} label={label}
               count={filterCounts[filterKey] ?? 0}
@@ -1317,9 +1403,12 @@ export default function NetworkPanel(): JSX.Element {
             />
           ))}
         </div>
+      </div>
 
+      {/* Secondary Controls Row (Search + Toggles) */}
+      <div className="flex items-center gap-4 px-8 py-2 border-b border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
         {/* Search input */}
-        <div className="relative ml-2 py-2">
+        <div className="relative">
           <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
             width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
@@ -1329,11 +1418,11 @@ export default function NetworkPanel(): JSX.Element {
             placeholder="Find node…"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="pl-7 pr-3 py-1 text-[11px] font-mono rounded-lg border
+            className="pl-7 pr-3 py-1.5 text-[11px] font-mono rounded-lg border
                        bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700
                        text-slate-700 dark:text-slate-200 placeholder-slate-400
-                       focus:outline-none focus:ring-2 focus:ring-blue-500/40 w-36 transition-all
-                       focus:w-48"
+                       focus:outline-none focus:ring-2 focus:ring-blue-500/40 w-48 transition-all
+                       focus:w-64"
           />
           {searchQuery && (
             <button onClick={() => setSearchQuery('')}
@@ -1346,7 +1435,7 @@ export default function NetworkPanel(): JSX.Element {
         </div>
 
         {/* View toggles */}
-        <div className="flex items-center gap-2 ml-auto py-2">
+        <div className="flex items-center gap-3 ml-auto">
           <TogglePill on={groupByNs} onToggle={() => setGroupByNs(v => !v)} label="Group by NS"
             icon={<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>}
           />
@@ -1366,7 +1455,7 @@ export default function NetworkPanel(): JSX.Element {
             <div className="w-6 h-6 border-2 border-slate-200 dark:border-slate-800 border-t-blue-500 rounded-full animate-spin" />
             <span className="text-sm font-medium">Loading network data…</span>
           </div>
-        ) : graph.nodes.length === 0 ? (
+        ) : (!graph?.nodes || graph.nodes.length === 0) ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
               <path d="M12 5a2 2 0 100-4 2 2 0 000 4zm-7 7a2 2 0 100-4 2 2 0 000 4zm14 0a2 2 0 100-4 2 2 0 000 4zm-7 7a2 2 0 100-4 2 2 0 000 4zM5 12H2m10-7V2m7 10h3M12 17v3M7.05 7.05L5 5m9.95 2.05L17 5M7.05 16.95L5 19m9.95-2.05L17 19" />
@@ -1385,7 +1474,7 @@ export default function NetworkPanel(): JSX.Element {
         )}
 
         {/* Legend overlay */}
-        {showLegend && !loading && <Legend dark={dark} />}
+        {showLegend && <Legend dark={dark} />}
       </div>
     </div>
   )

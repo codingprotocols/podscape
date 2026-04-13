@@ -1,11 +1,12 @@
 GO_CORE     := go-core/podscape-core
 GO_MCP      := go-core/podscape-mcp
 GO_LDFLAGS  := -ldflags="-s -w"
+GO_FILES    := $(shell find go-core -name '*.go')
 
 .PHONY: dev build test go go-mcp go-test clean build-mac build-win build-linux
 
-## Start the app in dev mode (builds Go sidecar first if missing)
-dev: $(GO_CORE)
+## Start the app in dev mode (builds Go sidecar first if missing or changed)
+dev: go
 	npm run dev
 
 ## Full production build (Go + Electron)
@@ -13,7 +14,7 @@ build: go
 	electron-vite build
 
 ## Build the Go sidecar
-go:
+go: $(GO_FILES)
 	cd go-core && go build $(GO_LDFLAGS) -o podscape-core ./cmd/podscape-core/
 
 ## Build the MCP server
