@@ -146,7 +146,7 @@ func TestDeepOwnerChain(t *testing.T) {
 	foundRSPod := false
 
 	for _, edge := range graph.Edges {
-		if edge.Kind == EdgeOwner && edge.Source == "workload:deploy-1" && edge.Target == "workload:rs-1" {
+		if edge.Kind == EdgeControllerWorkload && edge.Source == "workload:deploy-1" && edge.Target == "workload:rs-1" {
 			foundDeployRS = true
 		}
 		if edge.Kind == EdgeOwner && edge.Source == "workload:rs-1" && edge.Target == "pod:pod-1" {
@@ -314,7 +314,7 @@ func TestNetworkPolicy(t *testing.T) {
 	}
 
 	cache.objects["pod:prod:secure-pod"] = pod
-	cache.objects["networkpolicy:prod:db-policy"] = policy
+	cache.objects["policy:prod:db-policy"] = policy
 
 	nodes := []Node{
 		{ID: "pod:" + podUID, Kind: KindPod, Name: "secure-pod", Namespace: "prod", Labels: map[string]string{"tier": "db"}, UID: podUID},
@@ -327,7 +327,7 @@ func TestNetworkPolicy(t *testing.T) {
 	// 3. Verify Edge
 	found := false
 	for _, edge := range graph.Edges {
-		if edge.Kind == EdgePolicy && edge.Source == "networkpolicy:"+policyUID && edge.Target == "pod:"+podUID {
+		if edge.Kind == EdgePolicy && edge.Source == "policy:"+policyUID && edge.Target == "pod:"+podUID {
 			found = true
 			break
 		}

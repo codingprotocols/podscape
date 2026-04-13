@@ -29,8 +29,8 @@ func (d *OwnerDiscoverer) Discover(nodes []Node, cache ResourceCache) []Edge {
 
 		for _, ownerRef := range metadata.GetOwnerReferences() {
 			ownerKind := NormalizeKind(ownerRef.Kind)
-			
-			targetID := node.ComputeID()
+
+			targetID := node.ID
 			sourceID := fmt.Sprintf("%s:%s:%s", ownerKind, node.Namespace, ownerRef.Name)
 			if ownerRef.UID != "" {
 				sourceID = fmt.Sprintf("%s:%s", ownerKind, ownerRef.UID)
@@ -87,9 +87,9 @@ func (d *SelectorDiscoverer) Discover(nodes []Node, cache ResourceCache) []Edge 
 		for _, pod := range podsByNS[node.Namespace] {
 			if matchSelector(svc.Spec.Selector, pod.Labels) {
 				edges = append(edges, Edge{
-					ID:     fmt.Sprintf("selector:%s->%s", node.ComputeID(), pod.ComputeID()),
-					Source: node.ComputeID(),
-					Target: pod.ComputeID(),
+					ID:     fmt.Sprintf("selector:%s->%s", node.ID, pod.ID),
+					Source: node.ID,
+					Target: pod.ID,
 					Kind:   EdgeSelector,
 				})
 			}
@@ -124,8 +124,8 @@ func (d *VolumeDiscoverer) Discover(nodes []Node, cache ResourceCache) []Edge {
 			if vol.PersistentVolumeClaim != nil {
 				pvcID := fmt.Sprintf("%s:%s:%s", KindPVC, node.Namespace, vol.PersistentVolumeClaim.ClaimName)
 				edges = append(edges, Edge{
-					ID:     fmt.Sprintf("volume:%s->%s", node.ComputeID(), pvcID),
-					Source: node.ComputeID(),
+					ID:     fmt.Sprintf("volume:%s->%s", node.ID, pvcID),
+					Source: node.ID,
 					Target: pvcID,
 					Kind:   EdgeVolume,
 					Label:  vol.Name,
@@ -158,8 +158,8 @@ func (d *NodeDiscoverer) Discover(nodes []Node, cache ResourceCache) []Edge {
 
 		nodeID := fmt.Sprintf("node:%s", pod.Spec.NodeName)
 		edges = append(edges, Edge{
-			ID:     fmt.Sprintf("node:%s->%s", node.ComputeID(), nodeID),
-			Source: node.ComputeID(),
+			ID:     fmt.Sprintf("node:%s->%s", node.ID, nodeID),
+			Source: node.ID,
 			Target: nodeID,
 			Kind:   EdgePodNode,
 		})
@@ -219,8 +219,8 @@ func (d *ConnectionDiscoverer) Discover(nodes []Node, cache ResourceCache) []Edg
 					}
 
 					edges = append(edges, Edge{
-						ID:     fmt.Sprintf("connection:%s->%s", node.ComputeID(), svcID),
-						Source: node.ComputeID(),
+						ID:     fmt.Sprintf("connection:%s->%s", node.ID, svcID),
+						Source: node.ID,
 						Target: svcID,
 						Kind:   EdgeConnection,
 						Label:  label,
@@ -266,9 +266,9 @@ func (d *NetworkPolicyDiscoverer) Discover(nodes []Node, cache ResourceCache) []
 		for _, pod := range podsByNS[node.Namespace] {
 			if matchSelector(np.Spec.PodSelector.MatchLabels, pod.Labels) {
 				edges = append(edges, Edge{
-					ID:     fmt.Sprintf("policy:%s->%s", node.ComputeID(), pod.ComputeID()),
-					Source: node.ComputeID(),
-					Target: pod.ComputeID(),
+					ID:     fmt.Sprintf("policy:%s->%s", node.ID, pod.ID),
+					Source: node.ID,
+					Target: pod.ID,
 					Kind:   EdgePolicy,
 				})
 			}
