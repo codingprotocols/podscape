@@ -228,3 +228,74 @@ describe('collapsePodReplicas', () => {
     expect(svcEdges).toHaveLength(1)  // deduplicated
   })
 })
+
+import { computePolicyHulls } from './NetworkPanel.utils'
+
+describe('computePolicyHulls', () => {
+  const NODE_W = 164
+  const NODE_H = 54
+  const HULL_PAD = 28
+
+  it('returns empty array when no policies', () => {
+    const g = makeGraph({ nodes: [], edges: [] })
+    expect(computePolicyHulls(g, new Map(), NODE_W, NODE_H)).toHaveLength(0)
+  })
+
+  it('returns empty array for a policy with no governed pods', () => {
+    const g = makeGraph({
+      nodes: [{ id: 'pol:ns:deny-all', kind: 'policy', name: 'deny-all', namespace: 'ns' }],
+      edges: [],
+    })
+    expect(computePolicyHulls(g, new Map(), NODE_W, NODE_H)).toHaveLength(0)
+  })
+
+  it('returns hull for a policy governing one pod', () => {
+    const g = makeGraph({
+      nodes: [
+        { id: 'pol:ns:allow', kind: 'policy', name: 'allow', namespace: 'ns' },
+        { id: 'pod:uid1', kind: 'pod', name: 'web-abc', namespace: 'ns' },
+      ],
+      edges: [{ id: 'e1', source: 'pol:ns:allow', target: 'pod:uid1', kind: 'policy-pod' }],
+    })
+    const positions = new Map([
+      ['pod:uid1', { x: 100, y: 200 }],
+    ])
+    const hulls = computePolicyHulls(g, positions, NODE_W, NODE_H)
+    expect(hulls).toHaveLength(1)
+    expect(hulls[0].policyId).toBe('pol:ns:allow')
+    expect(hulls[0].rect.x).toBe(100 - NODE_W / 2 - HULL_PAD)
+    expect(hulls[0].rect.y).toBe(200 - NODE_H / 2 - HULL_PAD)
+  })
+
+  it('hull spans across multiple pods', () => {
+    const g = makeGraph({
+      nodes: [
+        { id: 'pol:ns:policy1', kind: 'policy', name: 'policy1', namespace: 'ns' },
+        { id: 'pod:uid1', kind: 'pod', name: 'a', namespace: 'ns' },
+        { id: 'pod:uid2', kind: 'pod', name: 'b', namespace: 'ns' },
+      ],
+      edges: [
+        { id: 'e1', source: 'pol:ns:policy1', target: 'pod:uid1', kind: 'policy-pod' },
+        { id: 'e2', source: 'pol:ns:policy1', target: 'pod:uid2', kind: 'policy-pod' },
+      ],
+    })
+    const positions = new Map([
+      ['pod:uid1', { x: 0, y: 100 }],
+      ['pod:uid2', { x: 400, y: 100 }],
+    ])
+    const hulls = computePolicyHulls(g, positions, NODE_W, NODE_H)
+    expect(hulls[0].rect.w).toBeGreaterThan(400)
+  })
+
+  it('skips policy edges where pod has no position (filtered out)', () => {
+    const g = makeGraph({
+      nodes: [
+        { id: 'pol:ns:p', kind: 'policy', name: 'p', namespace: 'ns' },
+        { id: 'pod:uid1', kind: 'pod', name: 'a', namespace: 'ns' },
+      ],
+      edges: [{ id: 'e1', source: 'pol:ns:p', target: 'pod:uid1', kind: 'policy-pod' }],
+    })
+    const hulls = computePolicyHulls(g, new Map(), NODE_W, NODE_H)
+    expect(hulls).toHaveLength(0)
+  })
+})

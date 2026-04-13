@@ -149,3 +149,46 @@ export function collapsePodReplicas(graph: Graph, expandedWorkloads: Set<string>
 
   return { nodes, edges: Array.from(edgeMap.values()), namespaces: graph.namespaces }
 }
+
+// ─── Policy hull computation ──────────────────────────────────────────────────
+
+const HULL_PAD = 28
+
+export function computePolicyHulls(
+  graph: Graph,
+  positions: Map<string, { x: number; y: number }>,
+  nodeW: number,
+  nodeH: number
+): PolicyHull[] {
+  const hulls: PolicyHull[] = []
+
+  for (const policyNode of graph.nodes.filter(n => n.kind === 'policy')) {
+    const governedPodPositions = graph.edges
+      .filter(e => e.source === policyNode.id && e.kind === 'policy-pod')
+      .map(e => positions.get(e.target))
+      .filter((p): p is { x: number; y: number } => p !== undefined)
+
+    if (governedPodPositions.length === 0) continue
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+    for (const p of governedPodPositions) {
+      minX = Math.min(minX, p.x - nodeW / 2)
+      maxX = Math.max(maxX, p.x + nodeW / 2)
+      minY = Math.min(minY, p.y - nodeH / 2)
+      maxY = Math.max(maxY, p.y + nodeH / 2)
+    }
+
+    hulls.push({
+      policyId: policyNode.id,
+      policyNode,
+      rect: {
+        x: minX - HULL_PAD,
+        y: minY - HULL_PAD,
+        w: maxX - minX + HULL_PAD * 2,
+        h: maxY - minY + HULL_PAD * 2,
+      },
+    })
+  }
+
+  return hulls
+}
