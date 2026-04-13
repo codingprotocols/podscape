@@ -14,6 +14,18 @@ interface SettingsForm {
   tourCompleted: boolean
 }
 
+interface CloudClusterGuideBoxProps {
+  title: string
+  description: React.ReactNode
+}
+
+const CloudClusterGuideBox = ({ title, description }: CloudClusterGuideBoxProps) => (
+  <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-6 space-y-3">
+    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{title}</p>
+    <p className="text-[11px] text-slate-500 leading-relaxed font-medium">{description}</p>
+  </div>
+)
+
 export default function SettingsPanel(): JSX.Element {
   const { theme, setTheme, init, prodContexts, probePrometheus, prometheusAvailable, probeCost, costAvailable, selectedContext } = useAppStore()
   const [form, setForm] = useState<SettingsForm>({ shellPath: '', theme, kubeconfigPath: '', prodContexts: [], prometheusUrls: {}, costUrls: {}, tourCompleted: false })
@@ -47,7 +59,7 @@ export default function SettingsPanel(): JSX.Element {
     }).catch(err => {
       console.error('[SettingsPanel] Failed to load kubeconfig:', err)
     })
-  }, [])
+  }, [prodContexts])
 
   // Keep form.theme in sync with store theme
   useEffect(() => {
@@ -443,10 +455,14 @@ export default function SettingsPanel(): JSX.Element {
               </div>
 
               <div className="p-8 space-y-6">
-                <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-6 space-y-3">
-                  <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Cloud Cluster Guide (EKS/GKE/AKS)</p>
-                  <p className="text-[11px] text-slate-500 leading-relaxed font-medium">Use Built-in Port Forwards for easy access. Map your Kubecost or OpenCost service to local port <code className="bg-blue-500/20 px-1 rounded text-blue-300">9090</code>, and it will be auto-detected.</p>
-                </div>
+                <CloudClusterGuideBox
+                  title="Cloud Cluster Guide (EKS/GKE/AKS)"
+                  description={
+                    <>
+                      Use Built-in Port Forwards for easy access. Map Kubecost to local port <code className="bg-blue-500/20 px-1 rounded text-blue-300">9090</code> or OpenCost to <code className="bg-blue-500/20 px-1 rounded text-blue-300">9003</code> for auto-detection.
+                    </>
+                  }
+                />
 
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
@@ -505,7 +521,7 @@ export default function SettingsPanel(): JSX.Element {
                       <Shield className="w-5 h-5 text-blue-500" />
                     </div>
                     <div>
-                      <h4 className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Version v2.8.0</h4>
+                      <h4 className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Version v{appVersion}</h4>
                       <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-tighter">Stay secure with the latest patches</p>
                     </div>
                   </div>
