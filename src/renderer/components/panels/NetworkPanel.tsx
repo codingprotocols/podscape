@@ -62,7 +62,7 @@ const ALL_EDGE_COLORS = ['#8b5cf6', '#f472b6', '#a78bfa', '#60a5fa', '#3b82f6', 
 
 const KIND_DEFS: { kind: NodeKind; label: string; color: string }[] = [
   { kind: 'ingress', label: 'Ingress', color: '#a78bfa' },
-  { kind: 'workload', label: 'Workload (Deploy/DS/STS/Job…)', color: '#fbbf24' },
+  { kind: 'workload', label: 'Workloads', color: '#fbbf24' },
   { kind: 'service', label: 'Service', color: '#60a5fa' },
   { kind: 'pod', label: 'Pod', color: '#34d399' },
   { kind: 'pvc', label: 'PVC', color: '#f87171' },
@@ -390,7 +390,8 @@ function EdgeLabel({ x, y, label, color }: { x: number; y: number; label: string
 
 const LEGEND_ENTRIES = [
   { icon: '⬡', color: '#a78bfa', label: 'Ingress' },
-  { icon: '📦', color: '#fbbf24', label: 'Workload (Deploy/RS...)' },
+  { icon: '📦', color: '#fbbf24', label: 'Workload (Deploy/DS/STS/Job/Cron)' },
+  { icon: '◫', color: '#fb923c', label: 'ReplicaSet' },
   { icon: '◈', color: '#60a5fa', label: 'Service' },
   { icon: '●', color: '#34d399', label: 'Pod · Running' },
   { icon: '●', color: '#f59e0b', label: 'Pod · Pending' },
