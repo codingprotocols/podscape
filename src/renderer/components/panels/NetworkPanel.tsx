@@ -5,7 +5,7 @@ import PageHeader from '../core/PageHeader'
 import type { ResourceKind } from '../../types'
 import {
   type NodeKind, type EdgeKind, type GraphNode, type GraphEdge, type Graph,
-  edgeStyle, workloadBadgeLabel, workloadIcon, computePolicyHulls,
+  edgeStyle, workloadBadgeLabel, workloadIcon, computePolicyHulls, collapseWorkloadReplicas,
 } from './NetworkPanel.utils'
 
 interface NodePos { x: number; y: number; vx: number; vy: number }
@@ -762,7 +762,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
                   width={NODE_W} height={NODE_H}
                   style={{ pointerEvents: 'none' }}>
                   <div
-                    className="w-full h-full rounded-xl border px-3 py-1.5 flex flex-col justify-center backdrop-blur-md transition-all duration-300"
+                    className="relative w-full h-full rounded-xl border px-3 py-1.5 flex flex-col justify-center backdrop-blur-md transition-all duration-300"
                     style={{
                       fontFamily: 'inherit',
                       backgroundColor: bg,
@@ -787,6 +787,11 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
                     </span>
                     {!groupByNs && (
                       <span className="text-[9px] text-slate-400 truncate mt-0.5">{n.namespace}</span>
+                    )}
+                    {n.replicaCount && n.replicaCount > 1 && (
+                      <span className="absolute top-1 right-1.5 text-[9px] font-bold opacity-70" style={{ color }}>
+                        ×{n.replicaCount}
+                      </span>
                     )}
                   </div>
                 </foreignObject>
@@ -1112,6 +1117,12 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
                     {n.namespace.length > 14 ? n.namespace.slice(0, 13) + '…' : n.namespace}
                   </text>
                 )}
+                {n.replicaCount && n.replicaCount > 1 && (
+                  <text x={p.x + NODE_R - 2} y={p.y - NODE_R + 6} textAnchor="middle" fontSize={8} fontWeight={700}
+                    fill={color} fillOpacity={0.75} style={{ userSelect: 'none' }}>
+                    ×{n.replicaCount}
+                  </text>
+                )}
               </g>
             )
           })}
@@ -1178,10 +1189,12 @@ export default function NetworkPanel(): JSX.Element {
   useEffect(() => { load(panelNs) }, [panelNs, load])
 
   const graph = useMemo(() => {
-    if (visibleKinds.size === KIND_DEFS.length) return rawGraph
-    const nodes = rawGraph.nodes.filter(n => visibleKinds.has(n.kind))
+    // Collapse sibling workloads (e.g. old ReplicaSets) when 2+ exist under the same controller
+    const collapsed = collapseWorkloadReplicas(rawGraph, new Set())
+    if (visibleKinds.size === KIND_DEFS.length) return collapsed
+    const nodes = collapsed.nodes.filter(n => visibleKinds.has(n.kind))
     const nodeIds = new Set(nodes.map(n => n.id))
-    const edges = rawGraph.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target))
+    const edges = collapsed.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target))
     const nss = [...new Set(nodes.map(n => n.namespace))].sort()
     return { nodes, edges, namespaces: nss }
   }, [rawGraph, visibleKinds])
