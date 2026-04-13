@@ -28,9 +28,9 @@ export function formatAge(timestamp: string): string {
 
 export function parseCpuMillicores(cpu: string): number {
   if (!cpu) return 0
-  if (cpu.endsWith('n')) return parseInt(cpu) / 1_000_000
-  if (cpu.endsWith('u')) return parseInt(cpu) / 1_000
-  if (cpu.endsWith('m')) return parseInt(cpu)
+  if (cpu.endsWith('n')) return parseInt(cpu.slice(0, -1), 10) / 1_000_000
+  if (cpu.endsWith('u')) return parseInt(cpu.slice(0, -1), 10) / 1_000
+  if (cpu.endsWith('m')) return parseInt(cpu.slice(0, -1), 10)
   return parseFloat(cpu) * 1000
 }
 
