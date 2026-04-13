@@ -5,7 +5,7 @@ import PageHeader from '../core/PageHeader'
 import type { ResourceKind } from '../../types'
 import {
   type NodeKind, type EdgeKind, type GraphNode, type GraphEdge, type Graph,
-  edgeStyle, workloadBadgeLabel, workloadIcon, collapsePodReplicas, computePolicyHulls,
+  edgeStyle, workloadBadgeLabel, workloadIcon, collapsePodReplicas, collapseWorkloadReplicas, computePolicyHulls,
 } from './NetworkPanel.utils'
 
 interface NodePos { x: number; y: number; vx: number; vy: number }
@@ -437,9 +437,10 @@ function Legend({ dark }: { dark: boolean }) {
 
 // ─── Node tooltip ─────────────────────────────────────────────────────────────
 
-function NodeTooltip({ node, x, y, dark, onCollapseWorkload }: {
+function NodeTooltip({ node, x, y, dark, onCollapseWorkload, onCollapseController }: {
   node: GraphNode; x: number; y: number; dark: boolean
   onCollapseWorkload?: (workloadId: string) => void
+  onCollapseController?: (controllerId: string) => void
 }) {
   const color = nodeColor(node)
   const clampedX = Math.min(x + 14, window.innerWidth - 240)
@@ -468,6 +469,15 @@ function NodeTooltip({ node, x, y, dark, onCollapseWorkload }: {
             onClick={() => onCollapseWorkload(node.id)}
           >
             ⊟ Collapse pods
+          </button>
+        )}
+        {node.kind === 'workload' && onCollapseController && (
+          <button
+            className="mt-1 text-[10px] text-violet-400 hover:text-violet-300 cursor-pointer w-full text-left block"
+            style={{ pointerEvents: 'auto' }}
+            onClick={() => onCollapseController(node.id)}
+          >
+            ⊟ Collapse variants
           </button>
         )}
       </div>
@@ -516,10 +526,12 @@ function KindPill({ color, label, count, active, onToggle }: { color: string; la
 
 // ─── Topology View ────────────────────────────────────────────────────────────
 
-function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onNodeClick, onCollapseWorkload }: {
+function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onNodeClick, onCollapseWorkload, onCollapseController, expandedControllers }: {
   graph: Graph; groupByNs: boolean; animate: boolean; fitTrigger: number; dark: boolean
   searchQuery: string; onNodeClick: (node: GraphNode) => void
   onCollapseWorkload: (workloadId: string) => void
+  onCollapseController: (controllerId: string) => void
+  expandedControllers: Set<string>
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -792,7 +804,9 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
           })}
         </g>
       </svg>
-      {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} dark={dark} onCollapseWorkload={onCollapseWorkload} />}
+      {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} dark={dark}
+        onCollapseWorkload={onCollapseWorkload}
+        onCollapseController={expandedControllers.has(tooltip.node.id) ? onCollapseController : undefined} />}
     </div>
   )
 }
@@ -801,10 +815,12 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
 
 const NODE_R = 26
 
-function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onNodeClick, onCollapseWorkload }: {
+function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onNodeClick, onCollapseWorkload, onCollapseController, expandedControllers }: {
   graph: Graph; groupByNs: boolean; animate: boolean; fitTrigger: number; dark: boolean
   searchQuery: string; onNodeClick: (node: GraphNode) => void
   onCollapseWorkload: (workloadId: string) => void
+  onCollapseController: (controllerId: string) => void
+  expandedControllers: Set<string>
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -1128,7 +1144,9 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
           })}
         </g>
       </svg>
-      {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} dark={dark} onCollapseWorkload={onCollapseWorkload} />}
+      {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} dark={dark}
+        onCollapseWorkload={onCollapseWorkload}
+        onCollapseController={expandedControllers.has(tooltip.node.id) ? onCollapseController : undefined} />}
     </div>
   )
 }
@@ -1170,6 +1188,7 @@ export default function NetworkPanel(): JSX.Element {
   const [visibleKinds, setVisibleKinds] = useState<Set<NodeKind>>(new Set(['ingress', 'service', 'pod', 'workload', 'pvc', 'node', 'policy']))
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedWorkloads, setExpandedWorkloads] = useState<Set<string>>(new Set())
+  const [expandedControllers, setExpandedControllers] = useState<Set<string>>(new Set())
 
   const load = useCallback((ns: string) => {
     if (!selectedContext || loadingNamespaces) return
@@ -1190,16 +1209,18 @@ export default function NetworkPanel(): JSX.Element {
   useEffect(() => { load(panelNs) }, [panelNs, load])
 
   const graph = useMemo(() => {
-    // Step 1: collapse pod replicas
-    const collapsed = collapsePodReplicas(rawGraph, expandedWorkloads)
-    // Step 2: filter by visible kinds
+    // Step 1: collapse owned workloads (e.g. ReplicaSets under Deployments) when >= 2
+    const withWorkloadCollapse = collapseWorkloadReplicas(rawGraph, expandedControllers)
+    // Step 2: collapse pod replicas under each workload
+    const collapsed = collapsePodReplicas(withWorkloadCollapse, expandedWorkloads)
+    // Step 3: filter by visible kinds
     if (visibleKinds.size === KIND_DEFS.length) return collapsed
     const nodes = collapsed.nodes.filter(n => visibleKinds.has(n.kind))
     const nodeIds = new Set(nodes.map(n => n.id))
     const edges = collapsed.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target))
     const nss = [...new Set(nodes.map(n => n.namespace))].sort()
     return { nodes, edges, namespaces: nss }
-  }, [rawGraph, visibleKinds, expandedWorkloads])
+  }, [rawGraph, visibleKinds, expandedWorkloads, expandedControllers])
 
   // O(n) single-pass count map so KindPill badges don't each scan rawGraph.nodes
   const kindCounts = useMemo(() =>
@@ -1220,6 +1241,12 @@ export default function NetworkPanel(): JSX.Element {
   }
 
   const handleNodeClick = useCallback((node: GraphNode) => {
+    // Workload group node (collapsed RSes etc.): expand on click
+    if (node.replicaCount !== undefined && node.id.startsWith('workloadgroup:')) {
+      const controllerId = node.id.replace(/^workloadgroup:/, '')
+      setExpandedControllers(prev => { const next = new Set(prev); next.add(controllerId); return next })
+      return
+    }
     // Pod group node: expand replicas on click
     if (node.replicaCount !== undefined) {
       const workloadId = node.id.replace(/^podgroup:/, '')
@@ -1236,6 +1263,10 @@ export default function NetworkPanel(): JSX.Element {
 
   const handleCollapseWorkload = useCallback((workloadId: string) => {
     setExpandedWorkloads(prev => { const next = new Set(prev); next.delete(workloadId); return next })
+  }, [])
+
+  const handleCollapseController = useCallback((controllerId: string) => {
+    setExpandedControllers(prev => { const next = new Set(prev); next.delete(controllerId); return next })
   }, [])
 
   return (
@@ -1376,10 +1407,12 @@ export default function NetworkPanel(): JSX.Element {
           </div>
         ) : tab === 'topology' ? (
           <TopologyView graph={graph} groupByNs={groupByNs} animate={animate} fitTrigger={fitTrigger} dark={dark}
-            searchQuery={searchQuery} onNodeClick={handleNodeClick} onCollapseWorkload={handleCollapseWorkload} />
+            searchQuery={searchQuery} onNodeClick={handleNodeClick} onCollapseWorkload={handleCollapseWorkload}
+            onCollapseController={handleCollapseController} expandedControllers={expandedControllers} />
         ) : (
           <MapView graph={graph} groupByNs={groupByNs} animate={animate} fitTrigger={fitTrigger} dark={dark}
-            searchQuery={searchQuery} onNodeClick={handleNodeClick} onCollapseWorkload={handleCollapseWorkload} />
+            searchQuery={searchQuery} onNodeClick={handleNodeClick} onCollapseWorkload={handleCollapseWorkload}
+            onCollapseController={handleCollapseController} expandedControllers={expandedControllers} />
         )}
 
         {/* Legend overlay */}

@@ -150,6 +150,72 @@ export function collapsePodReplicas(graph: Graph, expandedWorkloads: Set<string>
   return { nodes, edges: Array.from(edgeMap.values()), namespaces: graph.namespaces }
 }
 
+// ─── Workload replica collapse (e.g. old ReplicaSets under a Deployment) ──────
+
+export function collapseWorkloadReplicas(graph: Graph, expandedControllers: Set<string>): Graph {
+  // Build parent → owned child workload IDs map from controller-workload edges
+  const parentChildren = new Map<string, string[]>()
+  for (const edge of graph.edges) {
+    if (edge.kind !== 'controller-workload') continue
+    if (!parentChildren.has(edge.source)) parentChildren.set(edge.source, [])
+    parentChildren.get(edge.source)!.push(edge.target)
+  }
+
+  // Only collapse when there are >= 2 owned workloads and parent is not expanded
+  const collapsedWorkloadIds = new Set<string>()
+  const workloadGroupNodes: GraphNode[] = []
+  const workloadToGroup = new Map<string, string>()  // old workloadId → groupNodeId
+
+  for (const [parentId, childIds] of parentChildren) {
+    if (expandedControllers.has(parentId) || childIds.length < 2) continue
+    const parentNode = graph.nodes.find(n => n.id === parentId)
+    if (!parentNode) continue
+    const firstChild = graph.nodes.find(n => n.id === childIds[0])
+
+    const groupId = `workloadgroup:${parentId}`
+    workloadGroupNodes.push({
+      id: groupId,
+      kind: 'workload',
+      name: `${parentNode.name}-*`,
+      namespace: parentNode.namespace,
+      workloadKind: firstChild?.workloadKind,
+      replicaCount: childIds.length,
+    })
+    for (const childId of childIds) {
+      collapsedWorkloadIds.add(childId)
+      workloadToGroup.set(childId, groupId)
+    }
+  }
+
+  // Filter nodes: remove collapsed workloads, add group nodes
+  const nodes: GraphNode[] = [
+    ...graph.nodes.filter(n => !collapsedWorkloadIds.has(n.id)),
+    ...workloadGroupNodes,
+  ]
+
+  // Redirect and deduplicate edges
+  const edgeMap = new Map<string, GraphEdge>()
+  for (const edge of graph.edges) {
+    // Drop controller-workload edges to collapsed workloads
+    if (edge.kind === 'controller-workload' && collapsedWorkloadIds.has(edge.target)) continue
+
+    const newSource = workloadToGroup.get(edge.source) ?? edge.source
+    const newTarget = workloadToGroup.get(edge.target) ?? edge.target
+    const dedupeKey = `${edge.kind}--${newSource}--${newTarget}`
+
+    if (!edgeMap.has(dedupeKey)) {
+      edgeMap.set(dedupeKey, {
+        ...edge,
+        id: `${edge.kind}::${newSource}::${newTarget}`,
+        source: newSource,
+        target: newTarget,
+      })
+    }
+  }
+
+  return { nodes, edges: Array.from(edgeMap.values()), namespaces: graph.namespaces }
+}
+
 // ─── Policy hull computation ──────────────────────────────────────────────────
 
 const HULL_PAD = 28

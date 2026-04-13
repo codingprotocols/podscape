@@ -229,7 +229,102 @@ describe('collapsePodReplicas', () => {
   })
 })
 
-import { computePolicyHulls } from './NetworkPanel.utils'
+import { collapseWorkloadReplicas, computePolicyHulls } from './NetworkPanel.utils'
+
+describe('collapseWorkloadReplicas', () => {
+  it('does not collapse when only one child workload', () => {
+    const g = makeGraph({
+      nodes: [
+        { id: 'workload:ns:Deployment:app', kind: 'workload', name: 'app', namespace: 'ns', workloadKind: 'Deployment' },
+        { id: 'workload:ns:ReplicaSet:app-v1', kind: 'workload', name: 'app-v1', namespace: 'ns', workloadKind: 'ReplicaSet' },
+      ],
+      edges: [
+        { id: 'e1', source: 'workload:ns:Deployment:app', target: 'workload:ns:ReplicaSet:app-v1', kind: 'controller-workload' },
+      ],
+    })
+    const result = collapseWorkloadReplicas(g, new Set())
+    expect(result.nodes.filter(n => n.kind === 'workload')).toHaveLength(2)
+  })
+
+  it('collapses 3 owned ReplicaSets into 1 workload group node', () => {
+    const g = makeGraph({
+      nodes: [
+        { id: 'workload:ns:Deployment:app', kind: 'workload', name: 'app', namespace: 'ns', workloadKind: 'Deployment' },
+        { id: 'workload:ns:ReplicaSet:app-v1', kind: 'workload', name: 'app-v1', namespace: 'ns', workloadKind: 'ReplicaSet' },
+        { id: 'workload:ns:ReplicaSet:app-v2', kind: 'workload', name: 'app-v2', namespace: 'ns', workloadKind: 'ReplicaSet' },
+        { id: 'workload:ns:ReplicaSet:app-v3', kind: 'workload', name: 'app-v3', namespace: 'ns', workloadKind: 'ReplicaSet' },
+      ],
+      edges: [
+        { id: 'e1', source: 'workload:ns:Deployment:app', target: 'workload:ns:ReplicaSet:app-v1', kind: 'controller-workload' },
+        { id: 'e2', source: 'workload:ns:Deployment:app', target: 'workload:ns:ReplicaSet:app-v2', kind: 'controller-workload' },
+        { id: 'e3', source: 'workload:ns:Deployment:app', target: 'workload:ns:ReplicaSet:app-v3', kind: 'controller-workload' },
+      ],
+    })
+    const result = collapseWorkloadReplicas(g, new Set())
+    const workloads = result.nodes.filter(n => n.kind === 'workload')
+    // Parent + 1 group
+    expect(workloads).toHaveLength(2)
+    const group = workloads.find(n => n.replicaCount !== undefined)!
+    expect(group.replicaCount).toBe(3)
+    expect(group.name).toBe('app-*')
+    expect(group.id).toBe('workloadgroup:workload:ns:Deployment:app')
+    expect(group.workloadKind).toBe('ReplicaSet')
+  })
+
+  it('removes controller-workload edges to collapsed workloads', () => {
+    const g = makeGraph({
+      nodes: [
+        { id: 'deploy', kind: 'workload', name: 'app', namespace: 'ns', workloadKind: 'Deployment' },
+        { id: 'rs1', kind: 'workload', name: 'app-v1', namespace: 'ns', workloadKind: 'ReplicaSet' },
+        { id: 'rs2', kind: 'workload', name: 'app-v2', namespace: 'ns', workloadKind: 'ReplicaSet' },
+      ],
+      edges: [
+        { id: 'e1', source: 'deploy', target: 'rs1', kind: 'controller-workload' },
+        { id: 'e2', source: 'deploy', target: 'rs2', kind: 'controller-workload' },
+      ],
+    })
+    const result = collapseWorkloadReplicas(g, new Set())
+    expect(result.edges.filter(e => e.kind === 'controller-workload')).toHaveLength(0)
+  })
+
+  it('redirects controller-pod edges from collapsed workloads to the group', () => {
+    const g = makeGraph({
+      nodes: [
+        { id: 'deploy', kind: 'workload', name: 'app', namespace: 'ns', workloadKind: 'Deployment' },
+        { id: 'rs1', kind: 'workload', name: 'app-v1', namespace: 'ns', workloadKind: 'ReplicaSet' },
+        { id: 'rs2', kind: 'workload', name: 'app-v2', namespace: 'ns', workloadKind: 'ReplicaSet' },
+        { id: 'pod1', kind: 'pod', name: 'pod-1', namespace: 'ns' },
+        { id: 'pod2', kind: 'pod', name: 'pod-2', namespace: 'ns' },
+      ],
+      edges: [
+        { id: 'e1', source: 'deploy', target: 'rs1', kind: 'controller-workload' },
+        { id: 'e2', source: 'deploy', target: 'rs2', kind: 'controller-workload' },
+        { id: 'e3', source: 'rs1', target: 'pod1', kind: 'controller-pod' },
+        { id: 'e4', source: 'rs2', target: 'pod2', kind: 'controller-pod' },
+      ],
+    })
+    const result = collapseWorkloadReplicas(g, new Set())
+    const podEdges = result.edges.filter(e => e.kind === 'controller-pod')
+    expect(podEdges).toHaveLength(2)
+    expect(podEdges.every(e => e.source === 'workloadgroup:deploy')).toBe(true)
+  })
+
+  it('does not collapse when parent is in expandedControllers', () => {
+    const g = makeGraph({
+      nodes: [
+        { id: 'deploy', kind: 'workload', name: 'app', namespace: 'ns', workloadKind: 'Deployment' },
+        { id: 'rs1', kind: 'workload', name: 'app-v1', namespace: 'ns', workloadKind: 'ReplicaSet' },
+        { id: 'rs2', kind: 'workload', name: 'app-v2', namespace: 'ns', workloadKind: 'ReplicaSet' },
+      ],
+      edges: [
+        { id: 'e1', source: 'deploy', target: 'rs1', kind: 'controller-workload' },
+        { id: 'e2', source: 'deploy', target: 'rs2', kind: 'controller-workload' },
+      ],
+    })
+    const result = collapseWorkloadReplicas(g, new Set(['deploy']))
+    expect(result.nodes.filter(n => n.kind === 'workload')).toHaveLength(3)
+  })
+})
 
 describe('computePolicyHulls', () => {
   const NODE_W = 164
