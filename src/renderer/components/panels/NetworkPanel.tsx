@@ -60,14 +60,20 @@ function nodeBorder(n: GraphNode, dark: boolean): string {
 // All unique edge colors (for predefining arrow markers)
 const ALL_EDGE_COLORS = ['#8b5cf6', '#f472b6', '#a78bfa', '#60a5fa', '#3b82f6', '#f87171', '#06b6d4', '#fbbf24', '#fb923c']
 
-const KIND_DEFS: { kind: NodeKind; label: string; color: string }[] = [
-  { kind: 'ingress', label: 'Ingress', color: '#a78bfa' },
-  { kind: 'workload', label: 'Workloads', color: '#fbbf24' },
-  { kind: 'service', label: 'Service', color: '#60a5fa' },
-  { kind: 'pod', label: 'Pod', color: '#34d399' },
-  { kind: 'pvc', label: 'PVC', color: '#f87171' },
-  { kind: 'node', label: 'Node', color: '#06b6d4' },
-  { kind: 'policy', label: 'Policy', color: '#f472b6' },
+// filterKey is either a NodeKind (for non-workloads) or a workloadKind string (for workloads)
+const KIND_DEFS: { filterKey: string; kind: NodeKind; label: string; color: string }[] = [
+  { filterKey: 'ingress',     kind: 'ingress',  label: 'Ingress',  color: '#a78bfa' },
+  { filterKey: 'Deployment',  kind: 'workload', label: 'Deploy',   color: '#fbbf24' },
+  { filterKey: 'DaemonSet',   kind: 'workload', label: 'DS',       color: '#fbbf24' },
+  { filterKey: 'StatefulSet', kind: 'workload', label: 'STS',      color: '#fbbf24' },
+  { filterKey: 'Job',         kind: 'workload', label: 'Job',      color: '#fbbf24' },
+  { filterKey: 'CronJob',     kind: 'workload', label: 'Cron',     color: '#fbbf24' },
+  { filterKey: 'ReplicaSet',  kind: 'workload', label: 'RS',       color: '#fb923c' },
+  { filterKey: 'service',     kind: 'service',  label: 'Service',  color: '#60a5fa' },
+  { filterKey: 'pod',         kind: 'pod',      label: 'Pod',      color: '#34d399' },
+  { filterKey: 'pvc',         kind: 'pvc',      label: 'PVC',      color: '#f87171' },
+  { filterKey: 'node',        kind: 'node',     label: 'Node',     color: '#06b6d4' },
+  { filterKey: 'policy',      kind: 'policy',   label: 'Policy',   color: '#f472b6' },
 ]
 
 // ─── Shared SVG defs (glow filter + per-color arrow markers) ─────────────────
@@ -390,7 +396,11 @@ function EdgeLabel({ x, y, label, color }: { x: number; y: number; label: string
 
 const LEGEND_ENTRIES = [
   { icon: '⬡', color: '#a78bfa', label: 'Ingress' },
-  { icon: '📦', color: '#fbbf24', label: 'Workload (Deploy/DS/STS/Job/Cron)' },
+  { icon: '▣', color: '#fbbf24', label: 'Deployment' },
+  { icon: '◉', color: '#fbbf24', label: 'DaemonSet' },
+  { icon: '⬡', color: '#fbbf24', label: 'StatefulSet' },
+  { icon: '▷', color: '#fbbf24', label: 'Job' },
+  { icon: '⏱', color: '#fbbf24', label: 'CronJob' },
   { icon: '◫', color: '#fb923c', label: 'ReplicaSet' },
   { icon: '◈', color: '#60a5fa', label: 'Service' },
   { icon: '●', color: '#34d399', label: 'Pod · Running' },
@@ -1169,7 +1179,7 @@ export default function NetworkPanel(): JSX.Element {
   const [animate, setAnimate] = useState(false)
   const [showLegend, setShowLegend] = useState(false)
   const [fitTrigger, setFitTrigger] = useState(0)
-  const [visibleKinds, setVisibleKinds] = useState<Set<NodeKind>>(new Set(['ingress', 'service', 'pod', 'workload', 'pvc', 'node', 'policy']))
+  const [visibleFilters, setVisibleFilters] = useState<Set<string>>(() => new Set(KIND_DEFS.map(d => d.filterKey)))
   const [searchQuery, setSearchQuery] = useState('')
 
   const load = useCallback((ns: string) => {
@@ -1193,28 +1203,31 @@ export default function NetworkPanel(): JSX.Element {
   const graph = useMemo(() => {
     // Collapse sibling workloads (e.g. old ReplicaSets) when 2+ exist under the same controller
     const collapsed = collapseWorkloadReplicas(rawGraph, new Set())
-    if (visibleKinds.size === KIND_DEFS.length) return collapsed
-    const nodes = collapsed.nodes.filter(n => visibleKinds.has(n.kind))
+    if (visibleFilters.size === KIND_DEFS.length) return collapsed
+    const nodes = collapsed.nodes.filter(n =>
+      n.kind === 'workload' ? visibleFilters.has(n.workloadKind ?? '') : visibleFilters.has(n.kind)
+    )
     const nodeIds = new Set(nodes.map(n => n.id))
     const edges = collapsed.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target))
     const nss = [...new Set(nodes.map(n => n.namespace))].sort()
     return { nodes, edges, namespaces: nss }
-  }, [rawGraph, visibleKinds])
+  }, [rawGraph, visibleFilters])
 
-  // O(n) single-pass count map so KindPill badges don't each scan rawGraph.nodes
-  const kindCounts = useMemo(() =>
+  // O(n) single-pass count map keyed by filterKey (workloadKind for workloads, NodeKind otherwise)
+  const filterCounts = useMemo(() =>
     rawGraph.nodes.reduce((acc, n) => {
-      acc[n.kind] = (acc[n.kind] ?? 0) + 1
+      const key = n.kind === 'workload' ? (n.workloadKind ?? '') : n.kind
+      acc[key] = (acc[key] ?? 0) + 1
       return acc
-    }, {} as Record<NodeKind, number>),
+    }, {} as Record<string, number>),
     [rawGraph.nodes]
   )
 
-  const toggleKind = (kind: NodeKind) => {
-    setVisibleKinds(prev => {
+  const toggleFilter = (key: string) => {
+    setVisibleFilters(prev => {
       const next = new Set(prev)
-      if (next.has(kind) && next.size > 1) next.delete(kind)
-      else next.add(kind)
+      if (next.has(key) && next.size > 1) next.delete(key)
+      else next.add(key)
       return next
     })
   }
@@ -1296,11 +1309,11 @@ export default function NetworkPanel(): JSX.Element {
 
         {/* Kind filter pills */}
         <div className="flex items-center gap-1.5 pl-3 border-l border-slate-200 dark:border-slate-700 py-2">
-          {KIND_DEFS.map(({ kind, color, label }) => (
-            <KindPill key={kind} color={color} label={label}
-              count={kindCounts[kind] ?? 0}
-              active={visibleKinds.has(kind)}
-              onToggle={() => toggleKind(kind)}
+          {KIND_DEFS.map(({ filterKey, color, label }) => (
+            <KindPill key={filterKey} color={color} label={label}
+              count={filterCounts[filterKey] ?? 0}
+              active={visibleFilters.has(filterKey)}
+              onToggle={() => toggleFilter(filterKey)}
             />
           ))}
         </div>
