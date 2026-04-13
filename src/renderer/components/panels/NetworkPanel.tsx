@@ -5,7 +5,7 @@ import PageHeader from '../core/PageHeader'
 import type { ResourceKind } from '../../types'
 import {
   type NodeKind, type EdgeKind, type GraphNode, type GraphEdge, type Graph,
-  edgeStyle, workloadBadgeLabel, workloadIcon,
+  edgeStyle, workloadBadgeLabel, workloadIcon, collapsePodReplicas,
 } from './NetworkPanel.utils'
 
 interface NodePos { x: number; y: number; vx: number; vy: number }
@@ -427,7 +427,10 @@ function Legend({ dark }: { dark: boolean }) {
 
 // ─── Node tooltip ─────────────────────────────────────────────────────────────
 
-function NodeTooltip({ node, x, y, dark }: { node: GraphNode; x: number; y: number; dark: boolean }) {
+function NodeTooltip({ node, x, y, dark, onCollapseWorkload }: {
+  node: GraphNode; x: number; y: number; dark: boolean
+  onCollapseWorkload?: (workloadId: string) => void
+}) {
   const color = nodeColor(node)
   const clampedX = Math.min(x + 14, window.innerWidth - 240)
   return (
@@ -448,6 +451,15 @@ function NodeTooltip({ node, x, y, dark }: { node: GraphNode; x: number; y: numb
           <div><span className="text-slate-400 dark:text-slate-500">Ports</span> · <span className="text-slate-600 dark:text-slate-300 font-mono">{node.ports.join(', ')}</span></div>
         )}
         <div className="mt-1.5 pt-1.5 border-t border-slate-200 dark:border-slate-700 text-[10px] text-slate-400">Click to navigate →</div>
+        {node.kind === 'workload' && onCollapseWorkload && (
+          <button
+            className="mt-1.5 pt-1.5 border-t border-slate-200 dark:border-slate-700 text-[10px] text-pink-400 hover:text-pink-300 cursor-pointer w-full text-left block"
+            style={{ pointerEvents: 'auto' }}
+            onClick={() => onCollapseWorkload(node.id)}
+          >
+            ⊟ Collapse pods
+          </button>
+        )}
       </div>
     </div>
   )
@@ -494,9 +506,10 @@ function KindPill({ color, label, count, active, onToggle }: { color: string; la
 
 // ─── Topology View ────────────────────────────────────────────────────────────
 
-function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onNodeClick }: {
+function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onNodeClick, onCollapseWorkload }: {
   graph: Graph; groupByNs: boolean; animate: boolean; fitTrigger: number; dark: boolean
   searchQuery: string; onNodeClick: (node: GraphNode) => void
+  onCollapseWorkload: (workloadId: string) => void
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -665,6 +678,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
             const active = tooltip?.node.id === n.id
             const isMatch = matchedIds ? matchedIds.has(n.id) : true
             const nodeOpacity = searchActive && !isMatch ? 0.15 : 1
+            const isPodGroup = n.replicaCount !== undefined
             return (
               <g key={n.id} style={{ opacity: nodeOpacity, cursor: 'pointer', transition: 'opacity 0.2s' }}
                 onMouseEnter={e => { setTooltip({ node: n, x: e.clientX, y: e.clientY }); setHoveredNodeId(n.id) }}
@@ -675,16 +689,17 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
                 <foreignObject
                   x={p.x - NODE_W / 2} y={p.y - NODE_H / 2}
                   width={NODE_W} height={NODE_H}
-                  style={{ pointerEvents: 'none' }}>
+                  style={{ pointerEvents: 'none', overflow: 'visible' }}>
                   <div
-                    className="w-full h-full rounded-xl border px-3 py-1.5 flex flex-col justify-center backdrop-blur-md transition-all duration-300"
+                    className="relative w-full h-full rounded-xl border px-3 py-1.5 flex flex-col justify-center backdrop-blur-md transition-all duration-300"
                     style={{
                       fontFamily: 'inherit',
                       backgroundColor: bg,
                       borderColor: isMatch && searchActive ? color : border,
                       borderWidth: isMatch && searchActive ? 2 : 1,
                       filter: active ? 'url(#glow)' : 'none',
-                      transform: active ? 'scale(1.02)' : 'scale(1)'
+                      transform: active ? 'scale(1.02)' : 'scale(1)',
+                      boxShadow: isPodGroup ? `2px 2px 0 1px ${border}, 4px 4px 0 1px ${border}` : undefined,
                     }}>
                     <div className="flex items-center gap-1.5 mb-0.5">
                       {n.kind === 'policy'
@@ -703,6 +718,16 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
                     {!groupByNs && (
                       <span className="text-[9px] text-slate-400 truncate mt-0.5">{n.namespace}</span>
                     )}
+                    {isPodGroup && (
+                      <div
+                        className="absolute -top-1.5 -right-1.5 flex items-center justify-center
+                                    w-5 h-5 rounded-full text-[9px] font-black border-2
+                                    bg-white dark:bg-slate-900 border-current shadow-sm select-none"
+                        style={{ color }}
+                      >
+                        ×{n.replicaCount}
+                      </div>
+                    )}
                   </div>
                 </foreignObject>
                 <rect data-node="true"
@@ -713,7 +738,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
           })}
         </g>
       </svg>
-      {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} dark={dark} />}
+      {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} dark={dark} onCollapseWorkload={onCollapseWorkload} />}
     </div>
   )
 }
@@ -722,9 +747,10 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
 
 const NODE_R = 26
 
-function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onNodeClick }: {
+function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onNodeClick, onCollapseWorkload }: {
   graph: Graph; groupByNs: boolean; animate: boolean; fitTrigger: number; dark: boolean
   searchQuery: string; onNodeClick: (node: GraphNode) => void
+  onCollapseWorkload: (workloadId: string) => void
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -996,12 +1022,19 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
               : n.kind === 'workload' ? workloadIcon(n.workloadKind)
               : '●'
             const strokeW = active ? 2.5 : isMatch && searchActive ? 3 : 1.8
+            const isPodGroup = n.replicaCount !== undefined
             return (
               <g key={n.id} data-nid={n.id} style={{ cursor: 'pointer', opacity: nodeOpacity, transition: 'opacity 0.2s' }}
                 onMouseEnter={e => { setTooltip({ node: n, x: e.clientX, y: e.clientY }); setHoveredNodeId(n.id) }}
                 onMouseMove={e => setTooltip(t => t ? { ...t, x: e.clientX, y: e.clientY } : null)}
                 onMouseLeave={() => { setTooltip(null); setHoveredNodeId(null) }}
               >
+                {isPodGroup && (
+                  <>
+                    <circle cx={p.x + 3} cy={p.y + 3} r={NODE_R} fill={bg} stroke={color} strokeWidth={1} strokeOpacity={0.3} />
+                    <circle cx={p.x + 6} cy={p.y + 6} r={NODE_R} fill={bg} stroke={color} strokeWidth={1} strokeOpacity={0.15} />
+                  </>
+                )}
                 <circle cx={p.x} cy={p.y} r={NODE_R + 4} fill={color} fillOpacity={isMatch && searchActive ? 0.18 : 0.08} />
                 <circle cx={p.x} cy={p.y} r={NODE_R}
                   fill={bg} stroke={color} strokeWidth={strokeW}
@@ -1016,6 +1049,15 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
                   fill={color} style={{ userSelect: 'none' }}>
                   {label}
                 </text>
+                {isPodGroup && (
+                  <text x={p.x + NODE_R - 2} y={p.y - NODE_R + 8}
+                    textAnchor="middle" fontSize={8} fontWeight={900}
+                    fill={color}
+                    stroke="rgba(15,23,42,0.8)" strokeWidth={2.5} paintOrder="stroke"
+                    style={{ userSelect: 'none' }}>
+                    ×{n.replicaCount}
+                  </text>
+                )}
                 {!groupByNs && (
                   <text x={p.x} y={p.y + NODE_R + 14} textAnchor="middle" fontSize={8}
                     fill="#64748b" style={{ userSelect: 'none' }}>
@@ -1027,7 +1069,7 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
           })}
         </g>
       </svg>
-      {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} dark={dark} />}
+      {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} dark={dark} onCollapseWorkload={onCollapseWorkload} />}
     </div>
   )
 }
@@ -1068,6 +1110,7 @@ export default function NetworkPanel(): JSX.Element {
   const [fitTrigger, setFitTrigger] = useState(0)
   const [visibleKinds, setVisibleKinds] = useState<Set<NodeKind>>(new Set(['ingress', 'service', 'pod', 'workload', 'pvc', 'node', 'policy']))
   const [searchQuery, setSearchQuery] = useState('')
+  const [expandedWorkloads, setExpandedWorkloads] = useState<Set<string>>(new Set())
 
   const load = useCallback((ns: string) => {
     if (!selectedContext || loadingNamespaces) return
@@ -1088,13 +1131,16 @@ export default function NetworkPanel(): JSX.Element {
   useEffect(() => { load(panelNs) }, [panelNs, load])
 
   const graph = useMemo(() => {
-    if (visibleKinds.size === KIND_DEFS.length) return rawGraph
-    const nodes = rawGraph.nodes.filter(n => visibleKinds.has(n.kind))
+    // Step 1: collapse pod replicas
+    const collapsed = collapsePodReplicas(rawGraph, expandedWorkloads)
+    // Step 2: filter by visible kinds
+    if (visibleKinds.size === KIND_DEFS.length) return collapsed
+    const nodes = collapsed.nodes.filter(n => visibleKinds.has(n.kind))
     const nodeIds = new Set(nodes.map(n => n.id))
-    const edges = rawGraph.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target))
+    const edges = collapsed.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target))
     const nss = [...new Set(nodes.map(n => n.namespace))].sort()
     return { nodes, edges, namespaces: nss }
-  }, [rawGraph, visibleKinds])
+  }, [rawGraph, visibleKinds, expandedWorkloads])
 
   // O(n) single-pass count map so KindPill badges don't each scan rawGraph.nodes
   const kindCounts = useMemo(() =>
@@ -1115,12 +1161,23 @@ export default function NetworkPanel(): JSX.Element {
   }
 
   const handleNodeClick = useCallback((node: GraphNode) => {
+    // Pod group node: expand replicas on click
+    if (node.replicaCount !== undefined) {
+      const workloadId = node.id.replace(/^podgroup:/, '')
+      setExpandedWorkloads(prev => { const next = new Set(prev); next.add(workloadId); return next })
+      return
+    }
+    // Workload node: navigate to correct section
     if (node.kind === 'workload' && node.workloadKind) {
       setSection(WORKLOAD_KIND_TO_SECTION[node.workloadKind] ?? 'deployments')
-    } else {
-      setSection(KIND_TO_SECTION[node.kind])
+      return
     }
+    setSection(KIND_TO_SECTION[node.kind])
   }, [setSection])
+
+  const handleCollapseWorkload = useCallback((workloadId: string) => {
+    setExpandedWorkloads(prev => { const next = new Set(prev); next.delete(workloadId); return next })
+  }, [])
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0 bg-white dark:bg-[hsl(var(--bg-dark))] transition-colors duration-200">
@@ -1260,10 +1317,10 @@ export default function NetworkPanel(): JSX.Element {
           </div>
         ) : tab === 'topology' ? (
           <TopologyView graph={graph} groupByNs={groupByNs} animate={animate} fitTrigger={fitTrigger} dark={dark}
-            searchQuery={searchQuery} onNodeClick={handleNodeClick} />
+            searchQuery={searchQuery} onNodeClick={handleNodeClick} onCollapseWorkload={handleCollapseWorkload} />
         ) : (
           <MapView graph={graph} groupByNs={groupByNs} animate={animate} fitTrigger={fitTrigger} dark={dark}
-            searchQuery={searchQuery} onNodeClick={handleNodeClick} />
+            searchQuery={searchQuery} onNodeClick={handleNodeClick} onCollapseWorkload={handleCollapseWorkload} />
         )}
 
         {/* Legend overlay */}
