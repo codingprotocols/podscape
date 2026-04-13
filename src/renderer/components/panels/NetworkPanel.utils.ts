@@ -13,7 +13,8 @@ export interface GraphNode {
   serviceType?: string
   ports?: string[]
   workloadKind?: string
-  replicaCount?: number   // present on pod group nodes
+  replicaCount?: number   // present on group nodes
+  replicaNames?: string[] // individual names of grouped replicas
 }
 
 export interface GraphEdge {
@@ -173,6 +174,7 @@ export function collapseWorkloadReplicas(graph: Graph, expandedControllers: Set<
     const firstChild = graph.nodes.find(n => n.id === childIds[0])
 
     const groupId = `workloadgroup:${parentId}`
+    const childNames = childIds.map(id => graph.nodes.find(n => n.id === id)?.name ?? id)
     workloadGroupNodes.push({
       id: groupId,
       kind: 'workload',
@@ -180,6 +182,7 @@ export function collapseWorkloadReplicas(graph: Graph, expandedControllers: Set<
       namespace: parentNode.namespace,
       workloadKind: firstChild?.workloadKind,
       replicaCount: childIds.length,
+      replicaNames: childNames,
     })
     for (const childId of childIds) {
       collapsedWorkloadIds.add(childId)
@@ -196,9 +199,6 @@ export function collapseWorkloadReplicas(graph: Graph, expandedControllers: Set<
   // Redirect and deduplicate edges
   const edgeMap = new Map<string, GraphEdge>()
   for (const edge of graph.edges) {
-    // Drop controller-workload edges to collapsed workloads
-    if (edge.kind === 'controller-workload' && collapsedWorkloadIds.has(edge.target)) continue
-
     const newSource = workloadToGroup.get(edge.source) ?? edge.source
     const newTarget = workloadToGroup.get(edge.target) ?? edge.target
     const dedupeKey = `${edge.kind}--${newSource}--${newTarget}`

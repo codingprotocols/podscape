@@ -269,9 +269,10 @@ describe('collapseWorkloadReplicas', () => {
     expect(group.name).toBe('app-*')
     expect(group.id).toBe('workloadgroup:workload:ns:Deployment:app')
     expect(group.workloadKind).toBe('ReplicaSet')
+    expect(group.replicaNames).toEqual(['app-v1', 'app-v2', 'app-v3'])
   })
 
-  it('removes controller-workload edges to collapsed workloads', () => {
+  it('redirects controller-workload edges from parent to the group node (deduplicated)', () => {
     const g = makeGraph({
       nodes: [
         { id: 'deploy', kind: 'workload', name: 'app', namespace: 'ns', workloadKind: 'Deployment' },
@@ -284,7 +285,11 @@ describe('collapseWorkloadReplicas', () => {
       ],
     })
     const result = collapseWorkloadReplicas(g, new Set())
-    expect(result.edges.filter(e => e.kind === 'controller-workload')).toHaveLength(0)
+    const cwEdges = result.edges.filter(e => e.kind === 'controller-workload')
+    // Both edges collapse into one: deploy → workloadgroup:deploy
+    expect(cwEdges).toHaveLength(1)
+    expect(cwEdges[0].source).toBe('deploy')
+    expect(cwEdges[0].target).toBe('workloadgroup:deploy')
   })
 
   it('redirects controller-pod edges from collapsed workloads to the group', () => {

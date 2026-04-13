@@ -38,7 +38,7 @@ function nodeColor(n: GraphNode): string {
     return '#60a5fa'
   }
   if (n.kind === 'policy') return '#f472b6'
-  if (n.kind === 'workload') return '#fbbf24'
+  if (n.kind === 'workload') return n.workloadKind === 'ReplicaSet' ? '#fb923c' : '#fbbf24'
   if (n.kind === 'pvc') return '#f87171'
   if (n.kind === 'node') return '#06b6d4'
   if (n.phase === 'Running' || n.phase === 'Bound') return '#34d399'
@@ -58,7 +58,7 @@ function nodeBorder(n: GraphNode, dark: boolean): string {
 }
 
 // All unique edge colors (for predefining arrow markers)
-const ALL_EDGE_COLORS = ['#8b5cf6', '#f472b6', '#a78bfa', '#60a5fa', '#3b82f6', '#f87171', '#06b6d4', '#fbbf24']
+const ALL_EDGE_COLORS = ['#8b5cf6', '#f472b6', '#a78bfa', '#60a5fa', '#3b82f6', '#f87171', '#06b6d4', '#fbbf24', '#fb923c']
 
 const KIND_DEFS: { kind: NodeKind; label: string; color: string }[] = [
   { kind: 'ingress', label: 'Ingress', color: '#a78bfa' },
@@ -477,7 +477,18 @@ function NodeTooltip({ node, x, y, dark }: {
         {node.ports && node.ports.length > 0 && (
           <div><span className="text-slate-400 dark:text-slate-500">Ports</span> · <span className="text-slate-600 dark:text-slate-300 font-mono">{node.ports.join(', ')}</span></div>
         )}
-        <div className="mt-1.5 pt-1.5 border-t border-slate-200 dark:border-slate-700 text-[10px] text-slate-400">Click to navigate →</div>
+        {node.replicaNames && node.replicaNames.length > 0 ? (
+          <div className="mt-1.5 pt-1.5 border-t border-slate-200 dark:border-slate-700">
+            <div className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wide">Replicas</div>
+            <div className="space-y-0.5 max-h-[120px] overflow-y-auto">
+              {node.replicaNames.map(name => (
+                <div key={name} className="text-[10px] font-mono text-slate-600 dark:text-slate-300 truncate">{name}</div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-1.5 pt-1.5 border-t border-slate-200 dark:border-slate-700 text-[10px] text-slate-400">Click to navigate →</div>
+        )}
       </div>
     </div>
   )
@@ -542,18 +553,8 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
     [graph, positions]
   )
 
-  // Override policy node positions: pin to top-center of their hull
-  const finalPositions = useMemo(() => {
-    if (!hulls.length) return positions
-    const overridden = new Map(positions)
-    for (const hull of hulls) {
-      overridden.set(hull.policyNode.id, {
-        x: hull.rect.x + hull.rect.w / 2,
-        y: hull.rect.y - NODE_H / 2 - 4,
-      })
-    }
-    return overridden
-  }, [positions, hulls])
+  // Policy nodes stay at their assigned row — hulls visually show coverage without overlapping other rows
+  const finalPositions = positions
 
   // Search: matched node IDs and connected edge IDs
   const matchedIds = useMemo(() => {
