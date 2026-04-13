@@ -648,15 +648,23 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
           {graph.edges.map(edge => {
             const s = positions.get(edge.source), t = positions.get(edge.target)
             if (!s || !t) return null
-            const { color, dur } = edgeStyle(edge.kind)
+            const { color, dur, class: edgeClass } = edgeStyle(edge.kind)
+            // Policy edges replaced by hull zones in topology view
+            if (edgeClass === 'policy') return null
+            const isInfra = edgeClass === 'infra'
             const { path, lx, ly } = computeEdgeEndpoints(s, t)
             const isConnected = connectedEdgeIds ? connectedEdgeIds.has(edge.id) : true
-            const edgeOpacity = connectedEdgeIds ? (isConnected ? 0.9 : 0.04) : (animate ? 0.25 : 0.5)
+            const edgeOpacity = connectedEdgeIds
+              ? (isConnected ? (isInfra ? 0.5 : 0.9) : 0.04)
+              : (animate ? (isInfra ? 0.15 : 0.25) : (isInfra ? 0.25 : 0.5))
             return (
               <g key={edge.id} style={{ transition: 'opacity 0.2s' }}>
-                <path d={path} fill="none" stroke={color} strokeWidth={isConnected && connectedEdgeIds ? 2 : 1.5}
-                  strokeOpacity={edgeOpacity} markerEnd={`url(#arr-${color.slice(1)})`} />
-                {animate && isConnected && (
+                <path d={path} fill="none" stroke={color}
+                  strokeWidth={isConnected && connectedEdgeIds ? 2 : 1.5}
+                  strokeOpacity={edgeOpacity}
+                  strokeDasharray={isInfra ? '5 6' : undefined}
+                  markerEnd={`url(#arr-${color.slice(1)})`} />
+                {animate && isConnected && !isInfra && (
                   <path d={path} fill="none" stroke={color} strokeWidth={2}
                     strokeOpacity={0.85} strokeDasharray="7 9">
                     {/* @ts-ignore */}
@@ -972,7 +980,8 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
           {graph.edges.map(edge => {
             const s = nodePos.get(edge.source), t = nodePos.get(edge.target)
             if (!s || !t) return null
-            const { color, dur } = edgeStyle(edge.kind)
+            const { color, dur, class: edgeClass } = edgeStyle(edge.kind)
+            const isInfra = edgeClass === 'infra'
             const offset = edgeOffsets.get(edge.id) ?? 0
             const dx = t.x - s.x, dy = t.y - s.y
             const len = Math.sqrt(dx * dx + dy * dy) || 1
@@ -983,19 +992,23 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
             const ly = 0.25 * s.y + 0.5 * cy + 0.25 * t.y
             const path = `M ${s.x} ${s.y} Q ${cx} ${cy} ${t.x} ${t.y}`
             const isConnected = connectedEdgeIds ? connectedEdgeIds.has(edge.id) : true
-            const edgeOpacity = connectedEdgeIds ? (isConnected ? 0.9 : 0.04) : (animate ? 0.2 : 0.45)
+            const edgeOpacity = connectedEdgeIds
+              ? (isConnected ? (isInfra ? 0.5 : 0.9) : 0.04)
+              : (animate ? (isInfra ? 0.15 : 0.2) : (isInfra ? 0.25 : 0.45))
             return (
               <g key={edge.id} style={{ transition: 'opacity 0.2s' }}>
                 <path d={path} fill="none" stroke={color}
                   strokeWidth={isConnected && connectedEdgeIds ? 2.5 : 1.5}
-                  strokeOpacity={edgeOpacity} markerEnd={`url(#arr-${color.slice(1)})`} />
-                {animate && isConnected && (
+                  strokeOpacity={edgeOpacity}
+                  strokeDasharray={isInfra ? '5 6' : undefined}
+                  markerEnd={`url(#arr-${color.slice(1)})`} />
+                {animate && isConnected && !isInfra && (
                   <path d={path} fill="none" stroke={color} strokeWidth={2} strokeOpacity={0.85} strokeDasharray="7 9">
                     {/* @ts-ignore */}
                     <animate attributeName="stroke-dashoffset" from="16" to="0" dur={dur} repeatCount="indefinite" />
                   </path>
                 )}
-                {animate && isConnected && (
+                {animate && isConnected && !isInfra && (
                   <circle r="2" fill={color} filter="url(#glow)">
                     {/* @ts-ignore */}
                     <animateMotion dur={dur} repeatCount="indefinite" path={path} />
