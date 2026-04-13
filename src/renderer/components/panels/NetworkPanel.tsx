@@ -5,7 +5,7 @@ import PageHeader from '../core/PageHeader'
 import type { ResourceKind } from '../../types'
 import {
   type NodeKind, type EdgeKind, type GraphNode, type GraphEdge, type Graph,
-  edgeStyle, workloadBadgeLabel, workloadIcon, collapsePodReplicas, collapseWorkloadReplicas, computePolicyHulls,
+  edgeStyle, workloadBadgeLabel, workloadIcon, computePolicyHulls,
 } from './NetworkPanel.utils'
 
 interface NodePos { x: number; y: number; vx: number; vy: number }
@@ -139,9 +139,11 @@ function createSimulator(graph: Graph, groupByNs: boolean): { positions: Map<str
       })
     }
   } else {
-    // Initial radial layout based on kind
+    // Initial radial layout based on kind; RSes get a tighter radius (between parent workloads and pods)
     nodes.forEach((n, i) => {
-      const r = KIND_RADIUS[n.kind] || 400
+      const r = (n.kind === 'workload' && n.workloadKind === 'ReplicaSet')
+        ? 380
+        : (KIND_RADIUS[n.kind] || 400)
       const a = (i / nodes.length) * Math.PI * 2
       positions.set(n.id, { x: Math.cos(a) * r, y: Math.sin(a) * r, vx: 0, vy: 0 })
     })
@@ -194,8 +196,10 @@ function createSimulator(graph: Graph, groupByNs: boolean): { positions: Map<str
     for (const [id, p] of positions.entries()) {
       const n = nodeById.get(id)!
       if (!groupByNs) {
-        // Radial constraint: pull nodes towards their kind-specific target radius
-        const targetR = KIND_RADIUS[n.kind] || 400
+        // Radial constraint: RSes target radius between parent workloads and pods
+        const targetR = (n.kind === 'workload' && n.workloadKind === 'ReplicaSet')
+          ? 380
+          : (KIND_RADIUS[n.kind] || 400)
         const dist = Math.sqrt(p.x * p.x + p.y * p.y) || 0.1
         const f = (dist - targetR) * 0.002 * alpha
         p.vx -= (p.x / dist) * f
@@ -232,69 +236,77 @@ const NODE_W = 164
 const NODE_H = 54
 const H_GAP = 36
 
+// ReplicaSets get their own row between workload controllers and services
+const RS_ROW_Y = 320
+const RS_LANE_ROW_Y = 292
+
 const ROW_Y: Record<NodeKind, number> = {
   ingress: 80,
-  workload: 200,
-  service: 320,
-  pod: 440,
-  pvc: 560,
-  node: 680,
-  policy: 800
+  workload: 200,  // Deployments, DaemonSets, StatefulSets, Jobs, CronJobs
+  service: 440,   // shifted down to make room for RS row
+  pod: 560,
+  pvc: 680,
+  node: 800,
+  policy: 920
 }
 
 const LANE_ROW_Y: Record<NodeKind, number> = {
   ingress: 68,
-  workload: 180,
-  service: 292,
-  pod: 404,
-  pvc: 516,
-  node: 628,
-  policy: 740
+  workload: 180,  // controllers
+  service: 404,   // shifted
+  pod: 516,
+  pvc: 628,
+  node: 740,
+  policy: 852
 }
 const LANE_MIN_W = 180
 const LANE_PAD_X = 20
 const LANE_GAP = 28
 const LANE_HEADER = 36
-const LANE_HEIGHT = LANE_ROW_Y.policy + NODE_H + 26
+const LANE_HEIGHT = LANE_ROW_Y.policy + NODE_H + 30
 
 interface LaneDef { ns: string; nsIdx: number; x: number; y: number; w: number; h: number }
+
+// Returns the y position for a node in flat topology layout
+function nodeRowY(n: GraphNode): number {
+  return (n.kind === 'workload' && n.workloadKind === 'ReplicaSet') ? RS_ROW_Y : ROW_Y[n.kind]
+}
+
+// Returns the y position for a node within a namespace lane
+function nodeLaneRowY(n: GraphNode): number {
+  return (n.kind === 'workload' && n.workloadKind === 'ReplicaSet') ? RS_LANE_ROW_Y : LANE_ROW_Y[n.kind]
+}
 
 function computeTopoPositions(graph: Graph, groupByNs: boolean) {
   const positions = new Map<string, { x: number; y: number }>()
   const lanes: LaneDef[] = []
-  const ALL_KINDS: NodeKind[] = ['ingress', 'workload', 'service', 'pod', 'pvc', 'node', 'policy']
 
   if (!groupByNs) {
-    const byKind: Record<NodeKind, GraphNode[]> = {
-      ingress: [], workload: [], service: [], pod: [], pvc: [], node: [], policy: []
+    // Group nodes by their effective row y, preserving kind-within-row order
+    const byRowY = new Map<number, GraphNode[]>()
+    for (const n of graph.nodes) {
+      const y = nodeRowY(n)
+      if (!byRowY.has(y)) byRowY.set(y, [])
+      byRowY.get(y)!.push(n)
     }
-    for (const n of graph.nodes) byKind[n.kind].push(n)
-    for (const kind of ALL_KINDS) {
-      const row = byKind[kind]
-      if (!row.length) continue
+    for (const [y, row] of byRowY) {
       const totalW = row.length * NODE_W + (row.length - 1) * H_GAP
       const startX = -totalW / 2 + NODE_W / 2
-      row.forEach((n, i) => positions.set(n.id, { x: startX + i * (NODE_W + H_GAP), y: ROW_Y[kind] }))
+      row.forEach((n, i) => positions.set(n.id, { x: startX + i * (NODE_W + H_GAP), y }))
     }
     return { positions, lanes }
   }
 
   const { namespaces } = graph
-  const byNsKind = new Map<string, Record<NodeKind, GraphNode[]>>()
-  for (const ns of namespaces) {
-    byNsKind.set(ns, {
-      ingress: [], workload: [], service: [], pod: [], pvc: [], node: [], policy: []
-    })
-  }
-  for (const n of graph.nodes) {
-    const bucket = byNsKind.get(n.namespace)
-    if (bucket) bucket[n.kind].push(n)
-  }
 
   const laneWidths = namespaces.map(ns => {
-    const b = byNsKind.get(ns)!
-    const counts = ALL_KINDS.map(k => b[k].length)
-    const mx = Math.max(...counts, 1)
+    const nsNodes = graph.nodes.filter(n => n.namespace === ns)
+    const rowCounts = new Map<number, number>()
+    for (const n of nsNodes) {
+      const y = nodeLaneRowY(n)
+      rowCounts.set(y, (rowCounts.get(y) ?? 0) + 1)
+    }
+    const mx = rowCounts.size ? Math.max(...rowCounts.values()) : 1
     return Math.max(LANE_MIN_W, mx * (NODE_W + H_GAP) - H_GAP + LANE_PAD_X * 2)
   })
 
@@ -304,14 +316,20 @@ function computeTopoPositions(graph: Graph, groupByNs: boolean) {
   namespaces.forEach((ns, nsIdx) => {
     const lw = laneWidths[nsIdx]
     const laneCenter = curX + lw / 2
-    const b = byNsKind.get(ns)!
+    const nsNodes = graph.nodes.filter(n => n.namespace === ns)
 
-    for (const kind of ALL_KINDS) {
-      const row = b[kind]
+    // Group by row y, then position within each row
+    const byRowY = new Map<number, GraphNode[]>()
+    for (const n of nsNodes) {
+      const y = nodeLaneRowY(n)
+      if (!byRowY.has(y)) byRowY.set(y, [])
+      byRowY.get(y)!.push(n)
+    }
+    for (const [rowY, row] of byRowY) {
       const rowW = row.length * NODE_W + (row.length - 1) * H_GAP
       const rowStart = laneCenter - rowW / 2 + NODE_W / 2
       row.forEach((n, i) =>
-        positions.set(n.id, { x: rowStart + i * (NODE_W + H_GAP), y: LANE_HEADER + LANE_ROW_Y[kind] })
+        positions.set(n.id, { x: rowStart + i * (NODE_W + H_GAP), y: LANE_HEADER + rowY })
       )
     }
 
@@ -437,10 +455,8 @@ function Legend({ dark }: { dark: boolean }) {
 
 // ─── Node tooltip ─────────────────────────────────────────────────────────────
 
-function NodeTooltip({ node, x, y, dark, onCollapseWorkload, onCollapseController }: {
+function NodeTooltip({ node, x, y, dark }: {
   node: GraphNode; x: number; y: number; dark: boolean
-  onCollapseWorkload?: (workloadId: string) => void
-  onCollapseController?: (controllerId: string) => void
 }) {
   const color = nodeColor(node)
   const clampedX = Math.min(x + 14, window.innerWidth - 240)
@@ -462,24 +478,6 @@ function NodeTooltip({ node, x, y, dark, onCollapseWorkload, onCollapseControlle
           <div><span className="text-slate-400 dark:text-slate-500">Ports</span> · <span className="text-slate-600 dark:text-slate-300 font-mono">{node.ports.join(', ')}</span></div>
         )}
         <div className="mt-1.5 pt-1.5 border-t border-slate-200 dark:border-slate-700 text-[10px] text-slate-400">Click to navigate →</div>
-        {node.kind === 'workload' && onCollapseWorkload && (
-          <button
-            className="mt-1.5 pt-1.5 border-t border-slate-200 dark:border-slate-700 text-[10px] text-pink-400 hover:text-pink-300 cursor-pointer w-full text-left block"
-            style={{ pointerEvents: 'auto' }}
-            onClick={() => onCollapseWorkload(node.id)}
-          >
-            ⊟ Collapse pods
-          </button>
-        )}
-        {node.kind === 'workload' && onCollapseController && (
-          <button
-            className="mt-1 text-[10px] text-violet-400 hover:text-violet-300 cursor-pointer w-full text-left block"
-            style={{ pointerEvents: 'auto' }}
-            onClick={() => onCollapseController(node.id)}
-          >
-            ⊟ Collapse variants
-          </button>
-        )}
       </div>
     </div>
   )
@@ -526,12 +524,9 @@ function KindPill({ color, label, count, active, onToggle }: { color: string; la
 
 // ─── Topology View ────────────────────────────────────────────────────────────
 
-function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onNodeClick, onCollapseWorkload, onCollapseController, expandedControllers }: {
+function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onNodeClick }: {
   graph: Graph; groupByNs: boolean; animate: boolean; fitTrigger: number; dark: boolean
   searchQuery: string; onNodeClick: (node: GraphNode) => void
-  onCollapseWorkload: (workloadId: string) => void
-  onCollapseController: (controllerId: string) => void
-  expandedControllers: Set<string>
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -638,7 +633,9 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
     for (const n of graph.nodes) {
       const p = finalPositions.get(n.id)
       if (!p) continue
-      if (left[n.kind] === undefined || p.x < left[n.kind]) left[n.kind] = p.x
+      // Give RSes their own label key so they sit in the RS row, not the workload row
+      const key = (n.kind === 'workload' && n.workloadKind === 'ReplicaSet') ? 'replicaset' : n.kind
+      if (left[key] === undefined || p.x < left[key]) left[key] = p.x
     }
     return left
   }, [finalPositions, graph.nodes, groupByNs])
@@ -689,18 +686,27 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
           ))}
 
           {/* Flat mode row labels */}
-          {!groupByNs && (['ingress', 'service', 'policy', 'pod'] as NodeKind[]).map(kind => {
-            const lx = rowLabelX[kind]
-            if (lx === undefined) return null
-            return (
-              <text key={kind}
-                x={lx - NODE_W / 2 - 14} y={ROW_Y[kind] + NODE_H / 2 - 6}
-                textAnchor="end" fontSize={9} fontWeight={700} letterSpacing={1.5}
-                fill="#64748b" style={{ userSelect: 'none', textTransform: 'uppercase' }}>
-                {kind === 'pod' ? 'Pods' : kind === 'service' ? 'Services' : kind === 'policy' ? 'Policies' : 'Ingresses'}
-              </text>
-            )
-          })}
+          {!groupByNs && (
+            [
+              { key: 'ingress',     label: 'Ingresses',   y: ROW_Y.ingress },
+              { key: 'workload',    label: 'Workloads',   y: ROW_Y.workload },
+              { key: 'replicaset',  label: 'ReplicaSets', y: RS_ROW_Y },
+              { key: 'service',     label: 'Services',    y: ROW_Y.service },
+              { key: 'pod',         label: 'Pods',        y: ROW_Y.pod },
+              { key: 'policy',      label: 'Policies',    y: ROW_Y.policy },
+            ].map(({ key, label, y }) => {
+              const lx = rowLabelX[key]
+              if (lx === undefined) return null
+              return (
+                <text key={key}
+                  x={lx - NODE_W / 2 - 14} y={y + NODE_H / 2 - 6}
+                  textAnchor="end" fontSize={9} fontWeight={700} letterSpacing={1.5}
+                  fill="#64748b" style={{ userSelect: 'none', textTransform: 'uppercase' }}>
+                  {label}
+                </text>
+              )
+            })
+          )}
 
           {/* Edges */}
           {graph.edges.map(edge => {
@@ -744,7 +750,6 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
             const active = tooltip?.node.id === n.id
             const isMatch = matchedIds ? matchedIds.has(n.id) : true
             const nodeOpacity = searchActive && !isMatch ? 0.15 : 1
-            const isPodGroup = n.replicaCount !== undefined
             return (
               <g key={n.id} style={{ opacity: nodeOpacity, cursor: 'pointer', transition: 'opacity 0.2s' }}
                 onMouseEnter={e => { setTooltip({ node: n, x: e.clientX, y: e.clientY }); setHoveredNodeId(n.id) }}
@@ -755,9 +760,9 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
                 <foreignObject
                   x={p.x - NODE_W / 2} y={p.y - NODE_H / 2}
                   width={NODE_W} height={NODE_H}
-                  style={{ pointerEvents: 'none', overflow: 'visible' }}>
+                  style={{ pointerEvents: 'none' }}>
                   <div
-                    className="relative w-full h-full rounded-xl border px-3 py-1.5 flex flex-col justify-center backdrop-blur-md transition-all duration-300"
+                    className="w-full h-full rounded-xl border px-3 py-1.5 flex flex-col justify-center backdrop-blur-md transition-all duration-300"
                     style={{
                       fontFamily: 'inherit',
                       backgroundColor: bg,
@@ -765,7 +770,6 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
                       borderWidth: isMatch && searchActive ? 2 : 1,
                       filter: active ? 'url(#glow)' : 'none',
                       transform: active ? 'scale(1.02)' : 'scale(1)',
-                      boxShadow: isPodGroup ? `2px 2px 0 1px ${border}, 4px 4px 0 1px ${border}` : undefined,
                     }}>
                     <div className="flex items-center gap-1.5 mb-0.5">
                       {n.kind === 'policy'
@@ -784,16 +788,6 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
                     {!groupByNs && (
                       <span className="text-[9px] text-slate-400 truncate mt-0.5">{n.namespace}</span>
                     )}
-                    {isPodGroup && (
-                      <div
-                        className="absolute -top-1.5 -right-1.5 flex items-center justify-center
-                                    w-5 h-5 rounded-full text-[9px] font-black border-2
-                                    bg-white dark:bg-slate-900 border-current shadow-sm select-none"
-                        style={{ color }}
-                      >
-                        ×{n.replicaCount}
-                      </div>
-                    )}
                   </div>
                 </foreignObject>
                 <rect data-node="true"
@@ -804,9 +798,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
           })}
         </g>
       </svg>
-      {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} dark={dark}
-        onCollapseWorkload={onCollapseWorkload}
-        onCollapseController={expandedControllers.has(tooltip.node.id) ? onCollapseController : undefined} />}
+      {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} dark={dark} />}
     </div>
   )
 }
@@ -815,12 +807,9 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
 
 const NODE_R = 26
 
-function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onNodeClick, onCollapseWorkload, onCollapseController, expandedControllers }: {
+function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onNodeClick }: {
   graph: Graph; groupByNs: boolean; animate: boolean; fitTrigger: number; dark: boolean
   searchQuery: string; onNodeClick: (node: GraphNode) => void
-  onCollapseWorkload: (workloadId: string) => void
-  onCollapseController: (controllerId: string) => void
-  expandedControllers: Set<string>
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -1097,19 +1086,12 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
               : n.kind === 'workload' ? workloadIcon(n.workloadKind)
               : '●'
             const strokeW = active ? 2.5 : isMatch && searchActive ? 3 : 1.8
-            const isPodGroup = n.replicaCount !== undefined
             return (
               <g key={n.id} data-nid={n.id} style={{ cursor: 'pointer', opacity: nodeOpacity, transition: 'opacity 0.2s' }}
                 onMouseEnter={e => { setTooltip({ node: n, x: e.clientX, y: e.clientY }); setHoveredNodeId(n.id) }}
                 onMouseMove={e => setTooltip(t => t ? { ...t, x: e.clientX, y: e.clientY } : null)}
                 onMouseLeave={() => { setTooltip(null); setHoveredNodeId(null) }}
               >
-                {isPodGroup && (
-                  <>
-                    <circle cx={p.x + 3} cy={p.y + 3} r={NODE_R} fill={bg} stroke={color} strokeWidth={1} strokeOpacity={0.3} />
-                    <circle cx={p.x + 6} cy={p.y + 6} r={NODE_R} fill={bg} stroke={color} strokeWidth={1} strokeOpacity={0.15} />
-                  </>
-                )}
                 <circle cx={p.x} cy={p.y} r={NODE_R + 4} fill={color} fillOpacity={isMatch && searchActive ? 0.18 : 0.08} />
                 <circle cx={p.x} cy={p.y} r={NODE_R}
                   fill={bg} stroke={color} strokeWidth={strokeW}
@@ -1124,15 +1106,6 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
                   fill={color} style={{ userSelect: 'none' }}>
                   {label}
                 </text>
-                {isPodGroup && (
-                  <text x={p.x + NODE_R - 2} y={p.y - NODE_R + 8}
-                    textAnchor="middle" fontSize={8} fontWeight={900}
-                    fill={color}
-                    stroke="rgba(15,23,42,0.8)" strokeWidth={2.5} paintOrder="stroke"
-                    style={{ userSelect: 'none' }}>
-                    ×{n.replicaCount}
-                  </text>
-                )}
                 {!groupByNs && (
                   <text x={p.x} y={p.y + NODE_R + 14} textAnchor="middle" fontSize={8}
                     fill="#64748b" style={{ userSelect: 'none' }}>
@@ -1144,9 +1117,7 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
           })}
         </g>
       </svg>
-      {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} dark={dark}
-        onCollapseWorkload={onCollapseWorkload}
-        onCollapseController={expandedControllers.has(tooltip.node.id) ? onCollapseController : undefined} />}
+      {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} dark={dark} />}
     </div>
   )
 }
@@ -1187,8 +1158,6 @@ export default function NetworkPanel(): JSX.Element {
   const [fitTrigger, setFitTrigger] = useState(0)
   const [visibleKinds, setVisibleKinds] = useState<Set<NodeKind>>(new Set(['ingress', 'service', 'pod', 'workload', 'pvc', 'node', 'policy']))
   const [searchQuery, setSearchQuery] = useState('')
-  const [expandedWorkloads, setExpandedWorkloads] = useState<Set<string>>(new Set())
-  const [expandedControllers, setExpandedControllers] = useState<Set<string>>(new Set())
 
   const load = useCallback((ns: string) => {
     if (!selectedContext || loadingNamespaces) return
@@ -1209,18 +1178,13 @@ export default function NetworkPanel(): JSX.Element {
   useEffect(() => { load(panelNs) }, [panelNs, load])
 
   const graph = useMemo(() => {
-    // Step 1: collapse owned workloads (e.g. ReplicaSets under Deployments) when >= 2
-    const withWorkloadCollapse = collapseWorkloadReplicas(rawGraph, expandedControllers)
-    // Step 2: collapse pod replicas under each workload
-    const collapsed = collapsePodReplicas(withWorkloadCollapse, expandedWorkloads)
-    // Step 3: filter by visible kinds
-    if (visibleKinds.size === KIND_DEFS.length) return collapsed
-    const nodes = collapsed.nodes.filter(n => visibleKinds.has(n.kind))
+    if (visibleKinds.size === KIND_DEFS.length) return rawGraph
+    const nodes = rawGraph.nodes.filter(n => visibleKinds.has(n.kind))
     const nodeIds = new Set(nodes.map(n => n.id))
-    const edges = collapsed.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target))
+    const edges = rawGraph.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target))
     const nss = [...new Set(nodes.map(n => n.namespace))].sort()
     return { nodes, edges, namespaces: nss }
-  }, [rawGraph, visibleKinds, expandedWorkloads, expandedControllers])
+  }, [rawGraph, visibleKinds])
 
   // O(n) single-pass count map so KindPill badges don't each scan rawGraph.nodes
   const kindCounts = useMemo(() =>
@@ -1241,33 +1205,12 @@ export default function NetworkPanel(): JSX.Element {
   }
 
   const handleNodeClick = useCallback((node: GraphNode) => {
-    // Workload group node (collapsed RSes etc.): expand on click
-    if (node.replicaCount !== undefined && node.id.startsWith('workloadgroup:')) {
-      const controllerId = node.id.replace(/^workloadgroup:/, '')
-      setExpandedControllers(prev => { const next = new Set(prev); next.add(controllerId); return next })
-      return
-    }
-    // Pod group node: expand replicas on click
-    if (node.replicaCount !== undefined) {
-      const workloadId = node.id.replace(/^podgroup:/, '')
-      setExpandedWorkloads(prev => { const next = new Set(prev); next.add(workloadId); return next })
-      return
-    }
-    // Workload node: navigate to correct section
     if (node.kind === 'workload' && node.workloadKind) {
       setSection(WORKLOAD_KIND_TO_SECTION[node.workloadKind] ?? 'deployments')
       return
     }
     setSection(KIND_TO_SECTION[node.kind])
   }, [setSection])
-
-  const handleCollapseWorkload = useCallback((workloadId: string) => {
-    setExpandedWorkloads(prev => { const next = new Set(prev); next.delete(workloadId); return next })
-  }, [])
-
-  const handleCollapseController = useCallback((controllerId: string) => {
-    setExpandedControllers(prev => { const next = new Set(prev); next.delete(controllerId); return next })
-  }, [])
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0 bg-white dark:bg-[hsl(var(--bg-dark))] transition-colors duration-200">
@@ -1407,12 +1350,10 @@ export default function NetworkPanel(): JSX.Element {
           </div>
         ) : tab === 'topology' ? (
           <TopologyView graph={graph} groupByNs={groupByNs} animate={animate} fitTrigger={fitTrigger} dark={dark}
-            searchQuery={searchQuery} onNodeClick={handleNodeClick} onCollapseWorkload={handleCollapseWorkload}
-            onCollapseController={handleCollapseController} expandedControllers={expandedControllers} />
+            searchQuery={searchQuery} onNodeClick={handleNodeClick} />
         ) : (
           <MapView graph={graph} groupByNs={groupByNs} animate={animate} fitTrigger={fitTrigger} dark={dark}
-            searchQuery={searchQuery} onNodeClick={handleNodeClick} onCollapseWorkload={handleCollapseWorkload}
-            onCollapseController={handleCollapseController} expandedControllers={expandedControllers} />
+            searchQuery={searchQuery} onNodeClick={handleNodeClick} />
         )}
 
         {/* Legend overlay */}
