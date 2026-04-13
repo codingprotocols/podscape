@@ -119,9 +119,16 @@
   "overrides": {
     "dompurify": ">=3.3.2",
     "@xmldom/xmldom": "^0.8.12",
-    "@electron/universal": { "brace-expansion": "^2.0.3" },
-    "cacache": { "brace-expansion": "^2.0.3" },
-    "filelist": { "brace-expansion": "^2.0.3" }
+    "lodash": "^4.18.1",
+    "@electron/universal": {
+      "brace-expansion": "^2.0.3"
+    },
+    "cacache": {
+      "brace-expansion": "^2.0.3"
+    },
+    "filelist": {
+      "brace-expansion": "^2.0.3"
+    }
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
@@ -155,7 +162,6 @@
     "electron-builder": "^26.8.2",
     "electron-vite": "^5.0.0",
     "jsdom": "^29.0.1",
-    "lodash": "^4.18.1",
     "lucide-react": "^0.400.0",
     "postcss": "^8.4.39",
     "react": "^18.3.1",
