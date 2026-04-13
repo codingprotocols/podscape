@@ -307,7 +307,6 @@ function nodeLaneRowY(n: GraphNode): number {
 
 function computeTopoPositions(graph: Graph, groupByNs: boolean) {
   const nodes = graph?.nodes || []
-  const edges = graph?.edges || []
   const namespaces = graph?.namespaces || []
 
   const positions = new Map<string, { x: number; y: number }>()
