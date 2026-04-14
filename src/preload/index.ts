@@ -362,6 +362,12 @@ const kubeconfig = {
     ipcRenderer.invoke('kubeconfig:clearPath')
 }
 
+// ─── mcp API ──────────────────────────────────────────────────────────────────
+
+const mcp = {
+  getBinaryPath: (): Promise<{ path: string; available: boolean; assetName: string }> => ipcRenderer.invoke('mcp:getBinaryPath'),
+}
+
 // ─── updater API ──────────────────────────────────────────────────────────────
 
 const updater = {
@@ -425,6 +431,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('dialog', dialog)
     contextBridge.exposeInMainWorld('updater', updater)
     contextBridge.exposeInMainWorld('sidecar', sidecar)
+    contextBridge.exposeInMainWorld('mcp', mcp)
   } catch (error) {
     console.error(error)
   }
@@ -450,4 +457,6 @@ if (process.contextIsolated) {
   window.updater = updater
   // @ts-ignore
   window.sidecar = sidecar
+  // @ts-ignore
+  window.mcp = mcp
 }

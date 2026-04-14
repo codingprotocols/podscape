@@ -52,3 +52,4 @@ clean:
 # Build the sidecar only when it doesn't exist
 $(GO_CORE):
 	$(MAKE) go
+
