@@ -387,7 +387,7 @@
 
 ---
 
-## [1.2.0] — 2025
+## [1.2.0] — 2025-01-01
 
 - Prometheus-based cluster utilisation charts
 - Helm repository browser
