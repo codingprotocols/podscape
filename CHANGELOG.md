@@ -53,7 +53,7 @@
 - **One-click restart:** Replaced background auto-install with an explicit "Restart to Update" button once the download is ready.
 
 #### Helm Management
-- **Pruned upgrade workflow:** Completely removed the Helm upgrade functionality to harden Podscape as a focused auditing and management tool.
+- **Upgrade workflow removal (2.8.0):** Removed the in-app Helm upgrade workflow in this release to keep Podscape focused on auditing and management; Helm upgrade capability was later reintroduced in 3.0.0 via the MCP `helm_upgrade` tool.
 - **Improved version detection:** Refactored Helm version checking to use a unified `repoLatest` endpoint, supporting semver comparisons across multiple repositories.
 - **Performance:** Implemented lazy loading for Helm repository indices to reduce memory overhead and initialization time.
 - **Semver sorting:** Improved version sorting logic to correctly handle pre-release and metadata tags in Helm charts.
