@@ -403,7 +403,7 @@
 - `PageHeader` component and design system refresh
 - `useYAMLEditor` hook; UnifiedLogs and port-forward panels
 
-## [1.0.0] — 2025
+## [1.0.0] — 2025-01-01
 
 - Initial release: pods, deployments, services, ingresses, configmaps, secrets, nodes, namespaces, CRDs, RBAC, storage, HPA, PDB, events, metrics
 - Go sidecar architecture replacing kubectl IPC calls
