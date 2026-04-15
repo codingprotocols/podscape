@@ -222,9 +222,13 @@ func TestScanPods_ResourceLimitsSuppressWarning(t *testing.T) {
 func TestScanPods_CleanPod(t *testing.T) {
 	pod := makePod("pod1", func(p *corev1.Pod) {
 		uid := int64(1000)
+		falseVal := false
+		trueVal := true
 		p.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
-			RunAsNonRoot: boolp(true),
-			RunAsUser:    &uid,
+			RunAsNonRoot:             boolp(true),
+			RunAsUser:                &uid,
+			AllowPrivilegeEscalation: &falseVal,
+			ReadOnlyRootFilesystem:   &trueVal,
 		}
 		p.Spec.Containers[0].Resources = corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
