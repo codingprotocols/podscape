@@ -396,7 +396,7 @@
 - Kubeconfig onboarding flow
 - Prometheus URL auto-detection and per-context persistence
 
-## [1.1.0] — 2025
+## [1.1.0] — 2025-01-01
 
 - TLS Certificate dashboard
 - GitOps panel (initial)
