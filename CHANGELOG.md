@@ -1,3 +1,11 @@
+## [3.0.1] — 2026-04-16
+
+### Fixes
+
+- Re-tag release to work around immutable tag setting that prevented v3.0.0 from publishing correctly.
+
+---
+
 ## [3.0.0] — 2026-04-16
 
 ### MCP Server overhaul
