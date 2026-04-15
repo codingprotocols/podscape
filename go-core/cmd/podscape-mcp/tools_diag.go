@@ -44,6 +44,8 @@ func registerDiagTools(s *server.MCPServer) {
 
 	s.AddTool(mcp.NewTool("get_resource_events",
 		mcp.WithDescription("Get Kubernetes events for a specific named resource — equivalent to 'kubectl describe' events section"),
+		mcp.WithReadOnlyHintAnnotation(true),
+		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithString("kind", mcp.Required(), mcp.Description("Resource kind, e.g. Pod, Deployment, Node, Service")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Resource name")),
 		mcp.WithString("namespace", mcp.Description("Namespace (omit for cluster-scoped resources)")),

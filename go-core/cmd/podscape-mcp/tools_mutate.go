@@ -3,8 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
-	"strings"
+	"math/rand"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -18,6 +19,7 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	k8sexec "k8s.io/client-go/util/exec"
 )
 
 func registerMutateTools(s *server.MCPServer) {
@@ -274,6 +276,7 @@ func handleDrainNode(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToo
 		actions = append(actions, podAction{pod: pod, skip: skip})
 	}
 
+	const drainPreviewCap = 50
 	if !confirm {
 		toEvict := 0
 		toSkip := 0
@@ -283,15 +286,20 @@ func handleDrainNode(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToo
 				toSkip++
 			} else {
 				toEvict++
-				evictNames = append(evictNames, fmt.Sprintf("%s/%s", a.pod.Namespace, a.pod.Name))
+				if len(evictNames) < drainPreviewCap {
+					evictNames = append(evictNames, fmt.Sprintf("%s/%s", a.pod.Namespace, a.pod.Name))
+				}
 			}
 		}
 		preview := map[string]interface{}{
-			"node":         name,
-			"would_evict":  toEvict,
-			"would_skip":   toSkip,
+			"node":          name,
+			"would_evict":   toEvict,
+			"would_skip":    toSkip,
 			"pods_to_evict": evictNames,
-			"message":      fmt.Sprintf("Set confirm=true to drain node %s (will evict %d pods, skip %d).", name, toEvict, toSkip),
+			"message":       fmt.Sprintf("Set confirm=true to drain node %s (will evict %d pods, skip %d).", name, toEvict, toSkip),
+		}
+		if toEvict > drainPreviewCap {
+			preview["truncated"] = true
 		}
 		return jsonResult(preview)
 	}
@@ -390,8 +398,10 @@ func handleTriggerCronJob(ctx context.Context, req mcp.CallToolRequest) (*mcp.Ca
 }
 
 // cronJobManualName generates the job name for a manually triggered CronJob.
+// Appends a 4-digit random suffix alongside the Unix timestamp so that two
+// triggers within the same second produce distinct names.
 func cronJobManualName(cronJobName string) string {
-	return fmt.Sprintf("%s-manual-%d", cronJobName, time.Now().Unix())
+	return fmt.Sprintf("%s-manual-%d%04d", cronJobName, time.Now().Unix(), rand.Int31n(10000))
 }
 
 func handleExecCommand(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -437,10 +447,13 @@ func handleExecCommand(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallT
 		combined += stderr.String()
 	}
 
-	if err != nil && strings.Contains(err.Error(), "exit code") {
-		return mcp.NewToolResultText(fmt.Sprintf("%s\n[exit error: %v]", combined, err)), nil
-	}
 	if err != nil {
+		// A non-zero container exit is a normal operational result, not a tool
+		// failure. Return the output with the exit code rather than errResult.
+		var exitErr k8sexec.CodeExitError
+		if errors.As(err, &exitErr) {
+			return mcp.NewToolResultText(fmt.Sprintf("%s\n[exit code %d]", combined, exitErr.Code)), nil
+		}
 		return errResult(fmt.Errorf("%v\n%s", err, combined)), nil
 	}
 	return mcp.NewToolResultText(combined), nil
@@ -448,6 +461,13 @@ func handleExecCommand(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallT
 
 // handleSwitchContext validates and switches the active Kubernetes context.
 // Validation runs before acquiring the write lock to keep the critical section short.
+//
+// Concurrent switch_context calls: MCP stdio transport serializes tool calls,
+// so two switch_context requests cannot race in practice. If the transport ever
+// becomes concurrent, two callers could both pass ValidateContext, both call
+// InitWithContext, and both call helm.ClearCache — the second write wins and
+// the first initialized bundle is silently discarded. This is safe (no corruption)
+// but the first caller would receive a misleading success response.
 func handleSwitchContext(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	contextName := argStr(req, "context")
 	if contextName == "" {

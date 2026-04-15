@@ -428,9 +428,10 @@ func TestCronJobManualName_Format(t *testing.T) {
 	if !strings.HasPrefix(name, "my-job-manual-") {
 		t.Errorf("expected prefix 'my-job-manual-', got %q", name)
 	}
+	// Suffix is <unix_seconds><4_random_digits> — at least 14 all-numeric chars.
 	suffix := strings.TrimPrefix(name, "my-job-manual-")
-	if len(suffix) < 9 {
-		t.Errorf("expected unix timestamp suffix of length >= 9, got %q", suffix)
+	if len(suffix) < 14 {
+		t.Errorf("expected suffix of length >= 14, got %q (len %d)", suffix, len(suffix))
 	}
 	for _, ch := range suffix {
 		if ch < '0' || ch > '9' {
@@ -448,5 +449,121 @@ func TestCronJobManualName_DifferentInputs(t *testing.T) {
 	}
 	if !strings.HasPrefix(n2, "job-b-manual-") {
 		t.Errorf("expected job-b prefix, got %q", n2)
+	}
+}
+
+func TestCronJobManualName_NoCollisionSameSecond(t *testing.T) {
+	// UnixNano precision means two back-to-back calls should produce distinct names.
+	n1 := cronJobManualName("my-job")
+	n2 := cronJobManualName("my-job")
+	if n1 == n2 {
+		t.Errorf("expected distinct names for back-to-back calls, both got %q", n1)
+	}
+}
+
+// ── confirm gate (no-cluster paths) ──────────────────────────────────────────
+
+func TestDeleteResource_WithoutConfirm(t *testing.T) {
+	req := makeReq(map[string]interface{}{
+		"kind":      "deployment",
+		"name":      "my-app",
+		"namespace": "production",
+		// confirm omitted — defaults to false
+	})
+	result, err := handleDeleteResource(nil, req) //nolint:staticcheck
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil || len(result.Content) == 0 {
+		t.Fatal("expected non-empty result")
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, "confirm=true") {
+		t.Errorf("expected preview text mentioning confirm=true, got: %q", text)
+	}
+	if !strings.Contains(text, "my-app") {
+		t.Errorf("expected preview to name the resource, got: %q", text)
+	}
+	if !strings.Contains(text, "production") {
+		t.Errorf("expected preview to name the namespace, got: %q", text)
+	}
+}
+
+func TestHelmUninstall_WithoutConfirm(t *testing.T) {
+	req := makeReq(map[string]interface{}{
+		"release":   "my-release",
+		"namespace": "staging",
+		// confirm omitted — defaults to false
+	})
+	result, err := handleHelmUninstall(nil, req) //nolint:staticcheck
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil || len(result.Content) == 0 {
+		t.Fatal("expected non-empty result")
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, "confirm=true") {
+		t.Errorf("expected preview text mentioning confirm=true, got: %q", text)
+	}
+	if !strings.Contains(text, "my-release") {
+		t.Errorf("expected preview to name the release, got: %q", text)
+	}
+	if !strings.Contains(text, "staging") {
+		t.Errorf("expected preview to name the namespace, got: %q", text)
+	}
+}
+
+// ── isDaemonSetPod / podHasEmptyDir ──────────────────────────────────────────
+
+func TestIsDaemonSetPod(t *testing.T) {
+	ds := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			OwnerReferences: []metav1.OwnerReference{{Kind: "DaemonSet", Name: "fluentd"}},
+		},
+	}
+	deploy := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			OwnerReferences: []metav1.OwnerReference{{Kind: "ReplicaSet", Name: "my-rs"}},
+		},
+	}
+	bare := corev1.Pod{}
+
+	if !isDaemonSetPod(ds) {
+		t.Error("expected true for DaemonSet-owned pod")
+	}
+	if isDaemonSetPod(deploy) {
+		t.Error("expected false for ReplicaSet-owned pod")
+	}
+	if isDaemonSetPod(bare) {
+		t.Error("expected false for pod with no owners")
+	}
+}
+
+func TestPodHasEmptyDir(t *testing.T) {
+	withEmpty := corev1.Pod{
+		Spec: corev1.PodSpec{
+			Volumes: []corev1.Volume{
+				{Name: "data", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+			},
+		},
+	}
+	withPVC := corev1.Pod{
+		Spec: corev1.PodSpec{
+			Volumes: []corev1.Volume{
+				{Name: "data", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: "my-pvc"}}},
+			},
+		},
+	}
+	bare := corev1.Pod{}
+
+	if !podHasEmptyDir(withEmpty) {
+		t.Error("expected true for pod with emptyDir volume")
+	}
+	if podHasEmptyDir(withPVC) {
+		t.Error("expected false for pod with PVC volume")
+	}
+	if podHasEmptyDir(bare) {
+		t.Error("expected false for pod with no volumes")
 	}
 }
