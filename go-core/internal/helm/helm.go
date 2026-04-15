@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/release"
 	"sigs.k8s.io/yaml"
@@ -210,6 +211,41 @@ func RollbackRelease(kubeconfig, context, namespace, releaseName string, revisio
 func UninstallRelease(kubeconfig, context, namespace, releaseName string) (*release.UninstallReleaseResponse, error) {
 	res, err := helmRun(kubeconfig, context, namespace, false, func(cfg *action.Configuration) (*release.UninstallReleaseResponse, error) {
 		return action.NewUninstall(cfg).Run(releaseName)
+	})
+	if err == nil {
+		evictActionConfig(kubeconfig, context, namespace)
+	}
+	return res, err
+}
+
+// UpgradeRelease upgrades (or installs) a Helm release.
+// chartRef is a local path, repo/chart name, or OCI reference.
+// values is an optional YAML string merged over chart defaults (empty = no override).
+func UpgradeRelease(kubeconfig, context, namespace, releaseName, chartRef, values string) (*release.Release, error) {
+	res, err := helmRun(kubeconfig, context, namespace, false, func(cfg *action.Configuration) (*release.Release, error) {
+		settings := newSettings(kubeconfig, context)
+
+		client := action.NewUpgrade(cfg)
+		client.Namespace = namespace
+		client.Install = true // --install: install if not already present
+
+		chartPath, err := client.LocateChart(chartRef, settings)
+		if err != nil {
+			return nil, fmt.Errorf("locating chart %q: %w", chartRef, err)
+		}
+		ch, err := loader.Load(chartPath)
+		if err != nil {
+			return nil, fmt.Errorf("loading chart %q: %w", chartPath, err)
+		}
+
+		var vals map[string]interface{}
+		if values != "" {
+			if err := yaml.Unmarshal([]byte(values), &vals); err != nil {
+				return nil, fmt.Errorf("parsing values YAML: %w", err)
+			}
+		}
+
+		return client.Run(releaseName, ch, vals)
 	})
 	if err == nil {
 		evictActionConfig(kubeconfig, context, namespace)

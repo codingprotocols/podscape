@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { isMac } from '../../utils/platform'
 import Editor from '@monaco-editor/react'
 import { useAppStore } from '../../store'
-import { Save, CheckCircle, Monitor, Terminal, FileCode, Activity, DollarSign, Shield, RefreshCw, AlertCircle } from 'lucide-react'
+import { Save, CheckCircle, Monitor, Terminal, FileCode, Activity, DollarSign, Shield, RefreshCw, AlertCircle, Cpu, Copy } from 'lucide-react'
 
 interface SettingsForm {
   shellPath: string
@@ -38,6 +38,13 @@ export default function SettingsPanel(): JSX.Element {
   const [updateProgress, setUpdateProgress] = useState(0)
   const [updateError, setUpdateError] = useState<string | null>(null)
 
+  // ── MCP state ─────────────────────────────────────────────────────────────
+  const [mcpBinaryPath, setMcpBinaryPath] = useState<string>('')
+  const [mcpAvailable, setMcpAvailable] = useState<boolean | null>(null)
+  const [mcpAssetName, setMcpAssetName] = useState<string>('')
+  const [mcpActiveTab, setMcpActiveTab] = useState<'claude-desktop' | 'claude-code' | 'cursor'>('claude-desktop')
+  const [mcpCopied, setMcpCopied] = useState(false)
+
   // ── Kubeconfig editor state ────────────────────────────────────────────────
   const [kubeconfigPath, setKubeconfigPath] = useState('')
   const [kubeconfigContent, setKubeconfigContent] = useState('')
@@ -46,6 +53,14 @@ export default function SettingsPanel(): JSX.Element {
   const [kubeconfigSaved, setKubeconfigSaved] = useState(false)
   const [kubeconfigError, setKubeconfigError] = useState<string | null>(null)
   const [showEditor, setShowEditor] = useState(false)
+
+  useEffect(() => {
+    ;(window as any).mcp?.getBinaryPath().then(({ path, available, assetName }: { path: string; available: boolean; assetName: string }) => {
+      setMcpBinaryPath(path)
+      setMcpAvailable(available)
+      setMcpAssetName(assetName)
+    }).catch(() => { setMcpAvailable(false) })
+  }, [])
 
   useEffect(() => {
     window.settings.get().then(s => setForm({ ...s, prodContexts: s.prodContexts ?? prodContexts, prometheusUrls: s.prometheusUrls ?? {}, costUrls: s.costUrls ?? {}, tourCompleted: s.tourCompleted ?? false })).catch(err => {
@@ -507,6 +522,115 @@ export default function SettingsPanel(): JSX.Element {
             </div>
           </section>
           
+          {/* ── MCP Integration ─────────────────────────────────────────────── */}
+          <section className="space-y-6">
+            <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] flex items-center gap-3">
+              <Cpu size={14} />
+              MCP Integration
+              <span className="flex-1 h-px bg-slate-100 dark:bg-white/5" />
+            </h3>
+            <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-3xl overflow-hidden shadow-sm">
+              <div className="px-8 py-6 bg-slate-100/30 dark:bg-white/5 border-b border-slate-100 dark:border-white/5 flex items-center justify-between">
+                <div>
+                  <h4 className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">AI Assistant Config</h4>
+                  <p className="text-[10px] text-slate-500 mt-1">Connect your AI assistant to this Kubernetes cluster via the bundled MCP server.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {mcpAvailable === true  && <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full uppercase tracking-widest">Ready</span>}
+                  {mcpAvailable === false && <span className="text-[10px] font-black text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3 py-1 rounded-full uppercase tracking-widest">Offline</span>}
+                  {mcpAvailable === null  && <span className="text-[10px] font-black text-slate-500 bg-slate-500/10 border border-slate-500/20 px-3 py-1 rounded-full uppercase tracking-widest">Checking…</span>}
+                </div>
+              </div>
+
+              <div className="p-8 space-y-6">
+                {/* Binary path */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Binary Path</label>
+                  <div className="flex items-center gap-3 bg-white dark:bg-black/40 border border-slate-200 dark:border-white/10 rounded-xl px-5 py-3">
+                    <code className="flex-1 text-[11px] font-mono text-slate-600 dark:text-slate-300 truncate">
+                      {mcpBinaryPath || 'Loading…'}
+                    </code>
+                  </div>
+                </div>
+
+                {/* Client tabs */}
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Client Config</label>
+                  <div className="flex gap-1 bg-slate-100 dark:bg-white/5 rounded-xl p-1">
+                    {(['claude-desktop', 'claude-code', 'cursor'] as const).map(tab => (
+                      <button
+                        key={tab}
+                        onClick={() => setMcpActiveTab(tab)}
+                        className={`flex-1 px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                          mcpActiveTab === tab
+                            ? 'bg-white dark:bg-white/10 text-slate-800 dark:text-white shadow-sm'
+                            : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                        }`}
+                      >
+                        {tab === 'claude-desktop' ? 'Claude Desktop' : tab === 'claude-code' ? 'Claude Code' : 'Cursor'}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10">
+                    <div className="flex items-center justify-between px-4 py-2 bg-slate-100 dark:bg-white/5 border-b border-slate-200 dark:border-white/10">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                        {mcpActiveTab === 'claude-desktop' && '~/Library/Application Support/Claude/claude_desktop_config.json'}
+                        {mcpActiveTab === 'claude-code' && '~/.claude.json → mcpServers'}
+                        {mcpActiveTab === 'cursor' && '.cursor/mcp.json'}
+                      </span>
+                      <button
+                        onClick={() => {
+                          const snippet = getMcpSnippet(mcpActiveTab, mcpBinaryPath)
+                          navigator.clipboard.writeText(snippet).then(() => {
+                            setMcpCopied(true)
+                            setTimeout(() => setMcpCopied(false), 2000)
+                          })
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-blue-400 transition-colors"
+                      >
+                        {mcpCopied ? <CheckCircle className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        {mcpCopied ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+                    <pre className="p-5 text-[11px] font-mono text-slate-600 dark:text-slate-300 bg-white dark:bg-black/20 overflow-x-auto leading-relaxed whitespace-pre">
+                      {getMcpSnippet(mcpActiveTab, mcpBinaryPath)}
+                    </pre>
+                  </div>
+                </div>
+
+                {mcpAvailable === false && (
+                  <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5 space-y-3">
+                    <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest">Binary not found</p>
+                    <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
+                      Download the <code className="bg-amber-500/20 px-1 rounded text-amber-300">podscape-mcp</code> binary for your platform and install it to <code className="bg-amber-500/20 px-1 rounded text-amber-300">/usr/local/bin/</code>, then restart Podscape.
+                    </p>
+                    <button
+                      onClick={() => {
+                        const url = mcpAssetName
+                          ? `https://github.com/codingprotocols/podscape/releases/latest/download/${mcpAssetName}`
+                          : 'https://github.com/codingprotocols/podscape/releases/latest'
+                        ;(window.electron as any).shell.openExternal(url)
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-amber-400 hover:text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl transition-all"
+                    >
+                      Download {mcpAssetName || 'from GitHub Releases'}
+                    </button>
+                  </div>
+                )}
+
+                {mcpActiveTab === 'claude-code' && (
+                  <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-5 space-y-1">
+                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">How to apply</p>
+                    <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
+                      Merge the <code className="bg-blue-500/20 px-1 rounded text-blue-300">mcpServers</code> block into the root of <code className="bg-blue-500/20 px-1 rounded text-blue-300">~/.claude.json</code>, then start a new Claude Code session. Run <code className="bg-blue-500/20 px-1 rounded text-blue-300">/mcp</code> to verify.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+
           {/* ── Update Center ────────────────────────────────────────────────── */}
           <section className="space-y-6 pb-12">
             <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] flex items-center gap-3">
@@ -605,6 +729,20 @@ export default function SettingsPanel(): JSX.Element {
       </div>
     </div>
   )
+}
+
+function getMcpSnippet(tab: 'claude-desktop' | 'claude-code' | 'cursor', binaryPath: string): string {
+  const path = binaryPath || '/path/to/podscape-mcp'
+  const json = {
+    mcpServers: {
+      podscape: {
+        type: 'stdio',
+        command: path,
+        args: [] as string[]
+      }
+    }
+  }
+  return JSON.stringify(json, null, 2)
 }
 
 function ShortcutItem({ keys, label, desc }: { keys: string[]; label: string; desc: string }) {

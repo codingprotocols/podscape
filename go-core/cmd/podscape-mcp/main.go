@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/podscape/go-core/internal/client"
@@ -16,8 +17,13 @@ var Version = "dev"
 
 var kubeconfig string
 
-// bundle is written once in runServer before ServeStdio is called; safe for concurrent reads by tool handlers thereafter.
-var bundle *client.ClientBundle
+// bundle holds the active Kubernetes client bundle.
+// All handlers acquire bundleMu.RLock() before reading bundle.
+// switch_context acquires bundleMu.Lock() to swap bundle atomically.
+var (
+	bundle   *client.ClientBundle
+	bundleMu sync.RWMutex
+)
 
 func main() {
 	rootCmd := &cobra.Command{

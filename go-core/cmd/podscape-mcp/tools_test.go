@@ -1,9 +1,13 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/podscape/go-core/internal/client"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -222,9 +226,13 @@ func TestScanPods_ResourceLimitsSuppressWarning(t *testing.T) {
 func TestScanPods_CleanPod(t *testing.T) {
 	pod := makePod("pod1", func(p *corev1.Pod) {
 		uid := int64(1000)
+		falseVal := false
+		trueVal := true
 		p.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
-			RunAsNonRoot: boolp(true),
-			RunAsUser:    &uid,
+			RunAsNonRoot:             boolp(true),
+			RunAsUser:                &uid,
+			AllowPrivilegeEscalation: &falseVal,
+			ReadOnlyRootFilesystem:   &trueVal,
 		}
 		p.Spec.Containers[0].Resources = corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
@@ -243,5 +251,319 @@ func TestScanPods_EmptyInput(t *testing.T) {
 	findings := scanPods(nil)
 	if findings != nil {
 		t.Errorf("expected nil findings for empty input, got %v", findings)
+	}
+}
+
+// ── New security scan checks (Tasks 5) ────────────────────────────────────────
+
+func TestScanPods_AllowPrivilegeEscalationNotFalse(t *testing.T) {
+	pod := makePod("pod1", func(p *corev1.Pod) {
+		uid := int64(1000)
+		p.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
+			RunAsNonRoot: boolp(true),
+			RunAsUser:    &uid,
+			// AllowPrivilegeEscalation intentionally not set → expect WARN
+		}
+		p.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("100m"),
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			},
+		}
+	})
+	findings := scanPods([]corev1.Pod{pod})
+	warns := findingsWithIssue(findings, "allowPrivilegeEscalation not set to false")
+	if len(warns) != 1 || warns[0].Severity != "WARN" {
+		t.Errorf("expected 1 WARN for allowPrivilegeEscalation, got %v", warns)
+	}
+}
+
+func TestScanPods_AllowPrivilegeEscalationExplicitFalse(t *testing.T) {
+	pod := makePod("pod1", func(p *corev1.Pod) {
+		uid := int64(1000)
+		p.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
+			RunAsNonRoot:             boolp(true),
+			RunAsUser:                &uid,
+			AllowPrivilegeEscalation: boolp(false),
+		}
+		p.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("100m"),
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			},
+		}
+	})
+	findings := scanPods([]corev1.Pod{pod})
+	warns := findingsWithIssue(findings, "allowPrivilegeEscalation not set to false")
+	if len(warns) != 0 {
+		t.Errorf("expected no warns when AllowPrivilegeEscalation=false, got %d", len(warns))
+	}
+}
+
+func TestScanPods_ReadOnlyRootFilesystemNotTrue(t *testing.T) {
+	pod := makePod("pod1", func(p *corev1.Pod) {
+		uid := int64(1000)
+		p.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
+			RunAsNonRoot:             boolp(true),
+			RunAsUser:                &uid,
+			AllowPrivilegeEscalation: boolp(false),
+			// ReadOnlyRootFilesystem intentionally not set → expect WARN
+		}
+		p.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("100m"),
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			},
+		}
+	})
+	findings := scanPods([]corev1.Pod{pod})
+	warns := findingsWithIssue(findings, "readOnlyRootFilesystem not set to true")
+	if len(warns) != 1 || warns[0].Severity != "WARN" {
+		t.Errorf("expected 1 WARN for readOnlyRootFilesystem, got %v", warns)
+	}
+}
+
+func TestScanPods_ReadOnlyRootFilesystemTrue(t *testing.T) {
+	pod := makePod("pod1", func(p *corev1.Pod) {
+		uid := int64(1000)
+		p.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
+			RunAsNonRoot:             boolp(true),
+			RunAsUser:                &uid,
+			AllowPrivilegeEscalation: boolp(false),
+			ReadOnlyRootFilesystem:   boolp(true),
+		}
+		p.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("100m"),
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			},
+		}
+	})
+	findings := scanPods([]corev1.Pod{pod})
+	warns := findingsWithIssue(findings, "readOnlyRootFilesystem not set to true")
+	if len(warns) != 0 {
+		t.Errorf("expected no warns when ReadOnlyRootFilesystem=true, got %d", len(warns))
+	}
+}
+
+func TestScanPods_DangerousCapabilities(t *testing.T) {
+	for _, cap := range []corev1.Capability{"NET_ADMIN", "SYS_ADMIN", "SYS_PTRACE", "ALL"} {
+		cap := cap // capture loop var
+		pod := makePod("pod1", func(p *corev1.Pod) {
+			uid := int64(1000)
+			p.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
+				RunAsNonRoot:             boolp(true),
+				RunAsUser:                &uid,
+				AllowPrivilegeEscalation: boolp(false),
+				ReadOnlyRootFilesystem:   boolp(true),
+				Capabilities: &corev1.Capabilities{
+					Add: []corev1.Capability{cap},
+				},
+			}
+			p.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("128Mi"),
+				},
+			}
+		})
+		findings := scanPods([]corev1.Pod{pod})
+		issue := fmt.Sprintf("Dangerous capability: %s", cap)
+		highs := findingsWithIssue(findings, issue)
+		if len(highs) != 1 || highs[0].Severity != "HIGH" {
+			t.Errorf("cap %s: expected 1 HIGH finding, got %v", cap, highs)
+		}
+	}
+}
+
+// ── ValidateContext ───────────────────────────────────────────────────────────
+
+func TestValidateContext_ExistingContext(t *testing.T) {
+	kubeconfig := writeTempKubeconfig(t, "my-context")
+	if err := client.ValidateContext(kubeconfig, "my-context"); err != nil {
+		t.Errorf("expected no error for existing context, got: %v", err)
+	}
+}
+
+func TestValidateContext_MissingContext(t *testing.T) {
+	kubeconfig := writeTempKubeconfig(t, "my-context")
+	if err := client.ValidateContext(kubeconfig, "nonexistent"); err == nil {
+		t.Error("expected error for missing context, got nil")
+	}
+}
+
+func writeTempKubeconfig(t *testing.T, contextName string) string {
+	t.Helper()
+	content := fmt.Sprintf(`apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: https://localhost:6443
+  name: test-cluster
+contexts:
+- context:
+    cluster: test-cluster
+    user: test-user
+  name: %s
+current-context: %s
+users:
+- name: test-user
+  user: {}
+`, contextName, contextName)
+	f, err := os.CreateTemp(t.TempDir(), "kubeconfig-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(content); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	return f.Name()
+}
+
+// ── cronJobManualName ─────────────────────────────────────────────────────────
+
+func TestCronJobManualName_Format(t *testing.T) {
+	name := cronJobManualName("my-job")
+	if !strings.HasPrefix(name, "my-job-manual-") {
+		t.Errorf("expected prefix 'my-job-manual-', got %q", name)
+	}
+	// Suffix is <unix_seconds><4_random_digits> — at least 14 all-numeric chars.
+	suffix := strings.TrimPrefix(name, "my-job-manual-")
+	if len(suffix) < 14 {
+		t.Errorf("expected suffix of length >= 14, got %q (len %d)", suffix, len(suffix))
+	}
+	for _, ch := range suffix {
+		if ch < '0' || ch > '9' {
+			t.Errorf("expected all-digit suffix, got %q", suffix)
+			break
+		}
+	}
+}
+
+func TestCronJobManualName_DifferentInputs(t *testing.T) {
+	n1 := cronJobManualName("job-a")
+	n2 := cronJobManualName("job-b")
+	if !strings.HasPrefix(n1, "job-a-manual-") {
+		t.Errorf("expected job-a prefix, got %q", n1)
+	}
+	if !strings.HasPrefix(n2, "job-b-manual-") {
+		t.Errorf("expected job-b prefix, got %q", n2)
+	}
+}
+
+func TestCronJobManualName_NoCollisionSameSecond(t *testing.T) {
+	// UnixNano precision means two back-to-back calls should produce distinct names.
+	n1 := cronJobManualName("my-job")
+	n2 := cronJobManualName("my-job")
+	if n1 == n2 {
+		t.Errorf("expected distinct names for back-to-back calls, both got %q", n1)
+	}
+}
+
+// ── confirm gate (no-cluster paths) ──────────────────────────────────────────
+
+func TestDeleteResource_WithoutConfirm(t *testing.T) {
+	req := makeReq(map[string]interface{}{
+		"kind":      "deployment",
+		"name":      "my-app",
+		"namespace": "production",
+		// confirm omitted — defaults to false
+	})
+	result, err := handleDeleteResource(nil, req) //nolint:staticcheck
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil || len(result.Content) == 0 {
+		t.Fatal("expected non-empty result")
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, "confirm=true") {
+		t.Errorf("expected preview text mentioning confirm=true, got: %q", text)
+	}
+	if !strings.Contains(text, "my-app") {
+		t.Errorf("expected preview to name the resource, got: %q", text)
+	}
+	if !strings.Contains(text, "production") {
+		t.Errorf("expected preview to name the namespace, got: %q", text)
+	}
+}
+
+func TestHelmUninstall_WithoutConfirm(t *testing.T) {
+	req := makeReq(map[string]interface{}{
+		"release":   "my-release",
+		"namespace": "staging",
+		// confirm omitted — defaults to false
+	})
+	result, err := handleHelmUninstall(nil, req) //nolint:staticcheck
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil || len(result.Content) == 0 {
+		t.Fatal("expected non-empty result")
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(text, "confirm=true") {
+		t.Errorf("expected preview text mentioning confirm=true, got: %q", text)
+	}
+	if !strings.Contains(text, "my-release") {
+		t.Errorf("expected preview to name the release, got: %q", text)
+	}
+	if !strings.Contains(text, "staging") {
+		t.Errorf("expected preview to name the namespace, got: %q", text)
+	}
+}
+
+// ── isDaemonSetPod / podHasEmptyDir ──────────────────────────────────────────
+
+func TestIsDaemonSetPod(t *testing.T) {
+	ds := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			OwnerReferences: []metav1.OwnerReference{{Kind: "DaemonSet", Name: "fluentd"}},
+		},
+	}
+	deploy := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			OwnerReferences: []metav1.OwnerReference{{Kind: "ReplicaSet", Name: "my-rs"}},
+		},
+	}
+	bare := corev1.Pod{}
+
+	if !isDaemonSetPod(ds) {
+		t.Error("expected true for DaemonSet-owned pod")
+	}
+	if isDaemonSetPod(deploy) {
+		t.Error("expected false for ReplicaSet-owned pod")
+	}
+	if isDaemonSetPod(bare) {
+		t.Error("expected false for pod with no owners")
+	}
+}
+
+func TestPodHasEmptyDir(t *testing.T) {
+	withEmpty := corev1.Pod{
+		Spec: corev1.PodSpec{
+			Volumes: []corev1.Volume{
+				{Name: "data", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+			},
+		},
+	}
+	withPVC := corev1.Pod{
+		Spec: corev1.PodSpec{
+			Volumes: []corev1.Volume{
+				{Name: "data", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: "my-pvc"}}},
+			},
+		},
+	}
+	bare := corev1.Pod{}
+
+	if !podHasEmptyDir(withEmpty) {
+		t.Error("expected true for pod with emptyDir volume")
+	}
+	if podHasEmptyDir(withPVC) {
+		t.Error("expected false for pod with PVC volume")
+	}
+	if podHasEmptyDir(bare) {
+		t.Error("expected false for pod with no volumes")
 	}
 }
