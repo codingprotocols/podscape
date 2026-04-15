@@ -1,3 +1,40 @@
+## [3.0.0] — 2026-04-16
+
+### MCP Server overhaul
+
+#### File organisation
+- Deleted the 1200-line monolithic `tools.go` and replaced it with six focused files: `tools_helpers.go`, `tools_read.go`, `tools_diag.go`, `tools_mutate.go`, `tools_helm.go`, and `register.go`. Each file owns one category of tools and exposes a `register*Tools()` function composed by a single `registerTools()` entry point.
+
+#### Thread safety
+- Replaced the bare `bundle *client.ClientBundle` global with a `sync.RWMutex`-guarded pair. All 23 tool handlers acquire `RLock`; `switch_context` acquires the write lock only after validating the target context, keeping the critical section minimal.
+
+#### New tools (9)
+- **`describe_resource`** — fetches a resource and its events in one call (replaces two round-trips for `kubectl describe`-style workflows).
+- **`exec_command`** — executes a one-shot command inside a running pod container and returns combined stdout+stderr. Non-zero exit codes are reported in the result text rather than as tool errors.
+- **`switch_context`** — switches the active Kubernetes context mid-session; all subsequent tool calls use the new cluster immediately.
+- **`cordon_node`** — cordon or uncordon a node (`spec.unschedulable` patch).
+- **`drain_node`** — evicts all evictable pods from a node with configurable `force`, `ignore_daemonsets`, and `delete_emptydir_data` options. Returns `{ evicted, skipped, failed }` with per-pod failure reasons.
+- **`trigger_cronjob`** — creates a Job from a CronJob's `spec.jobTemplate`, equivalent to `kubectl create job --from=cronjob/<name>`.
+- **`helm_history`** — lists all revisions of a Helm release with status, chart version, and description.
+- **`helm_upgrade`** — upgrades an existing release or installs it if absent (`--install`). Accepts an optional YAML values string merged over chart defaults.
+- **`helm_uninstall`** — uninstalls a Helm release and removes all associated Kubernetes resources.
+
+#### Improved tools (4)
+- **`list_resources`** — added `field_selector` parameter (e.g. `status.phase=Running`, `spec.nodeName=node-1`).
+- **`get_pod_logs`** — added `init_container` bool; when true, fetches logs from init containers.
+- **`pod_summary`** — now fetches init container logs concurrently alongside main container logs. Init container logs appear in `container_logs` keyed as `init:<name>`.
+- **`security_scan`** — three new per-container checks: `allowPrivilegeEscalation` not set to `false` (WARN), `readOnlyRootFilesystem` not set to `true` (WARN), and dangerous capabilities present (`NET_ADMIN`, `SYS_ADMIN`, `SYS_PTRACE`, `ALL`) (HIGH).
+
+#### Safety gates
+- `delete_resource`, `drain_node`, and `helm_uninstall` now require `confirm=true` to execute. Calling without it returns a preview of what would be affected — no cluster state is changed. The `drain_node` preview lists the exact pods that would be evicted vs skipped (capped at 50 entries with a `truncated` flag).
+
+#### New Go internals
+- `client.InitWithContext` — builds a `ClientBundle` against a specific kubeconfig context using `ConfigOverrides{CurrentContext}`.
+- `client.ValidateContext` — validates that a context name exists in the kubeconfig before acquiring the write lock in `switch_context`.
+- `helm.UpgradeRelease` — wraps `action.NewUpgrade` with `LocateChart` + `loader.Load` to support local paths, repo references, and OCI references.
+
+---
+
 ## [2.8.0] — 2026-04-10
 
 ### New features
