@@ -148,9 +148,23 @@ Any MCP client that supports `stdio` transport works. The server name is `podsca
 
 ---
 
+## Safety gates
+
+Three destructive tools require an explicit `confirm=true` parameter to execute. Calling them **without** `confirm=true` returns a preview of what would be affected — no cluster state is changed.
+
+| Tool | Preview shows |
+|------|--------------|
+| `delete_resource` | Kind, name, and namespace that would be deleted |
+| `drain_node` | Exact pod list that would be evicted vs skipped (capped at 50) |
+| `helm_uninstall` | Release name and namespace that would be removed |
+
+This two-step pattern prevents accidental deletions when an AI assistant constructs a tool call from an ambiguous instruction.
+
+---
+
 ## Available Tools
 
-`podscape-mcp` exposes 25 tools across three categories.
+`podscape-mcp` exposes **37 tools** across four categories.
 
 ### Read-only tools (15)
 
@@ -165,12 +179,8 @@ List any Kubernetes resource type. Supports all built-in types and any CRD by pl
 | `resource` | string | yes | Resource type: `pods`, `deployments`, `services`, `nodes`, `configmaps`, `secrets`, custom CRD plural names (e.g. `virtualservices`, `ingressroutes`), etc. |
 | `namespace` | string | no | Namespace filter; omit for all namespaces |
 | `label_selector` | string | no | Label selector, e.g. `app=nginx` or `env=prod,tier=frontend` |
+| `field_selector` | string | no | Field selector, e.g. `status.phase=Running` or `spec.nodeName=node-1` |
 | `limit` | number | no | Max results to return (default 100; set to 0 for unlimited) |
-
-Example input:
-```json
-{ "resource": "pods", "namespace": "production", "label_selector": "app=api" }
-```
 
 #### `get_resource`
 
@@ -181,11 +191,6 @@ Get a single Kubernetes resource by name. Supports built-in types and CRDs.
 | `resource` | string | yes | Resource type |
 | `name` | string | yes | Resource name |
 | `namespace` | string | no | Namespace; omit for cluster-scoped resources |
-
-Example input:
-```json
-{ "resource": "deployments", "name": "api-server", "namespace": "production" }
-```
 
 #### `get_resource_yaml`
 
@@ -209,11 +214,7 @@ Fetch container logs. Output is capped at 512 KB total; a truncation notice is a
 | `tail` | number | no | Number of lines (default 100); ignored when `since_minutes` is set |
 | `since_minutes` | number | no | Return logs from the last N minutes (overrides `tail`) |
 | `previous` | boolean | no | Fetch logs from the previously terminated container instance (useful for crash-looping pods) |
-
-Example input:
-```json
-{ "pod": "api-server-7d9f4b-xkp2r", "namespace": "production", "tail": 200 }
-```
+| `init_container` | boolean | no | When true, fetches logs from init containers instead of main containers |
 
 #### `list_events`
 
@@ -225,11 +226,6 @@ List Kubernetes events sorted by most recent first.
 | `type` | string | no | `Warning` or `Normal`; omit for all types |
 | `object_name` | string | no | Filter events for a specific object name |
 | `limit` | number | no | Max events to return (default 100) |
-
-Example input:
-```json
-{ "namespace": "production", "type": "Warning", "limit": 50 }
-```
 
 #### `list_contexts`
 
@@ -280,28 +276,35 @@ Get the values of a Helm release.
 | `namespace` | string | yes | Namespace |
 | `all` | boolean | no | Include computed/default values (equivalent to `helm get values --all`) |
 
+#### `helm_history`
+
+List all revisions of a Helm release.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `release` | string | yes | Release name |
+| `namespace` | string | yes | Namespace |
+
+Returns an array of revisions, each with `revision`, `status`, `chart`, `appVersion`, `updated`, and `description`.
+
 #### `security_scan`
 
-Run a security posture scan on all pods in a namespace. Checks for: missing `SecurityContext`, privileged containers, containers running as root, missing resource limits, and host network/PID/IPC namespace usage.
+Run a security posture scan on all pods in a namespace. Checks for:
+
+- Missing `SecurityContext`
+- Privileged containers
+- Containers running as root (container-level and pod-level)
+- Missing resource limits
+- Host network / PID / IPC namespace usage
+- `allowPrivilegeEscalation` not explicitly set to `false`
+- `readOnlyRootFilesystem` not set to `true`
+- Dangerous capabilities present: `NET_ADMIN`, `SYS_ADMIN`, `SYS_PTRACE`, `ALL`
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `namespace` | string | yes | Namespace to scan |
 
 Each finding includes: `pod`, `container`, `issue`, and `severity` (`WARN`, `HIGH`, or `CRITICAL`).
-
-Example output:
-```json
-{
-  "namespace": "production",
-  "pods_scanned": 12,
-  "total_issues": 3,
-  "findings": [
-    { "pod": "legacy-app-abc123", "container": "app", "issue": "No SecurityContext set", "severity": "WARN" },
-    { "pod": "debug-pod", "container": "debug", "issue": "Privileged container", "severity": "CRITICAL" }
-  ]
-}
-```
 
 #### `detect_providers`
 
@@ -328,9 +331,66 @@ Get CPU and memory usage for pods or nodes. Requires `metrics-server` to be inst
 
 ---
 
-### Mutating tools (6)
+### Diagnostic tools (5)
 
-These tools modify cluster state. They are marked non-destructive (except `delete_resource`) per the MCP hint annotations in the server.
+These tools bundle multiple API calls into a single response to reduce round-trips during common diagnostic workflows.
+
+#### `pod_summary`
+
+Get a combined view of a pod's status, container states, recent events, and last N log lines — everything needed to diagnose a failing pod in one call. Init container logs are fetched concurrently alongside main container logs and included in `container_logs` under `init:<name>` keys.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `pod` | string | yes | Pod name |
+| `namespace` | string | yes | Namespace |
+| `tail` | number | no | Log lines per container (default 50) |
+| `previous` | boolean | no | Fetch logs from the previously terminated container instance |
+
+Returns: `phase`, `conditions`, `containers` (state/reason/message per container), `events`, and `container_logs` (map of container name → log output; init containers keyed as `init:<name>`).
+
+#### `cluster_health`
+
+Get a one-call cluster health overview: node ready/total counts, pod counts by phase (Running, Pending, Failed, etc.), and Warning events from the last hour.
+
+No parameters required.
+
+Warning events are capped at 50 entries; a `warning_events_truncated: true` field is added when the cap is reached.
+
+#### `list_failing_pods`
+
+List all pods that are not in `Running` or `Succeeded` state, plus any `Running` pods with containers in a `Waiting` or not-ready state. Includes phase, reason, and per-container failure details.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `namespace` | string | no | Namespace filter; omit for all namespaces |
+
+#### `get_resource_events`
+
+Get Kubernetes events for a specific named resource — equivalent to the Events section of `kubectl describe`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `kind` | string | yes | Resource kind, e.g. `Pod`, `Deployment`, `Node`, `Service` |
+| `name` | string | yes | Resource name |
+| `namespace` | string | no | Namespace; omit for cluster-scoped resources |
+
+#### `describe_resource`
+
+Get a resource and its events in one call — equivalent to `kubectl describe` without the table formatting. Avoids requiring two separate tool calls when diagnosing a resource.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `resource` | string | yes | Resource type (plural), e.g. `pods`, `deployments`, `services` |
+| `name` | string | yes | Resource name |
+| `namespace` | string | no | Namespace; omit for cluster-scoped resources |
+
+Returns: `{ "resource": { ... }, "events": [ ... ] }`
+
+---
+
+### Mutating tools (11)
+
+These tools modify cluster state. Destructive tools require `confirm=true` — see [Safety gates](#safety-gates).
 
 #### `scale_resource`
 
@@ -345,13 +405,14 @@ Scale a deployment or statefulset to a desired replica count.
 
 #### `delete_resource`
 
-Delete a Kubernetes resource. This tool is marked destructive.
+Delete a Kubernetes resource. **Requires `confirm=true` to execute** — call without it first to see a preview.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `kind` | string | yes | Resource kind, e.g. `pod`, `deployment`, `service` |
 | `name` | string | yes | Resource name |
 | `namespace` | string | yes | Namespace |
+| `confirm` | boolean | no | Must be `true` to delete. Omit or set `false` to preview what will be deleted. |
 
 #### `rollout_restart`
 
@@ -382,6 +443,74 @@ Apply a Kubernetes YAML manifest using server-side apply. Equivalent to `kubectl
 |-----------|------|----------|-------------|
 | `yaml` | string | yes | The full YAML manifest content |
 
+#### `cordon_node`
+
+Cordon or uncordon a node to prevent or allow new pod scheduling.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | yes | Node name |
+| `unschedulable` | boolean | yes | `true` = cordon (prevent new pods), `false` = uncordon |
+
+#### `drain_node`
+
+Evict all pods from a node to prepare it for maintenance. **Requires `confirm=true` to execute** — call without it first to see which pods would be evicted.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | yes | Node name |
+| `force` | boolean | no | Delete pods not managed by a controller (default `false`) |
+| `ignore_daemonsets` | boolean | no | Skip DaemonSet-managed pods (default `true`) |
+| `delete_emptydir_data` | boolean | no | Allow eviction of pods with emptyDir volumes (default `false`) |
+| `confirm` | boolean | no | Must be `true` to drain. Omit or set `false` to preview which pods would be evicted. |
+
+Preview response (without `confirm=true`):
+```json
+{
+  "node": "node-1",
+  "would_evict": 12,
+  "would_skip": 4,
+  "pods_to_evict": ["production/api-pod-abc", "production/worker-pod-xyz"],
+  "message": "Set confirm=true to drain node node-1 (will evict 12 pods, skip 4)."
+}
+```
+
+The `pods_to_evict` list is capped at 50 entries; a `"truncated": true` field is added when there are more.
+
+#### `trigger_cronjob`
+
+Manually trigger a CronJob by creating a Job from its template — equivalent to `kubectl create job --from=cronjob/<name>`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | yes | CronJob name |
+| `namespace` | string | yes | Namespace |
+
+Returns the name of the created Job.
+
+#### `exec_command`
+
+Execute a one-shot command inside a running pod container and return combined stdout + stderr. Suitable for non-interactive commands (`ls`, `env`, `cat /path`, `ps aux`).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `pod` | string | yes | Pod name |
+| `namespace` | string | yes | Namespace |
+| `container` | string | no | Container name (defaults to first container) |
+| `command` | array | yes | Command and arguments, e.g. `["ls", "-la", "/tmp"]` |
+
+Non-zero container exit codes are returned as part of the result text (not as a tool error), so the AI can see the output even when the command fails.
+
+#### `switch_context`
+
+Switch the active Kubernetes context for all subsequent tool calls. All tools called after a successful `switch_context` will operate against the new cluster.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `context` | string | yes | Kubernetes context name (must exist in kubeconfig) |
+
+Returns `"Switched to context <name>"` on success. Returns an error if the context is not found in the kubeconfig — the active context is not changed on error.
+
 #### `helm_rollback`
 
 Roll back a Helm release to a previous revision.
@@ -394,68 +523,39 @@ Roll back a Helm release to a previous revision.
 
 ---
 
-### Diagnostic aggregation tools (4)
+### Helm lifecycle tools (6)
 
-These tools bundle multiple API calls into a single response to reduce the number of round-trips needed for common diagnostic workflows.
+#### `helm_upgrade`
 
-#### `pod_summary`
-
-Get a combined view of a pod's status, container states, recent events, and last N log lines — everything needed to diagnose a failing pod in one call.
+Upgrade an existing Helm release, or install it if not present (`--install`).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `pod` | string | yes | Pod name |
+| `release` | string | yes | Release name |
 | `namespace` | string | yes | Namespace |
-| `tail` | number | no | Log lines per container (default 50) |
-| `previous` | boolean | no | Fetch logs from the previously terminated container instance |
+| `chart` | string | yes | Chart reference: local path, `repo/chart`, or OCI reference |
+| `values` | string | no | Optional YAML string of values to merge over chart defaults |
 
-Returns: `phase`, `conditions`, `containers` (with state/reason/message per container), `events`, and `container_logs` (map of container name → log output).
+Returns: `{ "release": "...", "status": "deployed", "revision": 3 }`
 
-#### `cluster_health`
+#### `helm_uninstall`
 
-Get a one-call cluster health overview: node ready/total counts, pod counts by phase (Running, Pending, Failed, etc.), and Warning events from the last hour.
-
-No parameters required.
-
-Example output:
-```json
-{
-  "nodes": { "ready": 3, "total": 3 },
-  "pods": { "Running": 47, "Pending": 2, "Succeeded": 5 },
-  "warning_events": [
-    {
-      "namespace": "production",
-      "reason": "BackOff",
-      "object": "Pod/api-server-xyz",
-      "message": "Back-off restarting failed container",
-      "count": 12,
-      "lastSeen": "2026-04-02T10:15:00Z"
-    }
-  ]
-}
-```
-
-Warning events are capped at 50 entries; a `warning_events_truncated: true` field is added when the cap is reached.
-
-#### `list_failing_pods`
-
-List all pods that are not in `Running` or `Succeeded` state, plus any `Running` pods with containers in a `Waiting` or not-ready state. Includes phase, reason, and per-container failure details.
+Uninstall a Helm release and remove all associated Kubernetes resources. **Requires `confirm=true` to execute** — call without it first to see a preview.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `namespace` | string | no | Namespace filter; omit for all namespaces |
+| `release` | string | yes | Release name |
+| `namespace` | string | yes | Namespace |
+| `confirm` | boolean | no | Must be `true` to uninstall. Omit or set `false` to preview what will be removed. |
 
-Returns `total_failing` and an array of pods, each with `name`, `namespace`, `phase`, `reason`, `message`, `age`, and a `containers` array with `state`, `reason`, `message`, and `restarts` per failing container.
+#### `helm_history`
 
-#### `get_resource_events`
-
-Get Kubernetes events for a specific named resource — equivalent to the Events section of `kubectl describe`.
+List all revisions of a Helm release (same as `helm history`).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `kind` | string | yes | Resource kind, e.g. `Pod`, `Deployment`, `Node`, `Service` |
-| `name` | string | yes | Resource name |
-| `namespace` | string | no | Namespace; omit for cluster-scoped resources |
+| `release` | string | yes | Release name |
+| `namespace` | string | yes | Namespace |
 
 ---
 
@@ -495,6 +595,44 @@ The assistant will call:
 
 ---
 
+### Drain a node for maintenance
+
+Ask your AI assistant:
+
+> "I need to take node-3 offline for maintenance. Drain it."
+
+The assistant will:
+1. Call `drain_node` with `name=node-3` (no `confirm`) — receives the pod preview
+2. Present the preview to you for confirmation
+3. Call `drain_node` again with `confirm=true` to execute
+
+---
+
+### Debug a failing init container
+
+Ask your AI assistant:
+
+> "The api-server pod keeps getting stuck in Init state. What's happening?"
+
+The assistant will likely call:
+1. `describe_resource` with `resource=pods, name=api-server` — gets the pod spec and events in one call
+2. `get_pod_logs` with `init_container=true` to see what the init container printed before failing
+
+---
+
+### Switch clusters mid-session
+
+Ask your AI assistant:
+
+> "Switch to the staging cluster and check if the same issue exists there."
+
+The assistant calls:
+1. `list_contexts` to see available contexts
+2. `switch_context` with the staging context name
+3. Any subsequent tool calls now operate against staging
+
+---
+
 ### Roll back a broken Helm release
 
 Ask your AI assistant:
@@ -502,9 +640,10 @@ Ask your AI assistant:
 > "The last deploy of the checkout-service Helm release broke something. Roll it back to the previous revision."
 
 The assistant will likely call:
-1. `helm_status` with `release=checkout-service` and the relevant namespace to confirm the current state
-2. `helm_rollback` with `release=checkout-service` and `revision=0` (previous revision)
-3. `helm_status` again to confirm the rollback succeeded
+1. `helm_status` with `release=checkout-service` to confirm the current state
+2. `helm_history` to see available revisions
+3. `helm_rollback` with `release=checkout-service` and `revision=0`
+4. `helm_status` again to confirm the rollback succeeded
 
 ---
 
@@ -538,6 +677,6 @@ kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/late
 - For Claude Code, start a new session after running `claude mcp add` — MCP servers connect on session startup, not mid-session.
 - Run the binary manually to confirm it starts without errors: `/usr/local/bin/podscape-mcp --help`
 
-### Context mismatch — tools operate on the wrong cluster
+### Tools operate on the wrong cluster after a context switch
 
-The MCP server reads the active context from your kubeconfig at startup. If you switch contexts with `kubectl config use-context` after the server is already running, you need to restart the MCP client session so the server reinitialises with the new context.
+Use the `switch_context` tool to change the active context mid-session — the server will reinitialise its client against the new cluster immediately. Alternatively, restart the MCP client session after running `kubectl config use-context` in your terminal.
