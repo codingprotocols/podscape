@@ -298,7 +298,8 @@ func handleListContexts(ctx context.Context, req mcp.CallToolRequest) (*mcp.Call
 func handleGetCurrentContext(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	bundleMu.RLock()
 	defer bundleMu.RUnlock()
-	return mcp.NewToolResultText(bundle.ContextName), nil
+	b := bundle
+	return mcp.NewToolResultText(b.ContextName), nil
 }
 
 func handleListNamespaces(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
