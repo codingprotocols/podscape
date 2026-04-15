@@ -32,11 +32,12 @@ func registerMutateTools(s *server.MCPServer) {
 	), handleScaleResource)
 
 	s.AddTool(mcp.NewTool("delete_resource",
-		mcp.WithDescription("Delete a Kubernetes resource"),
+		mcp.WithDescription("Delete a Kubernetes resource. Call without confirm=true first to see what will be deleted, then call again with confirm=true to proceed."),
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithString("kind", mcp.Required(), mcp.Description("Resource kind (pod, deployment, service, etc.)")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Resource name")),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
+		mcp.WithBoolean("confirm", mcp.Description("Must be true to actually delete. Omit or set false to preview what will be deleted.")),
 	), handleDeleteResource)
 
 	s.AddTool(mcp.NewTool("rollout_restart",
@@ -72,12 +73,13 @@ func registerMutateTools(s *server.MCPServer) {
 	), handleCordonNode)
 
 	s.AddTool(mcp.NewTool("drain_node",
-		mcp.WithDescription("Evict all pods from a node to prepare it for maintenance"),
+		mcp.WithDescription("Evict all pods from a node to prepare it for maintenance. Call without confirm=true first to see how many pods will be evicted, then call again with confirm=true to proceed."),
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Node name")),
 		mcp.WithBoolean("force", mcp.Description("Delete pods not managed by a controller (default false)")),
 		mcp.WithBoolean("ignore_daemonsets", mcp.Description("Skip DaemonSet-managed pods (default true)")),
 		mcp.WithBoolean("delete_emptydir_data", mcp.Description("Allow eviction of pods with emptyDir volumes (default false)")),
+		mcp.WithBoolean("confirm", mcp.Description("Must be true to actually drain. Omit or set false to preview which pods would be evicted.")),
 	), handleDrainNode)
 
 	s.AddTool(mcp.NewTool("trigger_cronjob",
@@ -132,6 +134,14 @@ func handleDeleteResource(ctx context.Context, req mcp.CallToolRequest) (*mcp.Ca
 	kind := argStr(req, "kind")
 	name := argStr(req, "name")
 	ns := argStr(req, "namespace")
+	confirm := argBool(req, "confirm")
+
+	if !confirm {
+		return mcp.NewToolResultText(fmt.Sprintf(
+			"This will permanently delete %s/%s from namespace %s. Set confirm=true to proceed.",
+			kind, name, ns,
+		)), nil
+	}
 
 	bundleMu.RLock()
 	defer bundleMu.RUnlock()
@@ -230,6 +240,7 @@ func handleDrainNode(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToo
 	force := argBool(req, "force")
 	ignoreDaemonsets := argBoolDef(req, "ignore_daemonsets", true)
 	deleteEmptydirData := argBool(req, "delete_emptydir_data")
+	confirm := argBool(req, "confirm")
 
 	bundleMu.RLock()
 	defer bundleMu.RUnlock()
@@ -245,33 +256,60 @@ func handleDrainNode(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToo
 		return errResult(err), nil
 	}
 
+	// Categorise pods the same way the drain logic does, for both preview and execution.
+	type podAction struct {
+		pod  corev1.Pod
+		skip bool
+	}
+	var actions []podAction
+	for _, pod := range pods.Items {
+		skip := false
+		if (ignoreDaemonsets && isDaemonSetPod(pod)) ||
+			pod.Status.Phase == corev1.PodSucceeded ||
+			pod.Status.Phase == corev1.PodFailed ||
+			(!force && len(pod.OwnerReferences) == 0) ||
+			(!deleteEmptydirData && podHasEmptyDir(pod)) {
+			skip = true
+		}
+		actions = append(actions, podAction{pod: pod, skip: skip})
+	}
+
+	if !confirm {
+		toEvict := 0
+		toSkip := 0
+		var evictNames []string
+		for _, a := range actions {
+			if a.skip {
+				toSkip++
+			} else {
+				toEvict++
+				evictNames = append(evictNames, fmt.Sprintf("%s/%s", a.pod.Namespace, a.pod.Name))
+			}
+		}
+		preview := map[string]interface{}{
+			"node":         name,
+			"would_evict":  toEvict,
+			"would_skip":   toSkip,
+			"pods_to_evict": evictNames,
+			"message":      fmt.Sprintf("Set confirm=true to drain node %s (will evict %d pods, skip %d).", name, toEvict, toSkip),
+		}
+		return jsonResult(preview)
+	}
+
 	evicted, skipped, failed := 0, 0, 0
 	var failReasons []string
 
-	for _, pod := range pods.Items {
-		if ignoreDaemonsets && isDaemonSetPod(pod) {
+	for _, a := range actions {
+		if a.skip {
 			skipped++
 			continue
 		}
-		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
-			skipped++
-			continue
-		}
-		if !force && len(pod.OwnerReferences) == 0 {
-			skipped++
-			continue
-		}
-		if !deleteEmptydirData && podHasEmptyDir(pod) {
-			skipped++
-			continue
-		}
-
 		eviction := &policyv1.Eviction{
-			ObjectMeta: metav1.ObjectMeta{Name: pod.Name, Namespace: pod.Namespace},
+			ObjectMeta: metav1.ObjectMeta{Name: a.pod.Name, Namespace: a.pod.Namespace},
 		}
-		if err := b.Clientset.PolicyV1().Evictions(pod.Namespace).Evict(drainCtx, eviction); err != nil {
+		if err := b.Clientset.PolicyV1().Evictions(a.pod.Namespace).Evict(drainCtx, eviction); err != nil {
 			failed++
-			failReasons = append(failReasons, fmt.Sprintf("%s/%s: %v", pod.Namespace, pod.Name, err))
+			failReasons = append(failReasons, fmt.Sprintf("%s/%s: %v", a.pod.Namespace, a.pod.Name, err))
 		} else {
 			evicted++
 		}

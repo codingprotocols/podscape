@@ -60,10 +60,11 @@ func registerHelmTools(s *server.MCPServer) {
 	), handleHelmUpgrade)
 
 	s.AddTool(mcp.NewTool("helm_uninstall",
-		mcp.WithDescription("Uninstall a Helm release"),
+		mcp.WithDescription("Uninstall a Helm release. Call without confirm=true first to see what will be removed, then call again with confirm=true to proceed."),
 		mcp.WithDestructiveHintAnnotation(true),
 		mcp.WithString("release", mcp.Required(), mcp.Description("Release name")),
 		mcp.WithString("namespace", mcp.Required(), mcp.Description("Namespace")),
+		mcp.WithBoolean("confirm", mcp.Description("Must be true to actually uninstall. Omit or set false to preview what will be removed.")),
 	), handleHelmUninstall)
 }
 
@@ -199,6 +200,14 @@ func handleHelmUpgrade(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallT
 func handleHelmUninstall(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	releaseName := argStr(req, "release")
 	ns := argStr(req, "namespace")
+	confirm := argBool(req, "confirm")
+
+	if !confirm {
+		return mcp.NewToolResultText(fmt.Sprintf(
+			"This will permanently uninstall Helm release %s from namespace %s, removing all associated Kubernetes resources. Set confirm=true to proceed.",
+			releaseName, ns,
+		)), nil
+	}
 
 	bundleMu.RLock()
 	defer bundleMu.RUnlock()
