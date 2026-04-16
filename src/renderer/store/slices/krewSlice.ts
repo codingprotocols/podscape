@@ -9,6 +9,7 @@ export interface KrewPlugin {
 
 export interface KrewSlice {
     krewAvailable: boolean | null
+    krewUnsupported: boolean
     krewInstalling: boolean
     pluginIndex: KrewPlugin[]
     installedPlugins: string[]
@@ -55,6 +56,7 @@ export const createKrewSlice: StoreSlice<KrewSlice> = (set, get) => {
 
     return {
         krewAvailable: null,
+        krewUnsupported: false,
         krewInstalling: false,
         pluginIndex: [],
         installedPlugins: [],
@@ -65,9 +67,9 @@ export const createKrewSlice: StoreSlice<KrewSlice> = (set, get) => {
         probeKrew: async () => {
             try {
                 const result = await window.krew.detect()
-                set({ krewAvailable: result.available })
+                set({ krewAvailable: result.available, krewUnsupported: !!result.unsupported })
             } catch {
-                set({ krewAvailable: false })
+                set({ krewAvailable: false, krewUnsupported: false })
             }
         },
 

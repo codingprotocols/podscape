@@ -261,6 +261,7 @@ function PluginDetail({ plugin }: { plugin: KrewPlugin }): JSX.Element {
 export default function KrewPanel(): JSX.Element {
   const {
     krewAvailable,
+    krewUnsupported,
     pluginIndex,
     indexRefreshing,
     selectedPlugin,
@@ -270,6 +271,7 @@ export default function KrewPanel(): JSX.Element {
     upgradeAll,
   } = useAppStore(useShallow(s => ({
     krewAvailable: s.krewAvailable,
+    krewUnsupported: s.krewUnsupported,
     pluginIndex: s.pluginIndex,
     indexRefreshing: s.indexRefreshing,
     selectedPlugin: s.selectedPlugin,
@@ -301,7 +303,7 @@ export default function KrewPanel(): JSX.Element {
     )
   }
 
-  if (process.platform === 'win32') return <KrewUnsupported />
+  if (krewUnsupported) return <KrewUnsupported />
   if (!krewAvailable) return <KrewNotInstalled />
 
   const filtered = pluginIndex.filter(p =>

@@ -25,6 +25,7 @@ describe('krewSlice', () => {
         const { slice, state } = makeSlice()
         await slice.probeKrew()
         expect(state.krewAvailable).toBe(true)
+        expect(state.krewUnsupported).toBe(false)
     })
 
     it('probeKrew sets krewAvailable false when not detected', async () => {
@@ -32,6 +33,15 @@ describe('krewSlice', () => {
         const { slice, state } = makeSlice()
         await slice.probeKrew()
         expect(state.krewAvailable).toBe(false)
+        expect(state.krewUnsupported).toBe(false)
+    })
+
+    it('probeKrew sets krewUnsupported true on Windows', async () => {
+        windowMock.krew.detect.mockResolvedValue({ available: false, unsupported: true })
+        const { slice, state } = makeSlice()
+        await slice.probeKrew()
+        expect(state.krewAvailable).toBe(false)
+        expect(state.krewUnsupported).toBe(true)
     })
 
     it('probeKrew sets krewAvailable false on IPC error', async () => {
@@ -39,6 +49,7 @@ describe('krewSlice', () => {
         const { slice, state } = makeSlice()
         await slice.probeKrew()
         expect(state.krewAvailable).toBe(false)
+        expect(state.krewUnsupported).toBe(false)
     })
 
     it('loadPluginIndex populates pluginIndex and sets indexLastUpdated', async () => {
