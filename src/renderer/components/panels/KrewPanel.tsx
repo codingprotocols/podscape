@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../../store'
 import { useShallow } from 'zustand/react/shallow'
-import { Download, RefreshCw, ArrowUpCircle, Play, Terminal, CheckCircle, Trash2, Search } from 'lucide-react'
+import { Download, ArrowUpCircle, Play, Terminal, CheckCircle, Trash2, Package, Activity } from 'lucide-react'
 import type { KrewPlugin } from '../../store/slices/krewSlice'
 import PageHeader from '../core/PageHeader'
+import { RefreshButton } from '../common'
+import { useDragResize } from '../../hooks/useDragResize'
 
 // ─── Not-installed state ──────────────────────────────────────────────────────
 
@@ -105,7 +107,7 @@ function KrewUnsupported(): JSX.Element {
 
 // ─── Plugin detail / run panel ────────────────────────────────────────────────
 
-function PluginDetail({ plugin }: { plugin: KrewPlugin }): JSX.Element {
+function PluginDetail({ plugin, onClose }: { plugin: KrewPlugin; onClose: () => void }): JSX.Element {
   const { setSection, installedPlugins, loadPluginIndex } = useAppStore(useShallow(s => ({
     setSection: s.setSection,
     installedPlugins: s.installedPlugins,
@@ -171,13 +173,30 @@ function PluginDetail({ plugin }: { plugin: KrewPlugin }): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col h-full p-6 space-y-6 overflow-y-auto">
-      <div className="space-y-1">
-        <h2 className="text-[15px] font-black text-slate-700 dark:text-slate-100">{plugin.name}</h2>
-        <p className="text-[11px] text-slate-500">v{plugin.version}</p>
-        <p className="text-[12px] text-slate-600 dark:text-slate-300 leading-relaxed">{plugin.short}</p>
+    <div className="flex flex-col bg-transparent h-full transition-colors duration-200 relative w-full font-sans">
+      {/* Header */}
+      <div className="px-6 py-6 border-b border-slate-100 dark:border-white/5 shrink-0 bg-white/5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-black text-slate-900 dark:text-white font-mono truncate tracking-tight">{plugin.name}</h3>
+            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">
+              {plugin.version ? `v${plugin.version} · ` : ''}{isInstalled ? 'Installed' : 'kubectl plugin'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all group"
+              title="Close"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="group-hover:rotate-90 transition-transform duration-300"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </div>
+        <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-3 leading-relaxed">{plugin.short}</p>
       </div>
 
+      <div className="flex flex-col p-6 space-y-6 overflow-y-auto flex-1">
       <div className="flex gap-3">
         {isInstalled ? (
           <button
@@ -252,34 +271,8 @@ function PluginDetail({ plugin }: { plugin: KrewPlugin }): JSX.Element {
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-// ─── Plugin list row ──────────────────────────────────────────────────────────
-
-function PluginRow({ plugin, selected, onSelect }: {
-  plugin: KrewPlugin
-  selected: boolean
-  onSelect: (name: string) => void
-}): JSX.Element {
-  return (
-    <button
-      onClick={() => onSelect(plugin.name)}
-      className={`w-full text-left px-4 py-3 border-b border-slate-100 dark:border-white/[0.04] transition-colors
-        ${selected
-          ? 'bg-blue-500/10 text-blue-400'
-          : 'hover:bg-slate-50 dark:hover:bg-white/[0.03] text-slate-700 dark:text-slate-200'
-        }`}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[12px] font-bold truncate">{plugin.name}</span>
-        {plugin.installed && (
-          <CheckCircle size={12} className="shrink-0 text-emerald-500" />
-        )}
       </div>
-      <p className="text-[10px] text-slate-500 dark:text-slate-500 truncate mt-0.5">{plugin.short}</p>
-    </button>
+    </div>
   )
 }
 
@@ -310,8 +303,14 @@ export default function KrewPanel(): JSX.Element {
     upgradeAll: s.upgradeAll,
   })))
 
-  const [search, setSearch] = useState('')
+  const [activeTab, setActiveTab] = useState<'installed' | 'browse'>('installed')
+  const [filter, setFilter] = useState('')
   const [upgradingAll, setUpgradingAll] = useState(false)
+  const { width: detailWidth, onMouseDown: handleResizeMouseDown } = useDragResize(
+    Math.round(window.innerWidth / 2),
+    300,
+    Math.round(window.innerWidth * 0.8)
+  )
 
   useEffect(() => {
     if (krewAvailable === true && pluginIndex.length === 0) {
@@ -335,12 +334,10 @@ export default function KrewPanel(): JSX.Element {
   if (krewUnsupported) return <KrewUnsupported />
   if (!krewAvailable) return <KrewNotInstalled />
 
-  const filtered = pluginIndex.filter(p =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.short.toLowerCase().includes(search.toLowerCase())
-  )
-  const filteredInstalled = filtered.filter(p => p.installed)
-  const filteredAvailable = filtered.filter(p => !p.installed)
+  const rows = pluginIndex.filter(p =>
+    p.name.toLowerCase().includes(filter.toLowerCase()) ||
+    p.short.toLowerCase().includes(filter.toLowerCase())
+  ).filter(p => activeTab === 'installed' ? p.installed : true)
 
   const selectedPluginData = pluginIndex.find(p => p.name === selectedPlugin) ?? null
 
@@ -360,89 +357,173 @@ export default function KrewPanel(): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col flex-1 h-full overflow-hidden">
-      <PageHeader title="Plugins" subtitle={`${installedPlugins.length} installed · ${pluginIndex.length - installedPlugins.length} available`}>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleUpgradeAll}
-            disabled={upgradingAll}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-300 text-[11px] font-black uppercase tracking-wider transition-colors disabled:opacity-50"
-          >
-            <ArrowUpCircle size={13} />
-            {upgradingAll ? 'Upgrading...' : 'Upgrade All'}
-          </button>
-          <button
-            onClick={handleRefresh}
-            disabled={indexRefreshing}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-300 text-[11px] font-black uppercase tracking-wider transition-colors disabled:opacity-50"
-          >
-            <RefreshCw size={13} className={indexRefreshing ? 'animate-spin' : ''} />
-            Refresh
-          </button>
-        </div>
-      </PageHeader>
+    <div className="flex flex-1 min-w-0 min-h-0 bg-white dark:bg-[hsl(var(--bg-dark))] transition-colors duration-200">
+      <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
+        <PageHeader
+          title={activeTab === 'installed' ? 'Installed Plugins' : 'Browse Plugins'}
+          subtitle={
+            !indexRefreshing ? (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6]" />
+                {activeTab === 'installed'
+                  ? `${installedPlugins.length} installed`
+                  : `${pluginIndex.length} available`}
+              </>
+            ) : undefined
+          }
+        >
+          <div className="flex items-center gap-6">
+            {/* Tab switcher — hidden when detail pane is open */}
+            {!selectedPlugin && (
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-white/5 rounded-xl p-1">
+                <button
+                  onClick={() => setActiveTab('installed')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all ${
+                    activeTab === 'installed'
+                      ? 'bg-white dark:bg-white/10 text-slate-800 dark:text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                  }`}
+                >
+                  <Activity size={11} />
+                  Installed
+                </button>
+                <button
+                  onClick={() => setActiveTab('browse')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all ${
+                    activeTab === 'browse'
+                      ? 'bg-white dark:bg-white/10 text-slate-800 dark:text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                  }`}
+                >
+                  <Package size={11} />
+                  Browse
+                </button>
+              </div>
+            )}
 
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Left: Plugin browser */}
-        <div className="w-72 shrink-0 flex flex-col border-r border-slate-100 dark:border-white/5 overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-100 dark:border-white/5">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            {activeTab === 'installed' && installedPlugins.length > 0 && !selectedPlugin && (
+              <button
+                onClick={handleUpgradeAll}
+                disabled={upgradingAll}
+                className="flex items-center gap-1.5 px-3 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-xl transition-colors disabled:opacity-50"
+              >
+                <ArrowUpCircle size={11} />
+                {upgradingAll ? 'Upgrading...' : 'Upgrade All'}
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-4">
+            <div className="relative group">
               <input
                 type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search plugins..."
-                className="w-full pl-9 pr-3 py-2 text-[11px] bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                value={filter}
+                onChange={e => setFilter(e.target.value)}
+                placeholder={activeTab === 'installed' ? 'Filter installed...' : 'Search plugins...'}
+                className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-900 dark:text-slate-100 text-[11px] font-bold rounded-xl px-4 py-2.5 pl-10
+                           border border-transparent focus:border-blue-500/50 focus:outline-none focus:ring-4 focus:ring-blue-500/10
+                           w-64 transition-all placeholder-slate-400 dark:placeholder-slate-600"
               />
+              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+              </div>
             </div>
+            <RefreshButton onClick={handleRefresh} loading={indexRefreshing} label="Refresh" />
           </div>
-          <div className="flex-1 overflow-y-auto">
-            {filtered.length === 0 && (
-              <p className="text-[11px] text-slate-400 text-center py-8">No plugins match &quot;{search}&quot;</p>
-            )}
+        </PageHeader>
 
-            {/* Installed section */}
-            {filteredInstalled.length > 0 && (
-              <>
-                <div className="px-4 py-2 bg-slate-50 dark:bg-white/[0.02] border-b border-slate-100 dark:border-white/5 sticky top-0 z-10">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500">
-                    Installed · {filteredInstalled.length}
-                  </span>
-                </div>
-                {filteredInstalled.map(plugin => (
-                  <PluginRow key={plugin.name} plugin={plugin} selected={selectedPlugin === plugin.name} onSelect={setSelectedPlugin} />
-                ))}
-              </>
-            )}
-
-            {/* Available section */}
-            {filteredAvailable.length > 0 && (
-              <>
-                <div className="px-4 py-2 bg-slate-50 dark:bg-white/[0.02] border-b border-slate-100 dark:border-white/5 sticky top-0 z-10">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                    Available · {filteredAvailable.length}
-                  </span>
-                </div>
-                {filteredAvailable.map(plugin => (
-                  <PluginRow key={plugin.name} plugin={plugin} selected={selectedPlugin === plugin.name} onSelect={setSelectedPlugin} />
-                ))}
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Right: Plugin detail */}
-        <div className="flex-1 overflow-hidden">
-          {selectedPluginData ? (
-            <PluginDetail plugin={selectedPluginData} />
+        {/* Table */}
+        <div className="flex-1 overflow-auto scrollbar-hide">
+          {indexRefreshing && pluginIndex.length === 0 ? (
+            <div className="flex items-center justify-center py-24">
+              <div className="w-10 h-10 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 gap-3 text-slate-400">
+              <div className="w-16 h-16 rounded-3xl bg-slate-50 dark:bg-slate-900 flex items-center justify-center mb-4">
+                <Package size={32} strokeWidth={1.5} />
+              </div>
+              <p className="text-xs font-bold uppercase tracking-widest">
+                {filter
+                  ? 'No results match filter'
+                  : activeTab === 'installed'
+                    ? 'No plugins installed yet'
+                    : 'No plugins found'}
+              </p>
+            </div>
           ) : (
-            <div className="flex items-center justify-center h-full text-slate-400 text-[12px]">
-              Select a plugin to view details
-            </div>
+            <table className="w-full text-sm border-collapse">
+              <thead className="sticky top-0 bg-white/70 dark:bg-[hsl(var(--bg-dark),_0.7)] backdrop-blur-xl z-20">
+                <tr className="border-b border-slate-100 dark:border-white/5">
+                  {(selectedPlugin
+                    ? ['Name', 'Status']
+                    : ['Name', 'Description', 'Status']
+                  ).map(h => (
+                    <th key={h} className="text-left pl-8 py-5 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest whitespace-nowrap">
+                      {h}
+                    </th>
+                  ))}
+                  <th className="w-14" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50 dark:divide-slate-900">
+                {rows.map(plugin => {
+                  const isActive = selectedPlugin === plugin.name
+                  return (
+                    <tr
+                      key={plugin.name}
+                      onClick={() => setSelectedPlugin(isActive ? null : plugin.name)}
+                      className={`group cursor-pointer transition-colors duration-200 relative ${isActive
+                        ? 'bg-blue-600/10 border-l-[3px] border-blue-500 shadow-[inset_4px_0_12px_-4px_rgba(59,130,246,0.3)]'
+                        : 'hover:bg-slate-100/50 dark:hover:bg-white/5 border-l-[3px] border-transparent'
+                      }`}
+                    >
+                      <td className="px-8 py-4 font-mono text-xs font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">{plugin.name}</td>
+                      {!selectedPlugin && (
+                        <td className="px-8 py-4 text-xs text-slate-500 dark:text-slate-400 max-w-md truncate">{plugin.short}</td>
+                      )}
+                      <td className="px-8 py-4 whitespace-nowrap">
+                        {plugin.installed
+                          ? <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider outline outline-1 outline-offset-[-1px] bg-emerald-500/10 text-emerald-500 outline-emerald-500/20 shadow-[0_0_8px_rgba(16,185,129,0.1)]">
+                              <CheckCircle size={10} /> Installed
+                            </span>
+                          : <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider outline outline-1 outline-offset-[-1px] bg-slate-500/10 text-slate-400 outline-slate-500/20">
+                              Available
+                            </span>
+                        }
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-slate-300 group-hover:text-blue-500 transition-colors">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m9 18 6-6-6-6" /></svg>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           )}
         </div>
       </div>
+
+      {/* Detail pane — slides in from the right, same as Helm */}
+      {selectedPluginData && (
+        <>
+          <div
+            onMouseDown={handleResizeMouseDown}
+            className="w-1 cursor-col-resize bg-slate-100 dark:bg-white/5 hover:bg-blue-500/40 transition-colors shrink-0 select-none"
+            title="Drag to resize"
+          />
+          <div
+            className="flex flex-col shrink-0 h-full overflow-hidden border-l border-slate-200 dark:border-white/5 animate-in slide-in-from-right-4 duration-300"
+            style={{ width: detailWidth }}
+          >
+            <div className="flex-1 min-h-0 overflow-auto">
+              <PluginDetail plugin={selectedPluginData} onClose={() => setSelectedPlugin(null)} />
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }
