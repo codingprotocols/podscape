@@ -25,13 +25,22 @@ export function installKrew(
     const env = getAugmentedEnv()
     const script = [
       'set -e',
+      'echo "Detecting platform..."',
       'OS="$(uname | tr \'[:upper:]\' \'[:lower:]\')"',
       'ARCH="$(uname -m | sed -e \'s/x86_64/amd64/; s/\\(arm\\)\\(64\\).*/\\1\\2/; s/aarch64$/arm64/; s/armv6l$/arm/; s/armv7l$/arm/\')"',
       'KREW="krew-${OS}_${ARCH}"',
+      'echo "Platform: ${OS}/${ARCH}"',
       'TMPDIR=$(mktemp -d)',
-      'curl -fsSLo "${TMPDIR}/${KREW}.tar.gz" "https://github.com/kubernetes-sigs/krew/releases/latest/download/${KREW}.tar.gz"',
-      'tar zxvf "${TMPDIR}/${KREW}.tar.gz" -C "${TMPDIR}"',
+      'echo "Downloading Krew installer..."',
+      'curl -fSLo "${TMPDIR}/${KREW}.tar.gz" "https://github.com/kubernetes-sigs/krew/releases/latest/download/${KREW}.tar.gz"',
+      'echo "Extracting archive..."',
+      'tar zxf "${TMPDIR}/${KREW}.tar.gz" -C "${TMPDIR}"',
+      // macOS attaches a quarantine attribute to files downloaded via curl,
+      // which silently blocks execution. Remove it before running the installer.
+      'command -v xattr >/dev/null 2>&1 && xattr -d com.apple.quarantine "${TMPDIR}/${KREW}" 2>/dev/null || true',
+      'echo "Running Krew installer..."',
       '"${TMPDIR}/${KREW}" install krew',
+      'echo "Krew installed successfully."',
     ].join('\n')
 
     const proc = spawn('bash', ['-c', script], { env })
