@@ -221,6 +221,7 @@ export function registerKrewHandlers(): void {
           const cols = line.trim().split(/\s{2,}/)
           if (cols.length < 3) return []
           const name = cols[0]
+          if (name === 'krew') return [] // hide krew itself — cannot be managed as a plugin
           const installedStr = cols[cols.length - 1]
           const short = cols.slice(1, cols.length - 1).join('  ')
           return [{ name, version: '', short, installed: installedStr === 'yes' }]
@@ -254,6 +255,7 @@ export function registerKrewHandlers(): void {
           const names = lines
             .map(l => l.trim().split(/\s+/)[0])
             .filter(Boolean)
+            .filter(name => name !== 'krew') // krew cannot uninstall itself
           resolve(names)
         }
       })
