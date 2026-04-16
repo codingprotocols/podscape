@@ -256,6 +256,33 @@ function PluginDetail({ plugin }: { plugin: KrewPlugin }): JSX.Element {
   )
 }
 
+// ─── Plugin list row ──────────────────────────────────────────────────────────
+
+function PluginRow({ plugin, selected, onSelect }: {
+  plugin: KrewPlugin
+  selected: boolean
+  onSelect: (name: string) => void
+}): JSX.Element {
+  return (
+    <button
+      onClick={() => onSelect(plugin.name)}
+      className={`w-full text-left px-4 py-3 border-b border-slate-100 dark:border-white/[0.04] transition-colors
+        ${selected
+          ? 'bg-blue-500/10 text-blue-400'
+          : 'hover:bg-slate-50 dark:hover:bg-white/[0.03] text-slate-700 dark:text-slate-200'
+        }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[12px] font-bold truncate">{plugin.name}</span>
+        {plugin.installed && (
+          <CheckCircle size={12} className="shrink-0 text-emerald-500" />
+        )}
+      </div>
+      <p className="text-[10px] text-slate-500 dark:text-slate-500 truncate mt-0.5">{plugin.short}</p>
+    </button>
+  )
+}
+
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
 export default function KrewPanel(): JSX.Element {
@@ -263,6 +290,7 @@ export default function KrewPanel(): JSX.Element {
     krewAvailable,
     krewUnsupported,
     pluginIndex,
+    installedPlugins,
     indexRefreshing,
     selectedPlugin,
     setSelectedPlugin,
@@ -273,6 +301,7 @@ export default function KrewPanel(): JSX.Element {
     krewAvailable: s.krewAvailable,
     krewUnsupported: s.krewUnsupported,
     pluginIndex: s.pluginIndex,
+    installedPlugins: s.installedPlugins,
     indexRefreshing: s.indexRefreshing,
     selectedPlugin: s.selectedPlugin,
     setSelectedPlugin: s.setSelectedPlugin,
@@ -310,6 +339,8 @@ export default function KrewPanel(): JSX.Element {
     p.name.toLowerCase().includes(search.toLowerCase()) ||
     p.short.toLowerCase().includes(search.toLowerCase())
   )
+  const filteredInstalled = filtered.filter(p => p.installed)
+  const filteredAvailable = filtered.filter(p => !p.installed)
 
   const selectedPluginData = pluginIndex.find(p => p.name === selectedPlugin) ?? null
 
@@ -330,7 +361,7 @@ export default function KrewPanel(): JSX.Element {
 
   return (
     <div className="flex flex-col flex-1 h-full overflow-hidden">
-      <PageHeader title="Plugins" subtitle={`${pluginIndex.length} plugins available`}>
+      <PageHeader title="Plugins" subtitle={`${installedPlugins.length} installed · ${pluginIndex.length - installedPlugins.length} available`}>
         <div className="flex items-center gap-2">
           <button
             onClick={handleUpgradeAll}
@@ -367,27 +398,36 @@ export default function KrewPanel(): JSX.Element {
             </div>
           </div>
           <div className="flex-1 overflow-y-auto">
-            {filtered.map(plugin => (
-              <button
-                key={plugin.name}
-                onClick={() => setSelectedPlugin(plugin.name)}
-                className={`w-full text-left px-4 py-3 border-b border-slate-100 dark:border-white/[0.04] transition-colors
-                  ${selectedPlugin === plugin.name
-                    ? 'bg-blue-500/10 text-blue-400'
-                    : 'hover:bg-slate-50 dark:hover:bg-white/[0.03] text-slate-700 dark:text-slate-200'
-                  }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[12px] font-bold truncate">{plugin.name}</span>
-                  {plugin.installed && (
-                    <CheckCircle size={12} className="shrink-0 text-emerald-500" />
-                  )}
-                </div>
-                <p className="text-[10px] text-slate-500 dark:text-slate-500 truncate mt-0.5">{plugin.short}</p>
-              </button>
-            ))}
             {filtered.length === 0 && (
               <p className="text-[11px] text-slate-400 text-center py-8">No plugins match &quot;{search}&quot;</p>
+            )}
+
+            {/* Installed section */}
+            {filteredInstalled.length > 0 && (
+              <>
+                <div className="px-4 py-2 bg-slate-50 dark:bg-white/[0.02] border-b border-slate-100 dark:border-white/5 sticky top-0 z-10">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500">
+                    Installed · {filteredInstalled.length}
+                  </span>
+                </div>
+                {filteredInstalled.map(plugin => (
+                  <PluginRow key={plugin.name} plugin={plugin} selected={selectedPlugin === plugin.name} onSelect={setSelectedPlugin} />
+                ))}
+              </>
+            )}
+
+            {/* Available section */}
+            {filteredAvailable.length > 0 && (
+              <>
+                <div className="px-4 py-2 bg-slate-50 dark:bg-white/[0.02] border-b border-slate-100 dark:border-white/5 sticky top-0 z-10">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Available · {filteredAvailable.length}
+                  </span>
+                </div>
+                {filteredAvailable.map(plugin => (
+                  <PluginRow key={plugin.name} plugin={plugin} selected={selectedPlugin === plugin.name} onSelect={setSelectedPlugin} />
+                ))}
+              </>
             )}
           </div>
         </div>
