@@ -198,8 +198,36 @@ export function registerKrewHandlers(): void {
     })
   })
 
-  ipcMain.handle('krew:search', async () => {
-    return runKrewJson(['search', '--output=json'])
+  ipcMain.handle('krew:search', async (): Promise<{ name: string; version: string; short: string; installed: boolean }[]> => {
+    // kubectl krew search has no --output=json flag; parse the plain-text table.
+    // Output format (columns separated by 2+ spaces):
+    //   NAME   DESCRIPTION   INSTALLED
+    //   ctx    Fast way to switch between clusters   no
+    return new Promise((resolve) => {
+      const env = getAugmentedEnv()
+      const proc = spawn('kubectl', ['krew', 'search'], { env })
+      let out = ''
+
+      proc.stdout.on('data', (data: Buffer) => { out += data.toString() })
+      proc.on('error', (err: Error) => {
+        console.error('[krew] krew search failed:', err.message)
+        resolve([])
+      })
+      proc.on('close', (code) => {
+        if (code !== 0) { resolve([]); return }
+        const lines = out.trim().split('\n').slice(1) // skip header row
+        const plugins = lines.flatMap(line => {
+          // Split on 2+ consecutive spaces to separate columns; last column is "yes"/"no"
+          const cols = line.trim().split(/\s{2,}/)
+          if (cols.length < 3) return []
+          const name = cols[0]
+          const installedStr = cols[cols.length - 1]
+          const short = cols.slice(1, cols.length - 1).join('  ')
+          return [{ name, version: '', short, installed: installedStr === 'yes' }]
+        })
+        resolve(plugins)
+      })
+    })
   })
 
   ipcMain.handle('krew:installed', async (): Promise<string[]> => {

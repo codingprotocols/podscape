@@ -101,11 +101,11 @@ describe('registerKrewHandlers', () => {
 describe('runKrewJson', () => {
   beforeEach(() => { vi.resetModules(); vi.clearAllMocks() })
 
-  it('resolves with parsed JSON output for krew search', async () => {
+  it('resolves with parsed JSON output', async () => {
     const fakeJson = JSON.stringify([{ name: 'ctx', version: '0.9.5', short: 'Switch contexts' }])
     vi.mocked(spawn).mockReturnValue(makeFakeProcess([fakeJson], [], 0) as any)
     const { runKrewJson } = await import('./krew')
-    const result = await runKrewJson(['search', '--output=json'])
+    const result = await runKrewJson(['update'])
     expect(result).toEqual([{ name: 'ctx', version: '0.9.5', short: 'Switch contexts' }])
   })
 
@@ -166,6 +166,43 @@ describe('krew:installed (plain-text parsing)', () => {
     registerKrewHandlers()
     const handler = vi.mocked(ipcMain.handle).mock.calls.find(
       ([channel]) => channel === 'krew:installed'
+    )?.[1] as Function
+    const result = await handler({} as any)
+    expect(result).toEqual([])
+  })
+})
+
+describe('krew:search (plain-text parsing)', () => {
+  beforeEach(() => { vi.resetModules(); vi.clearAllMocks() })
+
+  it('parses plain-text krew search output into plugin objects', async () => {
+    const plainOutput = [
+      'NAME                  DESCRIPTION                              INSTALLED',
+      'ctx                   Fast way to switch between clusters      yes',
+      'ns                    Switch between Kubernetes namespaces     no',
+    ].join('\n') + '\n'
+    vi.mocked(spawn).mockReturnValue(makeFakeProcess([plainOutput], [], 0) as any)
+    const { ipcMain } = await import('electron')
+    const { registerKrewHandlers } = await import('./krew')
+    registerKrewHandlers()
+    const handler = vi.mocked(ipcMain.handle).mock.calls.find(
+      ([channel]) => channel === 'krew:search'
+    )?.[1] as Function
+    expect(handler).toBeDefined()
+    const result = await handler({} as any)
+    expect(result).toEqual([
+      { name: 'ctx', version: '', short: 'Fast way to switch between clusters', installed: true },
+      { name: 'ns',  version: '', short: 'Switch between Kubernetes namespaces', installed: false },
+    ])
+  })
+
+  it('returns [] when krew search exits non-zero', async () => {
+    vi.mocked(spawn).mockReturnValue(makeFakeProcess([], ['error'], 1) as any)
+    const { ipcMain } = await import('electron')
+    const { registerKrewHandlers } = await import('./krew')
+    registerKrewHandlers()
+    const handler = vi.mocked(ipcMain.handle).mock.calls.find(
+      ([channel]) => channel === 'krew:search'
     )?.[1] as Function
     const result = await handler({} as any)
     expect(result).toEqual([])
