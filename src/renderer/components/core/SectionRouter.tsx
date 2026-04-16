@@ -30,6 +30,7 @@ const ConnectivityTester = React.lazy(() => import('../advanced/ConnectivityTest
 const DebugPodLauncher = React.lazy(() => import('../advanced/DebugPodLauncher'))
 const ProviderResourcePanel = React.lazy(() => import('../panels/ProviderResourcePanel'))
 const CostPanel = React.lazy(() => import('../panels/CostPanel'))
+const KrewPanel = React.lazy(() => import('../panels/KrewPanel'))
 
 // Sections that render directly (no Suspense needed)
 const DIRECT_PANELS: Partial<Record<ResourceKind, React.ComponentType>> = {
@@ -51,6 +52,7 @@ const LAZY_PANELS: Partial<Record<ResourceKind, React.LazyExoticComponent<React.
   connectivity: ConnectivityTester,
   debugpod: DebugPodLauncher,
   cost: CostPanel,
+  krew: KrewPanel,
 }
 
 

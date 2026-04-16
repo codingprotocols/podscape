@@ -464,6 +464,7 @@ export default function Sidebar(): JSX.Element {
           <NavGroup title="Tools">
             <NavItem label="Helm Charts" section="helm" icon={ICONS.helm} />
             <NavItem label="GitOps" section="gitops" icon={ICONS.deploy} />
+            <NavItem label="Plugins" section="krew" icon={ICONS.crd} />
           </NavGroup>
 
           {costAvailable !== null && (
