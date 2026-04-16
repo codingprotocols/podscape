@@ -80,3 +80,13 @@ describe('installKrew', () => {
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
   })
 })
+
+describe('registerKrewHandlers', () => {
+  it('registers krew:detect and krew:install handlers', async () => {
+    const { ipcMain } = await import('electron')
+    const { registerKrewHandlers } = await import('./krew')
+    registerKrewHandlers()
+    expect(vi.mocked(ipcMain.handle)).toHaveBeenCalledWith('krew:detect', expect.any(Function))
+    expect(vi.mocked(ipcMain.handle)).toHaveBeenCalledWith('krew:install', expect.any(Function))
+  })
+})

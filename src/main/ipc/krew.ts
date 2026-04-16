@@ -54,6 +54,10 @@ export function installKrew(
       }
     })
 
+    proc.on('error', (err: Error) => {
+      resolve({ success: false, error: err.message })
+    })
+
     proc.on('close', (code) => {
       if (code === 0) {
         resolve({ success: true })
