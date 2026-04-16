@@ -33,6 +33,8 @@ export const createKrewSlice: StoreSlice<KrewSlice> = (set, get) => {
                 window.krew.installed(),
             ])
             const installedSet = new Set(installed)
+            // Krew's JSON output uses lowercase field names on macOS/Linux but may
+            // use PascalCase in some versions — normalize both for robustness.
             const index: KrewPlugin[] = allPlugins.map((p: any) => ({
                 name: p.name ?? p.Name ?? '',
                 version: p.version ?? p.Version ?? '',

@@ -89,4 +89,38 @@ describe('krewSlice', () => {
         slice.setSelectedPlugin('ctx')
         expect(state.selectedPlugin).toBe('ctx')
     })
+
+    it('loadPluginIndex sets indexRefreshing to false on error', async () => {
+        windowMock.krew.search.mockRejectedValue(new Error('network error'))
+        windowMock.krew.installed.mockResolvedValue([])
+        const { slice, state } = makeSlice()
+        state.indexRefreshing = true
+        await slice.loadPluginIndex()
+        expect(state.indexRefreshing).toBe(false)
+    })
+
+    it('refreshIndexIfStale triggers refresh when indexLastUpdated is null (first boot)', async () => {
+        windowMock.krew.update.mockResolvedValue({ ok: true })
+        windowMock.krew.search.mockResolvedValue([])
+        windowMock.krew.installed.mockResolvedValue([])
+        const { slice, state } = makeSlice()
+        state.indexLastUpdated = null
+        await slice.refreshIndexIfStale()
+        expect(windowMock.krew.update).toHaveBeenCalled()
+    })
+
+    it('upgradeAll delegates to window.krew.upgradeAll', async () => {
+        windowMock.krew.upgradeAll.mockResolvedValue({ ok: true })
+        const { slice } = makeSlice()
+        const result = await slice.upgradeAll()
+        expect(result).toEqual({ ok: true })
+        expect(windowMock.krew.upgradeAll).toHaveBeenCalled()
+    })
+
+    it('setSelectedPlugin accepts null', () => {
+        const { slice, state } = makeSlice()
+        slice.setSelectedPlugin('ctx')
+        slice.setSelectedPlugin(null)
+        expect(state.selectedPlugin).toBeNull()
+    })
 })
