@@ -68,6 +68,39 @@ export function installKrew(
   })
 }
 
+/** Runs `kubectl krew <args>` and parses JSON stdout. Rejects on non-zero exit. */
+export function runKrewJson(args: string[]): Promise<any[]> {
+  return new Promise((resolve, reject) => {
+    const env = getAugmentedEnv()
+    const proc = spawn('kubectl', ['krew', ...args], { env })
+
+    let out = ''
+    let err = ''
+
+    proc.stdout.on('data', (data: Buffer) => { out += data.toString() })
+    proc.stderr.on('data', (data: Buffer) => { err += data.toString() })
+
+    proc.on('error', (spawnErr: Error) => {
+      reject(new Error(spawnErr.message))
+    })
+
+    proc.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(err.trim() || `kubectl krew ${args[0]} exited with code ${code}`))
+        return
+      }
+      const trimmed = out.trim()
+      if (!trimmed) { resolve([]); return }
+      try {
+        const parsed = JSON.parse(trimmed)
+        resolve(Array.isArray(parsed) ? parsed : [])
+      } catch {
+        resolve([])
+      }
+    })
+  })
+}
+
 export function registerKrewHandlers(): void {
   ipcMain.handle('krew:detect', () => {
     if (process.platform === 'win32') return { available: false, unsupported: true }
@@ -79,5 +112,27 @@ export function registerKrewHandlers(): void {
     return installKrew((line) => {
       if (!event.sender.isDestroyed()) event.sender.send('krew:install-progress', line)
     })
+  })
+
+  ipcMain.handle('krew:search', async () => {
+    return runKrewJson(['search', '--output=json'])
+  })
+
+  ipcMain.handle('krew:installed', async () => {
+    const plugins = await runKrewJson(['list', '--output=json'])
+    if (plugins.length > 0 && typeof plugins[0] === 'object') {
+      return (plugins as any[]).map((p) => p.name ?? p.Name ?? String(p))
+    }
+    return plugins as string[]
+  })
+
+  ipcMain.handle('krew:update', async () => {
+    await runKrewJson(['update'])
+    return { ok: true }
+  })
+
+  ipcMain.handle('krew:upgrade-all', async () => {
+    await runKrewJson(['upgrade'])
+    return { ok: true }
   })
 }

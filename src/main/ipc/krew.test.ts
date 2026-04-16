@@ -88,5 +88,34 @@ describe('registerKrewHandlers', () => {
     registerKrewHandlers()
     expect(vi.mocked(ipcMain.handle)).toHaveBeenCalledWith('krew:detect', expect.any(Function))
     expect(vi.mocked(ipcMain.handle)).toHaveBeenCalledWith('krew:install', expect.any(Function))
+    expect(vi.mocked(ipcMain.handle)).toHaveBeenCalledWith('krew:search', expect.any(Function))
+    expect(vi.mocked(ipcMain.handle)).toHaveBeenCalledWith('krew:installed', expect.any(Function))
+    expect(vi.mocked(ipcMain.handle)).toHaveBeenCalledWith('krew:update', expect.any(Function))
+    expect(vi.mocked(ipcMain.handle)).toHaveBeenCalledWith('krew:upgrade-all', expect.any(Function))
+  })
+})
+
+describe('runKrewJson', () => {
+  beforeEach(() => { vi.resetModules(); vi.clearAllMocks() })
+
+  it('resolves with parsed JSON output for krew search', async () => {
+    const fakeJson = JSON.stringify([{ name: 'ctx', version: '0.9.5', short: 'Switch contexts' }])
+    vi.mocked(spawn).mockReturnValue(makeFakeProcess([fakeJson], [], 0) as any)
+    const { runKrewJson } = await import('./krew')
+    const result = await runKrewJson(['search', '--output=json'])
+    expect(result).toEqual([{ name: 'ctx', version: '0.9.5', short: 'Switch contexts' }])
+  })
+
+  it('throws when krew exits non-zero', async () => {
+    vi.mocked(spawn).mockReturnValue(makeFakeProcess([], ['plugin not found'], 1) as any)
+    const { runKrewJson } = await import('./krew')
+    await expect(runKrewJson(['install', 'missing'])).rejects.toThrow('plugin not found')
+  })
+
+  it('returns [] for empty output', async () => {
+    vi.mocked(spawn).mockReturnValue(makeFakeProcess([''], [], 0) as any)
+    const { runKrewJson } = await import('./krew')
+    const result = await runKrewJson(['list', '--output=json'])
+    expect(Array.isArray(result)).toBe(true)
   })
 })
