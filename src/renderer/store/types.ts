@@ -16,6 +16,7 @@ import { OperationSlice } from './slices/operationSlice'
 import { ProvidersSlice } from './slices/providersSlice'
 import { CostSlice } from './slices/costSlice'
 import { NavigationSlice } from './slices/navigationSlice'
+import { KrewSlice } from './slices/krewSlice'
 
 
 declare global {
@@ -179,7 +180,7 @@ export interface ExecSession {
     target: ExecTarget
 }
 
-export interface AppStore extends AnalysisSlice, OperationSlice, ProvidersSlice, CostSlice, NavigationSlice {
+export interface AppStore extends AnalysisSlice, OperationSlice, ProvidersSlice, CostSlice, NavigationSlice, KrewSlice {
     // Navigation removed - inherited from NavigationSlice
     
     // Cluster selection

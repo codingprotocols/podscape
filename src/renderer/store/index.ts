@@ -7,6 +7,7 @@ import { createOperationSlice } from './slices/operationSlice'
 import { createAnalysisSlice } from './slices/analysisSlice'
 import { createProvidersSlice } from './slices/providersSlice'
 import { createCostSlice } from './slices/costSlice'
+import { createKrewSlice } from './slices/krewSlice'
 import { KubeContextEntry } from '../types'
 
 export const useAppStore = create<AppStore>()((...a) => ({
@@ -17,6 +18,7 @@ export const useAppStore = create<AppStore>()((...a) => ({
     ...createAnalysisSlice(...a),
     ...createProvidersSlice(...a),
     ...createCostSlice(...a),
+    ...createKrewSlice(...a),
 
     // ── Combined actions (init) ────────────────────────────────────────────────
     init: async () => {
@@ -76,6 +78,9 @@ export const useAppStore = create<AppStore>()((...a) => ({
             if (active) {
                 await get().selectContext(active)
             }
+
+            // Probe Krew availability in background (non-blocking)
+            get().probeKrew()
 
             set({ loadingContexts: false })
 
