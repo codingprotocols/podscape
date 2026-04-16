@@ -328,10 +328,13 @@ export default function KrewPanel(): JSX.Element {
   if (krewUnsupported) return <KrewUnsupported />
   if (!krewAvailable) return <KrewNotInstalled />
 
-  const rows = pluginIndex.filter(p =>
-    p.name.toLowerCase().includes(filter.toLowerCase()) ||
-    p.short.toLowerCase().includes(filter.toLowerCase())
-  ).filter(p => activeTab === 'installed' ? p.installed : true)
+  const rows = pluginIndex
+    .filter(p => p.name !== 'krew')
+    .filter(p =>
+      p.name.toLowerCase().includes(filter.toLowerCase()) ||
+      p.short.toLowerCase().includes(filter.toLowerCase())
+    )
+    .filter(p => activeTab === 'installed' ? p.installed : true)
 
   const selectedPluginData = pluginIndex.find(p => p.name === selectedPlugin) ?? null
 
