@@ -103,7 +103,10 @@ export function computePolicyHulls(
     const governedPodPositions = graph.edges
       .filter(e => e.source === policyNode.id && e.kind === 'policy-pod')
       .map(e => positions.get(e.target))
-      .filter((p): p is { x: number; y: number } => p !== undefined)
+      .filter(
+        (p): p is { x: number; y: number } =>
+          p !== undefined && Number.isFinite(p.x) && Number.isFinite(p.y)
+      )
 
     if (governedPodPositions.length === 0) continue
 
