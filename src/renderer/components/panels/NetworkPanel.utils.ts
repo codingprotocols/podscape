@@ -56,6 +56,7 @@ export function edgeStyle(kind: EdgeKind): EdgeStyleResult {
     case 'pod-node':            return { color: '#06b6d4', dur: '3.0s', class: 'infra' }
     case 'controller-pod':      return { color: '#fbbf24', dur: '2.0s', class: 'infra' }
     case 'controller-workload': return { color: '#fbbf24', dur: '2.0s', class: 'infra' }
+    default:                    return { color: '#9ca3af', dur: '2.5s', class: 'infra' }
   }
 }
 
