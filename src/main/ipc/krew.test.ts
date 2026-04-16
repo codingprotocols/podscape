@@ -210,7 +210,7 @@ describe('runPlugin', () => {
     const lines: string[] = []
     await runPlugin('ctx', [], (line) => lines.push(line))
     expect(lines.length).toBeLessThanOrEqual(MAX_PLUGIN_OUTPUT_LINES + 1) // +1 for truncation notice
-    expect(lines[0]).toContain('truncated')
+    expect(lines.some(l => l.includes('truncated'))).toBe(true)
   })
 
   it('spawns kubectl <pluginName> with args', async () => {

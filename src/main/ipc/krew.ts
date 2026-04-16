@@ -131,7 +131,7 @@ export const MAX_PLUGIN_OUTPUT_LINES = 10_000
 
 /** Runs `kubectl <pluginName> <args>` and streams output lines to `onLine`.
  *  If total output exceeds MAX_PLUGIN_OUTPUT_LINES, emits a truncation notice
- *  as the first line followed by only the first MAX_PLUGIN_OUTPUT_LINES lines. */
+ *  and stops forwarding further lines. */
 export function runPlugin(
   pluginName: string,
   args: string[],
@@ -141,19 +141,28 @@ export function runPlugin(
     const env = getAugmentedEnv()
     const proc = spawn('kubectl', [pluginName, ...args], { env })
 
-    const buffer: string[] = []
+    let lineCount = 0
+    let truncated = false
 
-    function collect(prefix: string, line: string) {
+    function handleLine(prefix: string, line: string) {
+      if (truncated) return
       const trimmed = line.trim()
-      if (trimmed) buffer.push(`${prefix}${trimmed}`)
+      if (!trimmed) return
+      if (lineCount >= MAX_PLUGIN_OUTPUT_LINES) {
+        truncated = true
+        onLine(`[truncated] Output exceeded ${MAX_PLUGIN_OUTPUT_LINES} lines and was cut off`)
+        return
+      }
+      lineCount++
+      onLine(`${prefix}${trimmed}`)
     }
 
     proc.stdout.on('data', (data: Buffer) => {
-      for (const line of data.toString().split('\n')) collect('', line)
+      for (const line of data.toString().split('\n')) handleLine('', line)
     })
 
     proc.stderr.on('data', (data: Buffer) => {
-      for (const line of data.toString().split('\n')) collect('[stderr] ', line)
+      for (const line of data.toString().split('\n')) handleLine('[stderr] ', line)
     })
 
     proc.on('error', (err: Error) => {
@@ -162,12 +171,6 @@ export function runPlugin(
     })
 
     proc.on('close', (code) => {
-      if (buffer.length > MAX_PLUGIN_OUTPUT_LINES) {
-        onLine(`[truncated] Output exceeded ${MAX_PLUGIN_OUTPUT_LINES} lines and was cut off`)
-        for (let i = 0; i < MAX_PLUGIN_OUTPUT_LINES; i++) onLine(buffer[i])
-      } else {
-        for (const line of buffer) onLine(line)
-      }
       resolve({ exitCode: code ?? 0 })
     })
   })
