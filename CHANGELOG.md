@@ -53,7 +53,7 @@
 - **One-click restart:** Replaced background auto-install with an explicit "Restart to Update" button once the download is ready.
 
 #### Helm Management
-- **Pruned upgrade workflow:** Completely removed the Helm upgrade functionality to harden Podscape as a focused auditing and management tool.
+- **Upgrade workflow removal (2.8.0):** Removed the in-app Helm upgrade workflow in this release to keep Podscape focused on auditing and management; Helm upgrade capability was later reintroduced in 3.0.0 via the MCP `helm_upgrade` tool.
 - **Improved version detection:** Refactored Helm version checking to use a unified `repoLatest` endpoint, supporting semver comparisons across multiple repositories.
 - **Performance:** Implemented lazy loading for Helm repository indices to reduce memory overhead and initialization time.
 - **Semver sorting:** Improved version sorting logic to correctly handle pre-release and metadata tags in Helm charts.
@@ -387,7 +387,7 @@
 
 ---
 
-## [1.2.0] — 2025
+## [1.2.0] — 2025-01-01
 
 - Prometheus-based cluster utilisation charts
 - Helm repository browser
@@ -396,14 +396,14 @@
 - Kubeconfig onboarding flow
 - Prometheus URL auto-detection and per-context persistence
 
-## [1.1.0] — 2025
+## [1.1.0] — 2025-01-01
 
 - TLS Certificate dashboard
 - GitOps panel (initial)
 - `PageHeader` component and design system refresh
 - `useYAMLEditor` hook; UnifiedLogs and port-forward panels
 
-## [1.0.0] — 2025
+## [1.0.0] — 2025-01-01
 
 - Initial release: pods, deployments, services, ingresses, configmaps, secrets, nodes, namespaces, CRDs, RBAC, storage, HPA, PDB, events, metrics
 - Go sidecar architecture replacing kubectl IPC calls
