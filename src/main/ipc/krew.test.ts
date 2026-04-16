@@ -118,4 +118,21 @@ describe('runKrewJson', () => {
     const result = await runKrewJson(['list', '--output=json'])
     expect(Array.isArray(result)).toBe(true)
   })
+
+  it('returns [] when output is not valid JSON', async () => {
+    vi.mocked(spawn).mockReturnValue(makeFakeProcess(['plain text output\n'], [], 0) as any)
+    const { runKrewJson } = await import('./krew')
+    const result = await runKrewJson(['list', '--output=json'])
+    expect(result).toEqual([])
+  })
+
+  it('rejects when spawn emits error event', async () => {
+    const proc = new EventEmitter() as any
+    proc.stdout = new EventEmitter()
+    proc.stderr = new EventEmitter()
+    process.nextTick(() => proc.emit('error', new Error('ENOENT: no such file')))
+    vi.mocked(spawn).mockReturnValue(proc)
+    const { runKrewJson } = await import('./krew')
+    await expect(runKrewJson(['list'])).rejects.toThrow('ENOENT')
+  })
 })

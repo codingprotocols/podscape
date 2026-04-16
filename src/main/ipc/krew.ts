@@ -86,7 +86,8 @@ export function runKrewJson(args: string[]): Promise<any[]> {
 
     proc.on('close', (code) => {
       if (code !== 0) {
-        reject(new Error(err.trim() || `kubectl krew ${args[0]} exited with code ${code}`))
+        console.error('[krew] runKrewJson failed:', { args, code, stderr: err.trim() })
+        reject(new Error(err.trim() || `kubectl krew ${args.join(' ') || '<no args>'} exited with code ${code}`))
         return
       }
       const trimmed = out.trim()
