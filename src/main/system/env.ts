@@ -52,6 +52,8 @@ export function getAugmentedEnv(extra: Record<string, string> = {}): Record<stri
         join(home, '.crc', 'bin'),
         // VMware Tanzu CLI
         join(home, '.local', 'share', 'tanzu-cli'),
+        // Krew kubectl plugin manager
+        join(home, '.krew', 'bin'),
     ]
 
     if (process.platform === 'darwin') {
