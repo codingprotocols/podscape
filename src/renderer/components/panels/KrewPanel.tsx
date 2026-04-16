@@ -5,7 +5,6 @@ import { Download, ArrowUpCircle, Play, Terminal, CheckCircle, Trash2, Package, 
 import type { KrewPlugin } from '../../store/slices/krewSlice'
 import PageHeader from '../core/PageHeader'
 import { RefreshButton } from '../common'
-import { useDragResize } from '../../hooks/useDragResize'
 
 // ─── Not-installed state ──────────────────────────────────────────────────────
 
@@ -306,11 +305,6 @@ export default function KrewPanel(): JSX.Element {
   const [activeTab, setActiveTab] = useState<'installed' | 'browse'>('installed')
   const [filter, setFilter] = useState('')
   const [upgradingAll, setUpgradingAll] = useState(false)
-  const { width: detailWidth, onMouseDown: handleResizeMouseDown } = useDragResize(
-    Math.round(window.innerWidth / 2),
-    300,
-    Math.round(window.innerWidth * 0.8)
-  )
 
   useEffect(() => {
     if (krewAvailable === true && pluginIndex.length === 0) {
@@ -356,6 +350,15 @@ export default function KrewPanel(): JSX.Element {
     }
   }
 
+  // Full-screen detail view
+  if (selectedPluginData) {
+    return (
+      <div className="flex flex-1 min-w-0 min-h-0 bg-white dark:bg-[hsl(var(--bg-dark))] transition-colors duration-200">
+        <PluginDetail plugin={selectedPluginData} onClose={() => setSelectedPlugin(null)} />
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-1 min-w-0 min-h-0 bg-white dark:bg-[hsl(var(--bg-dark))] transition-colors duration-200">
       <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
@@ -373,35 +376,32 @@ export default function KrewPanel(): JSX.Element {
           }
         >
           <div className="flex items-center gap-6">
-            {/* Tab switcher — hidden when detail pane is open */}
-            {!selectedPlugin && (
-              <div className="flex items-center gap-1 bg-slate-100 dark:bg-white/5 rounded-xl p-1">
-                <button
-                  onClick={() => setActiveTab('installed')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all ${
-                    activeTab === 'installed'
-                      ? 'bg-white dark:bg-white/10 text-slate-800 dark:text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
-                  }`}
-                >
-                  <Activity size={11} />
-                  Installed
-                </button>
-                <button
-                  onClick={() => setActiveTab('browse')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all ${
-                    activeTab === 'browse'
-                      ? 'bg-white dark:bg-white/10 text-slate-800 dark:text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
-                  }`}
-                >
-                  <Package size={11} />
-                  Browse
-                </button>
-              </div>
-            )}
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-white/5 rounded-xl p-1">
+              <button
+                onClick={() => setActiveTab('installed')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all ${
+                  activeTab === 'installed'
+                    ? 'bg-white dark:bg-white/10 text-slate-800 dark:text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                }`}
+              >
+                <Activity size={11} />
+                Installed
+              </button>
+              <button
+                onClick={() => setActiveTab('browse')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all ${
+                  activeTab === 'browse'
+                    ? 'bg-white dark:bg-white/10 text-slate-800 dark:text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                }`}
+              >
+                <Package size={11} />
+                Browse
+              </button>
+            </div>
 
-            {activeTab === 'installed' && installedPlugins.length > 0 && !selectedPlugin && (
+            {activeTab === 'installed' && installedPlugins.length > 0 && (
               <button
                 onClick={handleUpgradeAll}
                 disabled={upgradingAll}
@@ -455,10 +455,7 @@ export default function KrewPanel(): JSX.Element {
             <table className="w-full text-sm border-collapse">
               <thead className="sticky top-0 bg-white/70 dark:bg-[hsl(var(--bg-dark),_0.7)] backdrop-blur-xl z-20">
                 <tr className="border-b border-slate-100 dark:border-white/5">
-                  {(selectedPlugin
-                    ? ['Name', 'Status']
-                    : ['Name', 'Description', 'Status']
-                  ).map(h => (
+                  {['Name', 'Description', 'Status'].map(h => (
                     <th key={h} className="text-left pl-8 py-5 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest whitespace-nowrap">
                       {h}
                     </th>
@@ -467,63 +464,36 @@ export default function KrewPanel(): JSX.Element {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 dark:divide-slate-900">
-                {rows.map(plugin => {
-                  const isActive = selectedPlugin === plugin.name
-                  return (
-                    <tr
-                      key={plugin.name}
-                      onClick={() => setSelectedPlugin(isActive ? null : plugin.name)}
-                      className={`group cursor-pointer transition-colors duration-200 relative ${isActive
-                        ? 'bg-blue-600/10 border-l-[3px] border-blue-500 shadow-[inset_4px_0_12px_-4px_rgba(59,130,246,0.3)]'
-                        : 'hover:bg-slate-100/50 dark:hover:bg-white/5 border-l-[3px] border-transparent'
-                      }`}
-                    >
-                      <td className="px-8 py-4 font-mono text-xs font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">{plugin.name}</td>
-                      {!selectedPlugin && (
-                        <td className="px-8 py-4 text-xs text-slate-500 dark:text-slate-400 max-w-md truncate">{plugin.short}</td>
-                      )}
-                      <td className="px-8 py-4 whitespace-nowrap">
-                        {plugin.installed
-                          ? <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider outline outline-1 outline-offset-[-1px] bg-emerald-500/10 text-emerald-500 outline-emerald-500/20 shadow-[0_0_8px_rgba(16,185,129,0.1)]">
-                              <CheckCircle size={10} /> Installed
-                            </span>
-                          : <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider outline outline-1 outline-offset-[-1px] bg-slate-500/10 text-slate-400 outline-slate-500/20">
-                              Available
-                            </span>
-                        }
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-slate-300 group-hover:text-blue-500 transition-colors">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m9 18 6-6-6-6" /></svg>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
+                {rows.map(plugin => (
+                  <tr
+                    key={plugin.name}
+                    onClick={() => setSelectedPlugin(plugin.name)}
+                    className="group cursor-pointer transition-colors duration-200 border-l-[3px] border-transparent hover:bg-slate-100/50 dark:hover:bg-white/5"
+                  >
+                    <td className="px-8 py-4 font-mono text-xs font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">{plugin.name}</td>
+                    <td className="px-8 py-4 text-xs text-slate-500 dark:text-slate-400 max-w-md truncate">{plugin.short}</td>
+                    <td className="px-8 py-4 whitespace-nowrap">
+                      {plugin.installed
+                        ? <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider outline outline-1 outline-offset-[-1px] bg-emerald-500/10 text-emerald-500 outline-emerald-500/20 shadow-[0_0_8px_rgba(16,185,129,0.1)]">
+                            <CheckCircle size={10} /> Installed
+                          </span>
+                        : <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider outline outline-1 outline-offset-[-1px] bg-slate-500/10 text-slate-400 outline-slate-500/20">
+                            Available
+                          </span>
+                      }
+                    </td>
+                    <td className="px-4 py-4 text-right">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-slate-300 group-hover:text-blue-500 transition-colors">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m9 18 6-6-6-6" /></svg>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}
         </div>
       </div>
-
-      {/* Detail pane — slides in from the right, same as Helm */}
-      {selectedPluginData && (
-        <>
-          <div
-            onMouseDown={handleResizeMouseDown}
-            className="w-1 cursor-col-resize bg-slate-100 dark:bg-white/5 hover:bg-blue-500/40 transition-colors shrink-0 select-none"
-            title="Drag to resize"
-          />
-          <div
-            className="flex flex-col shrink-0 h-full overflow-hidden border-l border-slate-200 dark:border-white/5 animate-in slide-in-from-right-4 duration-300"
-            style={{ width: detailWidth }}
-          >
-            <div className="flex-1 min-h-0 overflow-auto">
-              <PluginDetail plugin={selectedPluginData} onClose={() => setSelectedPlugin(null)} />
-            </div>
-          </div>
-        </>
-      )}
     </div>
   )
 }
