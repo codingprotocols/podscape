@@ -102,6 +102,31 @@ export function runKrewJson(args: string[]): Promise<any[]> {
   })
 }
 
+/** Runs `kubectl krew install|uninstall <pluginName>`. Rejects with stderr on non-zero exit. */
+export function runKrewAction(action: 'install' | 'uninstall', pluginName: string): Promise<{ ok: boolean }> {
+  return new Promise((resolve, reject) => {
+    const env = getAugmentedEnv()
+    const proc = spawn('kubectl', ['krew', action, pluginName], { env })
+
+    let err = ''
+    proc.stdout.on('data', () => {}) // drain stdout
+    proc.stderr.on('data', (data: Buffer) => { err += data.toString() })
+
+    proc.on('error', (spawnErr: Error) => {
+      reject(new Error(spawnErr.message))
+    })
+
+    proc.on('close', (code) => {
+      if (code !== 0) {
+        console.error('[krew] runKrewAction failed:', { action, pluginName, code, stderr: err.trim() })
+        reject(new Error(err.trim() || `kubectl krew ${action} exited with code ${code}`))
+      } else {
+        resolve({ ok: true })
+      }
+    })
+  })
+}
+
 export function registerKrewHandlers(): void {
   ipcMain.handle('krew:detect', () => {
     if (process.platform === 'win32') return { available: false, unsupported: true }
@@ -135,5 +160,13 @@ export function registerKrewHandlers(): void {
   ipcMain.handle('krew:upgrade-all', async () => {
     await runKrewJson(['upgrade'])
     return { ok: true }
+  })
+
+  ipcMain.handle('krew:install-plugin', async (_event, pluginName: string) => {
+    return runKrewAction('install', pluginName)
+  })
+
+  ipcMain.handle('krew:uninstall', async (_event, pluginName: string) => {
+    return runKrewAction('uninstall', pluginName)
   })
 }

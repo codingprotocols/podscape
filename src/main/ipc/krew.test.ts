@@ -92,6 +92,8 @@ describe('registerKrewHandlers', () => {
     expect(vi.mocked(ipcMain.handle)).toHaveBeenCalledWith('krew:installed', expect.any(Function))
     expect(vi.mocked(ipcMain.handle)).toHaveBeenCalledWith('krew:update', expect.any(Function))
     expect(vi.mocked(ipcMain.handle)).toHaveBeenCalledWith('krew:upgrade-all', expect.any(Function))
+    expect(vi.mocked(ipcMain.handle)).toHaveBeenCalledWith('krew:install-plugin', expect.any(Function))
+    expect(vi.mocked(ipcMain.handle)).toHaveBeenCalledWith('krew:uninstall', expect.any(Function))
   })
 })
 
@@ -134,5 +136,41 @@ describe('runKrewJson', () => {
     vi.mocked(spawn).mockReturnValue(proc)
     const { runKrewJson } = await import('./krew')
     await expect(runKrewJson(['list'])).rejects.toThrow('ENOENT')
+  })
+})
+
+describe('runKrewAction', () => {
+  beforeEach(() => { vi.resetModules(); vi.clearAllMocks() })
+
+  it('calls kubectl krew install <name> and resolves {ok:true}', async () => {
+    vi.mocked(spawn).mockReturnValue(makeFakeProcess(['Installing ctx...\n'], [], 0) as any)
+    const { runKrewAction } = await import('./krew')
+    const result = await runKrewAction('install', 'ctx')
+    expect(result).toEqual({ ok: true })
+    expect(spawn).toHaveBeenCalledWith('kubectl', ['krew', 'install', 'ctx'], expect.any(Object))
+  })
+
+  it('calls kubectl krew uninstall <name>', async () => {
+    vi.mocked(spawn).mockReturnValue(makeFakeProcess([], [], 0) as any)
+    const { runKrewAction } = await import('./krew')
+    await runKrewAction('uninstall', 'ctx')
+    expect(spawn).toHaveBeenCalledWith('kubectl', ['krew', 'uninstall', 'ctx'], expect.any(Object))
+  })
+
+  it('rejects with stderr on non-zero exit', async () => {
+    vi.mocked(spawn).mockReturnValue(makeFakeProcess([], ['already installed\n'], 1) as any)
+    const { runKrewAction } = await import('./krew')
+    await expect(runKrewAction('install', 'ctx')).rejects.toThrow('already installed')
+  })
+
+  it('rejects on spawn error', async () => {
+    const { EventEmitter } = await import('events')
+    const proc = new EventEmitter() as any
+    proc.stdout = new EventEmitter()
+    proc.stderr = new EventEmitter()
+    process.nextTick(() => proc.emit('error', new Error('ENOENT: kubectl not found')))
+    vi.mocked(spawn).mockReturnValue(proc)
+    const { runKrewAction } = await import('./krew')
+    await expect(runKrewAction('install', 'ctx')).rejects.toThrow('ENOENT')
   })
 })
