@@ -165,7 +165,8 @@ podscape-electron/
 │       ├── ownerchain/      # Owner reference traversal (upward + downward)
 │       ├── providers/       # Service mesh / ingress provider detection
 │       ├── costalloc/       # Kubecost / OpenCost cost allocation
-│       ├── topology/        # Cluster network topology graph
+│       ├── graph/           # Resource dependency graph engine (nodes, edges, discoverers, collapse)
+│       ├── topology/        # RS-collapse post-processing on top of graph engine
 │       └── urlutil/         # Shared URL helpers
 ├── resources/         # Icons, splash screen
 ├── scripts/           # Build helpers (notarize, icon generation)

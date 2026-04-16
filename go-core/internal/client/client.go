@@ -75,6 +75,61 @@ func Init(kubeconfig string) (*ClientBundle, error) {
 	}, nil
 }
 
+// InitWithContext is like Init but connects to a specific named context
+// rather than the kubeconfig's current-context.
+func InitWithContext(kubeconfig, contextName string) (*ClientBundle, error) {
+	kubeconfig = resolveKubeconfig(kubeconfig)
+
+	loadingRules := &clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfig}
+	overrides := &clientcmd.ConfigOverrides{CurrentContext: contextName}
+	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)
+
+	config, err := clientConfig.ClientConfig()
+	if err != nil {
+		return nil, fmt.Errorf("building kubeconfig for context %q: %w", contextName, err)
+	}
+
+	config.QPS = 50
+	config.Burst = 100
+	config.WarningHandler = rest.NoWarnings{}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("creating kubernetes client: %w", err)
+	}
+	apiextClient, err := apiextensionsclientset.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("creating apiextensions client: %w", err)
+	}
+	dynClient, err := dynamic.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("creating dynamic client: %w", err)
+	}
+
+	return &ClientBundle{
+		Clientset:    clientset,
+		ApiextClient: apiextClient,
+		DynClient:    dynClient,
+		Discovery:    memorycache.NewMemCacheClient(clientset.Discovery()),
+		Config:       config,
+		ContextName:  contextName,
+		Kubeconfig:   kubeconfig,
+	}, nil
+}
+
+// ValidateContext returns an error if contextName is not present in the kubeconfig file.
+func ValidateContext(kubeconfig, contextName string) error {
+	kubeconfig = resolveKubeconfig(kubeconfig)
+	cfg, err := clientcmd.LoadFromFile(kubeconfig)
+	if err != nil {
+		return fmt.Errorf("loading kubeconfig: %w", err)
+	}
+	if _, ok := cfg.Contexts[contextName]; !ok {
+		return fmt.Errorf("context %q not found in kubeconfig", contextName)
+	}
+	return nil
+}
+
 // resolveKubeconfig returns the first valid kubeconfig path from:
 // 1. The explicit argument (if non-empty)
 // 2. $KUBECONFIG environment variable
