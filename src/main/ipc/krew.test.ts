@@ -94,6 +94,7 @@ describe('registerKrewHandlers', () => {
     expect(vi.mocked(ipcMain.handle)).toHaveBeenCalledWith('krew:upgrade-all', expect.any(Function))
     expect(vi.mocked(ipcMain.handle)).toHaveBeenCalledWith('krew:install-plugin', expect.any(Function))
     expect(vi.mocked(ipcMain.handle)).toHaveBeenCalledWith('krew:uninstall', expect.any(Function))
+    expect(vi.mocked(ipcMain.handle)).toHaveBeenCalledWith('krew:run-plugin', expect.any(Function))
   })
 })
 
@@ -172,5 +173,50 @@ describe('runKrewAction', () => {
     vi.mocked(spawn).mockReturnValue(proc)
     const { runKrewAction } = await import('./krew')
     await expect(runKrewAction('install', 'ctx')).rejects.toThrow('ENOENT')
+  })
+})
+
+describe('runPlugin', () => {
+  beforeEach(() => { vi.resetModules(); vi.clearAllMocks() })
+
+  it('streams stdout lines to onLine callback', async () => {
+    vi.mocked(spawn).mockReturnValue(
+      makeFakeProcess(['line1\nline2\n'], [], 0) as any
+    )
+    const { runPlugin } = await import('./krew')
+    const lines: string[] = []
+    const result = await runPlugin('ctx', [], (line) => lines.push(line))
+    expect(lines).toContain('line1')
+    expect(lines).toContain('line2')
+    expect(result.exitCode).toBe(0)
+  })
+
+  it('prefixes stderr lines with [stderr]', async () => {
+    vi.mocked(spawn).mockReturnValue(
+      makeFakeProcess([], ['error msg\n'], 1) as any
+    )
+    const { runPlugin } = await import('./krew')
+    const lines: string[] = []
+    await runPlugin('ctx', [], (line) => lines.push(line))
+    expect(lines.some(l => l.startsWith('[stderr]'))).toBe(true)
+  })
+
+  it('truncates output at MAX_PLUGIN_OUTPUT_LINES', async () => {
+    const manyLines = Array.from({ length: 10005 }, (_, i) => `line${i}`).join('\n') + '\n'
+    vi.mocked(spawn).mockReturnValue(
+      makeFakeProcess([manyLines], [], 0) as any
+    )
+    const { runPlugin, MAX_PLUGIN_OUTPUT_LINES } = await import('./krew')
+    const lines: string[] = []
+    await runPlugin('ctx', [], (line) => lines.push(line))
+    expect(lines.length).toBeLessThanOrEqual(MAX_PLUGIN_OUTPUT_LINES + 1) // +1 for truncation notice
+    expect(lines[0]).toContain('truncated')
+  })
+
+  it('spawns kubectl <pluginName> with args', async () => {
+    vi.mocked(spawn).mockReturnValue(makeFakeProcess([], [], 0) as any)
+    const { runPlugin } = await import('./krew')
+    await runPlugin('ns', ['--namespace', 'default'], () => {})
+    expect(spawn).toHaveBeenCalledWith('kubectl', ['ns', '--namespace', 'default'], expect.any(Object))
   })
 })

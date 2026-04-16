@@ -127,6 +127,52 @@ export function runKrewAction(action: 'install' | 'uninstall', pluginName: strin
   })
 }
 
+export const MAX_PLUGIN_OUTPUT_LINES = 10_000
+
+/** Runs `kubectl <pluginName> <args>` and streams output lines to `onLine`.
+ *  If total output exceeds MAX_PLUGIN_OUTPUT_LINES, emits a truncation notice
+ *  as the first line followed by only the first MAX_PLUGIN_OUTPUT_LINES lines. */
+export function runPlugin(
+  pluginName: string,
+  args: string[],
+  onLine: (line: string) => void
+): Promise<{ exitCode: number }> {
+  return new Promise((resolve) => {
+    const env = getAugmentedEnv()
+    const proc = spawn('kubectl', [pluginName, ...args], { env })
+
+    const buffer: string[] = []
+
+    function collect(prefix: string, line: string) {
+      const trimmed = line.trim()
+      if (trimmed) buffer.push(`${prefix}${trimmed}`)
+    }
+
+    proc.stdout.on('data', (data: Buffer) => {
+      for (const line of data.toString().split('\n')) collect('', line)
+    })
+
+    proc.stderr.on('data', (data: Buffer) => {
+      for (const line of data.toString().split('\n')) collect('[stderr] ', line)
+    })
+
+    proc.on('error', (err: Error) => {
+      onLine(`[stderr] spawn error: ${err.message}`)
+      resolve({ exitCode: 1 })
+    })
+
+    proc.on('close', (code) => {
+      if (buffer.length > MAX_PLUGIN_OUTPUT_LINES) {
+        onLine(`[truncated] Output exceeded ${MAX_PLUGIN_OUTPUT_LINES} lines and was cut off`)
+        for (let i = 0; i < MAX_PLUGIN_OUTPUT_LINES; i++) onLine(buffer[i])
+      } else {
+        for (const line of buffer) onLine(line)
+      }
+      resolve({ exitCode: code ?? 0 })
+    })
+  })
+}
+
 export function registerKrewHandlers(): void {
   ipcMain.handle('krew:detect', () => {
     if (process.platform === 'win32') return { available: false, unsupported: true }
@@ -168,5 +214,11 @@ export function registerKrewHandlers(): void {
 
   ipcMain.handle('krew:uninstall', async (_event, pluginName: string) => {
     return runKrewAction('uninstall', pluginName)
+  })
+
+  ipcMain.handle('krew:run-plugin', async (event, pluginName: string, args: string[]) => {
+    return runPlugin(pluginName, args, (line) => {
+      if (!event.sender.isDestroyed()) event.sender.send('krew:plugin-output', line)
+    })
   })
 }
