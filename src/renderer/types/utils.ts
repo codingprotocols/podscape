@@ -28,21 +28,21 @@ export function formatAge(timestamp: string): string {
 
 export function parseCpuMillicores(cpu: string): number {
   if (!cpu) return 0
-  if (cpu.endsWith('n')) return parseInt(cpu) / 1_000_000
-  if (cpu.endsWith('u')) return parseInt(cpu) / 1_000
-  if (cpu.endsWith('m')) return parseInt(cpu)
+  if (cpu.endsWith('n')) return parseInt(cpu.slice(0, -1), 10) / 1_000_000
+  if (cpu.endsWith('u')) return parseInt(cpu.slice(0, -1), 10) / 1_000
+  if (cpu.endsWith('m')) return parseInt(cpu.slice(0, -1), 10)
   return parseFloat(cpu) * 1000
 }
 
 export function parseMemoryMiB(mem: string): number {
   if (!mem) return 0
-  if (mem.endsWith('Ki')) return parseInt(mem) / 1024
-  if (mem.endsWith('Mi')) return parseInt(mem)
-  if (mem.endsWith('Gi')) return parseInt(mem) * 1024
-  if (mem.endsWith('Ti')) return parseInt(mem) * 1024 * 1024
-  if (mem.endsWith('k') || mem.endsWith('K')) return parseInt(mem) / 1024
-  if (mem.endsWith('M')) return parseInt(mem)
-  if (mem.endsWith('G')) return parseInt(mem) * 1024
+  if (mem.endsWith('Ki')) return parseInt(mem.slice(0, -2)) / 1024
+  if (mem.endsWith('Mi')) return parseInt(mem.slice(0, -2))
+  if (mem.endsWith('Gi')) return parseInt(mem.slice(0, -2)) * 1024
+  if (mem.endsWith('Ti')) return parseInt(mem.slice(0, -2)) * 1024 * 1024
+  if (mem.endsWith('k') || mem.endsWith('K')) return parseInt(mem.slice(0, -1)) / 1024
+  if (mem.endsWith('M')) return parseInt(mem.slice(0, -1))
+  if (mem.endsWith('G')) return parseInt(mem.slice(0, -1)) * 1024
   return parseInt(mem) / (1024 * 1024)
 }
 
