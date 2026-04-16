@@ -265,6 +265,49 @@ const dialog = {
     ipcRenderer.invoke('dialog:showSaveFile', defaultName),
 }
 
+// ─── Krew API ─────────────────────────────────────────────────────────────────
+
+const krew = {
+  detect: (): Promise<{ available: boolean; unsupported: boolean }> =>
+    ipcRenderer.invoke('krew:detect'),
+
+  install: (): Promise<{ success: boolean; unsupported?: boolean; error?: string }> =>
+    ipcRenderer.invoke('krew:install'),
+
+  onInstallProgress: (cb: (line: string) => void): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, line: string): void => cb(line)
+    ipcRenderer.on('krew:install-progress', handler)
+    return () => ipcRenderer.off('krew:install-progress', handler)
+  },
+
+  search: (): Promise<any[]> =>
+    ipcRenderer.invoke('krew:search'),
+
+  installed: (): Promise<string[]> =>
+    ipcRenderer.invoke('krew:installed'),
+
+  installPlugin: (name: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('krew:install-plugin', name),
+
+  uninstallPlugin: (name: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('krew:uninstall', name),
+
+  update: (): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('krew:update'),
+
+  upgradeAll: (): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('krew:upgrade-all'),
+
+  runPlugin: (pluginName: string, args: string[]): Promise<{ exitCode: number }> =>
+    ipcRenderer.invoke('krew:run-plugin', pluginName, args),
+
+  onPluginOutput: (cb: (line: string) => void): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, line: string): void => cb(line)
+    ipcRenderer.on('krew:plugin-output', handler)
+    return () => ipcRenderer.off('krew:plugin-output', handler)
+  },
+}
+
 
 // ─── exec API ─────────────────────────────────────────────────────────────────
 
@@ -432,6 +475,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('updater', updater)
     contextBridge.exposeInMainWorld('sidecar', sidecar)
     contextBridge.exposeInMainWorld('mcp', mcp)
+    contextBridge.exposeInMainWorld('krew', krew)
   } catch (error) {
     console.error(error)
   }
@@ -459,4 +503,6 @@ if (process.contextIsolated) {
   window.sidecar = sidecar
   // @ts-ignore
   window.mcp = mcp
+  // @ts-ignore
+  window.krew = krew
 }

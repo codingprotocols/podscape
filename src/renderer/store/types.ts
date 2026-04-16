@@ -141,6 +141,19 @@ declare global {
             showOpenFile: () => Promise<string | null>
             showSaveFile: (defaultName: string) => Promise<string | null>
         }
+        krew: {
+            detect: () => Promise<{ available: boolean; unsupported: boolean }>
+            install: () => Promise<{ success: boolean; unsupported?: boolean; error?: string }>
+            onInstallProgress: (cb: (line: string) => void) => () => void
+            search: () => Promise<any[]>
+            installed: () => Promise<string[]>
+            installPlugin: (name: string) => Promise<{ ok: boolean }>
+            uninstallPlugin: (name: string) => Promise<{ ok: boolean }>
+            update: () => Promise<{ ok: boolean }>
+            upgradeAll: () => Promise<{ ok: boolean }>
+            runPlugin: (pluginName: string, args: string[]) => Promise<{ exitCode: number }>
+            onPluginOutput: (cb: (line: string) => void) => () => void
+        }
     }
 }
 
