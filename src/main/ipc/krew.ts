@@ -193,12 +193,34 @@ export function registerKrewHandlers(): void {
     return runKrewJson(['search', '--output=json'])
   })
 
-  ipcMain.handle('krew:installed', async () => {
-    const plugins = await runKrewJson(['list', '--output=json'])
-    if (plugins.length > 0 && typeof plugins[0] === 'object') {
-      return (plugins as any[]).map((p) => p.name ?? p.Name ?? String(p))
-    }
-    return plugins as string[]
+  ipcMain.handle('krew:installed', async (): Promise<string[]> => {
+    return new Promise((resolve) => {
+      const env = getAugmentedEnv()
+      const proc = spawn('kubectl', ['krew', 'list'], { env })
+      let out = ''
+      let err = ''
+
+      proc.stdout.on('data', (data: Buffer) => { out += data.toString() })
+      proc.stderr.on('data', (data: Buffer) => { err += data.toString() })
+      proc.on('error', (spawnErr: Error) => {
+        console.error('[krew] krew list failed:', spawnErr.message)
+        resolve([])
+      })
+      proc.on('close', (code) => {
+        if (code !== 0) {
+          console.error('[krew] krew list exited with code', code, err.trim())
+          resolve([])
+        } else {
+          // Output format: "PLUGIN    VERSION\nctx       v0.9.5\nns        v0.9.1\n"
+          // Skip the header line, extract first column (plugin name) from each remaining line
+          const lines = out.trim().split('\n').slice(1)
+          const names = lines
+            .map(l => l.trim().split(/\s+/)[0])
+            .filter(Boolean)
+          resolve(names)
+        }
+      })
+    })
   })
 
   ipcMain.handle('krew:update', async () => {

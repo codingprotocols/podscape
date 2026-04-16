@@ -233,8 +233,10 @@ function PluginDetail({ plugin }: { plugin: KrewPlugin }): JSX.Element {
             </button>
           </div>
 
-          {outputLines.length > 0 && outputLines[0].startsWith('[truncated]') && (
-            <p className="text-[10px] text-amber-400 bg-amber-500/10 rounded-lg px-3 py-1.5">{outputLines[0]}</p>
+          {outputLines.some(l => l.startsWith('[truncated]')) && (
+            <p className="text-[10px] text-amber-400 bg-amber-500/10 rounded-lg px-3 py-1.5">
+              {outputLines.find(l => l.startsWith('[truncated]'))}
+            </p>
           )}
 
           {outputLines.length > 0 && (

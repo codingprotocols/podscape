@@ -74,7 +74,8 @@ export const createKrewSlice: StoreSlice<KrewSlice> = (set, get) => {
         loadPluginIndex,
 
         refreshIndexIfStale: async () => {
-            const { indexLastUpdated } = get()
+            const { indexLastUpdated, indexRefreshing } = get()
+            if (indexRefreshing) return  // already in progress
             if (indexLastUpdated !== null && Date.now() - indexLastUpdated < INDEX_TTL_MS) return
             try {
                 await window.krew.update()

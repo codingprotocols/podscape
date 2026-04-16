@@ -140,6 +140,38 @@ describe('runKrewJson', () => {
   })
 })
 
+describe('krew:installed (plain-text parsing)', () => {
+  beforeEach(() => { vi.resetModules(); vi.clearAllMocks() })
+
+  it('parses plain-text krew list output and returns plugin names', async () => {
+    const plainOutput = 'PLUGIN    VERSION\nctx       v0.9.5\nns        v0.9.1\n'
+    vi.mocked(spawn).mockReturnValue(makeFakeProcess([plainOutput], [], 0) as any)
+    // We need to invoke the IPC handler directly — get the registered handler fn
+    const { ipcMain } = await import('electron')
+    const { registerKrewHandlers } = await import('./krew')
+    registerKrewHandlers()
+    // Find the handler registered for 'krew:installed'
+    const handler = vi.mocked(ipcMain.handle).mock.calls.find(
+      ([channel]) => channel === 'krew:installed'
+    )?.[1] as Function
+    expect(handler).toBeDefined()
+    const result = await handler({} as any)
+    expect(result).toEqual(['ctx', 'ns'])
+  })
+
+  it('returns [] when krew list exits non-zero', async () => {
+    vi.mocked(spawn).mockReturnValue(makeFakeProcess([], ['no krew'], 1) as any)
+    const { ipcMain } = await import('electron')
+    const { registerKrewHandlers } = await import('./krew')
+    registerKrewHandlers()
+    const handler = vi.mocked(ipcMain.handle).mock.calls.find(
+      ([channel]) => channel === 'krew:installed'
+    )?.[1] as Function
+    const result = await handler({} as any)
+    expect(result).toEqual([])
+  })
+})
+
 describe('runKrewAction', () => {
   beforeEach(() => { vi.resetModules(); vi.clearAllMocks() })
 
