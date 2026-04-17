@@ -56,19 +56,19 @@ describe('krewSlice', () => {
         windowMock.krew.installed.mockResolvedValue([])
         const { slice, state } = makeSlice()
         await slice.loadPluginIndex()
-        // curated list has entries — ctx should be present
-        expect(state.pluginIndex.some((p: any) => p.name === 'ctx')).toBe(true)
+        // curated list has entries — neat should be present
+        expect(state.pluginIndex.some((p: any) => p.name === 'neat')).toBe(true)
         expect(state.indexLastUpdated).toBeTypeOf('number')
     })
 
     it('loadPluginIndex marks installed plugins from curated list', async () => {
-        windowMock.krew.installed.mockResolvedValue(['ctx'])
+        windowMock.krew.installed.mockResolvedValue(['neat'])
         const { slice, state } = makeSlice()
         await slice.loadPluginIndex()
-        const ctx = state.pluginIndex.find((p: any) => p.name === 'ctx')
-        const ns = state.pluginIndex.find((p: any) => p.name === 'ns')
-        expect(ctx.installed).toBe(true)
-        expect(ns.installed).toBe(false)
+        const neat = state.pluginIndex.find((p: any) => p.name === 'neat')
+        const stern = state.pluginIndex.find((p: any) => p.name === 'stern')
+        expect(neat.installed).toBe(true)
+        expect(stern.installed).toBe(false)
     })
 
     it('loadPluginIndex includes non-curated installed plugins as stub entries', async () => {

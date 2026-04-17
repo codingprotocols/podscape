@@ -1,8 +1,6 @@
 import type { KrewPlugin } from '../store/slices/krewSlice'
 
 export const CURATED_PLUGINS: Omit<KrewPlugin, 'installed'>[] = [
-  { name: 'ctx',           version: '', short: 'Fast way to switch between contexts in kubectl' },
-  { name: 'ns',            version: '', short: 'Fast way to switch between namespaces in kubectl' },
   { name: 'neat',          version: '', short: 'Remove clutter from Kubernetes manifests to make them more readable' },
   { name: 'stern',         version: '', short: 'Multi pod and container log tailing' },
   { name: 'tree',          version: '', short: 'Show a tree of object hierarchies through ownerReferences' },
