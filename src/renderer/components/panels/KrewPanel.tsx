@@ -5,6 +5,7 @@ import { Download, ArrowUpCircle, Play, Terminal, CheckCircle, Trash2, Package, 
 import type { KrewPlugin } from '../../store/slices/krewSlice'
 import PageHeader from '../core/PageHeader'
 import { RefreshButton } from '../common'
+import { CURATED_PLUGINS } from '../../config/krewPlugins'
 
 // ─── Not-installed state ──────────────────────────────────────────────────────
 
@@ -339,7 +340,6 @@ export default function KrewPanel(): JSX.Element {
   const selectedPluginData = pluginIndex.find(p => p.name === selectedPlugin) ?? null
 
   async function handleRefresh() {
-    await window.krew.update()
     await loadPluginIndex()
   }
 
@@ -373,7 +373,7 @@ export default function KrewPanel(): JSX.Element {
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_#3b82f6]" />
                 {activeTab === 'installed'
                   ? `${installedPlugins.length} installed`
-                  : `${pluginIndex.length} available`}
+                  : `${CURATED_PLUGINS.length} featured`}
               </>
             ) : undefined
           }

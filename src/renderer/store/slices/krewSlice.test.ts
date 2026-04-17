@@ -52,22 +52,16 @@ describe('krewSlice', () => {
         expect(state.krewUnsupported).toBe(false)
     })
 
-    it('loadPluginIndex populates pluginIndex and sets indexLastUpdated', async () => {
-        const plugins = [{ name: 'ctx', version: '0.9.5', short: 'Switch contexts' }]
-        windowMock.krew.search.mockResolvedValue(plugins)
+    it('loadPluginIndex populates pluginIndex with curated entries and sets indexLastUpdated', async () => {
         windowMock.krew.installed.mockResolvedValue([])
         const { slice, state } = makeSlice()
         await slice.loadPluginIndex()
-        expect(state.pluginIndex).toHaveLength(1)
-        expect(state.pluginIndex[0].name).toBe('ctx')
+        // curated list has entries — ctx should be present
+        expect(state.pluginIndex.some((p: any) => p.name === 'ctx')).toBe(true)
         expect(state.indexLastUpdated).toBeTypeOf('number')
     })
 
-    it('loadPluginIndex marks installed plugins', async () => {
-        windowMock.krew.search.mockResolvedValue([
-            { name: 'ctx', version: '0.9.5', short: 'Switch contexts' },
-            { name: 'ns', version: '0.9.1', short: 'Switch namespaces' },
-        ])
+    it('loadPluginIndex marks installed plugins from curated list', async () => {
         windowMock.krew.installed.mockResolvedValue(['ctx'])
         const { slice, state } = makeSlice()
         await slice.loadPluginIndex()
@@ -77,20 +71,58 @@ describe('krewSlice', () => {
         expect(ns.installed).toBe(false)
     })
 
+    it('loadPluginIndex includes non-curated installed plugins as stub entries', async () => {
+        windowMock.krew.installed.mockResolvedValue(['unknown-plugin'])
+        const { slice, state } = makeSlice()
+        await slice.loadPluginIndex()
+        const stub = state.pluginIndex.find((p: any) => p.name === 'unknown-plugin')
+        expect(stub).toBeDefined()
+        expect(stub.installed).toBe(true)
+    })
+
+    it('loadPluginIndex does not call window.krew.search', async () => {
+        windowMock.krew.installed.mockResolvedValue([])
+        const { slice } = makeSlice()
+        await slice.loadPluginIndex()
+        expect(windowMock.krew.search).not.toHaveBeenCalled()
+    })
+
+    it('loadPluginIndex sets indexRefreshing to false on error', async () => {
+        windowMock.krew.installed.mockRejectedValue(new Error('network error'))
+        const { slice, state } = makeSlice()
+        state.indexRefreshing = true
+        await slice.loadPluginIndex()
+        expect(state.indexRefreshing).toBe(false)
+    })
+
     it('refreshIndexIfStale triggers refresh when cache is older than 24h', async () => {
-        windowMock.krew.update.mockResolvedValue({ ok: true })
-        windowMock.krew.search.mockResolvedValue([])
         windowMock.krew.installed.mockResolvedValue([])
         const { slice, state } = makeSlice()
         state.indexLastUpdated = Date.now() - TWENTY_FIVE_HOURS_MS
         await slice.refreshIndexIfStale()
-        expect(windowMock.krew.update).toHaveBeenCalled()
+        expect(windowMock.krew.installed).toHaveBeenCalled()
     })
 
     it('refreshIndexIfStale does NOT trigger refresh when cache is fresh', async () => {
-        windowMock.krew.update.mockResolvedValue({ ok: true })
         const { slice, state } = makeSlice()
         state.indexLastUpdated = Date.now() - 1000
+        state.indexRefreshing = false
+        await slice.refreshIndexIfStale()
+        expect(windowMock.krew.installed).not.toHaveBeenCalled()
+    })
+
+    it('refreshIndexIfStale triggers refresh when indexLastUpdated is null (first boot)', async () => {
+        windowMock.krew.installed.mockResolvedValue([])
+        const { slice, state } = makeSlice()
+        state.indexLastUpdated = null
+        await slice.refreshIndexIfStale()
+        expect(windowMock.krew.installed).toHaveBeenCalled()
+    })
+
+    it('refreshIndexIfStale does not call window.krew.update', async () => {
+        windowMock.krew.installed.mockResolvedValue([])
+        const { slice, state } = makeSlice()
+        state.indexLastUpdated = Date.now() - TWENTY_FIVE_HOURS_MS
         await slice.refreshIndexIfStale()
         expect(windowMock.krew.update).not.toHaveBeenCalled()
     })
@@ -101,23 +133,11 @@ describe('krewSlice', () => {
         expect(state.selectedPlugin).toBe('ctx')
     })
 
-    it('loadPluginIndex sets indexRefreshing to false on error', async () => {
-        windowMock.krew.search.mockRejectedValue(new Error('network error'))
-        windowMock.krew.installed.mockResolvedValue([])
+    it('setSelectedPlugin accepts null', () => {
         const { slice, state } = makeSlice()
-        state.indexRefreshing = true
-        await slice.loadPluginIndex()
-        expect(state.indexRefreshing).toBe(false)
-    })
-
-    it('refreshIndexIfStale triggers refresh when indexLastUpdated is null (first boot)', async () => {
-        windowMock.krew.update.mockResolvedValue({ ok: true })
-        windowMock.krew.search.mockResolvedValue([])
-        windowMock.krew.installed.mockResolvedValue([])
-        const { slice, state } = makeSlice()
-        state.indexLastUpdated = null
-        await slice.refreshIndexIfStale()
-        expect(windowMock.krew.update).toHaveBeenCalled()
+        slice.setSelectedPlugin('ctx')
+        slice.setSelectedPlugin(null)
+        expect(state.selectedPlugin).toBeNull()
     })
 
     it('upgradeAll delegates to window.krew.upgradeAll', async () => {
@@ -126,12 +146,5 @@ describe('krewSlice', () => {
         const result = await slice.upgradeAll()
         expect(result).toEqual({ ok: true })
         expect(windowMock.krew.upgradeAll).toHaveBeenCalled()
-    })
-
-    it('setSelectedPlugin accepts null', () => {
-        const { slice, state } = makeSlice()
-        slice.setSelectedPlugin('ctx')
-        slice.setSelectedPlugin(null)
-        expect(state.selectedPlugin).toBeNull()
     })
 })

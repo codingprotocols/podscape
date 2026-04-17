@@ -1,4 +1,5 @@
 import { StoreSlice } from '../types'
+import { CURATED_PLUGINS } from '../../config/krewPlugins'
 
 export interface KrewPlugin {
     name: string
@@ -29,21 +30,23 @@ export const createKrewSlice: StoreSlice<KrewSlice> = (set, get) => {
     async function loadPluginIndex() {
         set({ indexRefreshing: true })
         try {
-            const [allPlugins, installed] = await Promise.all([
-                window.krew.search(),
-                window.krew.installed(),
-            ])
+            const installed = await window.krew.installed()
             const installedSet = new Set(installed)
-            // Krew's JSON output uses lowercase field names on macOS/Linux but may
-            // use PascalCase in some versions — normalize both for robustness.
-            const index: KrewPlugin[] = allPlugins.map((p: any) => ({
-                name: p.name ?? p.Name ?? '',
-                version: p.version ?? p.Version ?? '',
-                short: p.short ?? p.Short ?? p.description ?? '',
-                installed: installedSet.has(p.name ?? p.Name ?? ''),
+
+            // Curated entries with live installed status
+            const curatedIndex: KrewPlugin[] = CURATED_PLUGINS.map(p => ({
+                ...p,
+                installed: installedSet.has(p.name),
             }))
+
+            // Stub entries for installed plugins not in the curated list
+            const curatedNames = new Set(CURATED_PLUGINS.map(p => p.name))
+            const extraInstalled: KrewPlugin[] = installed
+                .filter(name => !curatedNames.has(name))
+                .map(name => ({ name, version: '', short: '', installed: true }))
+
             set({
-                pluginIndex: index,
+                pluginIndex: [...curatedIndex, ...extraInstalled],
                 installedPlugins: installed,
                 indexLastUpdated: Date.now(),
                 indexRefreshing: false,
@@ -79,11 +82,6 @@ export const createKrewSlice: StoreSlice<KrewSlice> = (set, get) => {
             const { indexLastUpdated, indexRefreshing } = get()
             if (indexRefreshing) return  // already in progress
             if (indexLastUpdated !== null && Date.now() - indexLastUpdated < INDEX_TTL_MS) return
-            try {
-                await window.krew.update()
-            } catch (err) {
-                console.error('[krew] krew update failed:', err)
-            }
             await loadPluginIndex()
         },
 
