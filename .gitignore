@@ -132,3 +132,6 @@ go-core/podscape
 go-core/vendor/
 go-core/*.exe
 go-core/*.test
+# Added by code-review-graph
+.code-review-graph/
+.mcp.json
