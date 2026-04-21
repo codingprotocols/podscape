@@ -28,8 +28,9 @@ export default function YAMLEditor({
   const { theme } = useAppStore()
 
   return (
+    <div className="cursor-default" style={{ height }}>
     <Editor
-      height={height}
+      height="100%"
       language={language}
       value={value}
       loading={
@@ -59,5 +60,6 @@ export default function YAMLEditor({
         fontFamily: "'JetBrains Mono', 'Fira Code', 'Menlo', monospace",
       }}
     />
+    </div>
   )
 }

@@ -400,7 +400,7 @@ export function ExecPanel({ embedded, session: propSession }: ExecPanelProps): J
         )}
 
         {/* ── Terminal area ── */}
-        <div className="flex-1 min-h-0 relative">
+        <div className="flex-1 min-h-0 relative cursor-default">
           <ExecTab
             session={activeSession}
             active={true}

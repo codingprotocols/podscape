@@ -10,6 +10,10 @@ export interface PodscapeSettings {
     prometheusUrls: Record<string, string>  // per-context manual Prometheus URL; '' = auto-discover
     costUrls: Record<string, string>        // per-context Kubecost/OpenCost base URL; '' = auto-detect
     tourCompleted: boolean         // whether the post-connection tour has been shown
+    pluginsEnabled: boolean        // whether the Plugins (Krew) panel is shown in the sidebar
+    finopsEnabled: boolean         // whether the FinOps / Cost panel is shown in the sidebar
+    gitopsEnabled: boolean         // whether the GitOps panel is shown in the sidebar
+    networkEnabled: boolean        // whether Network Map and Connectivity panels are shown in the sidebar
 }
 
 const SETTINGS_DIR = join(homedir(), '.podscape')
@@ -23,6 +27,10 @@ const DEFAULTS: PodscapeSettings = {
     prometheusUrls: {},
     costUrls: {},
     tourCompleted: false,
+    pluginsEnabled: true,
+    finopsEnabled: true,
+    gitopsEnabled: true,
+    networkEnabled: true,
 }
 
 export function getSettings(): PodscapeSettings {

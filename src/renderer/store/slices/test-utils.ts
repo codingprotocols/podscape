@@ -98,7 +98,20 @@ export const setupMocks = () => {
         },
         plugins: {
             list: vi.fn(),
-        }
+        },
+        krew: {
+            detect: vi.fn().mockResolvedValue({ available: false, unsupported: false }),
+            install: vi.fn(),
+            onInstallProgress: vi.fn(() => vi.fn()),
+            search: vi.fn().mockResolvedValue([]),
+            installed: vi.fn().mockResolvedValue([]),
+            installPlugin: vi.fn().mockResolvedValue({ ok: true }),
+            uninstallPlugin: vi.fn().mockResolvedValue({ ok: true }),
+            update: vi.fn().mockResolvedValue({ ok: true }),
+            upgradeAll: vi.fn().mockResolvedValue({ ok: true }),
+            runPlugin: vi.fn().mockResolvedValue({ exitCode: 0 }),
+            onPluginOutput: vi.fn(() => vi.fn()),
+        },
     }
 
     Object.defineProperty(global, 'window', { value: windowMock, writable: true })

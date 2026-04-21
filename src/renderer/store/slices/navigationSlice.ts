@@ -28,6 +28,14 @@ export interface NavigationSlice {
     setShowTour: (show) => void
     pendingResourceAction: 'analyze-restarts' | null
     setPendingResourceAction: (action: 'analyze-restarts' | null) => void
+    pluginsEnabled: boolean
+    setPluginsEnabled: (enabled: boolean) => void
+    finopsEnabled: boolean
+    setFinopsEnabled: (enabled: boolean) => void
+    gitopsEnabled: boolean
+    setGitopsEnabled: (enabled: boolean) => void
+    networkEnabled: boolean
+    setNetworkEnabled: (enabled: boolean) => void
 }
 
 
@@ -76,5 +84,25 @@ export const createNavigationSlice: StoreSlice<NavigationSlice> = (set, get) => 
     setShowTour: (showTour) => set({ showTour }),
     pendingResourceAction: null,
     setPendingResourceAction: (pendingResourceAction) => set({ pendingResourceAction }),
+    pluginsEnabled: true,
+    setPluginsEnabled: (pluginsEnabled) => {
+        set({ pluginsEnabled })
+        if (!pluginsEnabled && get().section === 'krew') get().setSection('dashboard')
+    },
+    finopsEnabled: true,
+    setFinopsEnabled: (finopsEnabled) => {
+        set({ finopsEnabled })
+        if (!finopsEnabled && get().section === 'cost') get().setSection('dashboard')
+    },
+    gitopsEnabled: true,
+    setGitopsEnabled: (gitopsEnabled) => {
+        set({ gitopsEnabled })
+        if (!gitopsEnabled && get().section === 'gitops') get().setSection('dashboard')
+    },
+    networkEnabled: true,
+    setNetworkEnabled: (networkEnabled) => {
+        set({ networkEnabled })
+        if (!networkEnabled && (get().section === 'network' || get().section === 'connectivity')) get().setSection('dashboard')
+    },
 })
 

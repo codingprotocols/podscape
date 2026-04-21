@@ -1,3 +1,37 @@
+## [3.1.0] — 2026-04-21
+
+### New features
+
+#### Kubectl Plugin Panel (Krew)
+- **New "Plugins" sidebar section** — browse and manage kubectl plugins via Krew directly from Podscape, no terminal required.
+- **Curated plugin list** — Browse tab shows 7 hand-picked plugins (neat, stern, tree, images, whoami, df-pv, outdated) instead of the raw ~200-entry Krew index.
+- **Installed tab** — shows all plugins currently installed via Krew; only curated plugins are displayed (non-curated plugins are not shown).
+- **One-click install / uninstall** — installs via `krew install`; uninstalls via `krew uninstall`. Install no longer blocks on `krew update`, making installs instant.
+- **Krew auto-install** — if Krew is not present, a guided install flow downloads and runs the Krew installer with step-by-step progress output and macOS quarantine fix (`xattr -d com.apple.quarantine`).
+- **Inline plugin runner** — each plugin detail view includes a Run tab with namespace/resource/argument inputs and live streaming output.
+- **Individual plugin panels:**
+  - **neat** — cleans up Kubernetes manifests; supports yaml and json output formats with a format selector dropdown. Uses correct `kubectl neat get -- <kind> <name> -n <ns> --output <format>` syntax.
+  - **stern** — multi-pod log tailing with pod name filter, namespace, and container regex inputs.
+  - **tree** — displays object ownership hierarchies; shows a kind→name selector.
+  - **images** — lists all container images running in the cluster.
+  - **whoami** — shows the currently authenticated subject.
+  - **df-pv** — shows disk usage across PersistentVolumes.
+  - **outdated** — finds outdated container images in the cluster.
+- **YAML indentation preserved** — plugin output correctly preserves leading whitespace (was incorrectly stripped by `trim()`).
+- **Plugin binary resolution** — `resolvePluginCommand()` checks `~/.krew/bin/kubectl-<name_underscored>` directly before falling back to `kubectl <name>`, handling Krew's hyphen→underscore binary naming convention.
+- **Krew excluded from plugin list** — `krew` itself is filtered out of both the installed and browse lists to avoid confusing self-management UI.
+- **Windows guard** — Krew is not supported on Windows; the panel shows a clear unsupported notice instead of attempting detection (uses `krewUnsupported` store flag, not `process.platform` which is unavailable in the renderer).
+
+#### Window dragging improvements
+- **PageHeader drag region** — the title area of every panel header is now a drag region, allowing the window to be moved by grabbing any panel's top bar.
+- **Dashboard drag region** — an invisible 32 px drag strip is added at the top of the Dashboard (which has no PageHeader), so the window can be dragged from there too.
+
+### Fixes
+
+- **Monaco cursor leak** — `cursor: text` from Monaco editors no longer bleeds outside editor bounds in Electron. Fixed with `cursor-default` on container divs in KrewPanel, YAMLEditor, YAMLViewer, and ExecPanel.
+
+---
+
 ## [3.0.1] — 2026-04-16
 
 ### Fixes

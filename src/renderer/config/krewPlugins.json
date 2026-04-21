@@ -1,0 +1,65 @@
+[
+  {
+    "name": "neat",
+    "short": "Remove clutter from Kubernetes manifests to make them more readable",
+    "description": "neat trims away fields that Kubernetes adds to resources automatically (like managedFields, status, creationTimestamp) so you can focus on the meaningful parts of a manifest.",
+    "category": "inspection",
+    "homepage": "https://github.com/itaysk/kubectl-neat",
+    "docs": "https://github.com/itaysk/kubectl-neat#usage",
+    "tags": ["yaml", "manifests", "readability"]
+  },
+  {
+    "name": "stern",
+    "short": "Multi pod and container log tailing",
+    "description": "Stern tails logs from multiple pods and containers simultaneously, color-coding output by pod name. Supports glob patterns, regex filtering, and timestamps.",
+    "category": "logging",
+    "homepage": "https://github.com/stern/stern",
+    "docs": "https://github.com/stern/stern#usage",
+    "tags": ["logs", "pods", "streaming", "containers"]
+  },
+  {
+    "name": "tree",
+    "short": "Show a tree of object hierarchies through ownerReferences",
+    "description": "tree visualises the ownership chain of Kubernetes objects via ownerReferences, letting you see how Deployments relate to ReplicaSets and Pods in a single command.",
+    "category": "inspection",
+    "homepage": "https://github.com/ahmetb/kubectl-tree",
+    "docs": "https://github.com/ahmetb/kubectl-tree#usage",
+    "tags": ["ownership", "hierarchy", "resources"]
+  },
+  {
+    "name": "images",
+    "short": "Show container images used in the cluster",
+    "description": "images lists all container images running across pods in a namespace, including init containers, with their pull policy and digest.",
+    "category": "inspection",
+    "homepage": "https://github.com/chenjiandongx/kubectl-images",
+    "docs": "https://github.com/chenjiandongx/kubectl-images#usage",
+    "tags": ["images", "containers", "pods"]
+  },
+  {
+    "name": "whoami",
+    "short": "Show the subject currently authenticated as",
+    "description": "whoami calls the Kubernetes TokenReview API to display your current username and group memberships — useful for debugging RBAC issues.",
+    "category": "security",
+    "homepage": "https://github.com/rajatjindal/kubectl-whoami",
+    "docs": "https://github.com/rajatjindal/kubectl-whoami#usage",
+    "tags": ["rbac", "auth", "identity"]
+  },
+  {
+    "name": "df-pv",
+    "short": "Show disk usage of PersistentVolumes",
+    "description": "df-pv reports disk usage statistics (capacity, used, available, percent used) for PersistentVolumeClaims in your cluster, similar to the Unix df command.",
+    "category": "storage",
+    "homepage": "https://github.com/yashbhutwala/kubectl-df-pv",
+    "docs": "https://github.com/yashbhutwala/kubectl-df-pv#usage",
+    "tags": ["storage", "pvc", "disk", "capacity"]
+  },
+  {
+    "name": "outdated",
+    "short": "Finds outdated container images running in a cluster",
+    "description": "outdated scans all pods in a namespace and checks whether their container images are using a pinned digest or a mutable tag, helping identify images that may be out of date.",
+    "category": "inspection",
+    "homepage": "https://github.com/replicatedhq/outdated",
+    "docs": "https://github.com/replicatedhq/outdated#usage",
+    "tags": ["images", "updates", "security", "containers"]
+  }
+]

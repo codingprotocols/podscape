@@ -9,6 +9,7 @@ import { registerTerminalHandlers, cancelAllExecStreams } from './ipc/terminal'
 import { registerSettingsHandlers } from './ipc/settings'
 import { registerHelmHandlers } from './ipc/helm'
 import { registerDialogHandlers } from './ipc/dialog'
+import { registerKrewHandlers } from './ipc/krew'
 import { startSidecar, stopSidecar } from './sidecar/sidecar'
 import { setupUpdater } from './system/updater'
 import { setupMenu } from './menu'
@@ -101,6 +102,7 @@ app.whenReady().then(async () => {
   registerTerminalHandlers()
   registerHelmHandlers()
   registerDialogHandlers()
+  registerKrewHandlers()
   setupUpdater()
   setupMenu()
 

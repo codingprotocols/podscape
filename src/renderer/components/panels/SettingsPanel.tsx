@@ -12,6 +12,10 @@ interface SettingsForm {
   prometheusUrls: Record<string, string>
   costUrls: Record<string, string>
   tourCompleted: boolean
+  pluginsEnabled: boolean
+  finopsEnabled: boolean
+  gitopsEnabled: boolean
+  networkEnabled: boolean
 }
 
 interface CloudClusterGuideBoxProps {
@@ -27,8 +31,8 @@ const CloudClusterGuideBox = ({ title, description }: CloudClusterGuideBoxProps)
 )
 
 export default function SettingsPanel(): JSX.Element {
-  const { theme, setTheme, init, prodContexts, probePrometheus, prometheusAvailable, probeCost, costAvailable, selectedContext } = useAppStore()
-  const [form, setForm] = useState<SettingsForm>({ shellPath: '', theme, kubeconfigPath: '', prodContexts: [], prometheusUrls: {}, costUrls: {}, tourCompleted: false })
+  const { theme, setTheme, init, prodContexts, probePrometheus, prometheusAvailable, probeCost, costAvailable, selectedContext, setPluginsEnabled, setFinopsEnabled, setGitopsEnabled, setNetworkEnabled } = useAppStore()
+  const [form, setForm] = useState<SettingsForm>({ shellPath: '', theme, kubeconfigPath: '', prodContexts: [], prometheusUrls: {}, costUrls: {}, tourCompleted: false, pluginsEnabled: true, finopsEnabled: true, gitopsEnabled: true, networkEnabled: true })
   const [costProbing, setCostProbing] = useState(false)
   const [probing, setProbing] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -63,7 +67,7 @@ export default function SettingsPanel(): JSX.Element {
   }, [])
 
   useEffect(() => {
-    window.settings.get().then(s => setForm({ ...s, prodContexts: s.prodContexts ?? prodContexts, prometheusUrls: s.prometheusUrls ?? {}, costUrls: s.costUrls ?? {}, tourCompleted: s.tourCompleted ?? false })).catch(err => {
+    window.settings.get().then(s => setForm({ ...s, prodContexts: s.prodContexts ?? prodContexts, prometheusUrls: s.prometheusUrls ?? {}, costUrls: s.costUrls ?? {}, tourCompleted: s.tourCompleted ?? false, pluginsEnabled: s.pluginsEnabled ?? true, finopsEnabled: s.finopsEnabled ?? true, gitopsEnabled: s.gitopsEnabled ?? true, networkEnabled: s.networkEnabled ?? true })).catch(err => {
       console.error('[SettingsPanel] Failed to load settings:', err)
       setForm(f => ({ ...f, prodContexts }))
     })
@@ -119,8 +123,12 @@ export default function SettingsPanel(): JSX.Element {
     setSaved(false)
     try {
       await window.settings.set(form)
-      // Apply theme change immediately
+      // Apply changes immediately to store
       if (form.theme === 'light' || form.theme === 'dark') setTheme(form.theme)
+      setPluginsEnabled(form.pluginsEnabled)
+      setFinopsEnabled(form.finopsEnabled)
+      setGitopsEnabled(form.gitopsEnabled)
+      setNetworkEnabled(form.networkEnabled)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch (e) {
@@ -227,6 +235,37 @@ export default function SettingsPanel(): JSX.Element {
                     {t} Mode
                   </span>
                 </button>
+              ))}
+            </div>
+          </section>
+
+          {/* ── Panels ──────────────────────────────────────────────────── */}
+          <section className="space-y-6">
+            <h3 className="text-[10px] font-bold text-slate-500 dark:text-slate-600 uppercase tracking-[0.2em] flex items-center gap-3">
+              <Cpu size={14} />
+              Panels
+              <span className="flex-1 h-px bg-slate-200 dark:bg-white/5" />
+            </h3>
+            <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-3xl p-6 space-y-4 shadow-sm">
+              {([
+                { key: 'pluginsEnabled', label: 'Plugins',  description: 'kubectl plugin manager (Krew)' },
+                { key: 'finopsEnabled',  label: 'FinOps',   description: 'Cost allocation and usage (Kubecost / OpenCost)' },
+                { key: 'gitopsEnabled',  label: 'GitOps',   description: 'Argo CD / Flux resource overview' },
+                { key: 'networkEnabled', label: 'Network',  description: 'Network Map topology and Connectivity Tester' },
+              ] as const).map(({ key, label, description }) => (
+                <div key={key} className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[11px] font-black text-slate-700 dark:text-slate-200 uppercase tracking-wider">{label}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{description}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, [key]: !f[key] }))}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${form[key] ? 'bg-blue-500' : 'bg-slate-200 dark:bg-white/10'}`}
+                  >
+                    <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ${form[key] ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+                </div>
               ))}
             </div>
           </section>

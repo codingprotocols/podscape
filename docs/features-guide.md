@@ -343,6 +343,64 @@ When Istio, Traefik v2/v3, or NGINX Inc is detected in your cluster, dedicated s
 
 ---
 
+## Kubectl Plugin Panel
+
+The Plugin Panel brings a curated set of kubectl plugins directly into Podscape. You can install, run, and view plugin output without leaving the app or touching your terminal.
+
+### Opening the panel
+
+Navigate to **Plugins** in the sidebar, or search `"plugins"` in the Command Palette (`⌘K` / `Ctrl+K`).
+
+### Tabs
+
+| Tab | Shows |
+|-----|-------|
+| **Installed** | Plugins from the curated list that are currently installed on your machine |
+| **Browse** | All curated plugins, installed or not |
+
+> Plugins installed via `kubectl krew install` that are not in Podscape's curated list are intentionally not shown — the panel only surfaces plugins with first-class Podscape UI support.
+
+### Installing a plugin
+
+[Krew](https://krew.sigs.k8s.io/) must be installed on your machine. If it is not detected, the panel shows a one-click Krew installer.
+
+1. Switch to the **Browse** tab.
+2. Click any plugin row to open its **Info** view.
+3. Click **Install**. Podscape runs `kubectl krew install <plugin>` in the background.
+4. Once installed, the **Run** tab becomes available.
+
+### Running a plugin
+
+1. Click any installed plugin row (or switch to the **Run** tab from the Info view).
+2. Fill in the inputs (namespace, resource name, etc.) and click **Run**.
+3. Output streams live into the panel — table view, YAML editor, or raw terminal depending on the plugin.
+
+### Refreshing the index
+
+Click **Refresh** in the toolbar to run `kubectl krew update` and reload the installed plugin list. This is useful after installing plugins from the terminal or after a `krew upgrade`.
+
+### Curated plugins
+
+Podscape ships with built-in UI support for the following plugins. We are grateful to their authors for building and open-sourcing these tools.
+
+| Plugin | What it does | Author |
+|--------|-------------|--------|
+| [neat](https://github.com/itaysk/kubectl-neat) | Strips managed fields and defaults from manifests to make them human-readable | [@itaysk](https://github.com/itaysk) |
+| [stern](https://github.com/stern/stern) | Tails logs from multiple pods simultaneously with regex filtering | [stern/stern](https://github.com/stern/stern) |
+| [tree](https://github.com/ahmetb/kubectl-tree) | Visualises Kubernetes object ownership hierarchies | [@ahmetb](https://github.com/ahmetb) |
+| [images](https://github.com/chenjiandongx/kubectl-images) | Lists all container images running in the cluster | [@chenjiandongx](https://github.com/chenjiandongx) |
+| [whoami](https://github.com/rajatjindal/kubectl-whoami) | Shows the currently authenticated subject | [@rajatjindal](https://github.com/rajatjindal) |
+| [df-pv](https://github.com/yashbhutwala/kubectl-df-pv) | Reports disk usage for PersistentVolumeClaims | [@yashbhutwala](https://github.com/yashbhutwala) |
+| [outdated](https://github.com/replicatedhq/outdated) | Finds container images running outdated versions | [replicatedhq](https://github.com/replicatedhq) |
+
+Podscape does not bundle or redistribute these plugins. They are installed and managed on your local machine via Krew.
+
+### Adding a new plugin
+
+See the [Contributing Guide](../CONTRIBUTING.md#adding-a-kubectl-plugin) for step-by-step instructions on adding a new plugin to the curated list.
+
+---
+
 ## Auto-Updater
 
 Podscape checks for new releases automatically in the background using the built-in Electron auto-updater. No manual download or re-installation is required.

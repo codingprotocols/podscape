@@ -16,6 +16,7 @@ import { OperationSlice } from './slices/operationSlice'
 import { ProvidersSlice } from './slices/providersSlice'
 import { CostSlice } from './slices/costSlice'
 import { NavigationSlice } from './slices/navigationSlice'
+import { KrewSlice } from './slices/krewSlice'
 
 
 declare global {
@@ -141,6 +142,19 @@ declare global {
             showOpenFile: () => Promise<string | null>
             showSaveFile: (defaultName: string) => Promise<string | null>
         }
+        krew: {
+            detect: () => Promise<{ available: boolean; unsupported: boolean }>
+            install: () => Promise<{ success: boolean; unsupported?: boolean; error?: string }>
+            onInstallProgress: (cb: (line: string) => void) => () => void
+            search: () => Promise<any[]>
+            installed: () => Promise<string[]>
+            installPlugin: (name: string) => Promise<{ ok: boolean }>
+            uninstallPlugin: (name: string) => Promise<{ ok: boolean }>
+            update: () => Promise<{ ok: boolean }>
+            upgradeAll: () => Promise<{ ok: boolean }>
+            runPlugin: (pluginName: string, args: string[]) => Promise<{ exitCode: number }>
+            onPluginOutput: (cb: (line: string) => void) => () => void
+        }
     }
 }
 
@@ -166,7 +180,7 @@ export interface ExecSession {
     target: ExecTarget
 }
 
-export interface AppStore extends AnalysisSlice, OperationSlice, ProvidersSlice, CostSlice, NavigationSlice {
+export interface AppStore extends AnalysisSlice, OperationSlice, ProvidersSlice, CostSlice, NavigationSlice, KrewSlice {
     // Navigation removed - inherited from NavigationSlice
     
     // Cluster selection
