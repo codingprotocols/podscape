@@ -77,18 +77,12 @@ describe('krewSlice', () => {
         expect(stern.installed).toBe(false)
     })
 
-    it('loadPluginIndex includes non-curated installed plugins as stub entries', async () => {
+    it('loadPluginIndex does not include non-curated installed plugins', async () => {
         windowMock.krew.installed.mockResolvedValue(['unknown-plugin'])
         const { slice, state } = makeSlice()
         await slice.loadPluginIndex()
         const stub = state.pluginIndex.find((p: any) => p.name === 'unknown-plugin')
-        expect(stub).toBeDefined()
-        expect(stub.installed).toBe(true)
-        expect(stub.description).toBe('')
-        expect(stub.tags).toEqual([])
-        expect(stub.short).toBe('')
-        expect(stub.homepage).toBe('')
-        expect(stub.docs).toBe('')
+        expect(stub).toBeUndefined()
     })
 
     it('loadPluginIndex does not call window.krew.search', async () => {

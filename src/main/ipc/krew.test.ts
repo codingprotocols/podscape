@@ -282,7 +282,8 @@ describe('runPlugin', () => {
     expect(lines.some(l => l.includes('truncated'))).toBe(true)
   })
 
-  it('spawns kubectl <pluginName> with args', async () => {
+  it('spawns kubectl <pluginName> with args when no direct krew binary exists', async () => {
+    vi.mocked(existsSync).mockReturnValue(false)
     vi.mocked(spawn).mockReturnValue(makeFakeProcess([], [], 0) as any)
     const { runPlugin } = await import('./krew')
     await runPlugin('ns', ['--namespace', 'default'], () => {})
