@@ -432,6 +432,11 @@ export default function Dashboard(): JSX.Element {
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-slate-50 dark:bg-[hsl(var(--bg-dark))] overflow-hidden relative h-full transition-colors duration-200">
+      {/* Invisible drag strip at top — no layout impact, allows window dragging */}
+      <div
+        className="absolute top-0 left-0 right-0 h-8 z-40"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      />
       {/* Scrollable Content (No PageHeader) */}
       <div className="flex-1 overflow-y-auto scrollbar-hide">
         {loadingResources && pods.length === 0 ? (
