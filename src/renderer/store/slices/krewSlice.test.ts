@@ -56,8 +56,14 @@ describe('krewSlice', () => {
         windowMock.krew.installed.mockResolvedValue([])
         const { slice, state } = makeSlice()
         await slice.loadPluginIndex()
-        // curated list has entries — neat should be present
         expect(state.pluginIndex.some((p: any) => p.name === 'neat')).toBe(true)
+        const neat = state.pluginIndex.find((p: any) => p.name === 'neat')
+        expect(neat.description.length).toBeGreaterThan(0)
+        expect(neat.homepage).toContain('github.com')
+        expect(neat.docs).toContain('github.com')
+        expect(neat.tags.length).toBeGreaterThan(0)
+        expect(neat.category).toBe('inspection')
+        expect(Array.isArray(neat.tags)).toBe(true)
         expect(state.indexLastUpdated).toBeTypeOf('number')
     })
 
@@ -78,6 +84,11 @@ describe('krewSlice', () => {
         const stub = state.pluginIndex.find((p: any) => p.name === 'unknown-plugin')
         expect(stub).toBeDefined()
         expect(stub.installed).toBe(true)
+        expect(stub.description).toBe('')
+        expect(stub.tags).toEqual([])
+        expect(stub.short).toBe('')
+        expect(stub.homepage).toBe('')
+        expect(stub.docs).toBe('')
     })
 
     it('loadPluginIndex does not call window.krew.search', async () => {

@@ -5,8 +5,8 @@ import { getSettings } from '../settings/settings_storage'
 /**
  * Build a clean env object for subprocesses.
  *
- * Filters out undefined values (avoids posix_spawnp failures in node-pty) and
- * augments PATH so that cloud-provider credential helpers are reachable even
+ * Filters out undefined values and augments PATH so that cloud-provider
+ * credential helpers are reachable even
  * when the app is launched from the GUI rather than a login shell.
  *
  * Covered credential helpers and their typical install paths:

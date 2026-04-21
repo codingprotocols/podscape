@@ -281,7 +281,7 @@ export function ApplyYAMLPanel(): JSX.Element {
           </div>
         </div>
       </div>
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 cursor-default">
         <Editor
           height="100%"
           language="yaml"

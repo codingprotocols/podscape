@@ -34,6 +34,7 @@ Renderer (React / TypeScript)
 | `analysisSlice` | Security scanning (kubesec + trivy), `scanInBackground` state for background scans, owner chain, debug pods, Prometheus config |
 | `costSlice` | Kubecost / OpenCost detection and namespace allocation tracking |
 | `providersSlice` | Istio/Traefik/NGINX provider detection state |
+| `krewSlice` | Krew availability detection, curated plugin index (installed status), install/uninstall actions |
 
 - **Component Orchestration**: The root `App.tsx` acts as a high-level shell. UI complexity is delegated to:
 

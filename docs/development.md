@@ -190,6 +190,46 @@ The `UpdateBanner` component in `src/renderer/components/core/UpdateBanner.tsx` 
 
 ## Known Build Notes
 
-- **`node-pty` native rebuild**: `npm install` runs `electron-builder install-app-deps` via `postinstall`, which rebuilds `node-pty` for the target Electron version. On macOS the prebuilt `spawn-helper` binaries may lack execute permission — the `postinstall` script applies `chmod +x` automatically.
+- **Native module rebuild**: `npm install` runs `electron-builder install-app-deps` via `postinstall`, which rebuilds any native modules for the target Electron version.
 - **CGO on Windows**: MinGW must be on `PATH` before building the Go sidecar. The CI workflow adds it via `$env:PATH`.
 - **Sidecar location**: In dev, the binary is expected at `go-core/podscape-core`. In production, electron-builder copies it to `resources/bin/podscape-core` via `extraResources`.
+- **Stale preload**: If `window.kubectl.*` (or `window.krew.*`) methods appear as `undefined` at runtime, the preload build is stale. Restart `npm run dev` to pick up the latest preload.
+
+---
+
+## Kubectl Plugin Development
+
+The Plugin Panel (`src/renderer/components/plugins/`) uses a registry-driven architecture. Each plugin is a self-contained module with an `InfoPanel` and a `RunPanel`.
+
+### File layout
+
+```
+src/renderer/components/plugins/
+  <plugin-name>/
+    InfoPanel.tsx      # Info tab — description, install/uninstall button
+    RunPanel.tsx       # Run tab — inputs + live output
+  PluginContract.ts    # Shared prop types (PluginRunPanelProps, PluginInfoPanelProps)
+  PluginInfoLayout.tsx # Reusable wrapper for InfoPanel with install/uninstall logic
+  pluginRegistry.ts    # Lazy-load map: name → () => import('./name')
+  usePluginRun.ts      # Hook: run plugin, stream output lines, track running state
+  NamespaceSelect.tsx  # Dropdown backed by live cluster namespaces from the store
+```
+
+Plugin metadata (name, description, category, homepage) lives in `src/renderer/config/krewPlugins.json`.
+
+### Key hooks and components
+
+**`usePluginRun()`** — call `run(pluginName, args)` to invoke `kubectl <plugin> <args>`. Returns `{ lines, running, exitCode, run }`. Lines are pre-split by newline with `[stderr]` prefix on stderr. Leading whitespace is preserved (important for YAML/tree output).
+
+**`PluginInfoLayout`** — pass `plugin`, `onInstall`, `onUninstall`, and `onOpen` props. Handles loading state, error display, and the install/uninstall button rendering.
+
+**`NamespaceSelect`** — reads `namespaces` from the Zustand store and renders a live dropdown. Falls back to a plain text input when no namespaces are loaded yet. Accepts `includeAll` prop to add an "all namespaces" option.
+
+### Adding a plugin
+
+1. Add an entry to `src/renderer/config/krewPlugins.json`.
+2. Create `src/renderer/components/plugins/<name>/InfoPanel.tsx` — use `PluginInfoLayout` as the wrapper.
+3. Create `src/renderer/components/plugins/<name>/RunPanel.tsx` — use `usePluginRun` to invoke and stream output.
+4. Register the loader in `src/renderer/components/plugins/pluginRegistry.ts`.
+
+See `stern` or `tree` for simple examples; `neat` for Monaco editor output; `outdated` for custom parsed table output.

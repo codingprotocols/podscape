@@ -138,7 +138,23 @@ export function runKrewAction(action: 'install' | 'uninstall', pluginName: strin
 
 export const MAX_PLUGIN_OUTPUT_LINES = 10_000
 
-/** Runs `kubectl <pluginName> <args>` and streams output lines to `onLine`.
+/**
+ * Resolves the executable for a krew plugin.
+ * kubectl translates `kubectl foo-bar` → looks for `kubectl-foo-bar`, but krew
+ * installs some plugins with underscores (e.g. `kubectl-access_matrix`).
+ * Try the direct krew binary first, then fall back to kubectl plugin invocation.
+ */
+function resolvePluginCommand(pluginName: string): { cmd: string; argv: string[] } {
+  const krewBin = join(homedir(), '.krew', 'bin')
+  // krew replaces hyphens with underscores in binary names
+  const binaryName = `kubectl-${pluginName.replace(/-/g, '_')}`
+  const directPath = join(krewBin, binaryName)
+  if (existsSync(directPath)) return { cmd: directPath, argv: [] }
+  // Fallback: let kubectl resolve it via PATH
+  return { cmd: 'kubectl', argv: [pluginName] }
+}
+
+/** Runs a krew plugin and streams output lines to `onLine`.
  *  If total output exceeds MAX_PLUGIN_OUTPUT_LINES, emits a truncation notice
  *  and stops forwarding further lines. */
 export function runPlugin(
@@ -148,22 +164,23 @@ export function runPlugin(
 ): Promise<{ exitCode: number }> {
   return new Promise((resolve) => {
     const env = getAugmentedEnv()
-    const proc = spawn('kubectl', [pluginName, ...args], { env })
+    const { cmd, argv } = resolvePluginCommand(pluginName)
+    const proc = spawn(cmd, [...argv, ...args], { env })
 
     let lineCount = 0
     let truncated = false
 
     function handleLine(prefix: string, line: string) {
       if (truncated) return
-      const trimmed = line.trim()
-      if (!trimmed) return
+      const stripped = line.trimEnd()
+      if (!stripped.trim()) return
       if (lineCount >= MAX_PLUGIN_OUTPUT_LINES) {
         truncated = true
         onLine(`[truncated] Output exceeded ${MAX_PLUGIN_OUTPUT_LINES} lines and was cut off`)
         return
       }
       lineCount++
-      onLine(`${prefix}${trimmed}`)
+      onLine(`${prefix}${stripped}`)
     }
 
     proc.stdout.on('data', (data: Buffer) => {

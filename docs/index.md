@@ -14,7 +14,7 @@ Welcome to the Podscape documentation. This folder contains detailed technical g
 - [**API Reference (Sidecar)**](api.md) — All HTTP endpoints exposed by the Go sidecar on `localhost:5050`.
 - [**Security Hub**](security.md) — Dynamic image scanning (Trivy), static config audit (Kubesec), and Security Hub UI.
 - [**Development Guide**](development.md) — Setup, build, test, and distribution instructions.
-- [**Features Guide**](features-guide.md) — Command palette, production context protection, unified logs, connectivity tester, pod diagnostics, and auto-updater.
+- [**Features Guide**](features-guide.md) — Command palette, production context protection, unified logs, connectivity tester, pod diagnostics, kubectl plugins, and auto-updater.
 - [**MCP Server**](mcp-server.md) — Install `podscape-mcp`, configure Claude/Cursor, and reference for all 25 tools.
 - [**Keyboard Shortcuts**](keyboard-shortcuts.md) — All shortcuts and the complete command palette section index.
 - [**Troubleshooting**](troubleshooting.md) — Sidecar issues, RBAC denied sections, build fixes, and recovery procedures.
@@ -42,7 +42,7 @@ cd go-core && go build ./cmd/podscape-core/ && cd ..
 npm run dev
 ```
 
-## Feature Overview (v2.7.0)
+## Feature Overview (v3.0.1)
 
 
 | Feature | Description |
@@ -76,3 +76,4 @@ npm run dev
 | Unified Log Streaming | Aggregate real-time logs from multiple pods simultaneously with per-pod color coding and search |
 | Connectivity Tester | Pod-to-pod / pod-to-service network diagnostics with curl, netcat, and ping; automated DNS→TCP→HTTP flow |
 | Auto-Updater | In-app update checks with download progress and one-click install |
+| Kubectl Plugin Panel | Curated kubectl plugins (via Krew) with dedicated UIs — install, run, and view output without leaving the app |
