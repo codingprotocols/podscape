@@ -41,7 +41,11 @@ export const useAppStore = create<AppStore>()((...a) => ({
             set({
                 kubeconfigOk: toolsState.kubeconfigOk,
                 trivyAvailable: toolsState.trivyOk,
-                prodContexts: settings.prodContexts || []
+                prodContexts: settings.prodContexts || [],
+                pluginsEnabled: settings.pluginsEnabled ?? true,
+                finopsEnabled: settings.finopsEnabled ?? true,
+                gitopsEnabled: settings.gitopsEnabled ?? true,
+                networkEnabled: settings.networkEnabled ?? true,
             })
 
             // 2. Load contexts if config exists

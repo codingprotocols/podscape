@@ -185,6 +185,10 @@ export default function Sidebar(): JSX.Element {
     contextSwitchStatus,
     providers,
     costAvailable,
+    pluginsEnabled,
+    finopsEnabled,
+    gitopsEnabled,
+    networkEnabled,
   } = useAppStore(useShallow(s => ({
     contexts: s.contexts,
     selectedContext: s.selectedContext,
@@ -208,6 +212,10 @@ export default function Sidebar(): JSX.Element {
     contextSwitchStatus: s.contextSwitchStatus,
     providers: s.providers,
     costAvailable: s.costAvailable,
+    pluginsEnabled: s.pluginsEnabled,
+    finopsEnabled: s.finopsEnabled,
+    gitopsEnabled: s.gitopsEnabled,
+    networkEnabled: s.networkEnabled,
   })))
 
   const [isResizing, setIsResizing] = useState(false)
@@ -429,8 +437,8 @@ export default function Sidebar(): JSX.Element {
             <NavItem label="Network Policies" section="networkpolicies" icon={ICONS.netpol} />
             <NavItem label="Endpoints" section="endpoints" icon={ICONS.endpoints} />
             <NavItem label="Port Forwards" section="portforwards" icon={ICONS.portforward} />
-            <NavItem label="Network Map" section="network" icon={ICONS.network} />
-            <NavItem label="Connectivity" section="connectivity" icon={ICONS.connectivity} />
+            {networkEnabled && <NavItem label="Network Map" section="network" icon={ICONS.network} />}
+            {networkEnabled && <NavItem label="Connectivity" section="connectivity" icon={ICONS.connectivity} />}
             <NavItem label="Debug Pods" section="debugpod" icon={ICONS.debugpod} />
           </NavGroup>
 
@@ -463,11 +471,11 @@ export default function Sidebar(): JSX.Element {
 
           <NavGroup title="Tools">
             <NavItem label="Helm Charts" section="helm" icon={ICONS.helm} />
-            <NavItem label="GitOps" section="gitops" icon={ICONS.deploy} />
-            <NavItem label="Plugins" section="krew" icon={ICONS.crd} />
+            {gitopsEnabled && <NavItem label="GitOps" section="gitops" icon={ICONS.deploy} />}
+            {pluginsEnabled && <NavItem label="Plugins" section="krew" icon={ICONS.crd} />}
           </NavGroup>
 
-          {costAvailable !== null && (
+          {finopsEnabled && costAvailable !== null && (
             <NavGroup title="FinOps">
               <NavItem label="Cost" section="cost" icon={ICONS.cost} />
             </NavGroup>
