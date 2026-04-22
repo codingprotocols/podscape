@@ -141,7 +141,7 @@ function ExecTab({ session, active, theme }: ExecTabProps): JSX.Element {
 
       {/* Start error — shown when exec.start() rejects (e.g. no shell, RBAC denied) */}
       {startError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 bg-[#0d1117]/95 backdrop-blur-sm p-8">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 bg-[#0d1117] p-8">
           <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center">
             <AlertCircle size={28} className="text-red-400" />
           </div>
@@ -151,6 +151,13 @@ function ExecTab({ session, active, theme }: ExecTabProps): JSX.Element {
               {startError}
             </pre>
           </div>
+          <button
+            onClick={() => closeExecTab(session.id)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-slate-200 text-[11px] font-bold uppercase tracking-widest border border-white/10 transition-all"
+          >
+            <X size={13} />
+            Close
+          </button>
         </div>
       )}
 

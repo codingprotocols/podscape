@@ -29,6 +29,7 @@
 ### Fixes
 
 - **Monaco cursor leak** — `cursor: text` from Monaco editors no longer bleeds outside editor bounds in Electron. Fixed with `cursor-default` on container divs in KrewPanel, YAMLEditor, YAMLViewer, and ExecPanel.
+- **macOS DMG size** — added explicit `files` config to electron-builder (`out/**/*` only) to prevent the entire project directory from being bundled into the app asar. The `.claude/` plugin cache and all dev-only files are now excluded, reducing the asar from ~210 MB to ~5 MB and the macOS DMG from ~450 MB to ~150 MB.
 
 ### Improvements
 
