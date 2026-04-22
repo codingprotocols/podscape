@@ -77,3 +77,4 @@ npm run dev
 | Connectivity Tester | Pod-to-pod / pod-to-service network diagnostics with curl, netcat, and ping; automated DNS→TCP→HTTP flow |
 | Auto-Updater | In-app update checks with download progress and one-click install |
 | Kubectl Plugin Panel | Curated kubectl plugins (via Krew) with dedicated UIs — install, run, and view output without leaving the app |
+| Panel Toggles | Enable or disable Plugins, FinOps, GitOps, and Network panels from Settings — sidebar updates immediately |

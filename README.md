@@ -1,13 +1,48 @@
-# Podscape
+# Podscape 🚀
 
-A desktop Kubernetes management app built on Electron + React + TypeScript + Go.
-Manage clusters, stream logs, exec into containers, inspect RBAC, visualise network topology, and more — all from a single native app.
+### The Simplest Way to Work with Kubernetes
 
 **[Download](https://github.com/codingprotocols/podscape/releases/latest)** · **[Docs](https://codingprotocols.github.io/podscape/)** · **[Issues](https://github.com/codingprotocols/podscape/issues)**
 
 ---
 
 ![Podscape Hero Screenshot](docs/images/hero_screenshot.png)
+
+---
+
+## The Problem
+
+Kubernetes workflows are fragmented:
+
+- Logs → `kubectl` / external tools
+- Metrics → Prometheus / Grafana
+- YAML → `kubectl apply`
+- Debugging → manual chaos
+
+This slows you down when it matters most.
+
+---
+
+## The Solution
+
+Podscape brings everything into one place:
+
+- 🔍 **Real-time cluster state** — via Kubernetes informers, not polling
+- 📜 **Logs, events, and resources** in one UI
+- ⚙️ **Helm + workload management** — list, inspect, upgrade, rollback
+- 🤖 **AI-assisted exploration** — MCP server for Claude, Cursor, and more
+
+Less context switching. Faster debugging.
+
+---
+
+## Why Podscape?
+
+- **No account required** — works with your existing kubeconfig, nothing else
+- **Real-time via informers** — not polling; state updates the moment Kubernetes does
+- **Everything in one window** — logs, Helm, exec, metrics, security, cost, network map
+- **AI-ready** — MCP server lets Claude and Cursor talk directly to your cluster
+- **Open source** — Apache 2.0, no telemetry, no subscription
 
 ---
 
@@ -30,34 +65,11 @@ Manage clusters, stream logs, exec into containers, inspect RBAC, visualise netw
 
 ---
 
-## Features
+## Quick Start
 
-- **Command Palette (⌘K)** — instant access to any section or resource via powerful fuzzy search; jump between clusters and namespaces through the keyboard
-- **Multi-cluster support** — switch contexts and namespaces instantly; RBAC-aware startup skips resources the current user cannot access
-- **Full resource coverage** — pods, deployments, statefulsets, daemonsets, jobs, cronjobs, HPAs, PDBs, services, ingresses, network policies, configmaps, secrets, RBAC, storage, and more
-- **Log streaming** — real-time log tailing with multi-container support and search
-- **Exec into containers** — full PTY terminal sessions directly in the app
-- **Port forwarding** — one-click port-forward with live status, auto port detection, and clickable local URLs
-- **Helm management** — list releases, inspect values, view history, rollback, and **direct upgrades** with automated update detection
-- **Connectivity Tester** — source-to-target network diagnostics (DNS, TCP, HTTP) with automated NetworkPolicy and endpoint failure analysis
-- **Production Context Protection** — visual banners and application-frame indicators when connected to sensitive clusters
-- **Cost Estimation** — real-time cost allocation and efficiency metrics via Kubecost / OpenCost integration
-- **CRD Browser** — explorer and editor for any Custom Resource Definition installed in the cluster
-- **Network topology** — force-directed graph of pod-to-service relationships
-- **Security scan** — per-pod security posture analysis (privileged containers, missing resource limits, host namespace access)
-- **TLS dashboard** — cluster-wide certificate inventory with expiry tracking
-- **GitOps panel** — Argo CD / Flux resource overview
-- **Service mesh support** — Istio, Traefik v2/v3, NGINX Inc, NGINX Community — auto-detected per cluster
-- **Events & metrics** — filterable event list and pod/node metrics (requires metrics-server)
-- **Built-in terminal** — tabbed PTY terminal with kubectl pre-configured
-- **MCP server** — expose your cluster as tools for AI assistants via `podscape-mcp`
-- **Auto-Updater** — background update downloads and one-click installation for macOS and Windows
+**1. Download**
 
----
-
-## Installation
-
-Download the latest release for your platform from [GitHub Releases](https://github.com/codingprotocols/podscape/releases/latest):
+Grab the latest release for your platform:
 
 | Platform | Format |
 |----------|--------|
@@ -65,11 +77,82 @@ Download the latest release for your platform from [GitHub Releases](https://git
 | Windows | NSIS installer |
 | Linux | AppImage, `.deb` |
 
+👉 **[Download Latest Release](https://github.com/codingprotocols/podscape/releases/latest)**
+
 **macOS note:** The app is signed and notarized. If macOS blocks it on first launch, right-click → Open.
+
+**2. Connect your cluster**
+
+Uses your existing `kubeconfig` — no extra setup required.
+
+**3. Start exploring**
 
 ---
 
-## Building from source
+## Features
+
+- **Command Palette (⌘K)** — instant access to any section or resource via fuzzy search; jump between clusters and namespaces from the keyboard
+- **Multi-cluster support** — switch contexts and namespaces instantly; RBAC-aware startup skips resources the current user cannot access
+- **Full resource coverage** — pods, deployments, statefulsets, daemonsets, jobs, cronjobs, HPAs, PDBs, services, ingresses, network policies, configmaps, secrets, RBAC, storage, and more
+- **Log streaming** — real-time log tailing with multi-container support and search
+- **Exec into containers** — full PTY terminal sessions directly in the app
+- **Port forwarding** — one-click port-forward with live status, auto port detection, and clickable local URLs
+- **Helm management** — list releases, inspect values, view history, rollback, and direct upgrades with automated update detection
+- **Connectivity Tester** — source-to-target network diagnostics (DNS, TCP, HTTP) with automated NetworkPolicy and endpoint failure analysis
+- **Production Context Protection** — visual banners and frame indicators when connected to sensitive clusters
+- **Cost Estimation** — real-time cost allocation via Kubecost / OpenCost integration
+- **CRD Browser** — explorer and editor for any Custom Resource Definition installed in the cluster
+- **Network topology** — force-directed graph of pod-to-service relationships
+- **Security scan** — per-pod security posture analysis (privileged containers, missing resource limits, host namespace access)
+- **TLS dashboard** — cluster-wide certificate inventory with expiry tracking
+- **GitOps panel** — Argo CD / Flux resource overview
+- **Kubectl Plugins** — install and run curated Krew plugins (neat, stern, tree, images, whoami, df-pv, outdated) without leaving the app
+- **Service mesh support** — Istio, Traefik v2/v3, NGINX Inc, NGINX Community — auto-detected per cluster
+- **Events & metrics** — filterable event list and pod/node metrics (requires metrics-server)
+- **Built-in terminal** — tabbed PTY terminal with kubectl pre-configured
+- **MCP server** — expose your cluster as tools for AI assistants via `podscape-mcp`
+- **Auto-updater** — background update downloads and one-click installation for macOS and Windows
+
+---
+
+## Who is this for?
+
+- DevOps Engineers
+- Platform Engineers
+- Kubernetes users tired of tool fragmentation
+
+---
+
+## Status
+
+Podscape is in early stage. We are actively:
+
+- Improving debugging workflows
+- Simplifying UX
+- Exploring AI integrations
+
+👉 Expect bugs. Expect rapid changes. We're building in public.
+
+---
+
+## MCP Server
+
+`podscape-mcp` is a standalone binary that exposes your Kubernetes cluster as tools for AI assistants (Claude, Cursor, Copilot, etc.). It ships as a pre-built binary for macOS, Windows, and Linux alongside the app on every GitHub Release.
+
+```bash
+# Register with Claude Code (using a pre-built binary)
+claude mcp add --transport stdio podscape -- /path/to/podscape-mcp-darwin-arm64
+
+# Or build from source
+cd go-core && go build ./cmd/podscape-mcp/
+claude mcp add --transport stdio podscape -- ./go-core/podscape-mcp
+```
+
+See [go-core/cmd/podscape-mcp/README.md](go-core/cmd/podscape-mcp/README.md) for full setup and tool reference.
+
+---
+
+## Building from Source
 
 **Prerequisites:** Node.js 20+, Go 1.22+
 
@@ -86,34 +169,12 @@ cd go-core && go build ./cmd/podscape-core/ && cd ..
 npm run dev
 ```
 
-### Other commands
-
 ```bash
 npm run build          # Build all processes
 npm run test           # Run frontend tests (vitest)
-npm run test:watch     # Watch mode
-
-cd go-core
-go test ./...                         # Run Go tests
-go build ./cmd/podscape-mcp/          # Build the MCP server binary
+cd go-core && go test ./...          # Run Go tests
+cd go-core && go build ./cmd/podscape-mcp/   # Build the MCP server binary
 ```
-
----
-
-## MCP Server
-
-`podscape-mcp` is a standalone binary that exposes your Kubernetes cluster as tools for AI assistants (Claude, Cursor, Copilot, etc.). It ships as a pre-built binary for macOS, Windows, and Linux alongside the app on every **[GitHub Release](https://github.com/codingprotocols/podscape/releases/latest)**.
-
-```bash
-# Register with Claude Code (using a pre-built binary)
-claude mcp add --transport stdio podscape -- /path/to/podscape-mcp-darwin-arm64
-
-# Or build from source
-cd go-core && go build ./cmd/podscape-mcp/
-claude mcp add --transport stdio podscape -- ./go-core/podscape-mcp
-```
-
-See [go-core/cmd/podscape-mcp/README.md](go-core/cmd/podscape-mcp/README.md) for full setup and tool reference.
 
 ---
 
@@ -129,14 +190,14 @@ Renderer (React/TS)
 
 | Layer | Stack |
 |-------|-------|
-| Renderer | React 18, TypeScript, Tailwind CSS, Zustand, xterm.js, Monaco Editor, Recharts |
+| Renderer | React 18, TypeScript, Tailwind CSS, Zustand, xterm.js, Monaco Editor |
 | Main process | Electron, node-pty |
 | Go sidecar | `podscape-core` — HTTP server, shared informer cache, RBAC probe |
 | MCP server | `podscape-mcp` — standalone MCP server |
 
 ---
 
-## Project structure
+## Project Structure
 
 ```
 podscape-electron/
@@ -144,7 +205,7 @@ podscape-electron/
 │   ├── main/          # Electron main process (sidecar, IPC handlers, terminal)
 │   ├── preload/       # Context bridge — exposes window.kubectl, window.helm, etc.
 │   └── renderer/      # React app (components, store, types, hooks, utils, config)
-├── docs/              # In-depth feature guides and documentation
+├── docs/              # Feature guides and documentation
 ├── go-core/
 │   ├── cmd/
 │   │   ├── podscape-core/   # HTTP sidecar binary
@@ -153,48 +214,30 @@ podscape-electron/
 │       ├── client/          # Shared k8s client initialisation
 │       ├── handlers/        # HTTP route handlers
 │       ├── informers/       # Shared informer cache
-│       ├── k8sutil/         # Canonical GVR mappings, cluster-scoped kinds, version fallbacks
+│       ├── k8sutil/         # Canonical GVR mappings and version fallbacks
 │       ├── ops/             # Write operations (scale, delete, apply, rollout)
 │       ├── exec/            # WebSocket container exec (PTY)
 │       ├── logs/            # WebSocket log streaming
 │       ├── helm/            # Helm SDK wrapper
 │       ├── rbac/            # RBAC probe
-│       ├── store/           # Global sidecar state
 │       ├── portforward/     # Port-forward manager
 │       ├── prometheus/      # Prometheus auto-discovery and query cache
-│       ├── ownerchain/      # Owner reference traversal (upward + downward)
+│       ├── ownerchain/      # Owner reference traversal
 │       ├── providers/       # Service mesh / ingress provider detection
 │       ├── costalloc/       # Kubecost / OpenCost cost allocation
-│       ├── graph/           # Resource dependency graph engine (nodes, edges, discoverers, collapse)
-│       ├── topology/        # RS-collapse post-processing on top of graph engine
-│       └── urlutil/         # Shared URL helpers
+│       ├── graph/           # Resource dependency graph engine
+│       └── topology/        # Graph post-processing
 ├── resources/         # Icons, splash screen
-├── scripts/           # Build helpers (notarize, icon generation)
 └── CHANGELOG.md
 ```
 
 ---
 
-## Distribution
+## Feedback
 
-Releases are triggered by pushing a `v*` tag. GitHub Actions builds for macOS (arm64 + x64), Windows, and Linux in parallel and publishes to GitHub Releases.
+We're looking for early users. Your feedback will directly shape the product.
 
-```bash
-git tag v2.5.0 && git push origin v2.5.0
-```
-
-### macOS signing + notarization
-
-Set these repository secrets before releasing:
-
-| Secret | Description |
-|--------|-------------|
-| `CSC_LINK` | Base64-encoded `.p12` Developer ID certificate |
-| `CSC_KEY_PASSWORD` | `.p12` password |
-| `APPLE_ID` | Apple ID email |
-| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password from appleid.apple.com |
-| `APPLE_TEAM_ID` | 10-character Apple Team ID |
-| `GH_TOKEN` | GitHub PAT with `repo` scope |
+👉 **[Open an issue](https://github.com/codingprotocols/podscape/issues)** or start a **[discussion](https://github.com/codingprotocols/podscape/discussions)**
 
 ---
 
