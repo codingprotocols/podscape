@@ -34,6 +34,11 @@
     "copyright": "Copyright © 2026 Coding Protocols Private Limited",
     "afterSign": "scripts/notarize.js",
     "icon": "resources/icon.png",
+    "files": [
+      "out/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
     "mac": {
       "icon": "resources/icon.icns",
       "category": "public.app-category.developer-tools",
