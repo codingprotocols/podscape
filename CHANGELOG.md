@@ -30,6 +30,15 @@
 
 - **Monaco cursor leak** — `cursor: text` from Monaco editors no longer bleeds outside editor bounds in Electron. Fixed with `cursor-default` on container divs in KrewPanel, YAMLEditor, YAMLViewer, and ExecPanel.
 
+### Improvements
+
+- **Panel toggles** — Plugins, FinOps, GitOps, and Network Map / Connectivity panels can each be independently enabled or disabled from Settings → Panels. The sidebar updates immediately on save; disabling a panel while viewing it navigates to the dashboard.
+
+### Dependencies
+
+- `dompurify` 3.3.3 → 3.4.0 — fixes mXSS via re-contextualization, prototype pollution via `CUSTOM_ELEMENT_HANDLING` and `USE_PROFILES`, `ADD_ATTR` predicate bypass, and several other security issues.
+- `github.com/moby/spdystream` 0.5.0 → 0.5.1 — header size/count limits and frame length guards.
+
 ---
 
 ## [3.0.1] — 2026-04-16
