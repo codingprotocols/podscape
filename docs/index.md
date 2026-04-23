@@ -42,7 +42,7 @@ cd go-core && go build ./cmd/podscape-core/ && cd ..
 npm run dev
 ```
 
-## Feature Overview (v3.1.0)
+## Feature Overview
 
 
 | Feature | Description |
