@@ -25,7 +25,7 @@ export interface NavigationSlice {
     helmInstallHint: HelmInstallHint | null
     setHelmInstallHint: (hint: HelmInstallHint | null) => void
     showTour: boolean
-    setShowTour: (show) => void
+    setShowTour: (show: boolean) => void
     pendingResourceAction: 'analyze-restarts' | null
     setPendingResourceAction: (action: 'analyze-restarts' | null) => void
     pluginsEnabled: boolean
