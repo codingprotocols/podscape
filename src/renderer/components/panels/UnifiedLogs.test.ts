@@ -83,11 +83,16 @@ describe('UnifiedLogs stream lifecycle', () => {
       },
     ] as any
 
+    // Pre-populate unifiedLogsSelectedPods so the Start Stream button is
+    // enabled immediately. Pod selection persistence is exercised by the
+    // navigationSlice tests; these tests focus on streaming lifecycle.
     ;(useAppStore as any).mockReturnValue({
       pods,
       selectedContext: 'ctx-1',
       selectedNamespace: 'default',
       loadSection: vi.fn(),
+      unifiedLogsSelectedPods: ['pod-a'],
+      setUnifiedLogsSelectedPods: vi.fn(),
     })
 
     let capturedOnEnd: (() => void) | null = null
@@ -111,13 +116,6 @@ describe('UnifiedLogs stream lifecycle', () => {
     }
 
     render(React.createElement(UnifiedLogs))
-
-    const addPodInput = screen.getByPlaceholderText('Add pods to stream...') as HTMLInputElement
-    fireEvent.change(addPodInput, { target: { value: 'pod-a' } })
-
-    // Click the search result for the pod.
-    const podButton = screen.getByText('pod-a').closest('button') as HTMLButtonElement
-    fireEvent.click(podButton)
 
     const startButton = screen.getByText('Start Stream').closest('button') as HTMLButtonElement
     expect(startButton.disabled).toBe(false)
@@ -154,6 +152,8 @@ describe('UnifiedLogs stream lifecycle', () => {
       selectedContext: 'ctx-1',
       selectedNamespace: 'default',
       loadSection: vi.fn(),
+      unifiedLogsSelectedPods: ['pod-a'],
+      setUnifiedLogsSelectedPods: vi.fn(),
     })
 
     let capturedOnChunk: ((chunk: string) => void) | null = null
@@ -180,11 +180,6 @@ describe('UnifiedLogs stream lifecycle', () => {
     }
 
     render(React.createElement(UnifiedLogs))
-
-    const addPodInput = screen.getByPlaceholderText('Add pods to stream...') as HTMLInputElement
-    fireEvent.change(addPodInput, { target: { value: 'pod-a' } })
-    const podButton = screen.getByText('pod-a').closest('button') as HTMLButtonElement
-    fireEvent.click(podButton)
 
     const startButton = screen.getByText('Start Stream').closest('button') as HTMLButtonElement
     fireEvent.click(startButton)

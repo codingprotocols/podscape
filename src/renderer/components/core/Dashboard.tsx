@@ -345,7 +345,8 @@ function derivedHealth(pods: KubePod[], deployments: KubeDeployment[]) {
     d => (d.status.readyReplicas ?? 0) < (d.spec.replicas ?? 0)
   )
 
-  return { problemPods: problemPods.slice(0, 20), degradedDeployments }
+  const totalProblemPods = problemPods.length
+  return { problemPods: problemPods.slice(0, 20), totalProblemPods, degradedDeployments }
 }
 
 function PodStatusBadge({ row }: { row: PodHealthRow }) {
@@ -382,7 +383,7 @@ export default function Dashboard(): JSX.Element {
   useEffect(() => { setWarningDismissed(false) }, [selectedContext])
 
   // ── Derived health data ───────────────────────────────────────────────────
-  const { problemPods, degradedDeployments } = useMemo(
+  const { problemPods, totalProblemPods, degradedDeployments } = useMemo(
     () => derivedHealth(pods, deployments),
     [pods, deployments]
   )
@@ -560,7 +561,7 @@ export default function Dashboard(): JSX.Element {
                       <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-white/5">
                         <AlertTriangle size={14} className="text-rose-500" />
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Pods with Restarts or Problems</span>
-                        <span className="ml-auto px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-500 text-[9px] font-black">{problemPods.length}</span>
+                        <span className="ml-auto px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-500 text-[9px] font-black">{totalProblemPods > 20 ? '20+' : totalProblemPods}</span>
                       </div>
                       <div className="divide-y divide-slate-100 dark:divide-white/5">
                         {problemPods.map(row => (
@@ -689,6 +690,14 @@ export default function Dashboard(): JSX.Element {
                     if (!event || !event.metadata) return null
                     return <EventRow key={event.metadata.uid + (event.count || 1)} event={event} />
                   })}
+                  {processedEvents.length > 15 && (
+                    <button
+                      onClick={() => setSection('events')}
+                      className="w-full py-3 text-[10px] font-bold text-slate-400 hover:text-blue-400 transition-colors text-center border-t border-slate-100 dark:border-white/5"
+                    >
+                      +{processedEvents.length - 15} more — View all events →
+                    </button>
+                  )}
                 </div>
               )}
             </section>

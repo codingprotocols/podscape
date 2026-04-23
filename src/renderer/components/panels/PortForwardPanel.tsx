@@ -436,7 +436,7 @@ export default function PortForwardPanel() {
               </svg>
             </div>
             <p className="text-xs font-bold uppercase tracking-widest">No active port forwards</p>
-            <p className="text-[11px] text-slate-400 dark:text-slate-600">Click "New Forward" to start one</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-600">Click "New Forward" above, or open any Pod or Service and use the Port Forward action.</p>
           </div>
         ) : (
           <table className="w-full text-sm border-collapse">

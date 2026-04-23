@@ -155,6 +155,7 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             ...(isProviderSection ? { section: 'dashboard' as const } : {}),
             ...sectionClearState,
             deniedSections: new Set<ResourceKind>(),
+            unifiedLogsSelectedPods: [],
         })
         try {
             const timeout = new Promise<never>((_, reject) =>

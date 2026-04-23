@@ -579,25 +579,29 @@ func sanitizeCPToLocalPath(localPath string) (string, error) {
 	if strings.TrimSpace(localPath) == "" {
 		return "", fmt.Errorf("path is empty")
 	}
-	if filepath.IsAbs(localPath) {
-		return "", fmt.Errorf("absolute paths are not allowed")
-	}
-	if vol := filepath.VolumeName(localPath); vol != "" {
-		return "", fmt.Errorf("volume-qualified paths are not allowed")
+
+	// Resolve to an absolute path. Absolute paths (returned by the native file
+	// dialog) are used directly; relative paths are resolved against CWD.
+	absInput, err := filepath.Abs(filepath.Clean(localPath))
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve path: %w", err)
 	}
 
-	cleanInput := filepath.Clean(localPath)
-	if cleanInput == "." {
-		return "", fmt.Errorf("path is invalid")
+	// Dereference symlinks so the allowed-root comparison is reliable.
+	candidate, err := filepath.EvalSymlinks(absInput)
+	if err != nil {
+		return "", fmt.Errorf("cannot access file: %w", err)
 	}
 
-	normalized := filepath.ToSlash(cleanInput)
-	for _, part := range strings.Split(normalized, "/") {
-		if part == ".." {
-			return "", fmt.Errorf("parent directory references are not allowed")
-		}
+	info, err := os.Stat(candidate)
+	if err != nil {
+		return "", fmt.Errorf("cannot access file: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("path must point to a regular file")
 	}
 
+	// Verify the file is inside an allowed root (home dir or temp dir).
 	homeDir, _ := os.UserHomeDir()
 	rawAllowedRoots := []string{os.TempDir()}
 	if homeDir != "" {
@@ -605,34 +609,18 @@ func sanitizeCPToLocalPath(localPath string) (string, error) {
 	}
 
 	for _, root := range rawAllowedRoots {
-		cleanRoot := filepath.Clean(root)
-		absRoot, errRoot := filepath.Abs(cleanRoot)
+		realRoot, errRoot := filepath.EvalSymlinks(filepath.Clean(root))
 		if errRoot != nil {
 			continue
 		}
-		realRoot, errRoot := filepath.EvalSymlinks(absRoot)
-		if errRoot != nil {
-			continue
-		}
-
-		candidate := filepath.Clean(filepath.Join(realRoot, cleanInput))
 		rel, err := filepath.Rel(realRoot, candidate)
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) {
 			continue
 		}
-
-		info, err := os.Stat(candidate)
-		if err != nil {
-			continue
-		}
-		if !info.Mode().IsRegular() {
-			continue
-		}
-
 		return candidate, nil
 	}
 
-	return "", fmt.Errorf("path is outside allowed directories or not accessible")
+	return "", fmt.Errorf("path is outside allowed directories (must be within home or temp dir)")
 }
 
 func HandleCreateDebugPod(w http.ResponseWriter, r *http.Request) {

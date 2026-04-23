@@ -12,6 +12,7 @@ export default function OverlayManager(): JSX.Element {
     showTour,
     setShowTour,
     execSessions,
+    section,
     error,
     clearError,
     refresh,
@@ -19,6 +20,7 @@ export default function OverlayManager(): JSX.Element {
     showTour: s.showTour,
     setShowTour: s.setShowTour,
     execSessions: s.execSessions,
+    section: s.section,
     error: s.error,
     clearError: s.clearError,
     refresh: s.refresh,
@@ -41,14 +43,8 @@ export default function OverlayManager(): JSX.Element {
       <CommandPalette />
       {showTour && <TourOverlay onDone={handleTourDone} />}
       
-      {/* Floating terminal sessions */}
-      <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-4 pointer-events-none">
-        {execSessions.map(session => (
-            <div key={session.id} className="w-[600px] h-[400px] pointer-events-auto">
-                <ExecPanel session={session} />
-            </div>
-        ))}
-      </div>
+      {/* Full-screen exec overlay — shown when sessions are open but user is not in multi-terminal section */}
+      {execSessions.length > 0 && section !== 'multi-terminal' && <ExecPanel />}
 
       {/* Error Toast */}
       {error && (

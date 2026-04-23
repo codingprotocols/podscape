@@ -9,13 +9,28 @@ const STEPS = [
   },
   {
     title: 'Browse all workloads',
-    description: 'Click Pods in the sidebar to see all running pods. Right-click any row for quick actions.',
+    description: 'Click Pods in the sidebar to see all running pods. Right-click any row for quick actions like scale, exec, logs, or delete.',
     section: 'pods',
   },
   {
     title: 'Stream logs in real time',
     description: 'Unified Logs lets you stream from multiple pods simultaneously with regex filtering.',
     section: 'unifiedlogs',
+  },
+  {
+    title: 'Manage Helm releases',
+    description: 'The Helm panel lists all releases, lets you inspect values, view history, rollback, and browse the public chart registry.',
+    section: 'helm',
+  },
+  {
+    title: 'Scan for security issues',
+    description: 'Security Hub runs Kubesec config audits and Trivy CVE scans across your workloads. Results can be exported as CSV or JSON.',
+    section: 'security',
+  },
+  {
+    title: 'Visualise network topology',
+    description: 'The Network Map renders a live force-directed graph of pod-to-service relationships and cross-namespace connectivity.',
+    section: 'network',
   },
   {
     title: 'Forward ports without a terminal',

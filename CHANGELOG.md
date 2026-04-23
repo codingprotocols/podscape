@@ -1,3 +1,12 @@
+## [3.1.1] — 2026-04-23
+
+### Fixes
+
+- **ExecPanel buttons unresponsive** — Upload, Download, and Close buttons in the exec terminal header were never clickable. Root cause: `PageHeader` sets `WebkitAppRegion: drag` for frameless-window dragging; Electron's compositor applies drag regions by painted position regardless of CSS z-index, so the ExecPanel overlay (visually on top) was still routing mousedown events to OS window dragging. Fixed by adding `WebkitAppRegion: no-drag` to the ExecPanel outer container, matching the same pattern already used in CommandPalette.
+- **Upload fails with "absolute paths are not allowed"** — `sanitizeCPToLocalPath` in the Go sidecar immediately rejected any absolute path, but the native file dialog always returns absolute paths. The function now resolves all paths (absolute or relative) to a canonical absolute path via `filepath.Abs` + `filepath.EvalSymlinks` before checking that the file lives within the user's home or temp directory. The security boundary is unchanged.
+
+---
+
 ## [3.1.0] — 2026-04-21
 
 ### New features

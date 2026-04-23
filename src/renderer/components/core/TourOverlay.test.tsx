@@ -43,8 +43,8 @@ describe('TourOverlay', () => {
   it('calls onDone on final step Done click', async () => {
     const onDone = vi.fn()
     render(<TourOverlay onDone={onDone} />)
-    // advance through all 5 steps
-    for (let i = 0; i < 4; i++) {
+    // advance through all 8 steps
+    for (let i = 0; i < 7; i++) {
       await screen.findByRole('button', { name: /next/i })
       fireEvent.click(screen.getByRole('button', { name: /next/i }))
     }

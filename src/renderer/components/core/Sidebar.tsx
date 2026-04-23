@@ -309,8 +309,6 @@ export default function Sidebar(): JSX.Element {
         >
           <div className="w-8 h-[1px] bg-white/5 mb-3" />
 
-          <div className="w-8 h-[1px] bg-white/5 mb-3" />
-
           <RailBtn
             icon={ICONS.help}
             label="Ask a Question"
