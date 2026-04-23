@@ -38,9 +38,10 @@ interface ExecTabProps {
   session: ExecSession
   active: boolean
   theme: string
+  onSessionEnd?: () => void
 }
 
-function ExecTab({ session, active, theme }: ExecTabProps): JSX.Element {
+function ExecTab({ session, active, theme, onSessionEnd }: ExecTabProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const xtermRef    = useRef<XTerm | null>(null)
   const ptyIdRef    = useRef<string | null>(null)
@@ -91,6 +92,7 @@ function ExecTab({ session, active, theme }: ExecTabProps): JSX.Element {
         offExitRef.current = window.exec.onExit(ptyId, () => {
           term.write('\r\n\x1b[38;5;244m[Process exited]\x1b[0m\r\n')
           setSessionEnded(true)
+          onSessionEnd?.()
         })
         term.onData(data => window.exec.write(ptyId, data))
       })
@@ -193,10 +195,11 @@ export function ExecPanel({ embedded, session: propSession }: ExecPanelProps): J
   const activeSession = propSession ?? (execSessions.find(s => s.id === activeExecId) ?? execSessions[0])
 
 
-  const [panelMode, setPanelMode]   = useState<PanelMode>('idle')
-  const [localPath, setLocalPath]   = useState('')
-  const [remotePath, setRemotePath] = useState('')
-  const [transfer, setTransfer]     = useState<TransferState>({ phase: 'idle', message: '' })
+  const [panelMode, setPanelMode]     = useState<PanelMode>('idle')
+  const [localPath, setLocalPath]     = useState('')
+  const [remotePath, setRemotePath]   = useState('')
+  const [transfer, setTransfer]       = useState<TransferState>({ phase: 'idle', message: '' })
+  const [sessionEnded, setSessionEnded] = useState(false)
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -218,10 +221,11 @@ export function ExecPanel({ embedded, session: propSession }: ExecPanelProps): J
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [closeExec, panelMode])
 
-  // Reset file transfer panel when active tab changes
+  // Reset file transfer panel and session-ended flag when active tab changes
   useEffect(() => {
     setPanelMode('idle')
     setTransfer({ phase: 'idle', message: '' })
+    setSessionEnded(false)
   }, [activeExecId])
 
   const handleOpenUploadPanel = async () => {
@@ -284,7 +288,7 @@ export function ExecPanel({ embedded, session: propSession }: ExecPanelProps): J
     <div className={`flex flex-col flex-1 bg-white dark:bg-[hsl(var(--bg-dark))] ${embedded ? '' : 'rounded-[2rem] shadow-2xl border border-white/10 animate-in slide-in-from-bottom-4 duration-300'} overflow-hidden`}>
 
         {/* ── Header ── */}
-        <div className="flex items-center justify-between px-8 py-4 bg-white/5 border-b border-white/5 shrink-0 backdrop-blur-xl">
+        <div className="flex items-center justify-between px-8 py-4 border-b border-white/5 shrink-0 bg-white/5">
           <div className="flex items-center gap-4">
             {sessionEnded ? (
               <span className="flex items-center gap-2 text-[10px] font-black text-slate-500 bg-slate-500/10 px-3 py-1 rounded-full uppercase tracking-[0.2em] leading-none ring-1 ring-slate-500/20">
@@ -310,7 +314,7 @@ export function ExecPanel({ embedded, session: propSession }: ExecPanelProps): J
               {isMac ? 'Cmd+D' : 'Ctrl+D'} to exit
             </span>
 
-<button
+            <button
               onClick={handleOpenUploadPanel}
               title="Upload file to container"
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
@@ -414,11 +418,12 @@ export function ExecPanel({ embedded, session: propSession }: ExecPanelProps): J
         )}
 
         {/* ── Terminal area ── */}
-        <div className="flex-1 min-h-0 relative cursor-default">
+        <div className="flex-1 min-h-0 relative">
           <ExecTab
             session={activeSession}
             active={true}
             theme={theme}
+            onSessionEnd={() => setSessionEnded(true)}
           />
         </div>
     </div>
@@ -427,7 +432,10 @@ export function ExecPanel({ embedded, session: propSession }: ExecPanelProps): J
   if (embedded) return content
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0a0c10]/60 backdrop-blur-md flex flex-col p-4 md:p-12 animate-in fade-in zoom-in-95 duration-200">
+    <div
+      className="fixed inset-0 z-[100] bg-[#0a0c10]/70 backdrop-blur-md flex flex-col p-4 md:p-12"
+      style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+    >
       {content}
     </div>
   )
