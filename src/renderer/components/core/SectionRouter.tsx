@@ -1,7 +1,7 @@
 import React, { Suspense } from 'react'
 import { useAppStore } from '../../store'
 import { useShallow } from 'zustand/react/shallow'
-import { Search } from 'lucide-react'
+import { Search, Terminal } from 'lucide-react'
 import { RefreshButton } from '../common'
 import { LIST_SECTIONS, CLUSTER_SCOPED_SECTIONS, SECTION_LABELS, PROVIDER_SECTIONS } from '../../config'
 import { KubeCRD, ResourceKind } from '../../types'
@@ -67,6 +67,7 @@ export default function SectionRouter(): JSX.Element {
     refresh,
     kubeconfigOk,
     selectResource,
+    execSessions,
   } = useAppStore(useShallow(s => ({
     section: s.section,
     selectedNamespace: s.selectedNamespace,
@@ -77,6 +78,7 @@ export default function SectionRouter(): JSX.Element {
     refresh: s.refresh,
     kubeconfigOk: s.kubeconfigOk,
     selectResource: s.selectResource,
+    execSessions: s.execSessions,
   })))
 
   if (!kubeconfigOk) {
@@ -98,7 +100,17 @@ export default function SectionRouter(): JSX.Element {
           <PageHeader title="Multi-Terminal" subtitle="Manage multiple sessions" />
           <div className="flex-1 min-h-0 bg-[#0a0c10] p-6">
             <div className="h-full w-full rounded-3xl overflow-hidden border border-white/5 shadow-2xl relative">
-              <ExecPanel embedded />
+              {execSessions.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full gap-4 text-slate-600">
+                  <Terminal size={32} className="opacity-30" />
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-500">No active sessions</p>
+                  <p className="text-[11px] text-slate-600 text-center max-w-xs">
+                    Open any pod detail panel and click <span className="font-bold text-slate-500">Open Shell</span> to start a terminal session here.
+                  </p>
+                </div>
+              ) : (
+                <ExecPanel embedded />
+              )}
             </div>
           </div>
         </div>

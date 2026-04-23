@@ -587,7 +587,7 @@ export default function SecurityHub(): JSX.Element {
                 {/* Results */}
                 {filteredResults.length === 0 ? (
                     <EmptyState
-                        filtered={severityFilter !== 'all'}
+                        filtered={severityFilter !== 'all' || filterNamespace !== null}
                         totalWorkloads={allWorkloads.length}
                         hasAnyIssues={unifiedResults.length > 0}
                     />
@@ -1531,7 +1531,7 @@ function EmptyState({ filtered, totalWorkloads, hasAnyIssues }: {
                     <Search className="w-7 h-7 text-slate-600" />
                 </div>
                 <h3 className="text-base font-black text-white mb-2">No matches</h3>
-                <p className="text-sm text-slate-500">No issues match the current severity filter.</p>
+                <p className="text-sm text-slate-500">No issues match the current filters. Try adjusting the namespace or severity filter.</p>
             </div>
         )
     }

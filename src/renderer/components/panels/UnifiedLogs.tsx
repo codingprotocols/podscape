@@ -41,13 +41,14 @@ const POD_COLORS = [
 ]
 
 export default function UnifiedLogs(): JSX.Element {
-  const { pods, selectedContext, selectedNamespace, loadSection } = useAppStore(useShallow(s => ({
+  const { pods, selectedContext, selectedNamespace, loadSection, unifiedLogsSelectedPods, setUnifiedLogsSelectedPods } = useAppStore(useShallow(s => ({
     pods: s.pods,
     selectedContext: s.selectedContext,
     selectedNamespace: s.selectedNamespace,
     loadSection: s.loadSection,
+    unifiedLogsSelectedPods: s.unifiedLogsSelectedPods,
+    setUnifiedLogsSelectedPods: s.setUnifiedLogsSelectedPods,
   })))
-  const [selectedPods, setSelectedPods] = useState<string[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [podSearchTerm, setPodSearchTerm] = useState('')
@@ -104,20 +105,40 @@ export default function UnifiedLogs(): JSX.Element {
         await window.kubectl.stopLogs(sid).catch(() => {/* sidecar may be down during context switch */})
       }
       streamIds.current = {}
-      setSelectedPods([])
+      setUnifiedLogsSelectedPods([])
       reset()
       setIsStreaming(false)
     }
     cleanup().catch(err => console.error('[UnifiedLogs] cleanup failed:', err))
   }, [reset, selectedContext])
 
+  // Clear selected pods and stop all streams when namespace changes
+  useEffect(() => {
+    if (!isStreaming) {
+      setUnifiedLogsSelectedPods([])
+      return
+    }
+    // Stop all active streams and reset
+    const stopAndReset = async () => {
+      for (const [, streamId] of Object.entries(streamIds.current)) {
+        try { await window.kubectl.stopLogs(streamId) } catch { /* ignore */ }
+      }
+      streamIds.current = {}
+      setIsStreaming(false)
+      setUnifiedLogsSelectedPods([])
+      reset()
+      cancelFlush()
+    }
+    stopAndReset().catch(err => console.error('[UnifiedLogs] namespace cleanup failed:', err))
+  }, [selectedNamespace])
+
   useEffect(() => {
     const syncPods = async () => {
       const existingPodNames = new Set(pods.map(p => p.metadata.name))
-      const removedPods = selectedPods.filter(name => !existingPodNames.has(name))
+      const removedPods = unifiedLogsSelectedPods.filter(name => !existingPodNames.has(name))
 
       if (removedPods.length > 0) {
-        setSelectedPods(prev => prev.filter(name => existingPodNames.has(name)))
+        setUnifiedLogsSelectedPods(unifiedLogsSelectedPods.filter(name => existingPodNames.has(name)))
 
         // Stop streams for removed pods
         for (const name of removedPods) {
@@ -129,7 +150,7 @@ export default function UnifiedLogs(): JSX.Element {
       }
     }
     syncPods().catch(err => console.error('[UnifiedLogs] syncPods failed:', err))
-  }, [pods])
+  }, [pods, unifiedLogsSelectedPods])
 
   const stopAllStreams = async () => {
     // Cancel pending flush timer and discard in-flight buffered lines — we
@@ -153,8 +174,8 @@ export default function UnifiedLogs(): JSX.Element {
     cancelFlush()
     reset()
 
-    for (let i = 0; i < selectedPods.length; i++) {
-        const podName = selectedPods[i]
+    for (let i = 0; i < unifiedLogsSelectedPods.length; i++) {
+        const podName = unifiedLogsSelectedPods[i]
         const pod = pods.find(p => p.metadata.name === podName)
         if (!pod) continue
 
@@ -207,13 +228,15 @@ export default function UnifiedLogs(): JSX.Element {
   }
 
   const togglePod = (name: string) => {
-    setSelectedPods(prev => 
-      prev.includes(name) ? prev.filter(p => p !== name) : [...prev, name]
+    setUnifiedLogsSelectedPods(
+      unifiedLogsSelectedPods.includes(name)
+        ? unifiedLogsSelectedPods.filter(p => p !== name)
+        : [...unifiedLogsSelectedPods, name]
     )
   }
 
   const clearAll = () => {
-    setSelectedPods([])
+    setUnifiedLogsSelectedPods([])
   }
 
   const searchTermLower = searchTerm.toLowerCase()
@@ -231,9 +254,9 @@ export default function UnifiedLogs(): JSX.Element {
   }, [searchTerm])
 
   const subtitle = isStreaming
-    ? `${selectedPods.length} pod${selectedPods.length !== 1 ? 's' : ''} streaming · ${logs.length} lines`
-    : selectedPods.length > 0
-      ? `${selectedPods.length} pod${selectedPods.length !== 1 ? 's' : ''} selected`
+    ? `${unifiedLogsSelectedPods.length} pod${unifiedLogsSelectedPods.length !== 1 ? 's' : ''} streaming · ${logs.length} lines`
+    : unifiedLogsSelectedPods.length > 0
+      ? `${unifiedLogsSelectedPods.length} pod${unifiedLogsSelectedPods.length !== 1 ? 's' : ''} selected`
       : 'Stream logs from multiple pods'
 
   return (
@@ -259,7 +282,7 @@ export default function UnifiedLogs(): JSX.Element {
         {/* Stream toggle */}
         <button
           onClick={() => { if (isStreaming) stopAllStreams(); else startStreaming() }}
-          disabled={selectedPods.length === 0}
+          disabled={unifiedLogsSelectedPods.length === 0}
           className={`flex items-center gap-2 px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-30
             ${isStreaming
               ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500/20'
@@ -309,7 +332,7 @@ export default function UnifiedLogs(): JSX.Element {
             <div className="absolute top-full left-0 right-0 mt-2 max-h-[200px] overflow-y-auto p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl z-50 rounded-xl animate-in fade-in slide-in-from-top-2 duration-200">
               <div className="flex flex-col gap-1">
                 {filteredPods.map(p => {
-                  const isSelected = selectedPods.includes(p.metadata.name)
+                  const isSelected = unifiedLogsSelectedPods.includes(p.metadata.name)
                   return (
                     <button
                       key={p.metadata.uid}
@@ -336,11 +359,11 @@ export default function UnifiedLogs(): JSX.Element {
         </div>
 
         {/* Selected pod pills */}
-        {selectedPods.length > 0 && (
+        {unifiedLogsSelectedPods.length > 0 && (
           <>
             <div className="h-5 w-px bg-slate-200 dark:bg-white/10" />
             <div className="flex items-center gap-2 flex-wrap">
-              {selectedPods.map(name => (
+              {unifiedLogsSelectedPods.map(name => (
                 <div
                   key={name}
                   className="px-3 py-1 rounded-lg bg-blue-500/10 border border-blue-400/20 dark:border-blue-500/30 text-blue-600 dark:text-blue-400 text-[10px] font-black flex items-center gap-2 animate-in zoom-in-95 duration-200"

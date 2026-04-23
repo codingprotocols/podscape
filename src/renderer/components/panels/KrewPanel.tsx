@@ -124,6 +124,7 @@ export default function KrewPanel(): JSX.Element {
     const [filter, setFilter] = useState('')
     const [upgradingAll, setUpgradingAll] = useState(false)
     const [view, setView] = useState<'info' | 'run'>('info')
+    const [operationError, setOperationError] = useState<string | null>(null)
 
     const pluginMod = usePluginModule(selectedPlugin)
 
@@ -151,16 +152,26 @@ export default function KrewPanel(): JSX.Element {
         const plugin = pluginIndex.find(p => p.name === selectedPlugin) as KrewPlugin | undefined
 
         function openPlugin(v: 'info' | 'run') { setView(v) }
-        function closePlugin() { setSelectedPlugin(null) }
+        function closePlugin() { setOperationError(null); setSelectedPlugin(null) }
 
         async function handleInstall() {
-            await window.krew.installPlugin(selectedPlugin!)
-            await loadPluginIndex()
+            setOperationError(null)
+            try {
+                await window.krew.installPlugin(selectedPlugin!)
+                await loadPluginIndex()
+            } catch (err) {
+                setOperationError((err as Error).message)
+            }
         }
 
         async function handleUninstall() {
-            await window.krew.uninstallPlugin(selectedPlugin!)
-            await loadPluginIndex()
+            setOperationError(null)
+            try {
+                await window.krew.uninstallPlugin(selectedPlugin!)
+                await loadPluginIndex()
+            } catch (err) {
+                setOperationError((err as Error).message)
+            }
         }
 
         return (
@@ -192,6 +203,13 @@ export default function KrewPanel(): JSX.Element {
                     )}
                 </div>
 
+                {operationError && (
+                    <div className="mx-6 mt-3 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-[11px] font-bold flex items-center gap-2">
+                        <span className="shrink-0">⚠</span>
+                        {operationError}
+                    </div>
+                )}
+
                 {/* Plugin content */}
                 <div className="flex-1 overflow-hidden cursor-default">
                     {!pluginMod ? (
@@ -206,10 +224,16 @@ export default function KrewPanel(): JSX.Element {
                             onOpen={plugin.installed ? () => openPlugin('run') : undefined}
                         />
                     ) : plugin && view === 'run' ? (
-                        <pluginMod.RunPanel
-                            namespace={selectedNamespace ?? 'default'}
-                            context={selectedContext ?? ''}
-                        />
+                        pluginMod.RunPanel ? (
+                            <pluginMod.RunPanel
+                                namespace={selectedNamespace ?? 'default'}
+                                context={selectedContext ?? ''}
+                            />
+                        ) : (
+                            <div className="flex items-center justify-center h-full text-slate-500 text-[11px] font-bold uppercase tracking-widest">
+                                Run panel not available for this plugin.
+                            </div>
+                        )
                     ) : null}
                 </div>
             </div>
@@ -231,7 +255,6 @@ export default function KrewPanel(): JSX.Element {
     }
 
     async function handleRefresh() {
-        try { await window.krew.update() } catch { /* ignore */ }
         await loadPluginIndex()
     }
 

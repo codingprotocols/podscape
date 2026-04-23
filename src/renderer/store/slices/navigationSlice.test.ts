@@ -55,4 +55,37 @@ describe('navigationSlice', () => {
         slice.toggleTheme()
         expect(get().setTheme).toHaveBeenCalledWith('light')
     })
+
+    describe('unifiedLogsSelectedPods', () => {
+        it('initialises to empty array', () => {
+            const slice = (createNavigationSlice as any)(set, get)
+            expect(slice.unifiedLogsSelectedPods).toEqual([])
+        })
+
+        it('setUnifiedLogsSelectedPods updates the field', () => {
+            const slice = (createNavigationSlice as any)(set, get)
+            slice.setUnifiedLogsSelectedPods(['pod-a', 'pod-b'])
+            expect(set).toHaveBeenCalledWith({ unifiedLogsSelectedPods: ['pod-a', 'pod-b'] })
+        })
+
+        it('setUnifiedLogsSelectedPods with empty array clears previous value', () => {
+            const slice = (createNavigationSlice as any)(set, get)
+            slice.setUnifiedLogsSelectedPods(['pod-a'])
+            expect(set).toHaveBeenCalledWith({ unifiedLogsSelectedPods: ['pod-a'] })
+            vi.clearAllMocks()
+            slice.setUnifiedLogsSelectedPods([])
+            expect(set).toHaveBeenCalledWith({ unifiedLogsSelectedPods: [] })
+        })
+
+        it('setSection does not reset unifiedLogsSelectedPods', () => {
+            const slice = (createNavigationSlice as any)(set, get)
+            slice.setSection('pods')
+            // setSection should only set section + selectedResource, not touch unifiedLogsSelectedPods
+            expect(set).toHaveBeenCalledWith({ section: 'pods', selectedResource: null })
+            const callArgs = (set as any).mock.calls.flat()
+            for (const arg of callArgs) {
+                expect(arg).not.toHaveProperty('unifiedLogsSelectedPods')
+            }
+        })
+    })
 })

@@ -56,6 +56,7 @@ export default function SettingsPanel(): JSX.Element {
   const [kubeconfigSaving, setKubeconfigSaving] = useState(false)
   const [kubeconfigSaved, setKubeconfigSaved] = useState(false)
   const [kubeconfigError, setKubeconfigError] = useState<string | null>(null)
+  const [kubeconfigLoadError, setKubeconfigLoadError] = useState<string | null>(null)
   const [showEditor, setShowEditor] = useState(false)
 
   useEffect(() => {
@@ -75,8 +76,10 @@ export default function SettingsPanel(): JSX.Element {
       setKubeconfigPath(path)
       setKubeconfigContent(content)
       setKubeconfigOriginal(content)
+      setKubeconfigLoadError(null)
     }).catch(err => {
       console.error('[SettingsPanel] Failed to load kubeconfig:', err)
+      setKubeconfigLoadError('Could not load kubeconfig: ' + (err as Error).message)
     })
   }, [prodContexts])
 
@@ -336,6 +339,13 @@ export default function SettingsPanel(): JSX.Element {
                     {showEditor ? 'Close YAML Editor' : 'Open YAML Editor'}
                   </button>
                 </div>
+
+                {kubeconfigLoadError && (
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-[11px] font-bold">
+                    <span className="shrink-0">⚠</span>
+                    {kubeconfigLoadError}
+                  </div>
+                )}
 
                 {showEditor && (
                   <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">

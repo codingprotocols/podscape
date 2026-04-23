@@ -286,10 +286,17 @@ export function ExecPanel({ embedded, session: propSession }: ExecPanelProps): J
         {/* ── Header ── */}
         <div className="flex items-center justify-between px-8 py-4 bg-white/5 border-b border-white/5 shrink-0 backdrop-blur-xl">
           <div className="flex items-center gap-4">
-            <span className="flex items-center gap-2 text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full uppercase tracking-[0.2em] leading-none ring-1 ring-emerald-500/20">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              Live Terminal
-            </span>
+            {sessionEnded ? (
+              <span className="flex items-center gap-2 text-[10px] font-black text-slate-500 bg-slate-500/10 px-3 py-1 rounded-full uppercase tracking-[0.2em] leading-none ring-1 ring-slate-500/20">
+                <span className="w-2 h-2 rounded-full bg-slate-500" />
+                Session Ended
+              </span>
+            ) : (
+              <span className="flex items-center gap-2 text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full uppercase tracking-[0.2em] leading-none ring-1 ring-emerald-500/20">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Live Terminal
+              </span>
+            )}
             <span className="text-xs font-bold text-slate-800 dark:text-white font-mono truncate max-w-sm">
               {activeSession.target.pod}
               {activeSession.target.container && (

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react'
+import { useAppStore } from '../../store'
 import type { KubePod, KubeEvent } from '../../types'
 import { formatAge } from '../../types'
 import { AlertCircle, History, Zap, ShieldAlert, Activity } from 'lucide-react'
@@ -8,17 +9,18 @@ interface Props {
 }
 
 export default function PodRestartAnalyzer({ pod }: Props): JSX.Element {
+    const selectedContext = useAppStore(s => s.selectedContext)
     const [events, setEvents] = useState<KubeEvent[]>([])
     const [loading, setLoading] = useState(false)
 
     useEffect(() => {
         let mounted = true
         const fetchEvents = async () => {
+            if (!selectedContext) return
             setLoading(true)
             try {
-                // Fetch events specifically for this pod
-                const podEvents = await (window as any).kubectl.getResourceEvents(
-                    (window as any).selectedContext,
+                const podEvents = await window.kubectl.getResourceEvents(
+                    selectedContext,
                     pod.metadata.namespace,
                     'Pod',
                     pod.metadata.name
@@ -33,7 +35,7 @@ export default function PodRestartAnalyzer({ pod }: Props): JSX.Element {
 
         fetchEvents()
         return () => { mounted = false }
-    }, [pod.metadata.name, pod.metadata.namespace])
+    }, [pod.metadata.name, pod.metadata.namespace, selectedContext])
 
     const diagnostics = useMemo(() => {
         if (loading) return []
@@ -81,7 +83,7 @@ export default function PodRestartAnalyzer({ pod }: Props): JSX.Element {
         })
 
         return findings
-    }, [pod.status.containerStatuses, events])
+    }, [pod.status.containerStatuses, events, loading])
 
     return (
         <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-2 duration-500">

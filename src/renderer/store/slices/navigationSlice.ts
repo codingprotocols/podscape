@@ -36,6 +36,8 @@ export interface NavigationSlice {
     setGitopsEnabled: (enabled: boolean) => void
     networkEnabled: boolean
     setNetworkEnabled: (enabled: boolean) => void
+    unifiedLogsSelectedPods: string[]
+    setUnifiedLogsSelectedPods: (pods: string[]) => void
 }
 
 
@@ -104,5 +106,7 @@ export const createNavigationSlice: StoreSlice<NavigationSlice> = (set, get) => 
         set({ networkEnabled })
         if (!networkEnabled && (get().section === 'network' || get().section === 'connectivity')) get().setSection('dashboard')
     },
+    unifiedLogsSelectedPods: [],
+    setUnifiedLogsSelectedPods: (pods) => set({ unifiedLogsSelectedPods: pods }),
 })
 
