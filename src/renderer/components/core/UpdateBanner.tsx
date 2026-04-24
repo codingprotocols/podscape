@@ -8,9 +8,6 @@ type UpdateState =
   | { status: 'ready'; version: string }
   | { status: 'error'; message: string }
 
-// Auto-dismiss the low-urgency "available" toast after this many ms.
-const AUTO_DISMISS_MS = 8000
-
 export default function UpdateBanner(): JSX.Element | null {
   const [update, setUpdate] = useState<UpdateState>({ status: 'idle' })
   const [dismissed, setDismissed] = useState(false)
@@ -44,20 +41,9 @@ export default function UpdateBanner(): JSX.Element | null {
         setDismissed(false)
         setVisible(true)
       }),
-      w.onError((msg) => {
-        setUpdate({ status: 'error', message: msg })
-        setVisible(true)
-      }),
     ]
     return () => offs.forEach((off) => off())
   }, [])
-
-  // Auto-dismiss the "available" toast after AUTO_DISMISS_MS.
-  useEffect(() => {
-    if (update.status !== 'available' || dismissed) return
-    const t = setTimeout(() => setDismissed(true), AUTO_DISMISS_MS)
-    return () => clearTimeout(t)
-  }, [update.status, dismissed])
 
   if (dismissed || update.status === 'idle') return null
 
@@ -95,7 +81,7 @@ export default function UpdateBanner(): JSX.Element | null {
   if (update.status === 'available') {
     return (
       <div className={`${baseClass} bg-white dark:bg-slate-900 border-blue-200 dark:border-blue-800/50`}>
-        <div className="flex items-start gap-3 p-4">
+        <div className="flex items-start gap-3 p-4 pb-3">
           <div className="shrink-0 w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
             <Download size={15} />
           </div>
@@ -103,9 +89,14 @@ export default function UpdateBanner(): JSX.Element | null {
             <p className="text-[11px] font-bold text-slate-800 dark:text-white">Update available</p>
             <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Podscape {update.version}</p>
           </div>
-          {dismissBtn}
         </div>
-        <div className="px-4 pb-4">
+        <div className="px-4 pb-4 flex gap-2">
+          <button
+            onClick={() => setDismissed(true)}
+            className="flex-1 px-3 py-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-colors"
+          >
+            Later
+          </button>
           <button
             onClick={async () => {
               try {
@@ -118,10 +109,10 @@ export default function UpdateBanner(): JSX.Element | null {
                 setUpdate({ status: 'error', message })
               }
             }}
-            className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold rounded-lg transition-colors"
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold rounded-lg transition-colors"
           >
             <Download size={12} />
-            Download Update
+            Download
           </button>
         </div>
       </div>

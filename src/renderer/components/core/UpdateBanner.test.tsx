@@ -67,7 +67,7 @@ describe('UpdateBanner', () => {
 
     expect(screen.getByText('Update available')).toBeInTheDocument()
     expect(screen.getByText('Podscape 3.0.0')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /download update/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument()
   })
 
   it('shows progress bar without download button during download', () => {
@@ -94,50 +94,48 @@ describe('UpdateBanner', () => {
     expect(screen.getByRole('button', { name: /restart/i })).toBeInTheDocument()
   })
 
-  it('shows error toast when updater emits an error', () => {
+  it('shows nothing when updater emits an error', () => {
     const { mock, emit } = makeUpdaterMock()
     ;(window as any).updater = mock
-    render(<UpdateBanner />)
+    const { container } = render(<UpdateBanner />)
 
     act(() => emit('error', 'network timeout'))
 
-    expect(screen.getByText('Update check failed')).toBeInTheDocument()
-    expect(screen.getByText('network timeout')).toBeInTheDocument()
+    expect(container.firstChild).toBeNull()
   })
 
-  it('dismiss hides the toast', () => {
+  it('re-shows toast after Later when download completes', () => {
     const { mock, emit } = makeUpdaterMock()
     ;(window as any).updater = mock
     render(<UpdateBanner />)
 
     act(() => emit('available', { version: '3.0.0' }))
-    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
-
-    expect(screen.queryByText('Update available')).toBeNull()
-  })
-
-  it('re-shows toast after dismiss when download completes', () => {
-    const { mock, emit } = makeUpdaterMock()
-    ;(window as any).updater = mock
-    render(<UpdateBanner />)
-
-    act(() => emit('available', { version: '3.0.0' }))
-    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
+    fireEvent.click(screen.getByRole('button', { name: /later/i }))
     expect(screen.queryByText('Update available')).toBeNull()
 
     act(() => emit('downloaded', { version: '3.0.0' }))
     expect(screen.getByText('Ready to install')).toBeInTheDocument()
   })
 
-  it('auto-dismisses the available toast after 8 seconds', () => {
+  it('does not auto-dismiss the available toast', () => {
     const { mock, emit } = makeUpdaterMock()
     ;(window as any).updater = mock
     render(<UpdateBanner />)
 
     act(() => emit('available', { version: '3.0.0' }))
-    expect(screen.getByText('Update available')).toBeInTheDocument()
+    act(() => vi.advanceTimersByTime(30_000))
 
-    act(() => vi.advanceTimersByTime(8000))
+    expect(screen.getByText('Update available')).toBeInTheDocument()
+  })
+
+  it('Later button dismisses the available toast', () => {
+    const { mock, emit } = makeUpdaterMock()
+    ;(window as any).updater = mock
+    render(<UpdateBanner />)
+
+    act(() => emit('available', { version: '3.0.0' }))
+    fireEvent.click(screen.getByRole('button', { name: /later/i }))
+
     expect(screen.queryByText('Update available')).toBeNull()
   })
 
