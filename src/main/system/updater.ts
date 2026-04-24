@@ -41,7 +41,7 @@ export function setupUpdater(): void {
   autoUpdater.on('update-not-available', () => send('updater:not-available'))
   autoUpdater.on('download-progress', (progress) => send('updater:progress', progress))
   autoUpdater.on('update-downloaded', (info) => send('updater:downloaded', info))
-  autoUpdater.on('error', (err) => send('updater:error', err.message))
+  autoUpdater.on('error', (err) => console.warn('[updater] update check failed:', err.message))
 
   ipcMain.handle('updater:check', () => autoUpdater.checkForUpdates())
   ipcMain.handle('updater:download', () => autoUpdater.downloadUpdate())
