@@ -15,7 +15,7 @@ Welcome to the Podscape documentation. This folder contains detailed technical g
 - [**Security Hub**](security.md) — Dynamic image scanning (Trivy), static config audit (Kubesec), and Security Hub UI.
 - [**Development Guide**](development.md) — Setup, build, test, and distribution instructions.
 - [**Features Guide**](features-guide.md) — Command palette, production context protection, unified logs, connectivity tester, pod diagnostics, kubectl plugins, and auto-updater.
-- [**MCP Server**](mcp-server.md) — Install `podscape-mcp`, configure Claude/Cursor, and reference for all 25 tools.
+- [**MCP Server**](mcp-server.md) — Install `podscape-mcp`, configure Claude/Cursor, and reference for all 37 tools.
 - [**Keyboard Shortcuts**](keyboard-shortcuts.md) — All shortcuts and the complete command palette section index.
 - [**Troubleshooting**](troubleshooting.md) — Sidecar issues, RBAC denied sections, build fixes, and recovery procedures.
 
