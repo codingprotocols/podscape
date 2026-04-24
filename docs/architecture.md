@@ -27,10 +27,10 @@ Renderer (React / TypeScript)
 | Slice | Responsibility |
 |---|---|
 | `clusterSlice` | Context/namespace selection, RBAC denied tracking, provider detection trigger |
-| `navigationSlice` | Active section, theme, sidebar width, search state, tour state (`showTour`) |
+| `navigationSlice` | Active section, theme, sidebar width, search state, tour state (`showTour`), panel toggles (`pluginsEnabled`, `finopsEnabled`, `gitopsEnabled`, `networkEnabled`), unified log pod selection (`unifiedLogsSelectedPods`) |
 
 | `resourceSlice` | All 28 resource arrays, section loading, dashboard fetch, resource navigation |
-| `operationSlice` | Scale/delete/YAML modals, exec session management |
+| `operationSlice` | Scale/delete/YAML modals, exec session management, port-forward state |
 | `analysisSlice` | Security scanning (kubesec + trivy), `scanInBackground` state for background scans, owner chain, debug pods, Prometheus config |
 | `costSlice` | Kubecost / OpenCost detection and namespace allocation tracking |
 | `providersSlice` | Istio/Traefik/NGINX provider detection state |
@@ -201,17 +201,88 @@ It reuses the `internal/client`, `internal/ops`, and `internal/helm` packages fr
    └─ ready-to-show → splash.destroy(), main window shown
 ```
 
-## Data Flow
+## Architecture Diagram
 
 ```mermaid
-graph TD
-    UI[Renderer - React] -->|HTTP + X-Podscape-Token| Sidecar[Go Sidecar :5050]
-    UI -->|IPC contextBridge| Main[Main Process]
-    Main -->|spawn + --token| Sidecar
-    Sidecar -->|K8s API| Cluster((Kubernetes Cluster))
-    Main -->|node-pty| Shell[Native Shell / Exec]
-    Sidecar -->|WebSocket| UI
+flowchart TB
+    subgraph R["Renderer — React / TypeScript"]
+        Shell["App Shell"]
+        Store["Zustand Store"]
+        Preload["Preload / contextBridge"]
+    end
+
+    subgraph M["Main Process — Node.js"]
+        IPC["IPC Handlers"]
+        SM["Sidecar Manager"]
+        Sys["System"]
+    end
+
+    subgraph S["Go Sidecar — podscape-core  :5050"]
+        HTTP["HTTP Handlers"]
+        Pkg["Internal Packages"]
+    end
+
+    MCP["MCP Server\npodscape-mcp"]
+    K8S[("Kubernetes API")]
+    Shell2["Native Shell"]
+    Ext["External Services"]
+
+    Preload -->|"IPC"| IPC
+    IPC --> SM
+    SM -->|"spawn"| S
+    SM -->|"HTTP + token"| HTTP
+    IPC -->|"node-pty"| Shell2
+    HTTP --> Pkg
+    Pkg -->|"client-go"| K8S
+    Pkg -->|"WebSocket"| Preload
+    HTTP --> Ext
+    Sys --> Ext
+    MCP -->|"client-go"| K8S
 ```
+
+## Application Security
+
+### Electron hardening
+
+| Setting | Value | Effect |
+|---------|-------|--------|
+| `nodeIntegration` | `false` | Renderer cannot access Node.js APIs |
+| `contextIsolation` | `true` | Preload and renderer run in separate JS contexts |
+| `sandbox` | `true` | Renderer process is OS-sandboxed |
+| `setWindowOpenHandler` | `deny` + `openExternal` | New window requests are blocked; links open in the system browser instead |
+
+### Sidecar token auth
+
+At startup, `sidecar/auth.ts` generates a random 64-character hex token (`crypto.randomBytes(32)`). It is passed to the sidecar as the `--token` flag and injected into every HTTP request by `checkedSidecarFetch` as the `X-Podscape-Token` header. The sidecar rejects any request (except `/health`) that omits or mismatches the token. The token is never written to disk and is unique per app session.
+
+### Secret masking
+
+The bulk `/secrets` endpoint returns only key names — values are replaced server-side before the response leaves the sidecar. A value is only transmitted when the user explicitly clicks "Reveal" for a specific key, which calls the `/secret/value?name=&namespace=&key=` endpoint.
+
+### Path traversal protection
+
+`sanitizeCPToLocalPath` in `go-core/internal/handlers/operations.go` validates every local path used by the file-copy (`/cp/to`, `/cp/from`) endpoints. It resolves the input with `filepath.Abs` + `filepath.EvalSymlinks` (following all symlinks) before confirming the real path starts within the user's home directory or the OS temp directory. Absolute paths from the native file dialog are accepted; only paths that escape the allowed roots are rejected.
+
+### URL sanitization
+
+`safeBaseURL` in `go-core/internal/handlers/cost.go` parses the user-supplied `url` query parameter through `urlutil.Parse` before forwarding it to the cost-allocation backend. The value passed downstream is derived from a `url.URL` struct, not the raw query string, breaking the CodeQL SSRF taint chain at the handler boundary.
+
+### Dependency security pins
+
+`package.json` `overrides` pins transitive dependencies that have known CVEs to safe versions:
+
+| Package | Reason |
+|---------|--------|
+| `dompurify` ≥ 3.4.0 | mXSS, prototype pollution, `ADD_ATTR` bypass fixes |
+| `@xmldom/xmldom` ^0.8.12 | XML parser security fixes |
+| `lodash` ^4.18.1 | Prototype pollution |
+| `brace-expansion` ^1.1.13 / ^2.0.3 | ReDoS |
+
+### RBAC
+
+The sidecar runs `SelfSubjectAccessReview` against all 28 tracked resource types at startup and on every context switch. Resources the current user cannot `list` or `watch` return `200 []` with `X-Podscape-Denied: true` — the renderer shows an "Access denied" banner rather than an error. No data from denied resources ever reaches the renderer.
+
+---
 
 ## Key Constants
 

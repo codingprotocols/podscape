@@ -16,8 +16,17 @@ The Security Hub provides a unified interface for auditing cluster security, com
 A rule-based engine that runs entirely in the renderer against the already-loaded resource cache — no network call required.
 
 - Rules are composable functions: `validate(resource) → Issue[]`
-- Covers common misconfigurations: missing resource limits, privileged containers, default service accounts, missing probes, etc.
 - Results are available immediately when opening the Security Hub (no scan trigger needed).
+
+Built-in rules (`src/renderer/utils/scanner/bestPracticeRules.ts`):
+
+| Rule | Check |
+|------|-------|
+| Missing Resource Limits | Containers without CPU or Memory limits |
+| Latest Image Tag | Containers using the `:latest` tag |
+| Missing Liveness Probe | Containers without a liveness probe |
+| Missing Readiness Probe | Containers without a readiness probe |
+| Sensitive Env Variable | Plain-text environment variables with names matching `PASSWORD`, `SECRET`, `TOKEN`, `KEY`, etc. |
 
 ### 2. Static Configuration Analysis — Kubesec
 
