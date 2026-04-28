@@ -40,7 +40,7 @@ Built-in rules (`src/renderer/utils/scanner/bestPracticeRules.ts`):
 - **Engine**: [Aqua Security Trivy](https://github.com/aquasecurity/trivy) — invoked via `os/exec` from the sidecar.
 - **Endpoint**: `POST /security/trivy/images` (SSE stream)
 - **Deduplication**: Images are deduplicated cluster-wide before scanning — each unique tag is scanned only once regardless of how many pods use it.
-- **SSE Streaming**: Scan progress (`progress` events) and the final report (`result` event) are streamed in real-time. The sidecar compacts Trivy's pretty-printed JSON with `json.Compact` before transmission to prevent SSE newline-splitting.
+- **SSE Streaming**: Scan progress (`progress` events) and the final report (`result` event) are streamed in real-time. The sidecar compacts Trivy's pretty-printed JSON with `json.Compact` before transmission so the JSON is sent as a single-line SSE payload and does not interfere with SSE message boundaries.
 
 ---
 
@@ -52,7 +52,7 @@ The Security Hub supports scoped scans to reduce noise:
 - **Kind filter**: scan only specific resource types (e.g. Pods, Deployments).
 - **Engine toggles**: run any combination of the built-in engine, Kubesec, and Trivy independently.
 
-> **Pod deduplication:** Pods are excluded from scans by default. A pod's security posture is determined by its parent controller (Deployment, StatefulSet, DaemonSet, etc.) — scanning both produces identical duplicate findings. To include pods explicitly, select "Pod" in the kind filter of a custom scan.
+> **Pod deduplication:** Pods are excluded from scans by default to avoid duplicate resource findings, because a pod's security posture is usually represented by its parent controller (Deployment, StatefulSet, DaemonSet, etc.). This does **not** reduce Trivy image coverage: images referenced by included controllers are still discovered and scanned once cluster-wide via image deduplication. To include pods explicitly, select "Pod" in the kind filter of a custom scan.
 
 ---
 
