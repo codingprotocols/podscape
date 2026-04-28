@@ -16,16 +16,16 @@ export default function UpdateBanner(): JSX.Element | null {
   // Wire up updater events. Each handler sets visible:true so the slide-in
   // animation fires whenever a new state arrives (including after dismiss).
   useEffect(() => {
-    const w = window.updater
-    if (!w) return
+    const updater = window.updater
+    if (!updater) return
 
     const offs = [
-      w.onAvailable((info) => {
+      updater.onAvailable((info) => {
         setUpdate({ status: 'available', version: info.version })
         setDismissed(false)
         setVisible(true)
       }),
-      w.onProgress((p) => {
+      updater.onProgress((p) => {
         // Ensure the banner is visible when download progress is reported.
         setVisible(true)
         setUpdate((prev) => {
@@ -36,7 +36,7 @@ export default function UpdateBanner(): JSX.Element | null {
           return { status: 'downloading', percent: next }
         })
       }),
-      w.onDownloaded((info) => {
+      updater.onDownloaded((info) => {
         setUpdate({ status: 'ready', version: info.version })
         setDismissed(false)
         setVisible(true)
