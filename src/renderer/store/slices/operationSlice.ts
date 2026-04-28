@@ -1,5 +1,6 @@
 import { StoreSlice, ExecTarget, ExecSession } from '../types'
 import { PortForwardEntry } from '../../types'
+import type { CreatableKind } from '../../components/common/CreateResourceModal'
 
 // Keyed by port-forward ID; holds the three IPC unsubscribe functions so they
 // can be called when the forward is stopped or exits on its own.
@@ -22,11 +23,17 @@ export interface OperationSlice {
     setActiveExecId: (id: string) => void
     closeExecTab: (id: string) => void
     closeExec: () => void
+    createKind: CreatableKind | null
+    openCreate: (kind: CreatableKind) => void
+    closeCreate: () => void
 }
 
 export const createOperationSlice: StoreSlice<OperationSlice> = (set, get) => ({
     execSessions: [],
     activeExecId: null,
+    createKind: null,
+    openCreate: (kind) => set(() => ({ createKind: kind })),
+    closeCreate: () => set(() => ({ createKind: null })),
     openExec: (target) => {
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
         const session: ExecSession = { id, target }

@@ -155,6 +155,9 @@ func CheckAccess(ctx context.Context, cs kubernetes.Interface) (map[string]bool,
 	return allowed, nil
 }
 
+// CheckVerbAccessFunc is injectable for tests.
+var CheckVerbAccessFunc = CheckVerbAccess
+
 // CheckVerbAccess runs SelfSubjectAccessReviews for every resource in AllResources
 // across 6 verbs: list, watch, delete, update, patch, create.
 // Returns resource → verb → allowed. Returns (nil, err) on API failure.
@@ -183,6 +186,15 @@ func CheckVerbAccess(ctx context.Context, cs kubernetes.Interface) (map[string]m
 				defer wg.Done()
 				sem <- struct{}{}
 				defer func() { <-sem }()
+
+				if err := ctx.Err(); err != nil {
+					mu.Lock()
+					defer mu.Unlock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					return
+				}
 
 				review := &authv1.SelfSubjectAccessReview{
 					Spec: authv1.SelfSubjectAccessReviewSpec{
@@ -223,6 +235,3 @@ func CheckVerbAccess(ctx context.Context, cs kubernetes.Interface) (map[string]m
 	}
 	return out, nil
 }
-
-// CheckVerbAccessFunc is injectable for tests.
-var CheckVerbAccessFunc = CheckVerbAccess

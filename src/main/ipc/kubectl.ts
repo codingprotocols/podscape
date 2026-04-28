@@ -269,6 +269,16 @@ export class KubectlProvider {
     const data = await res.json() as { name: string }
     return data.name
   }
+
+  async getAllowedVerbs(_context: string): Promise<Record<string, Record<string, boolean>>> {
+    try {
+      const res = await sidecarFetch('/rbac')
+      if (!res.ok) return {}
+      return await res.json() as Record<string, Record<string, boolean>>
+    } catch {
+      return {}
+    }
+  }
 }
 
 async function getTopology(ns: string): Promise<any> {
@@ -612,5 +622,7 @@ export function registerKubectlHandlers(): void {
     const params = new URLSearchParams({ kind, name, namespace, suspend: String(suspend) })
     await checkedSidecarFetch(`/gitops/suspend?${params}`, { method: 'POST' })
   })
+
+  ipcMain.handle('kubectl:getAllowedVerbs', (_e, ctx) => provider.getAllowedVerbs(ctx))
 
 }

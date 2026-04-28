@@ -138,6 +138,9 @@ const kubectl = {
   getProviders: () =>
     ipcRenderer.invoke('kubectl:getProviders'),
 
+  getAllowedVerbs: (context: string): Promise<Record<string, Record<string, boolean>>> =>
+    ipcRenderer.invoke('kubectl:getAllowedVerbs', context),
+
   // Port Forwarding
   portForward: (context: string, namespace: string, type: string, name: string, localPort: number, remotePort: number, id: string) =>
     ipcRenderer.invoke('kubectl:portForward', context, namespace, type, name, localPort, remotePort, id),

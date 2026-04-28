@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import type { KubeNode } from '../../../types'
 import { formatAge, getNodeReady, parseMemoryMiB, parseCpuMillicores } from '../../../types'
 import { useAppStore } from '../../../store'
+import { canVerb } from '../../../store/slices/clusterSlice'
 import YAMLViewer from '../../common/YAMLViewer'
 import TimeSeriesChart, { PrometheusTimeRangeBar } from '../../advanced/TimeSeriesChart'
 import { nodeCpuQuery, nodeMemoryQuery } from '../../../utils/prometheusQueries'
@@ -10,6 +11,7 @@ interface Props { node: KubeNode }
 
 export default function NodeDetail({ node }: Props): JSX.Element {
   const { getYAML, applyYAML, pods, nodeMetrics, selectResource, prometheusAvailable, selectedContext } = useAppStore()
+  const allowedVerbs = useAppStore(s => s.allowedVerbs)
   const [yaml, setYaml] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
   const [yamlError, setYamlError] = useState<string | null>(null)
@@ -105,26 +107,30 @@ export default function NodeDetail({ node }: Props): JSX.Element {
             className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-white/5 hover:bg-white/10 transition-all disabled:opacity-50 uppercase tracking-wider">
             {yamlLoading ? 'Loading…' : 'YAML'}
           </button>
-          <button
-            onClick={handleCordon}
-            disabled={actionLoading !== null}
-            className={`text-[11px] font-bold px-4 py-1.5 rounded-xl border transition-all disabled:opacity-50 uppercase tracking-wider ${
-              isCordonned
-                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
-                : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20'
-            }`}
-          >
-            {actionLoading === 'cordon' || actionLoading === 'uncordon'
-              ? (isCordonned ? 'Uncordoning…' : 'Cordoning…')
-              : (isCordonned ? 'Uncordon' : 'Cordon')}
-          </button>
-          <button
-            onClick={handleDrain}
-            disabled={actionLoading !== null}
-            className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all disabled:opacity-50 uppercase tracking-wider"
-          >
-            {actionLoading === 'drain' ? 'Draining…' : 'Drain'}
-          </button>
+          {(canVerb(allowedVerbs, 'nodes', 'update') || canVerb(allowedVerbs, 'nodes', 'patch')) && (
+            <button
+              onClick={handleCordon}
+              disabled={actionLoading !== null}
+              className={`text-[11px] font-bold px-4 py-1.5 rounded-xl border transition-all disabled:opacity-50 uppercase tracking-wider ${
+                isCordonned
+                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
+                  : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20'
+              }`}
+            >
+              {actionLoading === 'cordon' || actionLoading === 'uncordon'
+                ? (isCordonned ? 'Uncordoning…' : 'Cordoning…')
+                : (isCordonned ? 'Uncordon' : 'Cordon')}
+            </button>
+          )}
+          {(canVerb(allowedVerbs, 'nodes', 'update') || canVerb(allowedVerbs, 'nodes', 'patch')) && (
+            <button
+              onClick={handleDrain}
+              disabled={actionLoading !== null}
+              className="text-[11px] font-bold px-4 py-1.5 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all disabled:opacity-50 uppercase tracking-wider"
+            >
+              {actionLoading === 'drain' ? 'Draining…' : 'Drain'}
+            </button>
+          )}
         </div>
         {actionError && (
           <p className="mt-2 text-[10px] text-red-500 font-mono break-all">{actionError}</p>

@@ -29,12 +29,33 @@ export interface ClusterSlice {
     probePrometheus: () => Promise<void>
     disconnectPrometheus: () => void
     ownerChains: Record<string, OwnerChainResponse>
+    allowedVerbs: Record<string, Record<string, boolean>>
+    fetchAllowedVerbs: () => Promise<void>
 }
 
 let contextSwitchSeq = 0
 
 const safeGetItem = (key: string): string | null => {
     try { return localStorage.getItem(key) } catch { return null }
+}
+
+/**
+ * canVerb checks whether the given RBAC verb is allowed for a resource.
+ * resource: Kubernetes plural name (e.g. "deployments", "pods").
+ * verb: one of "list", "watch", "delete", "update", "patch", "create".
+ *
+ * Returns true (permissive) when allowedVerbs is empty (probe not yet run)
+ * or the resource is absent from the map.
+ */
+export function canVerb(
+    allowedVerbs: Record<string, Record<string, boolean>>,
+    resource: string,
+    verb: string
+): boolean {
+    if (!allowedVerbs || Object.keys(allowedVerbs).length === 0) return true
+    const resourceVerbs = allowedVerbs[resource]
+    if (!resourceVerbs) return true
+    return resourceVerbs[verb] === true
 }
 
 export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
@@ -117,6 +138,7 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
         }
     },
     ownerChains: {},
+    allowedVerbs: {},
 
     selectContext: async (name) => {
         const mySeq = ++contextSwitchSeq
@@ -159,6 +181,7 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             ...sectionClearState,
             deniedSections: new Set<ResourceKind>(),
             unifiedLogsSelectedPods: [],
+            allowedVerbs: {},
         })
         try {
             const timeout = new Promise<never>((_, reject) =>
@@ -211,6 +234,7 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
                 get().preloadSearchResources() // background, fire-and-forget
                 get().fetchProviders()          // background, fire-and-forget
                 get().probeCost()               // background, fire-and-forget
+                get().fetchAllowedVerbs()       // background, fire-and-forget
                 // Prometheus is opt-in — only probe when the user clicks
                 // "Detect Now" in Settings. Auto-probing on every context
                 // switch causes false positives or spurious error messages.
@@ -225,5 +249,17 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
     selectNamespace: (name) => {
         set({ selectedNamespace: name, selectedResource: null, metricsError: null })
         get().loadSection(get().section)
+    },
+
+    fetchAllowedVerbs: async () => {
+        const ctx = get().selectedContext
+        if (!ctx) return
+        try {
+            const verbs = await window.kubectl.getAllowedVerbs(ctx)
+            if (get().selectedContext !== ctx) return // stale — context switched mid-flight
+            set({ allowedVerbs: verbs ?? {} })
+        } catch {
+            // probe failed — stay permissive (empty map = all buttons visible)
+        }
     },
 })

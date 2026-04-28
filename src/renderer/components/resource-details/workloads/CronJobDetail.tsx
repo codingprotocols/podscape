@@ -6,6 +6,7 @@ import { RefreshButton } from '../../common'
 import YAMLViewer from '../../common/YAMLViewer'
 import { useYAMLEditor } from '../../../hooks/useYAMLEditor'
 import { useAppStore } from '../../../store'
+import { canVerb } from '../../../store/slices/clusterSlice'
 
 interface Props { cronJob: KubeCronJob }
 
@@ -34,6 +35,7 @@ function jobDuration(job: KubeJob): string {
 export default function CronJobDetail({ cronJob: cj }: Props): JSX.Element {
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const { selectedContext, selectedNamespace } = useAppStore()
+  const allowedVerbs = useAppStore(s => s.allowedVerbs)
 
   const [recentJobs, setRecentJobs] = useState<KubeJob[]>([])
   const [jobsLoading, setJobsLoading] = useState(false)
@@ -104,25 +106,29 @@ export default function CronJobDetail({ cronJob: cj }: Props): JSX.Element {
           </div>
           <div className="flex items-center gap-2">
             {/* Trigger Now */}
-            <button
-              onClick={triggerState === 'idle' || triggerState === 'done' || triggerState === 'error' ? handleTrigger : undefined}
-              disabled={triggerState === 'running'}
-              title="Trigger job manually"
-              className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-400 hover:text-emerald-300 border border-emerald-500/20 hover:border-emerald-500/30 transition-all flex items-center gap-2 group disabled:opacity-50"
-            >
-              {triggerState === 'running'
-                ? <><Loader2 size={12} className="animate-spin" /> Triggering…</>
-                : <><Play size={12} /> Trigger Now</>
-              }
-            </button>
-            <button
-              onClick={() => openYAML('cronjob', cj.metadata.name, false, cj.metadata.namespace)}
-              disabled={yamlLoading}
-              className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
-            >
-              <FileCode size={14} className="group-hover:text-blue-400 transition-colors" />
-              {yamlLoading ? 'Loading...' : 'YAML'}
-            </button>
+            {canVerb(allowedVerbs, 'cronjobs', 'create') && (
+              <button
+                onClick={triggerState === 'idle' || triggerState === 'done' || triggerState === 'error' ? handleTrigger : undefined}
+                disabled={triggerState === 'running'}
+                title="Trigger job manually"
+                className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-400 hover:text-emerald-300 border border-emerald-500/20 hover:border-emerald-500/30 transition-all flex items-center gap-2 group disabled:opacity-50"
+              >
+                {triggerState === 'running'
+                  ? <><Loader2 size={12} className="animate-spin" /> Triggering…</>
+                  : <><Play size={12} /> Trigger Now</>
+                }
+              </button>
+            )}
+            {(canVerb(allowedVerbs, 'cronjobs', 'update') || canVerb(allowedVerbs, 'cronjobs', 'patch')) && (
+              <button
+                onClick={() => openYAML('cronjob', cj.metadata.name, false, cj.metadata.namespace)}
+                disabled={yamlLoading}
+                className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
+              >
+                <FileCode size={14} className="group-hover:text-blue-400 transition-colors" />
+                {yamlLoading ? 'Loading...' : 'YAML'}
+              </button>
+            )}
             <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold outline outline-1 ${cj.spec.suspend ? 'bg-amber-500/10 text-amber-500 outline-amber-500/20' : 'bg-emerald-500/10 text-emerald-500 outline-emerald-500/20'}`}>
               {cj.spec.suspend ? 'SUSPENDED' : 'ACTIVE'}
             </span>

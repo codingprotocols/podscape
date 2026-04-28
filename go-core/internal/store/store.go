@@ -30,6 +30,10 @@ type ContextCache struct {
 	//   populated map  — probe ran; check map[plural] for individual access
 	AllowedResources map[string]bool
 
+	// AllowedVerbs is the per-verb RBAC probe result. Structure: resource → verb → allowed.
+	// nil means probe not run (permissive). Empty inner map means all verbs denied for that resource.
+	AllowedVerbs map[string]map[string]bool
+
 	// Resource maps
 	Nodes               map[string]interface{}
 	Pods                map[string]interface{}

@@ -57,24 +57,25 @@ func resetStore(t *testing.T, origActiveCache *store.ContextCache, origKubeconfi
 		store.Store.Kubeconfig = origKubeconfig
 		store.Store.Unlock()
 		syncInformersFunc = realSyncFn
-		rbacCheckFunc = realRBACFn
+		rbacVerbCheckFunc = realRBACVerbFn
 	})
 }
 
 // realSyncFn holds the original injectable value so tests can restore it.
 var realSyncFn = syncInformersFunc
 
-// realRBACFn holds the original injectable value so tests can restore it.
-var realRBACFn = rbacCheckFunc
+// realRBACVerbFn holds the original verb-level injectable value so tests can restore it.
+var realRBACVerbFn = rbacVerbCheckFunc
 
 // noopSync immediately returns true (synced) without touching any informers.
 func noopSync(_ *store.ContextCache, _ <-chan struct{}, _ time.Duration) bool {
 	return true
 }
 
-// noopRBAC immediately returns all-allowed without hitting the API server.
-func noopRBAC(_ context.Context, _ kubernetes.Interface) (map[string]bool, error) {
-	return nil, nil // nil = permissive (probe "not run")
+// noopRBACVerb immediately returns nil without hitting the API server (6-verb signature).
+// nil return = permissive (probe "not run"), so AllowedVerbs stays nil.
+func noopRBACVerb(_ context.Context, _ kubernetes.Interface) (map[string]map[string]bool, error) {
+	return nil, nil
 }
 
 // newTestCache creates a ContextCache backed by the given fake clientset.
@@ -169,7 +170,7 @@ func TestHandleSwitchContext_Success(t *testing.T) {
 
 	// Informer sync and RBAC probe are no-ops in tests.
 	syncInformersFunc = noopSync
-	rbacCheckFunc = noopRBAC
+	rbacVerbCheckFunc = noopRBACVerb
 
 	kubeconfigPath := writeTestKubeconfig(t, map[string]string{
 		"ctx-a": "http://fake-a:6443",
@@ -228,7 +229,7 @@ func TestHandleSwitchContext_AlwaysCommits(t *testing.T) {
 
 	// Informer sync and RBAC probe are no-ops — simulates a cluster that may be unreachable.
 	syncInformersFunc = noopSync
-	rbacCheckFunc = noopRBAC
+	rbacVerbCheckFunc = noopRBACVerb
 
 	kubeconfigPath := writeTestKubeconfig(t, map[string]string{
 		"ctx-a": "http://fake-a:6443",
@@ -1012,5 +1013,162 @@ func TestHandleRolloutHistory_MissingParams(t *testing.T) {
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for missing name param, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+}
+
+// ── HandleGetAllowedVerbs ─────────────────────────────────────────────────────
+
+func TestHandleGetAllowedVerbs_NoActiveCache(t *testing.T) {
+	store.Store.Lock()
+	orig := store.Store.ActiveCache
+	store.Store.ActiveCache = nil
+	store.Store.Unlock()
+	t.Cleanup(func() {
+		store.Store.Lock()
+		store.Store.ActiveCache = orig
+		store.Store.Unlock()
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/rbac", nil)
+	w := httptest.NewRecorder()
+	HandleGetAllowedVerbs(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	if got := strings.TrimSpace(w.Body.String()); got != "{}" {
+		t.Errorf("expected {}, got %q", got)
+	}
+}
+
+func TestHandleGetAllowedVerbs_NilAllowedVerbs(t *testing.T) {
+	cache := &store.ContextCache{}
+	cache.AllowedVerbs = nil
+	store.Store.Lock()
+	orig := store.Store.ActiveCache
+	store.Store.ActiveCache = cache
+	store.Store.Unlock()
+	t.Cleanup(func() {
+		store.Store.Lock()
+		store.Store.ActiveCache = orig
+		store.Store.Unlock()
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/rbac", nil)
+	w := httptest.NewRecorder()
+	HandleGetAllowedVerbs(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	if got := strings.TrimSpace(w.Body.String()); got != "{}" {
+		t.Errorf("expected {}, got %q", got)
+	}
+}
+
+func TestHandleGetAllowedVerbs_Populated(t *testing.T) {
+	defer func() {
+		store.Store.Lock()
+		store.Store.ActiveCache = nil
+		store.Store.Unlock()
+	}()
+
+	cache := &store.ContextCache{}
+	cache.AllowedVerbs = map[string]map[string]bool{
+		"pods": {"list": true, "watch": true, "delete": false},
+	}
+	store.Store.Lock()
+	store.Store.ActiveCache = cache
+	store.Store.Unlock()
+
+	req := httptest.NewRequest(http.MethodGet, "/rbac", nil)
+	w := httptest.NewRecorder()
+	HandleGetAllowedVerbs(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("expected application/json, got %q", ct)
+	}
+
+	var result map[string]map[string]bool
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	pods, ok := result["pods"]
+	if !ok {
+		t.Fatal("expected 'pods' key in result")
+	}
+	if !pods["list"] {
+		t.Error("expected pods/list to be true")
+	}
+	if !pods["watch"] {
+		t.Error("expected pods/watch to be true")
+	}
+	if pods["delete"] {
+		t.Error("expected pods/delete to be false/absent")
+	}
+}
+
+func TestRunRBACProbe_PopulatesCache(t *testing.T) {
+	// Inject a fake rbacVerbCheckFunc
+	origVerbFn := rbacVerbCheckFunc
+	defer func() { rbacVerbCheckFunc = origVerbFn }()
+
+	fakeVerbs := map[string]map[string]bool{
+		"pods":        {"list": true, "watch": true, "delete": true, "update": false, "patch": false, "create": false},
+		"deployments": {"list": true, "watch": false, "delete": false, "update": true, "patch": false, "create": false},
+	}
+	rbacVerbCheckFunc = func(ctx context.Context, cs kubernetes.Interface) (map[string]map[string]bool, error) {
+		return fakeVerbs, nil
+	}
+
+	cache := &store.ContextCache{}
+	runRBACProbe(cache, "test-ctx", nil)
+
+	cache.RLock()
+	defer cache.RUnlock()
+
+	// pods: list=true && watch=true → AllowedResources["pods"] = true
+	if !cache.AllowedResources["pods"] {
+		t.Error("expected pods to be accessible (list+watch both true)")
+	}
+	// deployments: list=true && watch=false → AllowedResources["deployments"] = false
+	if cache.AllowedResources["deployments"] {
+		t.Error("expected deployments to be inaccessible (watch=false)")
+	}
+
+	// AllowedVerbs should be the full map
+	if cache.AllowedVerbs == nil {
+		t.Fatal("expected AllowedVerbs to be populated")
+	}
+	if !cache.AllowedVerbs["pods"]["delete"] {
+		t.Error("expected pods/delete to be true in AllowedVerbs")
+	}
+	if cache.AllowedVerbs["pods"]["update"] {
+		t.Error("expected pods/update to be false in AllowedVerbs")
+	}
+}
+
+func TestRunRBACProbe_ErrorLeavesNil(t *testing.T) {
+	origVerbFn := rbacVerbCheckFunc
+	defer func() { rbacVerbCheckFunc = origVerbFn }()
+
+	rbacVerbCheckFunc = func(ctx context.Context, cs kubernetes.Interface) (map[string]map[string]bool, error) {
+		return nil, fmt.Errorf("API unavailable")
+	}
+
+	cache := &store.ContextCache{}
+	runRBACProbe(cache, "test-ctx", nil)
+
+	cache.RLock()
+	defer cache.RUnlock()
+
+	if cache.AllowedResources != nil {
+		t.Error("expected AllowedResources to remain nil on probe error")
+	}
+	if cache.AllowedVerbs != nil {
+		t.Error("expected AllowedVerbs to remain nil on probe error")
 	}
 }

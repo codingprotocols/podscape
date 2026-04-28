@@ -88,6 +88,7 @@ func main() {
 	http.HandleFunc("/config/contexts", handlers.HandleGetContexts)
 	http.HandleFunc("/config/current-context", handlers.HandleGetCurrentContext)
 	http.HandleFunc("/config/switch", handlers.HandleSwitchContext)
+	http.HandleFunc("/rbac", handlers.HandleGetAllowedVerbs)
 	http.HandleFunc("/helm/rollback", handlers.HandleHelmRollback)
 	http.HandleFunc("/helm/uninstall", handlers.HandleHelmUninstall)
 	http.HandleFunc("/metrics/pods", handlers.HandleGetPodMetrics)

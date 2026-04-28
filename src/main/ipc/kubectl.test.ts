@@ -223,3 +223,38 @@ describe('RBACDeniedError', () => {
     expect(err).toBeInstanceOf(Error)
   })
 })
+
+describe('KubectlProvider.getAllowedVerbs', () => {
+  let provider: KubectlProvider
+
+  beforeEach(() => {
+    provider = new KubectlProvider()
+    vi.clearAllMocks()
+  })
+
+  it('returns parsed verb map on success', async () => {
+    const fakeVerbs = { pods: { list: true, delete: false } }
+    mockSidecarFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => fakeVerbs,
+    })
+
+    const result = await provider.getAllowedVerbs('my-context')
+    expect(result).toEqual(fakeVerbs)
+    expect(mockSidecarFetch).toHaveBeenCalledWith('/rbac')
+  })
+
+  it('returns {} when response is not ok', async () => {
+    mockSidecarFetch.mockResolvedValueOnce({ ok: false })
+
+    const result = await provider.getAllowedVerbs('my-context')
+    expect(result).toEqual({})
+  })
+
+  it('returns {} when sidecarFetch throws', async () => {
+    mockSidecarFetch.mockRejectedValueOnce(new Error('network error'))
+
+    const result = await provider.getAllowedVerbs('my-context')
+    expect(result).toEqual({})
+  })
+})

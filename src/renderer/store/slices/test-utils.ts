@@ -89,6 +89,7 @@ export const setupMocks = () => {
             costStatus: vi.fn().mockResolvedValue({ available: false, provider: '' }),
             costAllocation: vi.fn().mockResolvedValue([]),
             getProviders: vi.fn(),
+            getAllowedVerbs: vi.fn().mockResolvedValue({}),
             cancelAllStreams: vi.fn().mockResolvedValue(undefined),
             streamLogs: vi.fn().mockResolvedValue('stream-1'),
             stopLogs: vi.fn().mockResolvedValue(undefined),

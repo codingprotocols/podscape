@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { createClusterSlice } from './clusterSlice'
+import { createClusterSlice, canVerb } from './clusterSlice'
 import { setupMocks } from './test-utils'
 
 const { localStorageMock, windowMock } = setupMocks()
@@ -16,6 +16,7 @@ describe('clusterSlice', () => {
             loadSection: vi.fn(),
             fetchProviders: vi.fn(),
             probeCost: vi.fn(),
+            fetchAllowedVerbs: vi.fn(),
             stopAllPortForwards: vi.fn(),
             hotbarContexts: [],
             prodContexts: [],
@@ -71,6 +72,7 @@ describe('clusterSlice', () => {
         expect(set).toHaveBeenCalledWith(expect.objectContaining({
             selectedContext: 'my-ctx',
             loadingNamespaces: true,
+            allowedVerbs: {},
         }))
 
         await promise
@@ -328,5 +330,120 @@ describe('clusterSlice', () => {
         const setCalls = set.mock.calls.map((c: any[]) => c[0])
         const errorCall = setCalls.find((c: any) => 'loadingNamespaces' in c && c.loadingNamespaces === false)
         expect(errorCall).toBeDefined()
+    })
+})
+
+describe('canVerb', () => {
+    it('returns true when allowedVerbs is empty (permissive)', () => {
+        expect(canVerb({}, 'deployments', 'delete')).toBe(true)
+    })
+
+    it('returns true when resource is absent from map (permissive)', () => {
+        const verbs = { pods: { delete: true } }
+        expect(canVerb(verbs, 'deployments', 'delete')).toBe(true)
+    })
+
+    it('returns true when verb is allowed', () => {
+        const verbs = { deployments: { delete: true, update: false } }
+        expect(canVerb(verbs, 'deployments', 'delete')).toBe(true)
+    })
+
+    it('returns false when verb is explicitly denied', () => {
+        const verbs = { deployments: { delete: false } }
+        expect(canVerb(verbs, 'deployments', 'delete')).toBe(false)
+    })
+
+    it('returns false when verb is absent from resource map (absent = denied)', () => {
+        const verbs = { deployments: { list: true } }
+        expect(canVerb(verbs, 'deployments', 'delete')).toBe(false)
+    })
+
+    it('update OR patch pattern works correctly', () => {
+        const verbsUpdateOnly = { deployments: { update: true, patch: false } }
+        const verbsPatchOnly  = { deployments: { update: false, patch: true } }
+        const verbsNeither    = { deployments: { update: false, patch: false } }
+
+        expect(canVerb(verbsUpdateOnly, 'deployments', 'update') || canVerb(verbsUpdateOnly, 'deployments', 'patch')).toBe(true)
+        expect(canVerb(verbsPatchOnly,  'deployments', 'update') || canVerb(verbsPatchOnly,  'deployments', 'patch')).toBe(true)
+        expect(canVerb(verbsNeither,    'deployments', 'update') || canVerb(verbsNeither,    'deployments', 'patch')).toBe(false)
+    })
+
+    it('returns true when allowedVerbs is null (permissive)', () => {
+        expect(canVerb(null as any, 'deployments', 'delete')).toBe(true)
+    })
+
+    it('returns true when allowedVerbs is undefined (permissive)', () => {
+        expect(canVerb(undefined as any, 'deployments', 'delete')).toBe(true)
+    })
+})
+
+describe('fetchAllowedVerbs', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+    })
+
+    it('sets allowedVerbs from successful probe', async () => {
+        const set = vi.fn()
+        const fakeVerbs = { deployments: { delete: true, update: true } }
+        windowMock.kubectl.getAllowedVerbs.mockResolvedValueOnce(fakeVerbs)
+
+        const get = vi.fn().mockReturnValue({
+            selectedContext: 'my-cluster',
+        })
+        const state = createClusterSlice(set, get, {} as any)
+
+        await state.fetchAllowedVerbs()
+
+        expect(windowMock.kubectl.getAllowedVerbs).toHaveBeenCalledWith('my-cluster')
+        expect(set).toHaveBeenCalledWith({ allowedVerbs: fakeVerbs })
+    })
+
+    it('returns early when no context is selected', async () => {
+        const set = vi.fn()
+        const get = vi.fn().mockReturnValue({ selectedContext: null })
+        const state = createClusterSlice(set, get, {} as any)
+
+        await state.fetchAllowedVerbs()
+
+        expect(windowMock.kubectl.getAllowedVerbs).not.toHaveBeenCalled()
+        expect(set).not.toHaveBeenCalled()
+    })
+
+    it('discards stale result when context changes mid-flight', async () => {
+        const set = vi.fn()
+        windowMock.kubectl.getAllowedVerbs.mockResolvedValueOnce({ pods: { list: true } })
+
+        // First call returns 'cluster-a', second returns 'cluster-b' (context switched)
+        const get = vi.fn()
+            .mockReturnValueOnce({ selectedContext: 'cluster-a' })  // initial snapshot
+            .mockReturnValueOnce({ selectedContext: 'cluster-b' })  // stale guard check
+        const state = createClusterSlice(set, get, {} as any)
+
+        await state.fetchAllowedVerbs()
+
+        expect(set).not.toHaveBeenCalled()
+    })
+
+    it('stays permissive when getAllowedVerbs rejects', async () => {
+        const set = vi.fn()
+        windowMock.kubectl.getAllowedVerbs.mockRejectedValueOnce(new Error('network error'))
+
+        const get = vi.fn().mockReturnValue({ selectedContext: 'my-cluster' })
+        const state = createClusterSlice(set, get, {} as any)
+
+        await expect(state.fetchAllowedVerbs()).resolves.toBeUndefined()
+        expect(set).not.toHaveBeenCalled()
+    })
+
+    it('uses empty map when getAllowedVerbs resolves with null', async () => {
+        const set = vi.fn()
+        windowMock.kubectl.getAllowedVerbs.mockResolvedValueOnce(null)
+
+        const get = vi.fn().mockReturnValue({ selectedContext: 'my-cluster' })
+        const state = createClusterSlice(set, get, {} as any)
+
+        await state.fetchAllowedVerbs()
+
+        expect(set).toHaveBeenCalledWith({ allowedVerbs: {} })
     })
 })

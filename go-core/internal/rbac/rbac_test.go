@@ -183,7 +183,16 @@ func TestCheckVerbAccess_AllAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if len(got) != len(AllResources) {
+		t.Errorf("expected %d resources in map, got %d", len(AllResources), len(got))
+	}
 	for _, rd := range AllResources {
+		if _, ok := got[rd.Resource]; !ok {
+			t.Errorf("resource %q missing from result map", rd.Resource)
+		}
+		if len(got[rd.Resource]) != 6 {
+			t.Errorf("resource %q: expected 6 verbs, got %d", rd.Resource, len(got[rd.Resource]))
+		}
 		for _, verb := range []string{"list", "watch", "delete", "update", "patch", "create"} {
 			if !got[rd.Resource][verb] {
 				t.Errorf("expected %q/%q to be allowed", rd.Resource, verb)
@@ -228,10 +237,26 @@ func TestCheckVerbAccess_APIError(t *testing.T) {
 	}
 }
 
-func TestCheckVerbAccess_AllResourcesAllVerbs(t *testing.T) {
+func TestCheckVerbAccess_CancelledContext(t *testing.T) {
+	cs := fake.NewSimpleClientset()
+	// No reactor needed — goroutines should short-circuit on ctx.Err()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately before calling
+
+	got, err := CheckVerbAccess(ctx, cs)
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+	if got != nil {
+		t.Errorf("expected nil map on cancelled context, got %v", got)
+	}
+}
+
+func TestCheckVerbAccess_AllDenied(t *testing.T) {
 	cs := fake.NewSimpleClientset()
 	cs.PrependReactor("create", "selfsubjectaccessreviews", sarReactor(func(*authv1.ResourceAttributes) bool {
-		return true
+		return false
 	}))
 
 	got, err := CheckVerbAccess(context.Background(), cs)
@@ -239,14 +264,18 @@ func TestCheckVerbAccess_AllResourcesAllVerbs(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(got) != len(AllResources) {
-		t.Errorf("expected %d resources, got %d", len(AllResources), len(got))
+		t.Errorf("expected %d resource entries, got %d", len(AllResources), len(got))
 	}
 	for _, rd := range AllResources {
-		if _, ok := got[rd.Resource]; !ok {
-			t.Errorf("resource %q missing from result", rd.Resource)
+		m, ok := got[rd.Resource]
+		if !ok {
+			t.Errorf("expected resource %q in map", rd.Resource)
+			continue
 		}
-		if len(got[rd.Resource]) != 6 {
-			t.Errorf("resource %q: expected 6 verbs, got %d", rd.Resource, len(got[rd.Resource]))
+		for _, verb := range []string{"list", "watch", "delete", "update", "patch", "create"} {
+			if m[verb] {
+				t.Errorf("expected %q/%q to be absent/false when denied, got true", rd.Resource, verb)
+			}
 		}
 	}
 }

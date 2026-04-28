@@ -27,9 +27,8 @@ import (
 // needing a live Kubernetes cluster.
 var syncInformersFunc = informers.SyncInformers
 
-// rbacCheckFunc is the function used to probe RBAC permissions before starting
-// informers. It is a variable so tests can substitute a stub.
-var rbacCheckFunc = rbac.CheckAccess
+// rbacVerbCheckFunc probes all 6 verbs. Injectable for tests.
+var rbacVerbCheckFunc = rbac.CheckVerbAccessFunc
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
@@ -207,13 +206,21 @@ func runRBACProbe(cache *store.ContextCache, ctxName string, cs kubernetes.Inter
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	allowed, err := rbacCheckFunc(ctx, cs)
+	verbMap, err := rbacVerbCheckFunc(ctx, cs)
 	if err != nil {
 		log.Printf("[SwitchContext] RBAC probe failed for %q, proceeding without restriction: %v", ctxName, err)
 		return
 	}
+
+	// Derive AllowedResources (list+watch) for backward compat with MakeHandler / X-Podscape-Denied.
+	allowed := make(map[string]bool, len(verbMap))
+	for resource, verbs := range verbMap {
+		allowed[resource] = verbs["list"] && verbs["watch"]
+	}
+
 	cache.Lock()
 	cache.AllowedResources = allowed
+	cache.AllowedVerbs = verbMap
 	cache.Unlock()
 
 	denied := 0
@@ -385,4 +392,27 @@ func (w *captureWriter) Write(p []byte) (n int, err error) {
 
 func (w *captureWriter) String() string {
 	return string(w.data)
+}
+
+// HandleGetAllowedVerbs returns the per-verb RBAC map for the active context.
+// Returns {} (empty object) when the probe has not run (treat as permissive).
+func HandleGetAllowedVerbs(w http.ResponseWriter, r *http.Request) {
+	store.Store.RLock()
+	ac := store.Store.ActiveCache
+	store.Store.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	if ac == nil {
+		w.Write([]byte("{}"))
+		return
+	}
+	ac.RLock()
+	verbs := ac.AllowedVerbs
+	ac.RUnlock()
+
+	if verbs == nil {
+		w.Write([]byte("{}"))
+		return
+	}
+	json.NewEncoder(w).Encode(verbs)
 }

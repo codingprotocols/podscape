@@ -5,11 +5,14 @@ import YAMLViewer from '../../common/YAMLViewer'
 import { FileCode, X, Activity } from 'lucide-react'
 import { useYAMLEditor } from '../../../hooks/useYAMLEditor'
 import CopyButton from '../../common/CopyButton'
+import { useAppStore } from '../../../store'
+import { canVerb } from '../../../store/slices/clusterSlice'
 
 interface Props { configMap: KubeConfigMap }
 
 export default function ConfigMapDetail({ configMap: cm }: Props): JSX.Element {
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
+  const allowedVerbs = useAppStore(s => s.allowedVerbs)
   const entries = Object.entries(cm.data ?? {})
   const [selected, setSelected] = useState<string | null>(entries[0]?.[0] ?? null)
 
@@ -33,14 +36,16 @@ export default function ConfigMapDetail({ configMap: cm }: Props): JSX.Element {
               {cm.metadata.namespace} · {entries.length} key{entries.length !== 1 ? 's' : ''} · {formatAge(cm.metadata.creationTimestamp)} ago
             </p>
           </div>
-          <button
-            onClick={() => openYAML('configmap', cm.metadata.name, false, cm.metadata.namespace)}
-            disabled={yamlLoading}
-            className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
-          >
-            <FileCode size={14} className="group-hover:text-blue-400 transition-colors" />
-            {yamlLoading ? 'Loading...' : 'YAML'}
-          </button>
+          {(canVerb(allowedVerbs, 'configmaps', 'update') || canVerb(allowedVerbs, 'configmaps', 'patch')) && (
+            <button
+              onClick={() => openYAML('configmap', cm.metadata.name, false, cm.metadata.namespace)}
+              disabled={yamlLoading}
+              className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
+            >
+              <FileCode size={14} className="group-hover:text-blue-400 transition-colors" />
+              {yamlLoading ? 'Loading...' : 'YAML'}
+            </button>
+          )}
         </div>
       </div>
 
