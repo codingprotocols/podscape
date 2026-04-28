@@ -172,3 +172,81 @@ func TestRbacAllowed_EmptyMap_AllDenied(t *testing.T) {
 		t.Error("empty map should deny all resources")
 	}
 }
+
+func TestCheckVerbAccess_AllAllowed(t *testing.T) {
+	cs := fake.NewSimpleClientset()
+	cs.PrependReactor("create", "selfsubjectaccessreviews", sarReactor(func(*authv1.ResourceAttributes) bool {
+		return true
+	}))
+
+	got, err := CheckVerbAccess(context.Background(), cs)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, rd := range AllResources {
+		for _, verb := range []string{"list", "watch", "delete", "update", "patch", "create"} {
+			if !got[rd.Resource][verb] {
+				t.Errorf("expected %q/%q to be allowed", rd.Resource, verb)
+			}
+		}
+	}
+}
+
+func TestCheckVerbAccess_SelectiveDeny(t *testing.T) {
+	cs := fake.NewSimpleClientset()
+	cs.PrependReactor("create", "selfsubjectaccessreviews", sarReactor(func(attr *authv1.ResourceAttributes) bool {
+		return !(attr.Resource == "secrets" && attr.Verb == "delete")
+	}))
+
+	got, err := CheckVerbAccess(context.Background(), cs)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["secrets"]["delete"] {
+		t.Error("expected secrets/delete to be denied")
+	}
+	if !got["secrets"]["list"] {
+		t.Error("expected secrets/list to be allowed")
+	}
+	if !got["pods"]["delete"] {
+		t.Error("expected pods/delete to be allowed")
+	}
+}
+
+func TestCheckVerbAccess_APIError(t *testing.T) {
+	cs := fake.NewSimpleClientset()
+	cs.PrependReactor("create", "selfsubjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, context.DeadlineExceeded
+	})
+
+	got, err := CheckVerbAccess(context.Background(), cs)
+	if err == nil {
+		t.Fatal("expected error when SAR API fails")
+	}
+	if got != nil {
+		t.Errorf("expected nil map on error, got %v", got)
+	}
+}
+
+func TestCheckVerbAccess_AllResourcesAllVerbs(t *testing.T) {
+	cs := fake.NewSimpleClientset()
+	cs.PrependReactor("create", "selfsubjectaccessreviews", sarReactor(func(*authv1.ResourceAttributes) bool {
+		return true
+	}))
+
+	got, err := CheckVerbAccess(context.Background(), cs)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != len(AllResources) {
+		t.Errorf("expected %d resources, got %d", len(AllResources), len(got))
+	}
+	for _, rd := range AllResources {
+		if _, ok := got[rd.Resource]; !ok {
+			t.Errorf("resource %q missing from result", rd.Resource)
+		}
+		if len(got[rd.Resource]) != 6 {
+			t.Errorf("resource %q: expected 6 verbs, got %d", rd.Resource, len(got[rd.Resource]))
+		}
+	}
+}
