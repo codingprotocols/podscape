@@ -98,7 +98,6 @@ export const createOperationSlice: StoreSlice<OperationSlice> = (set, get) => ({
     startPortForward: (entry) => {
         set(s => ({ portForwards: [...s.portForwards, entry] }))
         const ctx = get().selectedContext!
-        window.kubectl.portForward(ctx, entry.namespace, entry.type, entry.name, entry.localPort, entry.remotePort, entry.id)
 
         const unsubReady = window.kubectl.onPortForwardReady(entry.id, () =>
             set(s => ({ portForwards: s.portForwards.map(f => f.id === entry.id ? { ...f, status: 'active' } : f) }))
@@ -112,6 +111,18 @@ export const createOperationSlice: StoreSlice<OperationSlice> = (set, get) => ({
         })
 
         pfUnsubs.set(entry.id, [unsubReady, unsubError, unsubExit])
+
+        // Register listeners before invoking IPC so no events are missed.
+        // If the IPC layer itself throws (before the sidecar is reached),
+        // clean up the entry and listeners so it doesn't stay stuck in 'starting'.
+        window.kubectl.portForward(ctx, entry.namespace, entry.type, entry.name, entry.localPort, entry.remotePort, entry.id)
+            .catch((err: Error) => {
+                const unsubs = pfUnsubs.get(entry.id)
+                if (unsubs) { unsubs.forEach(fn => fn()); pfUnsubs.delete(entry.id) }
+                set(s => ({ portForwards: s.portForwards.map(f =>
+                    f.id === entry.id ? { ...f, status: 'error', error: err.message } : f
+                )}))
+            })
     },
     stopPortForward: (id) => {
         const unsubs = pfUnsubs.get(id)

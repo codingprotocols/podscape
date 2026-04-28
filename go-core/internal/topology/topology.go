@@ -203,7 +203,7 @@ func BuildTopology(nsFilter string, c *store.ContextCache) *Topology {
 			if svc.Namespace != pod.Namespace {
 				continue
 			}
-			if svc.Spec.Selector == nil {
+			if len(svc.Spec.Selector) == 0 {
 				continue
 			}
 			match := true

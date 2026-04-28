@@ -29,6 +29,13 @@ function onWindowReady(win: BrowserWindow): void {
   pendingEvents.length = 0
 }
 
+// Called explicitly from index.ts once the main BrowserWindow fires ready-to-show.
+// Using an explicit call instead of listening on browser-window-created prevents
+// the splash window (created first) from triggering onWindowReady prematurely.
+export function notifyMainWindowReady(win: BrowserWindow): void {
+  onWindowReady(win)
+}
+
 export function setupUpdater(): void {
   if (is.dev) return
 
@@ -47,11 +54,6 @@ export function setupUpdater(): void {
   ipcMain.handle('updater:download', () => autoUpdater.downloadUpdate())
   ipcMain.handle('updater:install', () => {
     autoUpdater.quitAndInstall(false, true)
-  })
-
-  // Wire up flush once the main window's renderer is ready.
-  app.on('browser-window-created', (_, win) => {
-    win.webContents.once('did-finish-load', () => onWindowReady(win))
   })
 
   // Check on launch after a short delay so it doesn't race with sidecar startup.

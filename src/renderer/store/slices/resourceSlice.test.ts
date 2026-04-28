@@ -22,6 +22,8 @@ describe('resourceSlice', () => {
             // Required by loadDashboard's AppGroup computation
             deployments: [], statefulsets: [], daemonsets: [],
             services: [], configmaps: [], hpas: [],
+            // Section TTL cache
+            sectionLoadedAt: {},
         }
         set = vi.fn((update: any) => {
             if (typeof update === 'function') {
@@ -68,6 +70,11 @@ describe('resourceSlice', () => {
         windowMock.kubectl.getNodes.mockResolvedValue([{ name: 'node1' }])
         windowMock.kubectl.getPods.mockResolvedValue([])
         windowMock.kubectl.getDeployments.mockResolvedValue([])
+        windowMock.kubectl.getStatefulSets.mockResolvedValue([])
+        windowMock.kubectl.getDaemonSets.mockResolvedValue([])
+        windowMock.kubectl.getServices.mockResolvedValue([])
+        windowMock.kubectl.getConfigMaps.mockResolvedValue([])
+        windowMock.kubectl.getHPAs.mockResolvedValue([])
         windowMock.kubectl.getNamespaces.mockResolvedValue([])
         windowMock.kubectl.getNodeMetrics.mockResolvedValue([])
         windowMock.kubectl.getEvents.mockResolvedValue([])
@@ -94,6 +101,11 @@ describe('resourceSlice', () => {
         windowMock.kubectl.getEvents.mockResolvedValue([])
         windowMock.kubectl.getPods.mockResolvedValue([])
         windowMock.kubectl.getDeployments.mockResolvedValue([])
+        windowMock.kubectl.getStatefulSets.mockResolvedValue([])
+        windowMock.kubectl.getDaemonSets.mockResolvedValue([])
+        windowMock.kubectl.getServices.mockResolvedValue([])
+        windowMock.kubectl.getConfigMaps.mockResolvedValue([])
+        windowMock.kubectl.getHPAs.mockResolvedValue([])
 
         const slice = (createResourceSlice as any)(set, get)
         await slice.loadDashboard()
@@ -109,6 +121,11 @@ describe('resourceSlice', () => {
         windowMock.kubectl.getEvents.mockResolvedValue([])
         windowMock.kubectl.getPods.mockResolvedValue([])
         windowMock.kubectl.getDeployments.mockResolvedValue([])
+        windowMock.kubectl.getStatefulSets.mockResolvedValue([])
+        windowMock.kubectl.getDaemonSets.mockResolvedValue([])
+        windowMock.kubectl.getServices.mockResolvedValue([])
+        windowMock.kubectl.getConfigMaps.mockResolvedValue([])
+        windowMock.kubectl.getHPAs.mockResolvedValue([])
 
         const slice = (createResourceSlice as any)(set, get)
         await slice.loadDashboard()
@@ -186,10 +203,13 @@ describe('resourceSlice', () => {
                 )
             }
         }
-        // sectionClearState must not have extra keys beyond SECTION_CONFIG
+        // sectionClearState must not have extra keys beyond SECTION_CONFIG stateKeys,
+        // except for known additional store-state fields that are intentionally reset
+        // on context switch (e.g. sectionLoadedAt — the per-section TTL cache).
+        const ALLOWED_EXTRA_KEYS = ['sectionLoadedAt']
         const stateKeys = configKeys.map(k => SECTION_CONFIG[k as keyof typeof SECTION_CONFIG]!.stateKey)
         for (const key of clearKeys) {
-            if (!stateKeys.includes(key)) {
+            if (!stateKeys.includes(key) && !ALLOWED_EXTRA_KEYS.includes(key)) {
                 throw new Error(`sectionClearState has unexpected key "${key}" not in SECTION_CONFIG`)
             }
         }

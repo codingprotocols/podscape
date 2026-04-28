@@ -86,7 +86,7 @@ var (
 		})
 	HandleHPAs = MakeHandler("horizontalpodautoscalers", func(c *store.ContextCache) map[string]interface{} { return c.HPAs },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
-			list, err := cs.AutoscalingV1().HorizontalPodAutoscalers(ns).List(ctx, metav1.ListOptions{})
+			list, err := cs.AutoscalingV2().HorizontalPodAutoscalers(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
 				return nil, err
 			}

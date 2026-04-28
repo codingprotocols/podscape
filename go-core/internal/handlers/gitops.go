@@ -50,6 +50,16 @@ var gitopsGVRs = []schema.GroupVersionResource{
 	{Group: "argoproj.io", Version: "v1alpha1", Resource: "appprojects"},
 }
 
+// clusterScopedGitOpsResources is the set of GitOps resource plural names that are
+// cluster-scoped. These must never be listed with a namespace filter — passing a
+// namespace to a cluster-scoped resource causes the API server to return an error
+// (silently swallowed here) and the resource is never shown.
+//
+// Currently: Argo CD AppProject — it spans all namespaces in the cluster.
+var clusterScopedGitOpsResources = map[string]bool{
+	"appprojects": true,
+}
+
 // gitopsKindGVR maps the Kind name to its canonical GVR for reconcile/suspend operations.
 // Flux v1beta2 variants fall back to v1 if not found — that's acceptable for patching.
 var gitopsKindGVR = map[string]schema.GroupVersionResource{
@@ -96,10 +106,14 @@ func HandleGitOps(w http.ResponseWriter, r *http.Request) {
 		var list *unstructured.UnstructuredList
 		var listErr error
 
-		if ns != "" {
+		// Cluster-scoped resources (e.g. AppProject) must be listed without a
+		// namespace filter — the API server rejects namespace-scoped list requests
+		// for cluster-scoped resources and the error would be silently swallowed,
+		// making the resource invisible when any namespace is selected.
+		if ns != "" && !clusterScopedGitOpsResources[gvr.Resource] {
 			list, listErr = dynClient.Resource(gvr).Namespace(ns).List(ctx, metav1.ListOptions{})
 		} else {
-			list, listErr = dynClient.Resource(gvr).Namespace("").List(ctx, metav1.ListOptions{})
+			list, listErr = dynClient.Resource(gvr).List(ctx, metav1.ListOptions{})
 		}
 		if listErr != nil {
 			// Resource type doesn't exist in this cluster — skip silently
@@ -224,7 +238,12 @@ func HandleGitOpsReconcile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	ri := dynClient.Resource(gvr).Namespace(ns)
+	var ri dynamic.ResourceInterface
+	if clusterScopedGitOpsResources[gvr.Resource] {
+		ri = dynClient.Resource(gvr)
+	} else {
+		ri = dynClient.Resource(gvr).Namespace(ns)
+	}
 
 	var patchObj interface{}
 	if gvr.Group == "argoproj.io" && kind == "Application" {
@@ -291,7 +310,12 @@ func HandleGitOpsSuspend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	ri := dynClient.Resource(gvr).Namespace(ns)
+	var ri dynamic.ResourceInterface
+	if clusterScopedGitOpsResources[gvr.Resource] {
+		ri = dynClient.Resource(gvr)
+	} else {
+		ri = dynClient.Resource(gvr).Namespace(ns)
+	}
 
 	var patchObj interface{}
 	if gvr.Group == "argoproj.io" {

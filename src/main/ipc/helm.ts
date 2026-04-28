@@ -131,7 +131,7 @@ export function registerHelmHandlers(): void {
               const evtType = eventLine.slice(6).trim()
               const data = dataLine.slice(5).trim()
               if (evtType === 'progress') {
-                event.sender.send('helm:refreshProgress', data)
+                if (!event.sender.isDestroyed()) event.sender.send('helm:refreshProgress', data)
               } else if (evtType === 'result') {
                 resolve()
               } else if (evtType === 'error') {
@@ -177,7 +177,7 @@ export function registerHelmHandlers(): void {
               const evtType = eventLine.slice(6).trim()
               const data = dataLine.slice(5).trim()
               if (evtType === 'progress') {
-                event.sender.send('helm:installProgress', data)
+                if (!event.sender.isDestroyed()) event.sender.send('helm:installProgress', data)
               } else if (evtType === 'result') {
                 resolve()
               } else if (evtType === 'error') {

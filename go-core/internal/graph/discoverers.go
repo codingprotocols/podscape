@@ -3,7 +3,6 @@ package graph
 import (
 	"fmt"
 
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -262,9 +261,12 @@ func (d *NetworkPolicyDiscoverer) Discover(nodes []Node, cache ResourceCache) []
 			continue
 		}
 
-		// Match pods in the same namespace
+		// An empty PodSelector ({}) selects all pods in the namespace (Kubernetes semantics).
+		// A non-empty PodSelector selects pods whose labels match all entries.
+		emptySelector := len(np.Spec.PodSelector.MatchLabels) == 0 &&
+			len(np.Spec.PodSelector.MatchExpressions) == 0
 		for _, pod := range podsByNS[node.Namespace] {
-			if matchSelector(np.Spec.PodSelector.MatchLabels, pod.Labels) {
+			if emptySelector || matchLabelSelector(np.Spec.PodSelector, pod.Labels) {
 				edges = append(edges, Edge{
 					ID:     fmt.Sprintf("policy:%s->%s", node.ID, pod.ID),
 					Source: node.ID,
@@ -277,7 +279,8 @@ func (d *NetworkPolicyDiscoverer) Discover(nodes []Node, cache ResourceCache) []
 	return edges
 }
 
-// Helper: matchSelector checks if a selector matches a set of labels.
+// matchSelector checks if a plain label-map selector matches a set of labels.
+// An empty selector returns false (callers must handle the "select all" case separately).
 func matchSelector(selector map[string]string, labels map[string]string) bool {
 	if len(selector) == 0 {
 		return false
@@ -290,25 +293,49 @@ func matchSelector(selector map[string]string, labels map[string]string) bool {
 	return true
 }
 
-// Helper: getObjectMetadata extracts Kubernetes object metadata using type assertion.
+// matchLabelSelector evaluates a full metav1.LabelSelector (both MatchLabels and
+// MatchExpressions) against a pod's label set.
+func matchLabelSelector(sel metav1.LabelSelector, podLabels map[string]string) bool {
+	for k, v := range sel.MatchLabels {
+		if podLabels[k] != v {
+			return false
+		}
+	}
+	for _, req := range sel.MatchExpressions {
+		switch req.Operator {
+		case metav1.LabelSelectorOpIn:
+			found := false
+			for _, v := range req.Values {
+				if podLabels[req.Key] == v {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false
+			}
+		case metav1.LabelSelectorOpNotIn:
+			for _, v := range req.Values {
+				if podLabels[req.Key] == v {
+					return false
+				}
+			}
+		case metav1.LabelSelectorOpExists:
+			if _, ok := podLabels[req.Key]; !ok {
+				return false
+			}
+		case metav1.LabelSelectorOpDoesNotExist:
+			if _, ok := podLabels[req.Key]; ok {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// getObjectMetadata extracts Kubernetes object metadata via the metav1.Object interface.
+// All k8s API types implement this interface, so the type assertion always succeeds.
 func getObjectMetadata(obj interface{}) (metav1.Object, bool) {
-	if m, ok := obj.(metav1.Object); ok {
-		return m, true
-	}
-	// Handle cases where the object might be a pointer or wrapped
-	switch t := obj.(type) {
-	case *corev1.Pod:
-		return t, true
-	case *corev1.Service:
-		return t, true
-	case *appsv1.Deployment:
-		return t, true
-	case *appsv1.ReplicaSet:
-		return t, true
-	case *appsv1.StatefulSet:
-		return t, true
-	case *appsv1.DaemonSet:
-		return t, true
-	}
-	return nil, false
+	m, ok := obj.(metav1.Object)
+	return m, ok
 }

@@ -48,6 +48,7 @@ export const SECTION_CONFIG: Partial<Record<ResourceKind, SectionConfig>> = {
 // Note: deniedSections is reset separately in clusterSlice alongside other cross-cutting state.
 export const sectionClearState: Record<string, any> = {
     ...Object.fromEntries(Object.values(SECTION_CONFIG).map(c => [c!.stateKey, []])),
+    sectionLoadedAt: {},
 }
 
 export const kindToSection: Record<string, ResourceKind> = {

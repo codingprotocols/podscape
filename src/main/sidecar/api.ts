@@ -6,7 +6,12 @@ export async function sidecarFetch(path: string, options?: RequestInit) {
   const url = `http://${SIDECAR_HOST}:${activeSidecarPort}${path.startsWith('/') ? '' : '/'}${path}`
 
   const maxRetries = 20
-  const delay = 500
+  // Delay between retries:
+  //  ECONNREFUSED          → 500 ms (sidecar process still starting up)
+  //  socket-reset errors   → 0 ms   (sidecar is running; the connection was
+  //                                   stale from the pool — a fresh connection
+  //                                   succeeds immediately, no sleep needed)
+  const startupDelay = 500
 
   const authHeaders = { 'X-Podscape-Token': sidecarToken }
   const mergedOptions: RequestInit = {
@@ -23,27 +28,32 @@ export async function sidecarFetch(path: string, options?: RequestInit) {
       // startup ECONNREFUSED case:
       //
       //  ECONNREFUSED   — sidecar process still starting up
-      //  UND_ERR_SOCKET — sidecar dropped the connection mid-request (e.g. the
-      //                   Go HTTP server's panic-recovery closed the response
-      //                   writer after an upstream EKS stream reset). The next
-      //                   attempt will open a fresh TCP connection.
+      //  UND_ERR_SOCKET — stale keep-alive connection was reset by the server;
+      //                   the next attempt opens a fresh TCP connection and
+      //                   succeeds immediately with no delay needed.
       const errCode = err?.code ?? err?.cause?.code ?? ''
       const errMsg = String(err?.message ?? '')
-      const isRetriable =
+
+      const isStartupError =
         errCode === 'ECONNREFUSED' ||
+        errMsg.includes('ECONNREFUSED')
+
+      const isSocketReset =
         errCode === 'UND_ERR_SOCKET' ||
-        errMsg.includes('ECONNREFUSED') ||
         errMsg.includes('other side closed') ||
         errMsg.includes('socket hang up')
 
-      if (!isRetriable) {
+      if (!isStartupError && !isSocketReset) {
         console.error(`[API] Non-retriable error for ${url}:`, err)
         throw err
       }
 
       if (i < maxRetries - 1) {
-        console.log(`[API] Sidecar not ready (attempt ${i + 1}/${maxRetries}) at ${url}. Retrying in ${delay}ms...`)
-        await new Promise(resolve => setTimeout(resolve, delay))
+        const delay = isStartupError ? startupDelay : 0
+        if (delay > 0) {
+          console.log(`[API] Sidecar not ready (attempt ${i + 1}/${maxRetries}) at ${url}. Retrying in ${delay}ms...`)
+          await new Promise(resolve => setTimeout(resolve, delay))
+        }
         continue
       }
       console.error(`[API] Sidecar unreachable at ${url} after ${maxRetries} attempts:`, err)

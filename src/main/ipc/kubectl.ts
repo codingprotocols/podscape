@@ -11,6 +11,7 @@ import { sidecarToken } from '../sidecar/auth'
 import { SIDECAR_HOST } from '../../common/constants'
 import type { RolloutRevision } from '../../common/constants'
 export type { RolloutRevision } from '../../common/constants'
+import { cancelAllExecStreams } from './terminal'
 
 export class RBACDeniedError extends Error {
   constructor(public readonly kind: string) {
@@ -390,6 +391,7 @@ export function registerKubectlHandlers(): void {
 
   ipcMain.handle('kubectl:cancelAllStreams', () => {
     cancelAllLogStreams()
+    cancelAllExecStreams()
   })
 
   ipcMain.handle('kubectl:getTopology', (_e, ns) => getTopology(ns))
