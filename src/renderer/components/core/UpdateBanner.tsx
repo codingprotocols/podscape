@@ -101,11 +101,8 @@ export default function UpdateBanner(): JSX.Element | null {
             onClick={async () => {
               try {
                 await window.updater?.download()
-              } catch (err: any) {
-                const message =
-                  typeof err === 'object' && err !== null && 'message' in err
-                    ? String((err as { message?: unknown }).message)
-                    : 'Update download failed.'
+              } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : 'Update download failed.'
                 setUpdate({ status: 'error', message })
               }
             }}
