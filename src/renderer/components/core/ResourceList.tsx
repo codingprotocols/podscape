@@ -17,8 +17,7 @@ import DeleteConfirm from '../common/DeleteConfirm'
 import YAMLViewer from '../common/YAMLViewer'
 import { kindLabel } from '../../store/slices/resourceSlice'
 import { canVerb } from '../../store/slices/clusterSlice'
-import { Layers, ShieldOff, Plus } from 'lucide-react'
-import CreateResourceModal, { CreatableKind } from '../common/CreateResourceModal'
+import { Layers, ShieldOff } from 'lucide-react'
 import { SECTION_LABELS, COLUMNS, CLUSTER_SCOPED_SECTIONS } from '../../config'
 
 
@@ -635,15 +634,6 @@ export default function ResourceList(): JSX.Element {
   const [restartError, setRestartError] = useState<string | null>(null)
   const restartErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const CREATABLE_SECTIONS: Partial<Record<string, CreatableKind>> = {
-    deployments: 'deployment',
-    services: 'service',
-    configmaps: 'configmap',
-    secrets: 'secret',
-    namespaces: 'namespace',
-  }
-  const [createKind, setCreateKind] = useState<CreatableKind | null>(null)
-
   const setRestartErrorWithTimeout = useCallback((msg: string) => {
     if (restartErrorTimer.current) clearTimeout(restartErrorTimer.current)
     setRestartError(msg)
@@ -896,22 +886,6 @@ export default function ResourceList(): JSX.Element {
           <button onClick={() => setRestartError(null)} className="text-red-500 hover:text-red-700 dark:hover:text-red-300 text-xs shrink-0">✕</button>
         </div>
       )}
-      {/* Header */}
-      <div className="flex items-center justify-end gap-2 px-4 py-2 border-b border-slate-100 dark:border-white/5 shrink-0">
-        {(() => {
-          const creatableKind = CREATABLE_SECTIONS[section]
-          if (!creatableKind) return null
-          if (!canVerb(allowedVerbs, section, 'create')) return null
-          return (
-            <button
-              onClick={() => setCreateKind(creatableKind)}
-              className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-all flex items-center gap-1.5"
-            >
-              <Plus size={12} /> New
-            </button>
-          )
-        })()}
-      </div>
 
       {/* Table */}
       <div ref={tableContainerRef} className="flex-1 overflow-auto">
@@ -1254,9 +1228,6 @@ export default function ResourceList(): JSX.Element {
           </div>
         )
       }
-      {createKind && (
-        <CreateResourceModal kind={createKind} onClose={() => setCreateKind(null)} />
-      )}
       {
         pfTarget && (
           <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setPfTarget(null)}>

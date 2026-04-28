@@ -1,3 +1,46 @@
+## [3.2.0] — 2026-04-29
+
+### New features
+
+#### Per-resource RBAC button hiding
+
+- **Verb-level RBAC probe** (`go-core/internal/rbac/rbac.go`) — Extended the `SelfSubjectAccessReview` probe from 2 verbs (`list`, `watch`) to 6 (`list`, `watch`, `delete`, `update`, `patch`, `create`). New `CheckVerbAccess` function returns `map[string]map[string]bool` (resource → verb → allowed) with the same 8-goroutine semaphore and context-cancellation short-circuit as the existing probe. The original `AllowedResources` map is preserved for backward-compatible section-level denial.
+
+- **New `/rbac` endpoint** (`go-core/internal/handlers/handlers.go`) — `HandleGetAllowedVerbs` returns the full verb map as JSON. Returns `{}` when the probe hasn't run or the active context has no cache, which the frontend treats as fully permissive.
+
+- **`kubectl:getAllowedVerbs` IPC handler** (`src/main/ipc/kubectl.ts`) — Calls `GET /rbac` on the sidecar and returns `Record<string, Record<string, boolean>>` to the renderer.
+
+- **`allowedVerbs` store state** (`src/renderer/store/slices/clusterSlice.ts`) — `allowedVerbs: Record<string, Record<string, boolean>>` added to `ClusterSlice`. Defaults to `{}` (permissive). Fetched via `fetchAllowedVerbs` after every successful context switch (fire-and-forget, same stale-context guard pattern as `fetchProviders`). Reset to `{}` on context-switch start. Exported `canVerb(allowedVerbs, resource, verb)` pure helper — returns `true` when `allowedVerbs` is empty (permissive), when the resource is absent, or when the verb maps to `true`.
+
+- **Action buttons hidden when verb is denied** — Delete, Scale, Restart, YAML-edit, and Trigger buttons are hidden (not disabled) when the authenticated user lacks the required verb. Affected components:
+  - `ResourceList.tsx` — context-menu items and bulk delete
+  - `DeploymentDetail.tsx`, `StatefulSetDetail.tsx` — Scale, Restart, YAML
+  - `PodDetail.tsx` — YAML
+  - `DaemonSetDetail.tsx`, `CronJobDetail.tsx` — YAML; CronJob Trigger gated on `create`
+  - `NodeDetail.tsx` — Cordon, Drain
+  - `ConfigMapDetail.tsx`, `SecretDetail.tsx` — YAML
+
+#### Resource creation forms
+
+- **`+ New` button in page header** (`src/renderer/components/core/SectionRouter.tsx`) — A blue `+ New` button appears on the right side of the sticky page header for the 5 supported resource types (Deployments, Services, ConfigMaps, Secrets, Namespaces). Hidden when `canVerb` returns false for `create` on that resource. Clicking opens `CreateResourceModal`.
+
+- **`CreateResourceModal`** (`src/renderer/components/common/CreateResourceModal.tsx`) — Split-panel modal: structured form fields on the left (380 px), live Monaco YAML preview (read-only) on the right. Submits via the existing `applyYAML` endpoint (server-side apply creates new resources). Shows inline loading and error state. On success, refreshes the current section.
+
+- **Five form components** (`src/renderer/components/common/create-forms/`) — One per resource type, each managing its own `useState` and calling `generateYAML` on every change:
+  - **`DeploymentForm`** — name, namespace, image, replicas, container port, environment variables (k/v list), labels (k/v list, pre-filled `app=<name>`)
+  - **`ServiceForm`** — name, namespace, type (ClusterIP / NodePort / LoadBalancer), selector labels, ports (protocol + port + targetPort, repeating)
+  - **`ConfigMapForm`** — name, namespace, data entries (key + textarea value, repeating)
+  - **`SecretForm`** — name, namespace, type (Opaque / docker / TLS); Opaque values are base64-encoded automatically; docker and TLS show type-specific fields
+  - **`NamespaceForm`** — name, labels (optional k/v list)
+
+- **Pure YAML generation** (`src/renderer/components/common/create-forms/generateYAML.ts`) — Each form has a side-effect-free `generateYAML*(formState) → string` function using `js-yaml`. Easily unit-testable independently of the form component.
+
+- **Validation** — Required fields checked on submit; DNS label regex on name fields; inline error messages; Create button disabled while any required field is empty.
+
+- **Global modal state** (`src/renderer/store/slices/operationSlice.ts`, `src/renderer/components/core/OverlayManager.tsx`) — `createKind`, `openCreate`, `closeCreate` added to `operationSlice`. `OverlayManager` renders `CreateResourceModal` from store state, keeping it outside the resource list render tree.
+
+---
+
 ## [3.1.3] — 2026-04-27
 
 ### Bug fixes

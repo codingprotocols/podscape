@@ -95,7 +95,7 @@ const NavItem = React.memo(function NavItem({
       onClick={() => setSection(section)}
       title={isDenied ? 'Access denied — insufficient RBAC permissions' : undefined}
       className={`relative flex items-center gap-2.5 w-full px-2.5 py-2 text-[12px] font-semibold
-                  transition-all duration-200 group rounded-xl
+                  transition-all duration-200 rounded-xl group
         ${isActive
           ? 'bg-blue-600/15 text-blue-600 dark:text-blue-400'
           : isDenied
