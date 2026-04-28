@@ -52,7 +52,7 @@ The Security Hub supports scoped scans to reduce noise:
 - **Kind filter**: scan only specific resource types (e.g. Pods, Deployments).
 - **Engine toggles**: run any combination of the built-in engine, Kubesec, and Trivy independently.
 
-> **Pod deduplication:** Pods are excluded from scans by default. A pod's security posture is determined by its parent controller (Deployment, StatefulSet, DaemonSet, etc.) — scanning both produces identical duplicate findings. To include pods explicitly, select "Pod" in the kind filter of a custom scan.
+> **Pod deduplication:** Pods are excluded from scans by default to avoid duplicate resource findings, because a pod's security posture is usually represented by its parent controller (Deployment, StatefulSet, DaemonSet, etc.). This does **not** reduce Trivy image coverage: images referenced by included controllers are still discovered and scanned once cluster-wide via image deduplication. To include pods explicitly, select "Pod" in the kind filter of a custom scan.
 
 ---
 
