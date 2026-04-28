@@ -185,7 +185,7 @@ const kubectl = {
     const endHandler = (
       _e: Electron.IpcRendererEvent, id: string
     ): void => {
-      if (resolvedId !== null && id !== resolvedId) return
+      if (resolvedId === null || id !== resolvedId) return
       ipcRenderer.off('kubectl:logChunk', chunkHandler)
       ipcRenderer.off('kubectl:logEnd', endHandler)
       onEnd()
@@ -382,9 +382,9 @@ const helm = {
 // ─── settings API ─────────────────────────────────────────────────────────────
 
 const settings = {
-  get: (): Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean }> =>
+  get: (): Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; costUrls?: Record<string, string>; tourCompleted: boolean; pluginsEnabled: boolean; finopsEnabled: boolean; gitopsEnabled: boolean; networkEnabled: boolean }> =>
     ipcRenderer.invoke('settings:get'),
-  set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean }): Promise<void> =>
+  set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; costUrls?: Record<string, string>; tourCompleted: boolean; pluginsEnabled: boolean; finopsEnabled: boolean; gitopsEnabled: boolean; networkEnabled: boolean }): Promise<void> =>
     ipcRenderer.invoke('settings:set', s),
   checkTools: (): Promise<{ kubeconfigOk: boolean; trivyOk: boolean }> =>
     ipcRenderer.invoke('settings:checkTools')

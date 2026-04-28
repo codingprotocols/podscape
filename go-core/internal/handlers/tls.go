@@ -29,7 +29,9 @@ type TLSCertInfo struct {
 }
 
 func HandleTLSCerts(w http.ResponseWriter, r *http.Request) {
+	store.Store.RLock()
 	c := store.Store.ActiveCache
+	store.Store.RUnlock()
 	if c == nil {
 		http.Error(w, "cluster not connected", http.StatusServiceUnavailable)
 		return

@@ -121,6 +121,9 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
     selectContext: async (name) => {
         const mySeq = ++contextSwitchSeq
         const previousContext = get().selectedContext
+        // Snapshot namespace state so we can restore it if the connection attempt fails.
+        const previousNamespaces = get().namespaces
+        const previousSelectedNamespace = get().selectedNamespace
         const isProd = get().prodContexts.includes(name)
         // If the user is viewing a provider-specific section (Istio/Traefik/Nginx),
         // navigate back to dashboard before the context flips. This prevents
@@ -185,7 +188,13 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
                 // Rollback: restore previous context in the sidecar and in the store.
                 if (previousContext) {
                     try { await window.kubectl.switchContext(previousContext) } catch {}
-                    set({ selectedContext: previousContext, isProduction: get().prodContexts.includes(previousContext) })
+                    set({
+                        selectedContext: previousContext,
+                        isProduction: get().prodContexts.includes(previousContext),
+                        // Restore namespace list so the user is not left with an empty sidebar.
+                        namespaces: previousNamespaces,
+                        selectedNamespace: previousSelectedNamespace,
+                    })
                 }
                 const msg = (connectErr as Error).message
                 const friendly = msg.includes('timed out')
@@ -206,10 +215,10 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
                 // "Detect Now" in Settings. Auto-probing on every context
                 // switch causes false positives or spurious error messages.
             }
-            set({ loadingNamespaces: false, contextSwitchStatus: null })
+            set({ loadingNamespaces: false, loadingResources: false, contextSwitchStatus: null })
         } catch (err) {
             if (mySeq !== contextSwitchSeq) return
-            set({ error: (err as Error).message, loadingNamespaces: false })
+            set({ error: (err as Error).message, loadingNamespaces: false, loadingResources: false, contextSwitchStatus: null })
         }
     },
 

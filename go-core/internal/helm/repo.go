@@ -374,11 +374,9 @@ func (m *HelmRepoManager) GetValues(repoName, chartName, version string) (string
 		}
 	}
 
-	m.mu.RLock()
-	idx, ok := m.indices[repoName]
-	m.mu.RUnlock()
-	if !ok {
-		return "", fmt.Errorf("repository %q not found", repoName)
+	idx, err := m.getIndex(repoName)
+	if err != nil {
+		return "", fmt.Errorf("repository %q not found: %w", repoName, err)
 	}
 
 	versions, ok := idx.Entries[chartName]

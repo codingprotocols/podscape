@@ -6,8 +6,6 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"sync"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -19,7 +17,6 @@ import (
 	"github.com/podscape/go-core/internal/logs"
 	"github.com/podscape/go-core/internal/portforward"
 	"github.com/podscape/go-core/internal/store"
-	"github.com/podscape/go-core/internal/topology"
 )
 
 func HandleLogs(w http.ResponseWriter, r *http.Request) {
@@ -120,7 +117,9 @@ func HandlePortForward(w http.ResponseWriter, r *http.Request) {
 
 // resolveServiceToPod finds a ready pod that matches the given service's selector.
 func resolveServiceToPod(namespace, serviceName string) (string, error) {
+	store.Store.RLock()
 	c := store.Store.ActiveCache
+	store.Store.RUnlock()
 	if c == nil {
 		return "", fmt.Errorf("no active Kubernetes context")
 	}
@@ -201,25 +200,6 @@ func HandleStopPortForward(w http.ResponseWriter, r *http.Request) {
 	portforward.Manager.StopForward(id)
 	w.WriteHeader(http.StatusOK)
 }
-
-// topologyCache holds a short-lived cached result per namespace key so that
-// rapid successive requests (e.g. the network panel re-mounting) don't trigger
-// a full store scan on every call.
-var topoCache struct {
-	sync.Mutex
-	entries map[string]topoCacheEntry
-}
-
-func init() {
-	topoCache.entries = make(map[string]topoCacheEntry)
-}
-
-type topoCacheEntry struct {
-	topo    *topology.Topology
-	builtAt time.Time
-}
-
-const topoCacheTTL = 5 * time.Second
 
 // contextCacheWrapper implements graph.ResourceCache for store.ContextCache.
 type contextCacheWrapper struct {

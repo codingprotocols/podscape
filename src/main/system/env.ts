@@ -97,7 +97,7 @@ export function getAugmentedEnv(extra: Record<string, string> = {}): Record<stri
             join(progFilesX86, 'IBM', 'Cloud', 'bin'),
             // OpenShift oc / Red Hat CRC — openshift-install and oc often placed here
             'C:\\OpenShift',
-            join(home, '.crc', 'bin', 'oc'),
+            join(home, '.crc', 'bin'),
             // VMware Tanzu CLI
             join(progFiles, 'tanzu-cli'),
             join(home, 'AppData', 'Local', 'tanzu-cli'),

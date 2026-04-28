@@ -11,7 +11,7 @@ import { registerHelmHandlers } from './ipc/helm'
 import { registerDialogHandlers } from './ipc/dialog'
 import { registerKrewHandlers } from './ipc/krew'
 import { startSidecar, stopSidecar } from './sidecar/sidecar'
-import { setupUpdater } from './system/updater'
+import { setupUpdater, notifyMainWindowReady } from './system/updater'
 import { setupMenu } from './menu'
 
 async function createSplashWindow(): Promise<BrowserWindow> {
@@ -71,6 +71,7 @@ function createWindow(onReady: () => void): void {
   mainWindow.on('ready-to-show', () => {
     mainWindow.maximize()
     mainWindow.show()
+    notifyMainWindowReady(mainWindow)
     onReady()
   })
 

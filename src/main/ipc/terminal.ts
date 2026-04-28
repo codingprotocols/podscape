@@ -21,11 +21,11 @@ export function registerTerminalHandlers(): void {
     'exec:start',
     (event, _context: string, namespace: string, pod: string, container: string) => {
       const id = `exec-${Date.now()}-${Math.floor(Math.random() * 10000)}`
-      
+
       const ws = new WebSocket(`ws://${SIDECAR_HOST}:${activeSidecarPort}/exec?namespace=${namespace}&pod=${pod}&container=${container}&command=sh`, {
         headers: { 'X-Podscape-Token': sidecarToken }
       })
-      
+
       activeStreams.set(id, ws)
       const sender = event.sender
 
@@ -44,7 +44,16 @@ export function registerTerminalHandlers(): void {
         if (!sender.isDestroyed()) sender.send('exec:exit', id)
       })
 
-      return id
+      // Wait for the WebSocket handshake to complete before returning the id.
+      // Callers (resize, initial write) must not send data until the connection
+      // is open — writes before OPEN are silently dropped by the ws library.
+      return new Promise<string>((resolve, reject) => {
+        ws.once('open', () => resolve(id))
+        ws.once('error', (err: Error) => {
+          activeStreams.delete(id)
+          reject(err)
+        })
+      })
     }
   )
 

@@ -1,3 +1,61 @@
+## [3.1.3] — 2026-04-27
+
+### Bug fixes
+
+#### Go sidecar
+
+- **NetworkPolicy `MatchExpressions` ignored in topology** (`graph/discoverers.go`) — `NetworkPolicyDiscoverer` only evaluated `MatchLabels` when deciding which pods a policy governs. Policies whose `podSelector` used `MatchExpressions` operators (`In`, `NotIn`, `Exists`, `DoesNotExist`) generated no edges in the network map, hiding the policy's scope entirely. Fixed by adding `matchLabelSelector` which evaluates both `MatchLabels` and all four `MatchExpressions` operators, replacing the `MatchLabels`-only call in the discoverer.
+
+- **`topoCache` initialised but never consulted** (`handlers/network.go`) — A `topoCache` struct with a 5-second TTL, its supporting `topoCacheEntry` type, `init()` initialiser, and `topoCacheTTL` constant were all present in the source but `HandleTopology` never read from or wrote to them. Every topology request rebuilt the full graph from scratch regardless. Removed the dead cache code and its unused `sync` and `time` imports.
+
+- **`getObjectMetadata` contained unreachable switch** (`graph/discoverers.go`) — After a successful `metav1.Object` type assertion (which succeeds for every k8s API type), the function fell through to a switch on concrete types that could never be reached. Simplified to the single type assertion. Removed the now-unused `appsv1` import.
+
+#### Main process
+
+- **Windows PATH augmentation added file path instead of directory** (`system/env.ts`) — The Red Hat CRC entry in the Windows PATH augmentation list was `join(home, '.crc', 'bin', 'oc')` — a path to the `oc` binary file — instead of the parent directory `join(home, '.crc', 'bin')`. Appending a file path to `PATH` is silently ignored by the OS, so the `oc` and `crc` binaries were never found when Podscape launched from the GUI. Fixed to reference the directory.
+
+- **Auto-updater flushed pending events to the splash window** (`system/updater.ts`, `index.ts`) — `setupUpdater` listened on the `browser-window-created` app event to detect when the renderer was ready. Because the splash window is created before the main window, `onWindowReady` ran against the splash `BrowserWindow` and immediately flushed any queued updater events (e.g. `updater:available`) to it. The splash window discards IPC messages, so no notification was lost, but the queue was cleared before the main window ever received the events. Fixed by removing the event listener and adding an explicit `notifyMainWindowReady(win)` export that `index.ts` calls from the main window's `ready-to-show` handler, guaranteeing events are flushed to the correct window.
+
+---
+
+## [3.1.2] — 2026-04-27
+
+### Bug fixes
+
+#### Go sidecar
+
+- **Data race in owner-chain index builder** (`ownerchain.go`) — `getReverseIndex` captured map references (`c.Pods`, `c.ReplicaSets`, etc.) under `c.RLock()`, released the lock, then iterated those maps. Because informers write to the same maps under `c.Lock()`, this was a concurrent map read+write. Fixed by snapshotting all map values into a flat slice while the lock is held, then iterating the safe copy.
+
+- **HPA cold-start fallback used wrong API version** (`resources.go`) — The direct-API fallback for HPAs called `AutoscalingV1().HorizontalPodAutoscalers()` while the informer uses `AutoscalingV2()`. On cold start, the UI received v1 HPA objects which lack `spec.metrics`, `status.conditions`, and `status.currentMetrics`. Fixed to use `AutoscalingV2()` consistently.
+
+- **CronJob trigger produced invalid DNS name** (`operations.go`) — Triggered job names were truncated to 63 characters but trailing `-` characters were not stripped. A CronJob name of exactly 55 characters produced a job name ending with `-`, which the API server rejects as an invalid DNS label. Fixed to strip trailing `-`, `_`, and `.` after truncation.
+
+- **`HandleApplyYAML` returned 503 instead of 400 for invalid YAML** (`operations.go`) — The multi-document YAML refactor moved the body split and parse validation to after the active context check. An invalid YAML payload sent when no cluster was connected returned 503 (Service Unavailable) instead of 400 (Bad Request). Fixed by moving the doc split and per-doc parse validation to before the `ActiveClientset()` check so malformed payloads always return 400 regardless of cluster state.
+
+- **Data race in TLS cert handler** (`tls.go`) — `HandleTLSCerts` read `store.Store.ActiveCache` without holding the store read lock, the same data race pattern as the network handler. Fixed with `store.Store.RLock/RUnlock()` around the pointer read.
+
+- **Data race in network connectivity handler** (`network.go`) — `resolveServiceToPod` read `store.Store.ActiveCache` without holding the store read lock during a concurrent context switch. Fixed with `store.Store.RLock/RUnlock()` around the pointer read.
+
+- **AppProject invisible when namespace filter active** (`gitops.go`) — `HandleGitOps` passed the selected namespace to `dynClient.Resource(gvr).Namespace(ns).List()` for all resources, including `AppProject` which is cluster-scoped. The API server rejects namespace-scoped list calls for cluster-scoped resources; the error was silently swallowed, making all AppProjects disappear whenever any namespace was selected. Fixed with a `clusterScopedGitOpsResources` guard that forces cluster-scope listing regardless of the namespace filter.
+
+- **Helm repo `GetValues` bypassed lazy index loading** (`helm/repo.go`) — `GetValues` read directly from the in-memory `m.indices` map instead of using `getIndex()`, which handles lazy disk loading. A repo that existed on disk but had not been loaded into memory (e.g. after a sidecar restart) returned "repository not found". Fixed to use `getIndex()` consistently with `GetVersions` and `Search`.
+
+- **NetworkPolicy catch-all not drawn in topology** (`graph/discoverers.go`) — A NetworkPolicy with `podSelector: {}` (empty) selects all pods in the namespace per Kubernetes semantics. `NetworkPolicyDiscoverer` passed the empty `MatchLabels` map to `matchSelector`, which returns `false` for empty selectors. Catch-all NetworkPolicies therefore generated no edges. Fixed by detecting an empty `PodSelector` (both `MatchLabels` and `MatchExpressions` absent) before calling `matchSelector` and treating it as a universal match.
+
+- **Redundant double close of HTTP response body** (`costalloc.go`) — `QueryAllocation` had `defer resp.Body.Close()` at the top of the function and an additional explicit `resp.Body.Close()` in the HTML content-type early-return path. The defer already closes the body on all return paths. Removed the redundant close.
+
+#### Renderer store
+
+- **Infinite loading spinner when cluster has no accessible namespaces** (`clusterSlice.ts`) — `selectContext` set `loadingResources: true` at the start of the context switch but the final `set()` call that clears it was missing `loadingResources: false`. When a cluster returned zero namespaces, `loadSection` was never called and `loadingResources` stayed `true` indefinitely. Fixed by explicitly resetting `loadingResources` in the final state update.
+
+- **Stale security scan results written to wrong context** (`analysisSlice.ts`) — `scanSecurity` (trivy + kubesec) runs for several minutes and had no stale-context guard. If the user switched context while a scan was in-flight, results from the old cluster overwrote the new context's state. Fixed by snapshotting `selectedContext` at scan start and discarding results if the context changed before they are committed.
+
+#### Tests
+
+- **`operationSlice` tests crashed after port-forward fix** (`test-utils.ts`) — The `portForward` mock returned `undefined`, but the port-forward error-handling code added `.catch()` to the result, causing `TypeError: Cannot read properties of undefined (reading 'catch')`. Fixed by changing the mock to `vi.fn().mockResolvedValue(undefined)`.
+
+---
+
 ## [3.1.1] — 2026-04-23
 
 ### Fixes

@@ -65,7 +65,8 @@ export interface ResourceSlice {
     preloadSearchResources: () => Promise<void>
     lastPreloadedAt: number
     lastDashboardLoadedAt: number
-    navigateToResource: (kind: string, name: string, namespace: string) => void
+    sectionLoadedAt: Partial<Record<string, number>>
+    navigateToResource: (kind: string, name: string, namespace: string) => Promise<void>
 }
 
 export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
@@ -106,6 +107,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     securityScanResults: null,
     lastPreloadedAt: 0,
     lastDashboardLoadedAt: 0,
+    sectionLoadedAt: {},
     selectedResource: null,
     loadingResources: false,
     error: null,
@@ -147,6 +149,14 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
 
         const nsArg = ns === '_all' ? null : ns
 
+        // Section-level TTL cache — 30 s, keyed by section + namespace so that
+        // switching namespace always bypasses the cache and fetches fresh data.
+        // The cache is cleared on context switch (via sectionClearState) and on
+        // explicit refresh() calls.
+        const SECTION_TTL = 30_000
+        const cacheKey = `${section}:${nsArg ?? '_all'}`
+        if (Date.now() - (get().sectionLoadedAt[cacheKey] ?? 0) < SECTION_TTL) return
+
         // Panel sections with multi-resource custom loading
         if (section === 'metrics') {
             set({ loadingResources: true })
@@ -167,6 +177,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     hpas: (Array.isArray(hpas) ? hpas : []) as KubeHPA[],
                     loadingResources: false,
                     metricsError: null,
+                    sectionLoadedAt: { ...get().sectionLoadedAt, [cacheKey]: Date.now() },
                 })
             } catch (err) {
                 if (get().selectedContext === snapshotCtx) set({
@@ -196,7 +207,8 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     pods: pds as KubePod[],
                     namespaces: nss,
                     networkpolicies: nps as KubeNetworkPolicy[],
-                    loadingResources: false
+                    loadingResources: false,
+                    sectionLoadedAt: { ...get().sectionLoadedAt, [cacheKey]: Date.now() },
                 })
             } catch { if (get().selectedContext === snapshotCtx) set({ loadingResources: false }) }
             return
@@ -221,7 +233,8 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     statefulsets: stss as KubeStatefulSet[],
                     jobs: js as KubeJob[],
                     cronjobs: cjs as KubeCronJob[],
-                    loadingResources: false
+                    loadingResources: false,
+                    sectionLoadedAt: { ...get().sectionLoadedAt, [cacheKey]: Date.now() },
                 })
             } catch { if (get().selectedContext === snapshotCtx) set({ loadingResources: false }) }
             return
@@ -244,7 +257,11 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             const data = await config.fetch(ctx, fetchNs)
             // Discard results if the context switched while we were fetching.
             if (get().selectedContext !== snapshotCtx) return
-            set({ [config.stateKey]: Array.isArray(data) ? data : [], loadingResources: false } as Partial<AppStore>)
+            set({
+                [config.stateKey]: Array.isArray(data) ? data : [],
+                loadingResources: false,
+                sectionLoadedAt: { ...get().sectionLoadedAt, [cacheKey]: Date.now() },
+            } as Partial<AppStore>)
         } catch (err) {
             if (get().selectedContext !== snapshotCtx) return
             // Sidecar signals RBAC denial via RBACDeniedError (thrown by the main process IPC handler).
@@ -279,12 +296,17 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             required: boolean
         }
         const fetches: DashboardFetch[] = [
-            { key: 'nodes',       fetch: () => window.kubectl.getNodes(ctx),             required: true },
-            { key: 'nodeMetrics', fetch: () => window.kubectl.getNodeMetrics(ctx),        required: false },
-            { key: 'namespaces',  fetch: () => window.kubectl.getNamespaces(ctx),         required: true },
-            { key: 'events',      fetch: () => window.kubectl.getEvents(ctx, null),       retry: ns ? () => window.kubectl.getEvents(ctx, ns)      : undefined, required: false },
-            { key: 'pods',        fetch: () => window.kubectl.getPods(ctx, null),         retry: ns ? () => window.kubectl.getPods(ctx, ns)        : undefined, required: false },
-            { key: 'deployments', fetch: () => window.kubectl.getDeployments(ctx, null),  retry: ns ? () => window.kubectl.getDeployments(ctx, ns) : undefined, required: false },
+            { key: 'nodes',            fetch: () => window.kubectl.getNodes(ctx),                  required: true },
+            { key: 'nodeMetrics',      fetch: () => window.kubectl.getNodeMetrics(ctx),             required: false },
+            { key: 'namespaces',       fetch: () => window.kubectl.getNamespaces(ctx),              required: true },
+            { key: 'events',           fetch: () => window.kubectl.getEvents(ctx, null),            retry: ns ? () => window.kubectl.getEvents(ctx, ns)           : undefined, required: false },
+            { key: 'pods',             fetch: () => window.kubectl.getPods(ctx, null),              retry: ns ? () => window.kubectl.getPods(ctx, ns)             : undefined, required: false },
+            { key: 'deployments',      fetch: () => window.kubectl.getDeployments(ctx, null),       retry: ns ? () => window.kubectl.getDeployments(ctx, ns)      : undefined, required: false },
+            { key: 'statefulsets',     fetch: () => window.kubectl.getStatefulSets(ctx, null),      retry: ns ? () => window.kubectl.getStatefulSets(ctx, ns)     : undefined, required: false },
+            { key: 'daemonsets',       fetch: () => window.kubectl.getDaemonSets(ctx, null),        retry: ns ? () => window.kubectl.getDaemonSets(ctx, ns)       : undefined, required: false },
+            { key: 'services',         fetch: () => window.kubectl.getServices(ctx, null),          retry: ns ? () => window.kubectl.getServices(ctx, ns)         : undefined, required: false },
+            { key: 'configmaps',       fetch: () => window.kubectl.getConfigMaps(ctx, null),        retry: ns ? () => window.kubectl.getConfigMaps(ctx, ns)       : undefined, required: false },
+            { key: 'hpas',             fetch: () => window.kubectl.getHPAs(ctx, null),              retry: ns ? () => window.kubectl.getHPAs(ctx, ns)             : undefined, required: false },
         ]
 
         const results = await Promise.allSettled(fetches.map(f => f.fetch()))
@@ -351,7 +373,9 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     },
 
     refresh: () => {
-        set({ lastDashboardLoadedAt: 0 })
+        // Clear the TTL cache for the current section and the dashboard so the
+        // next loadSection call always fetches fresh data from the sidecar.
+        set({ lastDashboardLoadedAt: 0, sectionLoadedAt: {} })
         return get().loadSection(get().section)
     },
 
@@ -373,6 +397,8 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             window.kubectl.getConfigMaps(ctx, null),
             window.kubectl.getSecrets(ctx, null),
         ])
+        // Discard results if the context switched while fetches were in-flight.
+        if (get().selectedContext !== ctx) return
         const updates: Record<string, any[]> = {}
         results.forEach((r, i) => {
             if (r.status === 'fulfilled') {
@@ -387,10 +413,13 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     navigateToResource: async (kind, name, namespace) => {
         const section = kindToSection[kind]
         if (!section) return
+        const snapshotCtx = get().selectedContext
         // Update nav state directly (setSection also calls loadSection without await)
         set({ section, selectedResource: null })
         // Wait for resources to load before searching
         await get().loadSection(section)
+        // Discard if the context switched while we were loading.
+        if (get().selectedContext !== snapshotCtx) return
         const stateKey = SECTION_CONFIG[section]?.stateKey
         if (!stateKey) return
         const resources: AnyKubeResource[] = (get() as Record<string, AnyKubeResource[]>)[stateKey] ?? []

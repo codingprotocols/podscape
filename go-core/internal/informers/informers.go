@@ -44,6 +44,7 @@ func InitInformers(c *store.ContextCache, stopCh <-chan struct{}) {
 	go func() {
 		registerBackgroundInformers(factory, c, stopCh)
 		factory.Start(stopCh) // no-op for already-started informers; starts new ones
+		factory.WaitForCacheSync(stopCh) // block until background informers complete their initial LIST
 		c.Lock()
 		c.HasData = true
 		c.Unlock()
@@ -77,6 +78,7 @@ func SyncInformers(c *store.ContextCache, stopCh <-chan struct{}, timeout time.D
 	go func() {
 		registerBackgroundInformers(factory, c, stopCh)
 		factory.Start(stopCh)
+		factory.WaitForCacheSync(stopCh) // block until background informers complete their initial LIST
 		c.Lock()
 		c.HasData = true
 		c.Unlock()

@@ -297,6 +297,19 @@ func HandleGetYAML(w http.ResponseWriter, r *http.Request) {
 	w.Write(y)
 }
 
+// splitYAMLDocs splits a YAML byte slice on document separators ("---") and
+// returns only non-empty documents.
+func splitYAMLDocs(data []byte) [][]byte {
+	var docs [][]byte
+	for _, part := range strings.Split(string(data), "\n---") {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" && trimmed != "---" {
+			docs = append(docs, []byte(trimmed))
+		}
+	}
+	return docs
+}
+
 func HandleApplyYAML(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -310,11 +323,19 @@ func HandleApplyYAML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Decode YAML to Unstructured
-	obj := &unstructured.Unstructured{}
-	if err := yaml.Unmarshal(body, obj); err != nil {
-		http.Error(w, "Invalid YAML: "+err.Error(), http.StatusBadRequest)
+	// Validate and split the YAML body before touching the cluster — this
+	// preserves the 400 Bad Request response for invalid/empty payloads even
+	// when no cluster is connected (which would otherwise return 503 first).
+	docs := splitYAMLDocs(body)
+	if len(docs) == 0 {
+		http.Error(w, "empty YAML body", http.StatusBadRequest)
 		return
+	}
+	for _, doc := range docs {
+		if unmarshalErr := yaml.Unmarshal(doc, &unstructured.Unstructured{}); unmarshalErr != nil {
+			http.Error(w, "invalid YAML: "+unmarshalErr.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 
 	_, cfg := store.Store.ActiveClientset()
@@ -323,7 +344,6 @@ func HandleApplyYAML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Setup dynamic and discovery clients
 	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -335,62 +355,71 @@ func HandleApplyYAML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Find GVR
 	gr, err := restmapper.GetAPIGroupResources(dc)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	mapper := restmapper.NewDiscoveryRESTMapper(gr)
-	gvk := obj.GroupVersionKind()
-	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
 
-	// 4. Apply using Server-Side Apply
-	// Strip server-managed fields: managedFields is rejected outright; status is
-	// owned by the controller and ignored by the API server anyway — excluding it
-	// keeps field ownership clean and reduces payload size.
-	obj.SetManagedFields(nil)
-	delete(obj.Object, "status")
-	if metadata, ok := obj.Object["metadata"].(map[string]any); ok {
-		delete(metadata, "uid")
-		delete(metadata, "resourceVersion")
-		delete(metadata, "creationTimestamp")
-		delete(metadata, "generation")
-	}
-	patchBytes, err := json.Marshal(obj.Object)
-	if err != nil {
-		http.Error(w, "failed to marshal manifest: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	namespace := obj.GetNamespace()
-	name := obj.GetName()
-
-	var resource dynamic.ResourceInterface
-	if mapping.Scope.Name() == "namespace" {
-		resource = dyn.Resource(mapping.Resource).Namespace(namespace)
-	} else {
-		resource = dyn.Resource(mapping.Resource)
-	}
-
-	force := true
-	_, err = resource.Patch(r.Context(), name, types.ApplyPatchType, patchBytes, metav1.PatchOptions{
-		FieldManager: "podscape-sidecar",
-		Force:        &force,
-	})
-
-	if err != nil {
-		msg := err.Error()
-		if strings.Contains(msg, "pod updates may not change fields") {
-			http.Error(w, "Apply failed: Pod spec fields are immutable after creation. "+
-				"To change this setting, edit the parent Deployment or StatefulSet instead of the Pod directly.", http.StatusUnprocessableEntity)
-		} else {
-			http.Error(w, "Apply failed: "+msg, http.StatusInternalServerError)
+	var applyErrs []string
+	for _, doc := range docs {
+		obj := &unstructured.Unstructured{}
+		if unmarshalErr := yaml.Unmarshal(doc, obj); unmarshalErr != nil {
+			applyErrs = append(applyErrs, "invalid YAML: "+unmarshalErr.Error())
+			continue
 		}
+		gvk := obj.GroupVersionKind()
+		if gvk.Kind == "" {
+			applyErrs = append(applyErrs, "document has no 'kind' field")
+			continue
+		}
+		mapping, mapErr := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+		if mapErr != nil {
+			applyErrs = append(applyErrs, mapErr.Error())
+			continue
+		}
+
+		// Strip server-managed fields before applying.
+		obj.SetManagedFields(nil)
+		delete(obj.Object, "status")
+		if metadata, ok := obj.Object["metadata"].(map[string]any); ok {
+			delete(metadata, "uid")
+			delete(metadata, "resourceVersion")
+			delete(metadata, "creationTimestamp")
+			delete(metadata, "generation")
+		}
+		patchBytes, marshalErr := json.Marshal(obj.Object)
+		if marshalErr != nil {
+			applyErrs = append(applyErrs, "failed to marshal manifest: "+marshalErr.Error())
+			continue
+		}
+
+		namespace := obj.GetNamespace()
+		name := obj.GetName()
+		var resource dynamic.ResourceInterface
+		if mapping.Scope.Name() == "namespace" {
+			resource = dyn.Resource(mapping.Resource).Namespace(namespace)
+		} else {
+			resource = dyn.Resource(mapping.Resource)
+		}
+
+		force := true
+		_, patchErr := resource.Patch(r.Context(), name, types.ApplyPatchType, patchBytes, metav1.PatchOptions{
+			FieldManager: "podscape-sidecar",
+			Force:        &force,
+		})
+		if patchErr != nil {
+			msg := patchErr.Error()
+			if strings.Contains(msg, "pod updates may not change fields") {
+				msg = "Pod spec fields are immutable after creation. Edit the parent Deployment or StatefulSet instead."
+			}
+			applyErrs = append(applyErrs, msg)
+		}
+	}
+
+	if len(applyErrs) > 0 {
+		http.Error(w, "Apply failed: "+strings.Join(applyErrs, "; "), http.StatusInternalServerError)
 		return
 	}
 
@@ -519,11 +548,21 @@ func HandleCPFrom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Pre-flight check: verify the file is accessible before committing to a
+	// 200 response. Without this, a missing or unreadable file causes us to
+	// send 200 with an empty body — the Node client sees a zero-byte file
+	// with no error.
+	checkBuf := &captureWriter{}
+	checkErr := exec.Exec(r.Context(), cs, cfg, namespace, pod, container,
+		[]string{"test", "-f", srcPath}, nil, nil, checkBuf, false)
+	if checkErr != nil {
+		http.Error(w, fmt.Sprintf("file not found or not readable in container: %s", srcPath), http.StatusNotFound)
+		return
+	}
+
 	// Stream raw bytes directly from the container to the HTTP response.
-	// Headers must be set before exec starts — once bytes begin flowing we
-	// can no longer change the status code, but that is acceptable: any
-	// mid-stream error will close the connection and the Node client will
-	// surface it as a network error.
+	// Headers are committed here — any mid-stream error closes the connection
+	// and the Node client surfaces it as a network error.
 	w.Header().Set("Content-Type", "application/octet-stream")
 	stderrBuf := &captureWriter{}
 	if err := exec.Exec(r.Context(), cs, cfg, namespace, pod, container,
@@ -564,9 +603,14 @@ func HandleCPTo(w http.ResponseWriter, r *http.Request) {
 	defer f.Close()
 
 	// Pipe raw bytes directly using "cat >" — no tar dependency required in the container.
-	// mkdir -p ensures the parent directory exists; single-quoted paths guard against spaces.
+	// mkdir -p ensures the parent directory exists. shellQuote wraps each path component
+	// in single quotes and escapes any embedded single quotes so paths like "user's dir"
+	// or adversarial inputs cannot break out of the shell quoting context.
+	shellQuote := func(s string) string {
+		return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	}
 	destDir := path.Dir(destPath)
-	command := []string{"sh", "-c", fmt.Sprintf("mkdir -p '%s' && cat > '%s'", destDir, destPath)}
+	command := []string{"sh", "-c", fmt.Sprintf("mkdir -p %s && cat > %s", shellQuote(destDir), shellQuote(destPath))}
 	outBuf := &captureWriter{}
 	if err := exec.Exec(r.Context(), cs, cfg, namespace, pod, container, command, f, outBuf, outBuf, false); err != nil {
 		http.Error(w, "CP TO failed: "+err.Error(), http.StatusInternalServerError)
@@ -1013,8 +1057,11 @@ func HandleTriggerCronJob(w http.ResponseWriter, r *http.Request) {
 	trueVal := true
 	jobName := fmt.Sprintf("%s-manual-%d", name, time.Now().Unix())
 	// Truncate so the total stays within the 63-char DNS label limit.
+	// After truncating, strip any trailing non-alphanumeric characters so the
+	// name satisfies the Kubernetes DNS label rule (must end with [a-z0-9]).
 	if len(jobName) > 63 {
 		jobName = jobName[:63]
+		jobName = strings.TrimRight(jobName, "-._")
 	}
 
 	job := &batchv1.Job{

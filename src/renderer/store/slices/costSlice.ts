@@ -47,15 +47,18 @@ export const createCostSlice: StoreSlice<CostSlice> = (set, get) => ({
     },
 
     loadCostAllocations: async (timeWindow: string, aggregate: string, namespace?: string) => {
+        const ctx = get().selectedContext ?? ''
         set({ costLoading: true, costError: null })
         try {
-            const ctx = get().selectedContext ?? ''
             const s = await window.settings.get()
             const url = s.costUrls?.[ctx] || undefined
             const provider = get().costProvider || 'kubecost'
             const items = await window.kubectl.costAllocation(url, provider, timeWindow, aggregate, namespace) as AllocationItem[]
+            // Discard results if the context switched while the fetch was in-flight.
+            if (get().selectedContext !== ctx) return
             set({ costAllocations: items, costLoading: false })
         } catch (err) {
+            if (get().selectedContext !== ctx) return
             set({ costError: (err as Error).message, costLoading: false })
         }
     },

@@ -55,6 +55,9 @@ export const createAnalysisSlice: StoreSlice<AnalysisSlice> = (set, get) => ({
     clearScanResults: () => set((state) => ({ ...state, scanResults: {} })),
 
     scanSecurity: async (options?: CustomScanOptions, background = false) => {
+        // Snapshot the context at scan start. Trivy + kubesec can take several
+        // minutes; discard results if the user switched context mid-scan.
+        const scanCtx = get().selectedContext
         set({ securityScanning: true, scanInBackground: background, error: null, securityScanProgressLines: [] })
 
         // Synthetic milestone helper — prefixed with '› ' so the UI can style them distinctly.
@@ -169,6 +172,9 @@ export const createAnalysisSlice: StoreSlice<AnalysisSlice> = (set, get) => ({
             stateUpdate.kubesecBatchResults = kubesecBatchResults
             stateUpdate.error = error
 
+            // Discard if the user switched context while the scan was running.
+            if (get().selectedContext !== scanCtx) return
+
             milestone('Processing results...')
             stateUpdate.scanInBackground = false
             set(stateUpdate)
@@ -192,7 +198,7 @@ export const createAnalysisSlice: StoreSlice<AnalysisSlice> = (set, get) => ({
         } finally {
             unsubProgress()
             activeProgressUnsub = null
-            set({ securityScanning: false })
+            set({ securityScanning: false, scanInBackground: false })
         }
     },
 })

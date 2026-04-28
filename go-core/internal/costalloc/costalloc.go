@@ -116,7 +116,6 @@ func QueryAllocation(baseURL, provider, window, aggregate, namespace string) ([]
 	// Reject HTML responses early — a proxy or misconfigured port-forward can
 	// return 200 OK with an HTML page, producing a confusing JSON parse error.
 	if strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
-		_ = resp.Body.Close()
 		return nil, fmt.Errorf("cost API returned HTML instead of JSON — check that the port-forward targets the correct service and port")
 	}
 

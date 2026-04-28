@@ -42,10 +42,9 @@ function emitAutoUpdater(event: string, ...args: any[]) {
   autoUpdaterListeners[event]?.forEach((h) => h(...args))
 }
 
-function triggerWindowReady() {
-  ;(appHandlers['browser-window-created'] ?? []).forEach((h) => h(null, mockWin))
-  const lastCall = webContentsOnce.mock.calls.at(-1)
-  if (lastCall) lastCall[1]()
+async function triggerWindowReady() {
+  const { notifyMainWindowReady } = await import('./updater')
+  notifyMainWindowReady(mockWin as any)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -96,7 +95,7 @@ describe('setupUpdater', () => {
     emitAutoUpdater('update-available', { version: '4.0.0' })
     expect(webContentsSend).not.toHaveBeenCalled()
 
-    triggerWindowReady()
+    await triggerWindowReady()
     expect(webContentsSend).toHaveBeenCalledWith('updater:available', { version: '4.0.0' })
   })
 
@@ -104,7 +103,7 @@ describe('setupUpdater', () => {
     const { setupUpdater } = await import('./updater')
     setupUpdater()
 
-    triggerWindowReady()
+    await triggerWindowReady()
     emitAutoUpdater('update-available', { version: '5.0.0' })
     expect(webContentsSend).toHaveBeenCalledWith('updater:available', { version: '5.0.0' })
   })
@@ -115,7 +114,7 @@ describe('setupUpdater', () => {
 
     emitAutoUpdater('update-available', { version: '4.0.0' })
     emitAutoUpdater('download-progress', { percent: 50 })
-    triggerWindowReady()
+    await triggerWindowReady()
 
     expect(webContentsSend.mock.calls[0]).toEqual(['updater:available', { version: '4.0.0' }])
     expect(webContentsSend.mock.calls[1]).toEqual(['updater:progress', { percent: 50 }])

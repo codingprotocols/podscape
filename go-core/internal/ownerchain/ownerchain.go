@@ -44,6 +44,7 @@ type k8sObjectMeta struct {
 var (
 	reverseIdx      map[string][]OwnerRef
 	reverseIdxBuilt time.Time
+	reverseIdxCache *store.ContextCache // which cache the index was built from
 	reverseIdxMu    sync.RWMutex
 )
 
@@ -51,7 +52,7 @@ var (
 // Rebuilt at most once every 30s.
 func getReverseIndex(c *store.ContextCache) map[string][]OwnerRef {
 	reverseIdxMu.RLock()
-	if time.Since(reverseIdxBuilt) < 30*time.Second {
+	if reverseIdxCache == c && time.Since(reverseIdxBuilt) < 30*time.Second {
 		idx := reverseIdx
 		reverseIdxMu.RUnlock()
 		return idx
@@ -61,54 +62,62 @@ func getReverseIndex(c *store.ContextCache) map[string][]OwnerRef {
 	reverseIdxMu.Lock()
 	defer reverseIdxMu.Unlock()
 	// Double-check after acquiring write lock
-	if time.Since(reverseIdxBuilt) < 30*time.Second {
+	if reverseIdxCache == c && time.Since(reverseIdxBuilt) < 30*time.Second {
 		return reverseIdx
 	}
 
 	idx := make(map[string][]OwnerRef)
 
-	type mapWithKind struct {
-		m    map[string]interface{}
+	type itemWithKind struct {
+		v    interface{}
 		kind string
 	}
 
+	// Snapshot all resource values under the read lock so we can iterate
+	// safely after releasing it. Holding the lock for the full iteration
+	// would block informer writes; a value-level snapshot avoids that
+	// without introducing a data race.
 	c.RLock()
-	maps := []mapWithKind{
-		{c.Pods, "Pod"},
-		{c.ReplicaSets, "ReplicaSet"},
-		{c.Deployments, "Deployment"},
-		{c.DaemonSets, "DaemonSet"},
-		{c.StatefulSets, "StatefulSet"},
-		{c.Jobs, "Job"},
-		{c.CronJobs, "CronJob"},
+	var items []itemWithKind
+	for kind, m := range map[string]map[string]interface{}{
+		"Pod":         c.Pods,
+		"ReplicaSet":  c.ReplicaSets,
+		"Deployment":  c.Deployments,
+		"DaemonSet":   c.DaemonSets,
+		"StatefulSet": c.StatefulSets,
+		"Job":         c.Jobs,
+		"CronJob":     c.CronJobs,
+	} {
+		for _, v := range m {
+			items = append(items, itemWithKind{v: v, kind: kind})
+		}
 	}
 	c.RUnlock()
 
-	for _, entry := range maps {
-		for _, v := range entry.m {
-			raw, err := json.Marshal(v)
-			if err != nil {
-				continue
+	for _, entry := range items {
+		raw, err := json.Marshal(entry.v)
+		if err != nil {
+			continue
+		}
+		var obj k8sObjectMeta
+		if err := json.Unmarshal(raw, &obj); err != nil {
+			continue
+		}
+		for _, owner := range obj.Metadata.OwnerReferences {
+			child := OwnerRef{
+				Kind:      entry.kind,
+				Name:      obj.Metadata.Name,
+				Namespace: obj.Metadata.Namespace,
+				UID:       obj.Metadata.UID,
+				Found:     true,
 			}
-			var obj k8sObjectMeta
-			if err := json.Unmarshal(raw, &obj); err != nil {
-				continue
-			}
-			for _, owner := range obj.Metadata.OwnerReferences {
-				child := OwnerRef{
-					Kind:      entry.kind,
-					Name:      obj.Metadata.Name,
-					Namespace: obj.Metadata.Namespace,
-					UID:       obj.Metadata.UID,
-					Found:     true,
-				}
-				idx[owner.UID] = append(idx[owner.UID], child)
-			}
+			idx[owner.UID] = append(idx[owner.UID], child)
 		}
 	}
 
 	reverseIdx = idx
 	reverseIdxBuilt = time.Now()
+	reverseIdxCache = c
 	return idx
 }
 
