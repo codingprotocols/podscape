@@ -40,7 +40,7 @@ Built-in rules (`src/renderer/utils/scanner/bestPracticeRules.ts`):
 - **Engine**: [Aqua Security Trivy](https://github.com/aquasecurity/trivy) — invoked via `os/exec` from the sidecar.
 - **Endpoint**: `POST /security/trivy/images` (SSE stream)
 - **Deduplication**: Images are deduplicated cluster-wide before scanning — each unique tag is scanned only once regardless of how many pods use it.
-- **SSE Streaming**: Scan progress (`progress` events) and the final report (`result` event) are streamed in real-time. The sidecar compacts Trivy's pretty-printed JSON with `json.Compact` before transmission to prevent SSE newline-splitting.
+- **SSE Streaming**: Scan progress (`progress` events) and the final report (`result` event) are streamed in real-time. The sidecar compacts Trivy's pretty-printed JSON with `json.Compact` before transmission so the JSON is sent as a single-line SSE payload and does not interfere with SSE message boundaries.
 
 ---
 
