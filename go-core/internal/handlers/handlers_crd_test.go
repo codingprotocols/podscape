@@ -213,7 +213,7 @@ func TestMakeHandler_DeniedResource_ReturnsEmptyArrayWithHeader(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/pods", nil)
 	rr := httptest.NewRecorder()
-	HandlePods(rr, req)
+	HandlerForResource("pods")(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
@@ -236,13 +236,13 @@ func TestMakeHandler_AllowedResource_ReturnsData(t *testing.T) {
 	ac.AllowedResources = map[string]bool{
 		"pods":        true,
 		"deployments": true,
-		// others intentionally absent — only "pods" is checked by HandlePods
+		// others intentionally absent — only "pods" is checked
 	}
 	setActiveCache(t, ac)
 
 	req := httptest.NewRequest(http.MethodGet, "/pods", nil)
 	rr := httptest.NewRecorder()
-	HandlePods(rr, req)
+	HandlerForResource("pods")(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
@@ -261,7 +261,7 @@ func TestMakeHandler_NilAllowedResources_Permissive(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/pods", nil)
 	rr := httptest.NewRecorder()
-	HandlePods(rr, req)
+	HandlerForResource("pods")(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)

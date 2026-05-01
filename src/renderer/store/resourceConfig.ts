@@ -1,46 +1,342 @@
 import { ResourceKind } from '../types'
+import {
+    KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet, KubeReplicaSet,
+    KubeJob, KubeCronJob, KubeHPA, KubePDB, KubeService, KubeIngress,
+    KubeIngressClass, KubeNetworkPolicy, KubeEndpoints, KubeConfigMap,
+    KubeSecret, KubePVC, KubePV, KubeStorageClass, KubeServiceAccount,
+    KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
+    KubeNode, KubeNamespace, KubeCRD,
+} from '../types/k8s'
 import { CustomScanOptions } from './types'
 
 // ── Section config ────────────────────────────────────────────────────────────
-// Single source of truth mapping each resource section to its state key and
-// fetch function. Both loadSection and the clear-on-context-switch derive from
-// this map, so they can never fall out of sync.
+// Single source of truth mapping each resource section to its state key,
+// fetch function, and search fields. loadSection, clear-on-context-switch,
+// and ResourceList filtering all derive from this map.
 
 export type SectionConfig = {
     stateKey: string
     fetch: (ctx: string, ns: string | null) => Promise<any[]>
     namespaced: boolean  // false = cluster-scoped; namespace arg is ignored
+    // Returns all strings worth indexing for search. Falls back to name-only
+    // if omitted (should not happen — all sections below define this).
+    searchFields: (r: any) => (string | null | undefined)[]
+}
+
+function labelsToStrings(labels?: Record<string, string>): string[] {
+    if (!labels) return []
+    return Object.entries(labels).map(([k, v]) => `${k}=${v}`)
 }
 
 export const SECTION_CONFIG: Partial<Record<ResourceKind, SectionConfig>> = {
-    pods:                { stateKey: 'pods',                fetch: (c, ns) => window.kubectl.getPods(c, ns),                  namespaced: true },
-    deployments:         { stateKey: 'deployments',         fetch: (c, ns) => window.kubectl.getDeployments(c, ns),            namespaced: true },
-    daemonsets:          { stateKey: 'daemonsets',          fetch: (c, ns) => window.kubectl.getDaemonSets(c, ns),             namespaced: true },
-    statefulsets:        { stateKey: 'statefulsets',        fetch: (c, ns) => window.kubectl.getStatefulSets(c, ns),           namespaced: true },
-    replicasets:         { stateKey: 'replicasets',         fetch: (c, ns) => window.kubectl.getReplicaSets(c, ns),            namespaced: true },
-    jobs:                { stateKey: 'jobs',                fetch: (c, ns) => window.kubectl.getJobs(c, ns),                   namespaced: true },
-    cronjobs:            { stateKey: 'cronjobs',            fetch: (c, ns) => window.kubectl.getCronJobs(c, ns),               namespaced: true },
-    hpas:                { stateKey: 'hpas',                fetch: (c, ns) => window.kubectl.getHPAs(c, ns),                   namespaced: true },
-    pdbs:                { stateKey: 'pdbs',                fetch: (c, ns) => window.kubectl.getPodDisruptionBudgets(c, ns),   namespaced: true },
-    services:            { stateKey: 'services',            fetch: (c, ns) => window.kubectl.getServices(c, ns),               namespaced: true },
-    ingresses:           { stateKey: 'ingresses',           fetch: (c, ns) => window.kubectl.getIngresses(c, ns),              namespaced: true },
-    networkpolicies:     { stateKey: 'networkpolicies',     fetch: (c, ns) => window.kubectl.getNetworkPolicies(c, ns),        namespaced: true },
-    endpoints:           { stateKey: 'endpoints',           fetch: (c, ns) => window.kubectl.getEndpoints(c, ns),              namespaced: true },
-    configmaps:          { stateKey: 'configmaps',          fetch: (c, ns) => window.kubectl.getConfigMaps(c, ns),             namespaced: true },
-    secrets:             { stateKey: 'secrets',             fetch: (c, ns) => window.kubectl.getSecrets(c, ns),                namespaced: true },
-    pvcs:                { stateKey: 'pvcs',                fetch: (c, ns) => window.kubectl.getPVCs(c, ns),                   namespaced: true },
-    serviceaccounts:     { stateKey: 'serviceaccounts',     fetch: (c, ns) => window.kubectl.getServiceAccounts(c, ns),        namespaced: true },
-    roles:               { stateKey: 'roles',               fetch: (c, ns) => window.kubectl.getRoles(c, ns),                  namespaced: true },
-    rolebindings:        { stateKey: 'rolebindings',        fetch: (c, ns) => window.kubectl.getRoleBindings(c, ns),           namespaced: true },
-    events:              { stateKey: 'events',              fetch: (c, ns) => window.kubectl.getEvents(c, ns),                 namespaced: true },
-    nodes:               { stateKey: 'nodes',               fetch: (c, _)  => window.kubectl.getNodes(c),                     namespaced: false },
-    namespaces:          { stateKey: 'namespaces',          fetch: (c, _)  => window.kubectl.getNamespaces(c),                 namespaced: false },
-    crds:                { stateKey: 'crds',                fetch: (c, _)  => window.kubectl.getCRDs(c),                       namespaced: false },
-    ingressclasses:      { stateKey: 'ingressclasses',      fetch: (c, _)  => window.kubectl.getIngressClasses(c),             namespaced: false },
-    pvs:                 { stateKey: 'pvs',                 fetch: (c, _)  => window.kubectl.getPVs(c),                        namespaced: false },
-    storageclasses:      { stateKey: 'storageclasses',      fetch: (c, _)  => window.kubectl.getStorageClasses(c),             namespaced: false },
-    clusterroles:        { stateKey: 'clusterroles',        fetch: (c, _)  => window.kubectl.getClusterRoles(c),               namespaced: false },
-    clusterrolebindings: { stateKey: 'clusterrolebindings', fetch: (c, _)  => window.kubectl.getClusterRoleBindings(c),        namespaced: false },
+    pods: {
+        stateKey: 'pods', fetch: (c, ns) => window.kubectl.getPods(c, ns), namespaced: true,
+        searchFields: (r: KubePod) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            r.status?.phase,
+            r.status?.reason,
+            r.status?.podIP,
+            r.status?.hostIP,
+            r.spec?.nodeName,
+            r.spec?.serviceAccountName,
+            ...r.spec?.containers?.map(c => c.image) ?? [],
+            ...r.spec?.containers?.map(c => c.name) ?? [],
+            ...r.spec?.initContainers?.map(c => c.image) ?? [],
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    deployments: {
+        stateKey: 'deployments', fetch: (c, ns) => window.kubectl.getDeployments(c, ns), namespaced: true,
+        searchFields: (r: KubeDeployment) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            r.spec?.strategy?.type,
+            ...r.spec?.template?.spec?.containers?.map(c => c.image) ?? [],
+            ...r.spec?.template?.spec?.containers?.map(c => c.name) ?? [],
+            ...labelsToStrings(r.metadata.labels),
+            ...labelsToStrings(r.spec?.selector?.matchLabels),
+        ],
+    },
+    daemonsets: {
+        stateKey: 'daemonsets', fetch: (c, ns) => window.kubectl.getDaemonSets(c, ns), namespaced: true,
+        searchFields: (r: KubeDaemonSet) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            r.spec?.updateStrategy?.type,
+            ...r.spec?.template?.spec?.containers?.map(c => c.image) ?? [],
+            ...labelsToStrings(r.metadata.labels),
+            ...labelsToStrings(r.spec?.selector?.matchLabels),
+        ],
+    },
+    statefulsets: {
+        stateKey: 'statefulsets', fetch: (c, ns) => window.kubectl.getStatefulSets(c, ns), namespaced: true,
+        searchFields: (r: KubeStatefulSet) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            r.spec?.serviceName,
+            ...r.spec?.template?.spec?.containers?.map(c => c.image) ?? [],
+            ...labelsToStrings(r.metadata.labels),
+            ...labelsToStrings(r.spec?.selector?.matchLabels),
+        ],
+    },
+    replicasets: {
+        stateKey: 'replicasets', fetch: (c, ns) => window.kubectl.getReplicaSets(c, ns), namespaced: true,
+        searchFields: (r: KubeReplicaSet) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            ...r.metadata.ownerReferences?.map(o => o.name) ?? [],
+            ...labelsToStrings(r.metadata.labels),
+            ...labelsToStrings(r.spec?.selector?.matchLabels),
+        ],
+    },
+    jobs: {
+        stateKey: 'jobs', fetch: (c, ns) => window.kubectl.getJobs(c, ns), namespaced: true,
+        searchFields: (r: KubeJob) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            ...r.metadata.ownerReferences?.map(o => o.name) ?? [],
+            ...r.spec?.template?.spec?.containers?.map(c => c.image) ?? [],
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    cronjobs: {
+        stateKey: 'cronjobs', fetch: (c, ns) => window.kubectl.getCronJobs(c, ns), namespaced: true,
+        searchFields: (r: KubeCronJob) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            r.spec?.schedule,
+            r.spec?.suspend ? 'suspended' : 'active',
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    hpas: {
+        stateKey: 'hpas', fetch: (c, ns) => window.kubectl.getHPAs(c, ns), namespaced: true,
+        searchFields: (r: KubeHPA) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            r.spec?.scaleTargetRef?.name,
+            r.spec?.scaleTargetRef?.kind,
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    pdbs: {
+        stateKey: 'pdbs', fetch: (c, ns) => window.kubectl.getPodDisruptionBudgets(c, ns), namespaced: true,
+        searchFields: (r: KubePDB) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            ...labelsToStrings(r.metadata.labels),
+            ...labelsToStrings(r.spec?.selector?.matchLabels),
+        ],
+    },
+    services: {
+        stateKey: 'services', fetch: (c, ns) => window.kubectl.getServices(c, ns), namespaced: true,
+        searchFields: (r: KubeService) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            r.spec?.type,
+            r.spec?.clusterIP,
+            (r.spec as any)?.externalName,
+            ...r.spec?.clusterIPs ?? [],
+            ...r.spec?.externalIPs ?? [],
+            ...r.status?.loadBalancer?.ingress?.map(i => i.ip ?? i.hostname) ?? [],
+            ...labelsToStrings(r.metadata.labels),
+            ...labelsToStrings(r.spec?.selector),
+        ],
+    },
+    ingresses: {
+        stateKey: 'ingresses', fetch: (c, ns) => window.kubectl.getIngresses(c, ns), namespaced: true,
+        searchFields: (r: KubeIngress) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            r.spec?.ingressClassName,
+            ...r.spec?.rules?.map(rule => rule.host) ?? [],
+            ...r.spec?.tls?.flatMap(t => t.hosts ?? []) ?? [],
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    networkpolicies: {
+        stateKey: 'networkpolicies', fetch: (c, ns) => window.kubectl.getNetworkPolicies(c, ns), namespaced: true,
+        searchFields: (r: KubeNetworkPolicy) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            ...r.spec?.policyTypes ?? [],
+            ...labelsToStrings(r.metadata.labels),
+            ...labelsToStrings(r.spec?.podSelector?.matchLabels),
+        ],
+    },
+    endpoints: {
+        stateKey: 'endpoints', fetch: (c, ns) => window.kubectl.getEndpoints(c, ns), namespaced: true,
+        searchFields: (r: KubeEndpoints) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            ...r.subsets?.flatMap(s => s.addresses?.map(a => a.ip) ?? []) ?? [],
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    configmaps: {
+        stateKey: 'configmaps', fetch: (c, ns) => window.kubectl.getConfigMaps(c, ns), namespaced: true,
+        searchFields: (r: KubeConfigMap) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            ...Object.keys(r.data ?? []),
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    secrets: {
+        stateKey: 'secrets', fetch: (c, ns) => window.kubectl.getSecrets(c, ns), namespaced: true,
+        searchFields: (r: KubeSecret) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            r.type,
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    pvcs: {
+        stateKey: 'pvcs', fetch: (c, ns) => window.kubectl.getPVCs(c, ns), namespaced: true,
+        searchFields: (r: KubePVC) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            r.status?.phase,
+            r.spec?.storageClassName,
+            r.spec?.volumeName,
+            r.spec?.volumeMode,
+            ...r.spec?.accessModes ?? [],
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    serviceaccounts: {
+        stateKey: 'serviceaccounts', fetch: (c, ns) => window.kubectl.getServiceAccounts(c, ns), namespaced: true,
+        searchFields: (r: KubeServiceAccount) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            ...r.secrets?.map(s => s.name) ?? [],
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    roles: {
+        stateKey: 'roles', fetch: (c, ns) => window.kubectl.getRoles(c, ns), namespaced: true,
+        searchFields: (r: KubeRole) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            ...r.rules?.flatMap(rule => rule.resources ?? []) ?? [],
+            ...r.rules?.flatMap(rule => rule.verbs) ?? [],
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    rolebindings: {
+        stateKey: 'rolebindings', fetch: (c, ns) => window.kubectl.getRoleBindings(c, ns), namespaced: true,
+        searchFields: (r: KubeRoleBinding) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            r.roleRef?.name,
+            r.roleRef?.kind,
+            ...r.subjects?.map(s => s.name) ?? [],
+            ...r.subjects?.map(s => s.kind) ?? [],
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    events: {
+        stateKey: 'events', fetch: (c, ns) => window.kubectl.getEvents(c, ns), namespaced: true,
+        searchFields: (r: any) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            r.reason,
+            r.message,
+            r.involvedObject?.name,
+            r.involvedObject?.kind,
+            r.type,
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    nodes: {
+        stateKey: 'nodes', fetch: (c, _) => window.kubectl.getNodes(c), namespaced: false,
+        searchFields: (r: KubeNode) => [
+            r.metadata.name,
+            r.status?.nodeInfo?.kubeletVersion,
+            r.status?.nodeInfo?.osImage,
+            r.status?.nodeInfo?.containerRuntimeVersion,
+            r.status?.nodeInfo?.architecture,
+            ...r.status?.addresses?.map(a => a.address) ?? [],
+            ...Object.keys(r.metadata.labels ?? {})
+                .filter(k => k.startsWith('node-role.kubernetes.io/'))
+                .map(k => k.replace('node-role.kubernetes.io/', '')),
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    namespaces: {
+        stateKey: 'namespaces', fetch: (c, _) => window.kubectl.getNamespaces(c), namespaced: false,
+        searchFields: (r: KubeNamespace) => [
+            r.metadata.name,
+            r.status?.phase,
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    crds: {
+        stateKey: 'crds', fetch: (c, _) => window.kubectl.getCRDs(c), namespaced: false,
+        searchFields: (r: KubeCRD) => [
+            r.metadata.name,
+            r.spec?.group,
+            r.spec?.names?.kind,
+            r.spec?.names?.plural,
+            r.spec?.names?.singular,
+            r.spec?.scope,
+            ...r.spec?.names?.shortNames ?? [],
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    ingressclasses: {
+        stateKey: 'ingressclasses', fetch: (c, _) => window.kubectl.getIngressClasses(c), namespaced: false,
+        searchFields: (r: KubeIngressClass) => [
+            r.metadata.name,
+            r.spec?.controller,
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    pvs: {
+        stateKey: 'pvs', fetch: (c, _) => window.kubectl.getPVs(c), namespaced: false,
+        searchFields: (r: KubePV) => [
+            r.metadata.name,
+            r.status?.phase,
+            r.spec?.storageClassName,
+            r.spec?.persistentVolumeReclaimPolicy,
+            r.spec?.volumeMode,
+            r.spec?.claimRef?.name,
+            r.spec?.claimRef?.namespace,
+            ...r.spec?.accessModes ?? [],
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    storageclasses: {
+        stateKey: 'storageclasses', fetch: (c, _) => window.kubectl.getStorageClasses(c), namespaced: false,
+        searchFields: (r: KubeStorageClass) => [
+            r.metadata.name,
+            r.provisioner,
+            r.reclaimPolicy,
+            r.volumeBindingMode,
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    clusterroles: {
+        stateKey: 'clusterroles', fetch: (c, _) => window.kubectl.getClusterRoles(c), namespaced: false,
+        searchFields: (r: KubeClusterRole) => [
+            r.metadata.name,
+            ...r.rules?.flatMap(rule => rule.resources ?? []) ?? [],
+            ...r.rules?.flatMap(rule => rule.verbs) ?? [],
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    clusterrolebindings: {
+        stateKey: 'clusterrolebindings', fetch: (c, _) => window.kubectl.getClusterRoleBindings(c), namespaced: false,
+        searchFields: (r: KubeClusterRoleBinding) => [
+            r.metadata.name,
+            r.roleRef?.name,
+            r.roleRef?.kind,
+            ...r.subjects?.map(s => s.name) ?? [],
+            ...r.subjects?.map(s => s.kind) ?? [],
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
 }
 
 // Pre-computed reset object for all resource sections (empty arrays).

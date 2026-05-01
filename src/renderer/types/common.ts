@@ -1,6 +1,5 @@
-export interface ObjectMeta {
+interface BaseObjectMeta {
   name: string
-  namespace?: string
   uid: string
   creationTimestamp: string
   deletionTimestamp?: string
@@ -10,6 +9,15 @@ export interface ObjectMeta {
   resourceVersion?: string
   generation?: number
 }
+
+// namespace is required (not optional) for namespace-scoped resources
+export type NamespacedMeta = BaseObjectMeta & { namespace: string }
+
+// namespace cannot appear on cluster-scoped resources
+export type ClusterMeta = BaseObjectMeta & { namespace?: never }
+
+// Backwards-compat union used by KubeResource base and any untyped callsites
+export type ObjectMeta = NamespacedMeta | ClusterMeta
 
 export interface KubeCondition {
   type: string

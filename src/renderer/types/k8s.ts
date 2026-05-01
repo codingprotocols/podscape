@@ -1,4 +1,4 @@
-import { ObjectMeta, KubeCondition } from './common'
+import { ObjectMeta, NamespacedMeta, ClusterMeta, KubeCondition } from './common'
 
 export interface KubeResource {
   apiVersion?: string
@@ -9,6 +9,7 @@ export interface KubeResource {
 // ─── Namespace ────────────────────────────────────────────────────────────────
 
 export interface KubeNamespace extends KubeResource {
+  metadata: ClusterMeta
   status: { phase: string }
 }
 
@@ -79,6 +80,7 @@ export interface PodSpec {
 }
 
 export interface KubePod extends KubeResource {
+  metadata: NamespacedMeta
   spec: PodSpec
   status: PodStatus
 }
@@ -86,6 +88,7 @@ export interface KubePod extends KubeResource {
 // ─── Deployment ───────────────────────────────────────────────────────────────
 
 export interface KubeDeployment extends KubeResource {
+  metadata: NamespacedMeta
   spec: {
     replicas?: number
     selector: { matchLabels?: Record<string, string> }
@@ -228,6 +231,7 @@ export interface NodeCondition extends KubeCondition {
 }
 
 export interface KubeNode extends KubeResource {
+  metadata: ClusterMeta
   spec: {
     podCIDR?: string
     podCIDRs?: string[]
@@ -291,6 +295,7 @@ export interface KubeEvent extends KubeResource {
 // ─── CRD ──────────────────────────────────────────────────────────────────────
 
 export interface KubeCRD extends KubeResource {
+  metadata: ClusterMeta
   spec: {
     group: string
     names: { plural: string; singular: string; kind: string; shortNames?: string[] }
@@ -359,6 +364,7 @@ export interface KubePDB extends KubeResource {
 // ─── IngressClass ─────────────────────────────────────────────────────────────
 
 export interface KubeIngressClass extends KubeResource {
+  metadata: ClusterMeta
   spec: {
     controller?: string
     parameters?: {
@@ -434,6 +440,7 @@ export interface KubePVC extends KubeResource {
 // ─── PersistentVolume ─────────────────────────────────────────────────────────
 
 export interface KubePV extends KubeResource {
+  metadata: ClusterMeta
   spec: {
     capacity?: Record<string, string>
     accessModes?: string[]
@@ -449,6 +456,7 @@ export interface KubePV extends KubeResource {
 // ─── StorageClass ─────────────────────────────────────────────────────────────
 
 export interface KubeStorageClass extends KubeResource {
+  metadata: ClusterMeta
   provisioner: string
   reclaimPolicy?: string
   volumeBindingMode?: string
@@ -479,6 +487,7 @@ export interface KubeRole extends KubeResource {
 }
 
 export interface KubeClusterRole extends KubeResource {
+  metadata: ClusterMeta
   rules?: PolicyRule[]
   aggregationRule?: { clusterRoleSelectors?: Array<{ matchLabels?: Record<string, string> }> }
 }
@@ -502,6 +511,7 @@ export interface KubeRoleBinding extends KubeResource {
 }
 
 export interface KubeClusterRoleBinding extends KubeResource {
+  metadata: ClusterMeta
   roleRef: RoleRef
   subjects?: Subject[]
 }

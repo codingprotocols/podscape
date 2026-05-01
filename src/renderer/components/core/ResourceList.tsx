@@ -693,9 +693,26 @@ export default function ResourceList(): JSX.Element {
     return Array.from(names).sort()
   }, [resources, section])
 
+  // Search index: built once when resources arrive, reused on every keystroke.
+  // Each entry is a pre-lowercased, null-delimited string of all searchable
+  // fields so filtering is a single .includes() scan with no per-keystroke
+  // allocations. Deps are [resources, section] — NOT searchQuery.
+  const searchIndex = useMemo(() => {
+    const searchFn = SECTION_CONFIG[section as ResourceKind]?.searchFields
+    const index = new Map<string, string>()
+    for (const r of resources) {
+      const fields = searchFn ? searchFn(r) : [r.metadata.name]
+      index.set(r.metadata.uid, fields.filter(Boolean).join('\0').toLowerCase())
+    }
+    return index
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resources, section])
+
   const filtered = useMemo(() => {
-    const q = searchQuery.toLowerCase()
-    let result = resources.filter(r => r.metadata.name.toLowerCase().includes(q))
+    const q = searchQuery.toLowerCase().trim()
+    let result = q
+      ? resources.filter(r => searchIndex.get(r.metadata.uid)?.includes(q) ?? false)
+      : resources
 
     // Node filter — pods section only
     if (section === 'pods' && nodeFilter) {
@@ -721,7 +738,7 @@ export default function ResourceList(): JSX.Element {
     // is replaced wholesale by useResources(), which already invalidates this memo.
     // Including `section` would trigger a redundant sort on the old array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resources, searchQuery, nodeFilter, sortCol, sortAsc])
+  }, [searchIndex, searchQuery, nodeFilter, sortCol, sortAsc])
 
   // Clear selection, sorting, and pod-specific filters when section changes
   useEffect(() => {

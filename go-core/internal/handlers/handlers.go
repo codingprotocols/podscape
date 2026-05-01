@@ -114,6 +114,9 @@ func MakeHandler(
 		ac.RUnlock()
 
 		// Filter outside the lock.
+		// All items served by MakeHandler come from typed k8s informers and
+		// implement metav1.Object. Cluster-scoped resources have an empty
+		// namespace and pass through regardless of the ns filter.
 		items := snapshot
 		if ns != "" {
 			items = snapshot[:0]
@@ -121,12 +124,6 @@ func MakeHandler(
 				if obj, ok := v.(metav1.Object); ok {
 					if obj.GetNamespace() != "" && obj.GetNamespace() != ns {
 						continue
-					}
-				} else if m, ok := v.(map[string]interface{}); ok {
-					if meta, ok := m["metadata"].(map[string]interface{}); ok {
-						if mns, ok := meta["namespace"].(string); ok && mns != "" && mns != ns {
-							continue
-						}
 					}
 				}
 				items = append(items, v)
