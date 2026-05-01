@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Lock } from 'lucide-react'
 import { useAppStore } from '../../store'
 import { useShallow } from 'zustand/react/shallow'
@@ -601,12 +602,12 @@ function ClusterAvatar({
         </div>
       )}
 
-      {/* Dropdown menu */}
-      {menu && (
+      {/* Dropdown menu — rendered via portal to escape GPU compositor / backdrop-filter stacking issues */}
+      {menu && createPortal(
         <>
-          <div className="fixed inset-0 z-[100]" onClick={() => setMenu(null)}
+          <div className="fixed inset-0 z-[9990]" onClick={() => setMenu(null)}
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties} />
-          <div className="fixed z-[101] bg-slate-900/90 backdrop-blur-xl border border-white/10
+          <div className="fixed z-[9991] bg-slate-900/90 backdrop-blur-xl border border-white/10
                           rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden min-w-[170px]"
             style={{ top: menu.top, left: menu.left, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <div className="px-4 py-3 border-b border-white/5 bg-white/5">
@@ -636,7 +637,8 @@ function ClusterAvatar({
               {isProd ? 'Unmark Production' : 'Mark as Production'}
             </button>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   )
