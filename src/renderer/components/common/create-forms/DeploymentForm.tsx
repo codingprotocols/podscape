@@ -18,7 +18,7 @@ export default function DeploymentForm({ onChange }: Props): JSX.Element {
         namespace: (selectedNamespace && selectedNamespace !== '_all' ? selectedNamespace : 'default'),
         labels: [{ key: 'app', value: '' }],
     }))
-    const [errors, setErrors] = useState<Record<string, string>>({})
+    const [, setErrors] = useState<Record<string, string>>({})
 
     useEffect(() => {
         // Keep app label value in sync with name
