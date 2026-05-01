@@ -1,24 +1,29 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { useAppStore } from '../../../store'
 import { SecretFormState, generateSecretYAML, DNS_LABEL_RE } from './generateYAML'
 
 interface Props { onChange: (yaml: string) => void }
 
+type Row = { key: string; value: string; _rowId: number }
+
 export default function SecretForm({ onChange }: Props): JSX.Element {
     const namespaces = useAppStore(s => s.namespaces)
     const selectedNamespace = useAppStore(s => s.selectedNamespace)
-    const [s, setS] = useState<SecretFormState>({
+    const rowId = useRef(0)
+    const [s, setS] = useState<Omit<SecretFormState, 'data'> & { data: Row[] }>({
         name: '',
         namespace: (selectedNamespace && selectedNamespace !== '_all' ? selectedNamespace : 'default'),
         type: 'Opaque',
-        data: [{ key: '', value: '' }],
+        data: [{ key: '', value: '', _rowId: rowId.current++ }],
     })
 
     useEffect(() => {
-        if (s.name) onChange(generateSecretYAML(s))
+        // Strip internal _rowId before passing to YAML generator
+        const clean: SecretFormState = { ...s, data: s.data.map(({ _rowId: _, ...kv }) => kv) }
+        if (s.name) onChange(generateSecretYAML(clean))
         else onChange('')
-    }, [s])
+    }, [s, onChange])
 
     return (
         <div className="space-y-4">
@@ -48,11 +53,18 @@ export default function SecretForm({ onChange }: Props): JSX.Element {
             <div>
                 <div className="flex items-center justify-between mb-1">
                     <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Data <span className="text-slate-500 normal-case font-normal">(values auto-base64 encoded)</span></label>
-                    <button onClick={() => setS(p => ({ ...p, data: [...p.data, { key: '', value: '' }] }))}
+                    <button onClick={() => setS(p => ({ ...p, data: [...p.data, { key: '', value: '', _rowId: rowId.current++ }] }))}
                         className="text-[9px] text-blue-400 hover:text-blue-300 flex items-center gap-1"><Plus size={10} /> Add</button>
                 </div>
+                {(() => {
+                    const keys = s.data.map(d => d.key).filter(Boolean)
+                    const dupes = new Set(keys.filter((k, i) => keys.indexOf(k) !== i))
+                    return dupes.size > 0 && (
+                        <p className="text-[9px] text-amber-400 mb-1">Duplicate keys: {[...dupes].join(', ')} — only the last value will be used</p>
+                    )
+                })()}
                 {s.data.map((d, i) => (
-                    <div key={i} className="flex gap-1 mb-1">
+                    <div key={d._rowId} className="flex gap-1 mb-1">
                         <input value={d.key} onChange={e => setS(p => { const data = [...p.data]; data[i] = { ...data[i], key: e.target.value }; return { ...p, data } })}
                             placeholder="key"
                             className="flex-1 px-2 py-1 text-[10px] bg-white/5 border border-white/10 rounded text-slate-200 focus:outline-none font-mono" />

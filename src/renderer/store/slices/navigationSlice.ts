@@ -30,8 +30,6 @@ export interface NavigationSlice {
     setPendingResourceAction: (action: 'analyze-restarts' | null) => void
     pluginsEnabled: boolean
     setPluginsEnabled: (enabled: boolean) => void
-    finopsEnabled: boolean
-    setFinopsEnabled: (enabled: boolean) => void
     gitopsEnabled: boolean
     setGitopsEnabled: (enabled: boolean) => void
     networkEnabled: boolean
@@ -90,11 +88,6 @@ export const createNavigationSlice: StoreSlice<NavigationSlice> = (set, get) => 
     setPluginsEnabled: (pluginsEnabled) => {
         set({ pluginsEnabled })
         if (!pluginsEnabled && get().section === 'krew') get().setSection('dashboard')
-    },
-    finopsEnabled: true,
-    setFinopsEnabled: (finopsEnabled) => {
-        set({ finopsEnabled })
-        if (!finopsEnabled && get().section === 'cost') get().setSection('dashboard')
     },
     gitopsEnabled: true,
     setGitopsEnabled: (gitopsEnabled) => {

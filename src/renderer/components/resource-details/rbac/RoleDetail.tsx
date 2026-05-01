@@ -42,11 +42,11 @@ export default function RoleDetail({ role, clusterScoped = false }: Props): JSX.
   const rules: PolicyRule[] = role.rules ?? []
 
   useEffect(() => {
-    if (!selectedContext || tab !== 'events') return
+    const uid = role.metadata.uid
+    if (!selectedContext || tab !== 'events' || !uid) return
     setEventsLoading(true)
     const ns = role.metadata.namespace ?? 'default'
-    const kind = clusterScoped ? 'ClusterRole' : 'Role'
-    window.kubectl.getResourceEvents(selectedContext, ns, kind, role.metadata.name)
+    window.kubectl.getResourceEvents(selectedContext, ns, uid)
       .then(setEvents)
       .catch(() => setEvents([]))
       .finally(() => setEventsLoading(false))

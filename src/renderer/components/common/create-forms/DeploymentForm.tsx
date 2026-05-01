@@ -29,7 +29,8 @@ export default function DeploymentForm({ onChange }: Props): JSX.Element {
     }, [s.name])
 
     useEffect(() => {
-        if (s.name && s.image) onChange(generateDeploymentYAML(s))
+        const hasLabel = (s.labels as KVPair[]).some(l => l.key.trim())
+        if (s.name && s.image && hasLabel) onChange(generateDeploymentYAML(s))
         else onChange('')
     }, [s])
 

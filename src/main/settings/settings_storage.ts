@@ -8,10 +8,8 @@ export interface PodscapeSettings {
     kubeconfigPath: string         // absolute path or '' for default (~/.kube/config)
     prodContexts: string[]         // List of contexts considered "Production"
     prometheusUrls: Record<string, string>  // per-context manual Prometheus URL; '' = auto-discover
-    costUrls: Record<string, string>        // per-context Kubecost/OpenCost base URL; '' = auto-detect
     tourCompleted: boolean         // whether the post-connection tour has been shown
     pluginsEnabled: boolean        // whether the Plugins (Krew) panel is shown in the sidebar
-    finopsEnabled: boolean         // whether the FinOps / Cost panel is shown in the sidebar
     gitopsEnabled: boolean         // whether the GitOps panel is shown in the sidebar
     networkEnabled: boolean        // whether Network Map and Connectivity panels are shown in the sidebar
 }
@@ -25,10 +23,8 @@ const DEFAULTS: PodscapeSettings = {
     kubeconfigPath: '',
     prodContexts: [],
     prometheusUrls: {},
-    costUrls: {},
     tourCompleted: false,
     pluginsEnabled: true,
-    finopsEnabled: true,
     gitopsEnabled: true,
     networkEnabled: true,
 }

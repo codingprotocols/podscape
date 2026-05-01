@@ -13,7 +13,7 @@ export interface KubeProvider {
     rolloutRestart(context: string, namespace: string, kind: string, name: string): Promise<string>;
     rolloutHistory(context: string, namespace: string, kind: string, name: string): Promise<RolloutRevision[]>;
     rolloutUndo(context: string, namespace: string, kind: string, name: string, revision?: number): Promise<string>;
-    getResourceEvents(context: string, namespace: string, kind: string, name: string): Promise<unknown[]>;
+    getResourceEvents(context: string, namespace: string, uid: string): Promise<unknown[]>;
     deleteResource(context: string, namespace: string | null, kind: string, name: string): Promise<string>;
     getYAML(context: string, namespace: string | null, kind: string, name: string): Promise<string>;
     applyYAML(context: string, yamlContent: string): Promise<string>;

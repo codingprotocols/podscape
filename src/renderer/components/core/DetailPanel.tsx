@@ -13,6 +13,7 @@ import ConfigMapDetail from '../resource-details/config/ConfigMapDetail'
 import SecretDetail from '../resource-details/config/SecretDetail'
 import DaemonSetDetail from '../resource-details/workloads/DaemonSetDetail'
 import HPADetail from '../resource-details/workloads/HPADetail'
+import ScaledObjectDetail from '../resource-details/autoscaling/ScaledObjectDetail'
 import PVCDetail from '../resource-details/storage/PVCDetail'
 import RoleBindingDetail from '../resource-details/rbac/RoleBindingDetail'
 import RoleDetail from '../resource-details/rbac/RoleDetail'
@@ -62,6 +63,7 @@ export default function DetailPanel({ resource, section }: DetailPanelProps): JS
     case 'nodes': content = <NodeDetail node={resource as KubeNode} />; break
     case 'crds': content = <CRDDetail crd={resource as KubeCRD} />; break
     case 'hpas': content = <HPADetail hpa={resource as KubeHPA} />; break
+    case 'keda-scaledobjects': content = <ScaledObjectDetail resource={resource as unknown as Record<string, unknown>} />; break
     case 'pdbs': content = <PDBDetail pdb={resource as KubePDB} />; break
     case 'ingressclasses': content = <IngressClassDetail ic={resource as KubeIngressClass} />; break
     case 'networkpolicies': content = <NetworkPolicyDetail np={resource as KubeNetworkPolicy} />; break

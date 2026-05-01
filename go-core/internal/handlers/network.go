@@ -201,6 +201,28 @@ func HandleStopPortForward(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// HandlePortForwardAlive returns 200 when the forward with the given id is
+// still running, or 404 when it has ended (pod died, context switch, etc.).
+// The main Electron process polls this endpoint after portforward:ready to
+// detect natural tunnel termination and emit portforward:exit to the renderer.
+func HandlePortForwardAlive(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "missing id parameter", http.StatusBadRequest)
+		return
+	}
+
+	portforward.Manager.Lock()
+	_, ok := portforward.Manager.Forwards[id]
+	portforward.Manager.Unlock()
+
+	if ok {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
 // contextCacheWrapper implements graph.ResourceCache for store.ContextCache.
 type contextCacheWrapper struct {
 	cache *store.ContextCache

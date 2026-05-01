@@ -27,6 +27,7 @@ export const PROVIDER_SECTIONS = new Set<ResourceKind>([
   'traefik-middlewares', 'traefik-middlewaretcps', 'traefik-services',
   'traefik-tlsoptions', 'traefik-tlsstores', 'traefik-serverstransporttcps',
   'nginx-virtualservers', 'nginx-virtualserverroutes', 'nginx-policies', 'nginx-transportservers',
+  'keda-scaledobjects', 'keda-scaledjobs', 'keda-triggerauthentications', 'keda-clustertriggerauthentications',
 ])
 
 // ─── Labels ───────────────────────────────────────────────────────────────────

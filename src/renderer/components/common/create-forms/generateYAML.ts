@@ -56,7 +56,8 @@ export function generateServiceYAML(s: ServiceFormState): string {
     const ports = s.ports.filter(p => p.port).map(p => ({
         protocol: p.protocol,
         port: parseInt(p.port, 10),
-        targetPort: parseInt(p.targetPort, 10) || parseInt(p.port, 10),
+        // Preserve named ports (e.g. "http") — only parse if it's numeric.
+        targetPort: isNaN(parseInt(p.targetPort, 10)) ? (p.targetPort || parseInt(p.port, 10)) : parseInt(p.targetPort, 10),
     }))
     return yaml.dump({
         apiVersion: 'v1',
@@ -95,7 +96,8 @@ export interface SecretFormState {
 
 export function generateSecretYAML(s: SecretFormState): string {
     const data = Object.fromEntries(
-        s.data.filter(d => d.key).map(d => [d.key, btoa(d.value)])
+        // encodeURIComponent → unescape makes btoa safe for any Unicode input.
+        s.data.filter(d => d.key).map(d => [d.key, btoa(unescape(encodeURIComponent(d.value)))])
     )
     return yaml.dump({
         apiVersion: 'v1',

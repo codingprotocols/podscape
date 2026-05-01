@@ -113,7 +113,10 @@ export const createOperationSlice: StoreSlice<OperationSlice> = (set, get) => ({
             set(s => ({ portForwards: s.portForwards.map(f => f.id === entry.id ? { ...f, status: 'error', error: msg } : f) }))
         )
         const unsubExit = window.kubectl.onPortForwardExit(entry.id, () => {
-            pfUnsubs.delete(entry.id)
+            // Call all three unsub functions to remove the IPC listeners before
+            // deleting the entry — otherwise ready/error/exit listeners leak.
+            const fns = pfUnsubs.get(entry.id)
+            if (fns) { fns.forEach(fn => fn()); pfUnsubs.delete(entry.id) }
             set(s => ({ portForwards: s.portForwards.filter(f => f.id !== entry.id) }))
         })
 

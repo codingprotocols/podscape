@@ -190,6 +190,41 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             return
         }
 
+        if (section === 'nodes') {
+            const existingNodes = get().nodes
+            const isFirstLoad = !existingNodes?.length
+            if (isFirstLoad) set({ loadingResources: true, error: null, selectedResource: null })
+            else set({ error: null })
+            try {
+                // Fetch nodes first — show the list immediately without waiting for metrics.
+                // nodeMetrics calls the Kubernetes Metrics API which can hang for several
+                // seconds when metrics-server is not installed (aggregation layer timeout).
+                const nds = await window.kubectl.getNodes(ctx)
+                if (get().selectedContext !== snapshotCtx) return
+                const freshNodes = Array.isArray(nds) ? nds as KubeNode[] : []
+                const currentSelected = get().selectedResource
+                const update: Partial<AppStore> = {
+                    nodes: freshNodes,
+                    loadingResources: false,
+                    sectionLoadedAt: { ...get().sectionLoadedAt, [cacheKey]: Date.now() },
+                }
+                if (currentSelected) {
+                    update.selectedResource = freshNodes.find(r => r.metadata.uid === currentSelected.metadata.uid) ?? null
+                }
+                set(update as Partial<AppStore>)
+            } catch (err) {
+                if (get().selectedContext !== snapshotCtx) return
+                set({ loadingResources: false, error: (err as Error).message })
+            }
+            // Fetch nodeMetrics in background — metrics bars update shortly after the
+            // list appears rather than blocking it.
+            window.kubectl.getNodeMetrics(ctx).then(nm => {
+                if (get().selectedContext !== snapshotCtx) return
+                set({ nodeMetrics: Array.isArray(nm) ? nm as NodeMetrics[] : [] })
+            }).catch(() => {})
+            return
+        }
+
         if (section === 'network') {
             set({ loadingResources: true })
             try {
@@ -252,16 +287,33 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             return
         }
 
-        set({ loadingResources: true, error: null, selectedResource: null })
+        // Show the loading spinner only on first load (no data yet).
+        // On background auto-refresh there is already data visible — skip the
+        // spinner and the selectedResource reset so the list stays stable.
+        const existingData = (get() as Record<string, unknown>)[config.stateKey]
+        const isFirstLoad = !Array.isArray(existingData) || (existingData as AnyKubeResource[]).length === 0
+        if (isFirstLoad) {
+            set({ loadingResources: true, error: null, selectedResource: null })
+        } else {
+            set({ error: null })
+        }
         try {
             const data = await config.fetch(ctx, fetchNs)
             // Discard results if the context switched while we were fetching.
             if (get().selectedContext !== snapshotCtx) return
-            set({
-                [config.stateKey]: Array.isArray(data) ? data : [],
+            const freshData: AnyKubeResource[] = Array.isArray(data) ? data as AnyKubeResource[] : []
+            // If a resource is selected, find its fresh version in the new data
+            // (reflects live status changes). Set to null if it was deleted.
+            const currentSelected = get().selectedResource
+            const update: Partial<AppStore> = {
+                [config.stateKey]: freshData,
                 loadingResources: false,
                 sectionLoadedAt: { ...get().sectionLoadedAt, [cacheKey]: Date.now() },
-            } as Partial<AppStore>)
+            }
+            if (currentSelected) {
+                update.selectedResource = freshData.find(r => r.metadata.uid === currentSelected.metadata.uid) ?? null
+            }
+            set(update as Partial<AppStore>)
         } catch (err) {
             if (get().selectedContext !== snapshotCtx) return
             // Sidecar signals RBAC denial via RBACDeniedError (thrown by the main process IPC handler).
@@ -295,9 +347,16 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             retry?: () => Promise<any>  // ns-scoped fallback when all-namespace fetch fails
             required: boolean
         }
+        // nodeMetrics calls the Kubernetes Metrics API which can hang for several
+        // seconds when metrics-server is not installed (aggregation layer timeout).
+        // Fire it as a background fetch so it doesn't hold up the dashboard render.
+        window.kubectl.getNodeMetrics(ctx).then(nm => {
+            if (get().selectedContext !== snapshotCtx) return
+            set({ nodeMetrics: Array.isArray(nm) ? nm as NodeMetrics[] : [] })
+        }).catch(() => {})
+
         const fetches: DashboardFetch[] = [
             { key: 'nodes',            fetch: () => window.kubectl.getNodes(ctx),                  required: true },
-            { key: 'nodeMetrics',      fetch: () => window.kubectl.getNodeMetrics(ctx),             required: false },
             { key: 'namespaces',       fetch: () => window.kubectl.getNamespaces(ctx),              required: true },
             { key: 'events',           fetch: () => window.kubectl.getEvents(ctx, null),            retry: ns ? () => window.kubectl.getEvents(ctx, ns)           : undefined, required: false },
             { key: 'pods',             fetch: () => window.kubectl.getPods(ctx, null),              retry: ns ? () => window.kubectl.getPods(ctx, ns)             : undefined, required: false },
@@ -414,8 +473,14 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         const section = kindToSection[kind]
         if (!section) return
         const snapshotCtx = get().selectedContext
-        // Update nav state directly (setSection also calls loadSection without await)
-        set({ section, selectedResource: null })
+        // Update nav state directly (setSection also calls loadSection without await).
+        // Clear only this section's TTL so loadSection fetches fresh data without
+        // invalidating every other section's cache (which would cause spurious
+        // re-fetches when the user navigates back to other sections).
+        const ns = get().selectedNamespace
+        const nsArg = ns === '_all' ? null : ns
+        const cacheKey = `${section}:${nsArg ?? '_all'}`
+        set({ section, selectedResource: null, sectionLoadedAt: { ...get().sectionLoadedAt, [cacheKey]: 0 } })
         // Wait for resources to load before searching
         await get().loadSection(section)
         // Discard if the context switched while we were loading.

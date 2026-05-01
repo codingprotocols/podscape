@@ -1,3 +1,27 @@
+## [3.2.1] — 2026-05-01
+
+### Bug fixes
+
+#### Go sidecar
+
+- **RBAC verb probe never ran on startup** (`cmd/podscape-core/main.go`, `internal/handlers/handlers.go`) — `main.go` only called `rbac.CheckAccess` on startup, which sets `AllowedResources` but not `AllowedVerbs`. The new `runRBACProbe` (added in 3.2.0) ran on context switch but never on first load, so `GET /rbac` always returned `{}` for the initial context and `canVerb` was permanently permissive until the user switched contexts. Fixed by exporting `RunRBACProbe` from the handlers package and calling it from `main.go` after the initial informer start, matching the context-switch behaviour.
+
+#### Renderer
+
+- **`allowedVerbs` subscribed outside `useShallow`** (`ResourceList.tsx`) — `allowedVerbs` was fetched in a separate `useAppStore(s => s.allowedVerbs)` call outside the main `useShallow` block. This caused a full re-render of the resource list on every unrelated store update. Merged into the existing `useShallow` subscription.
+
+- **`getResourceEvents` called with empty uid string** (9 call sites across `PodDetail`, `DeploymentDetail`, `StatefulSetDetail`, `ReplicaSetDetail`, `IngressDetail`, `RoleDetail`, `NamespaceDetail`, `StatefulSetDetail`, `PodRestartAnalyzer`) — Callers used `resource.metadata.uid ?? ''` and passed the result directly. The Go `HandleEvents` handler treats an empty uid as "no filter" and returns all namespace events (`handleEventsAll`), flooding the events tab with unrelated data. Fixed with explicit `const uid = resource.metadata.uid; if (!uid) return` guards at all call sites so a missing uid causes an early return rather than a fallback fetch.
+
+- **Stale deps in `PodDetail` events effect** (`PodDetail.tsx`) — The events `useEffect` listed `pod.metadata.name` and `pod.metadata.namespace` as dependencies, but the actual fetch only uses `pod.metadata.uid`. The stale deps caused unnecessary refetches when pod name or namespace changed without the uid changing. Removed the unused deps.
+
+- **Empty `matchLabels` generated for Deployment with no labels** (`DeploymentForm.tsx`) — `generateDeploymentYAML` produced `matchLabels: {}` when all label entries were removed. Kubernetes rejects Deployments with empty `matchLabels` at admission. Fixed by gating YAML generation on at least one label with a non-empty key; `onChange('')` is called when the guard fails, disabling the Create button.
+
+### Removed
+
+- **Cost integration (Kubecost / OpenCost)** — Removed the built-in cost panel, probe, and settings. Kubecost and OpenCost each ship first-class UIs and the in-app panel was redundant. Affected: `go-core/internal/costalloc/`, `go-core/internal/handlers/cost.go`, `src/renderer/store/slices/costSlice.ts`, `src/renderer/components/panels/CostPanel.tsx`, IPC handlers `kubectl:costStatus` / `kubectl:costAllocation`, `costUrls` and `finopsEnabled` settings fields, Cost Integration section in Settings, FinOps entry in the Panels feature-toggle list, and the Cost & Waste Command Palette entry.
+
+---
+
 ## [3.2.0] — 2026-04-29
 
 ### New features
@@ -38,6 +62,10 @@
 - **Validation** — Required fields checked on submit; DNS label regex on name fields; inline error messages; Create button disabled while any required field is empty.
 
 - **Global modal state** (`src/renderer/store/slices/operationSlice.ts`, `src/renderer/components/core/OverlayManager.tsx`) — `createKind`, `openCreate`, `closeCreate` added to `operationSlice`. `OverlayManager` renders `CreateResourceModal` from store state, keeping it outside the resource list render tree.
+
+### Bug fixes
+
+- **Buttons in page headers unresponsive when overlays are open** (`PageHeader.tsx`) — `PageHeader` set `WebkitAppRegion: drag` on its outer container so the title area could be used to drag the window. Electron applies drag regions at the OS compositor level regardless of CSS z-index, so any overlay (modal, create form, command palette) rendered above a page header still had its mousedown events routed to window-drag rather than the overlay. Removed `WebkitAppRegion: drag` from `PageHeader` entirely — the sidebar icon rail and cluster header already provide sufficient drag surface for the main window. The redundant `WebkitAppRegion: no-drag` on the page header's actions div was also removed.
 
 ---
 

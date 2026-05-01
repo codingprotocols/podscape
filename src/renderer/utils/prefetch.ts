@@ -12,7 +12,6 @@ export async function prefetchPanels(): Promise<void> {
     import('../components/advanced/ConnectivityTester').catch(warn('ConnectivityTester')),
     import('../components/advanced/DebugPodLauncher').catch(warn('DebugPodLauncher')),
     import('../components/panels/ProviderResourcePanel').catch(warn('ProviderResourcePanel')),
-    import('../components/panels/CostPanel').catch(warn('CostPanel')),
   ]
 
   await Promise.allSettled(prefetchPromises)

@@ -20,20 +20,18 @@ export default function SecretDetail({ secret }: Props): JSX.Element {
 
   const handleReveal = async (key: string) => {
     if (revealed[key]) {
-      const newRevealed = { ...revealed }
-      delete newRevealed[key]
-      setRevealed(newRevealed)
+      setRevealed(prev => { const next = { ...prev }; delete next[key]; return next })
       return
     }
 
-    setLoading({ ...loading, [key]: true })
+    setLoading(prev => ({ ...prev, [key]: true }))
     try {
       const value = await getSecretValue(secret.metadata.name, key, secret.metadata.namespace ?? 'default')
-      setRevealed({ ...revealed, [key]: value })
+      setRevealed(prev => ({ ...prev, [key]: value }))
     } catch (err) {
       console.error('Failed to reveal secret:', err)
     } finally {
-      setLoading({ ...loading, [key]: false })
+      setLoading(prev => ({ ...prev, [key]: false }))
     }
   }
 

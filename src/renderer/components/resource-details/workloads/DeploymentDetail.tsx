@@ -83,10 +83,11 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
   }
 
   const loadEvents = async () => {
-    if (!selectedContext) return
+    const uid = d.metadata.uid
+    if (!selectedContext || !uid) return
     setEventsLoading(true)
     try {
-      const evts = await window.kubectl.getResourceEvents(selectedContext, ns, 'Deployment', d.metadata.name)
+      const evts = await window.kubectl.getResourceEvents(selectedContext, ns, uid)
       setEvents(evts)
     } catch {
       setEvents([])

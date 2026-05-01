@@ -184,9 +184,7 @@ export default function Sidebar(): JSX.Element {
     prodContexts, setProdContexts,
     contextSwitchStatus,
     providers,
-    costAvailable,
     pluginsEnabled,
-    finopsEnabled,
     gitopsEnabled,
     networkEnabled,
   } = useAppStore(useShallow(s => ({
@@ -211,9 +209,7 @@ export default function Sidebar(): JSX.Element {
     setProdContexts: s.setProdContexts,
     contextSwitchStatus: s.contextSwitchStatus,
     providers: s.providers,
-    costAvailable: s.costAvailable,
     pluginsEnabled: s.pluginsEnabled,
-    finopsEnabled: s.finopsEnabled,
     gitopsEnabled: s.gitopsEnabled,
     networkEnabled: s.networkEnabled,
   })))
@@ -473,12 +469,6 @@ export default function Sidebar(): JSX.Element {
             {pluginsEnabled && <NavItem label="Plugins" section="krew" icon={ICONS.crd} />}
           </NavGroup>
 
-          {finopsEnabled && costAvailable !== null && (
-            <NavGroup title="FinOps">
-              <NavItem label="Cost" section="cost" icon={ICONS.cost} />
-            </NavGroup>
-          )}
-
           {providers.istio && (
             <NavGroup title="Service Mesh">
               <NavItem label="Virtual Services" section="istio-virtualservices" icon={ICONS.route} />
@@ -511,6 +501,15 @@ export default function Sidebar(): JSX.Element {
               <NavItem label="Virtual Server Routes" section="nginx-virtualserverroutes" icon={ICONS.route} />
               <NavItem label="Policies" section="nginx-policies" icon={ICONS.netpol} />
               <NavItem label="Transport Servers" section="nginx-transportservers" icon={ICONS.portforward} />
+            </NavGroup>
+          )}
+
+          {providers.keda && (
+            <NavGroup title="KEDA">
+              <NavItem label="Scaled Objects"                  section="keda-scaledobjects"                icon={ICONS.hpa} />
+              <NavItem label="Scaled Jobs"                     section="keda-scaledjobs"                   icon={ICONS.job} />
+              <NavItem label="Trigger Authentications"         section="keda-triggerauthentications"        icon={ICONS.secret} />
+              <NavItem label="Cluster Trigger Authentications" section="keda-clustertriggerauthentications" icon={ICONS.secret} />
             </NavGroup>
           )}
 

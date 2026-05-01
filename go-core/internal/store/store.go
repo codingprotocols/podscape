@@ -195,6 +195,15 @@ type ClusterStore struct {
 	ActiveContextName string
 	ActiveCache       *ContextCache
 	caches            map[string]*ContextCache
+
+	// SwitchMu serializes the synchronous body of HandleSwitchContext so that
+	// concurrent switch requests don't both see isNew=true for the same cache.
+	SwitchMu sync.Mutex
+	// SwitchGen is incremented each time HandleSwitchContext begins. Background
+	// goroutines capture their generation at launch and abort early if a newer
+	// switch has superseded them, preventing redundant RBAC probes and duplicate
+	// informer restarts.
+	SwitchGen int64
 }
 
 // GetOrCreateCache returns (existing cache, false) or (new cache, true).

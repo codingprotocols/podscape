@@ -27,12 +27,11 @@ Renderer (React / TypeScript)
 | Slice | Responsibility |
 |---|---|
 | `clusterSlice` | Context/namespace selection, RBAC denied tracking, provider detection trigger |
-| `navigationSlice` | Active section, theme, sidebar width, search state, tour state (`showTour`), panel toggles (`pluginsEnabled`, `finopsEnabled`, `gitopsEnabled`, `networkEnabled`), unified log pod selection (`unifiedLogsSelectedPods`) |
+| `navigationSlice` | Active section, theme, sidebar width, search state, tour state (`showTour`), panel toggles (`pluginsEnabled`, `gitopsEnabled`, `networkEnabled`), unified log pod selection (`unifiedLogsSelectedPods`) |
 
 | `resourceSlice` | All 28 resource arrays, section loading, dashboard fetch, resource navigation |
 | `operationSlice` | Scale/delete/YAML modals, exec session management, port-forward state |
 | `analysisSlice` | Security scanning (kubesec + trivy), `scanInBackground` state for background scans, owner chain, debug pods, Prometheus config |
-| `costSlice` | Kubecost / OpenCost detection and namespace allocation tracking |
 | `providersSlice` | Istio/Traefik/NGINX provider detection state |
 | `krewSlice` | Krew availability detection, curated plugin index (installed status), install/uninstall actions |
 
@@ -55,7 +54,7 @@ The sidecar is a standalone HTTP server compiled as `podscape-core`. It is the s
 | Package | Responsibility |
 |---|---|
 | `cmd/podscape-core/main.go` | Route registration, startup, token auth middleware, CORS |
-| `internal/handlers/` | HTTP handlers split across 13 files: `resources.go` (resource listers), `operations.go` (scale/delete/rollout), `cost.go`, `helm.go`, `security.go`, `network.go`, `tls.go`, `gitops.go`, `prometheus.go`, `ownerchain.go`, `customresource.go`, `providers.go`; `handlers.go` holds the `MakeHandler` RBAC factory and shared helpers. `operations.go` exposes `dynDelete`/`dynGet` private helpers that resolve GVRs via `k8sutil` and automatically retry with `KindGVRFallback` on NotFound (e.g. HPA `autoscaling/v2` → `v1` on pre-1.23 clusters). |
+| `internal/handlers/` | HTTP handlers split across 12 files: `resources.go` (resource listers), `operations.go` (scale/delete/rollout), `helm.go`, `security.go`, `network.go`, `tls.go`, `gitops.go`, `prometheus.go`, `ownerchain.go`, `customresource.go`, `providers.go`; `handlers.go` holds the `MakeHandler` RBAC factory and shared helpers. `operations.go` exposes `dynDelete`/`dynGet` private helpers that resolve GVRs via `k8sutil` and automatically retry with `KindGVRFallback` on NotFound (e.g. HPA `autoscaling/v2` → `v1` on pre-1.23 clusters). |
 | `internal/k8sutil/` | Canonical Kubernetes metadata: `KindGVR` (kind → GVR), `KindGVRFallback` (preferred version → older fallback, e.g. HPA `autoscaling/v2` → `v1`), `ClusterScopedKinds` |
 | `internal/client/` | Shared Kubernetes client initialisation (`ClientBundle`: REST config, clientset, apiextensions client) |
 | `internal/informers/` | K8s shared informers — cache resource lists in-memory for fast reads; skips informers for denied resources |
@@ -69,7 +68,6 @@ The sidecar is a standalone HTTP server compiled as `podscape-core`. It is the s
 | `internal/prometheus/` | Prometheus auto-discovery via k8s service proxy, batch query with 30s result cache |
 | `internal/helm/` | `HelmRepoManager` — repo list, chart search, version fetch, values, SSE install |
 | `internal/topology/` | Cluster network topology graph (nodes → pods → services) |
-| `internal/costalloc/` | Cost allocation logic for Kubecost and OpenCost |
 | `internal/providers/` | Provider detection logic (Istio, Traefik, NGINX) used by the `/providers` endpoint |
 
 **Context cache pool**: each Kubernetes context gets its own `ContextCache` (clientset, informers, resource maps). Switching context restarts informers for the new context without affecting others already cached.
@@ -262,10 +260,6 @@ The bulk `/secrets` endpoint returns only key names — values are replaced serv
 ### Path traversal protection
 
 `sanitizeCPToLocalPath` in `go-core/internal/handlers/operations.go` validates every local path used by the file-copy (`/cp/to`, `/cp/from`) endpoints. It resolves the input with `filepath.Abs` + `filepath.EvalSymlinks` (following all symlinks) before confirming the real path starts within the user's home directory or the OS temp directory. Absolute paths from the native file dialog are accepted; only paths that escape the allowed roots are rejected.
-
-### URL sanitization
-
-`safeBaseURL` in `go-core/internal/handlers/cost.go` parses the user-supplied `url` query parameter through `urlutil.Parse` before forwarding it to the cost-allocation backend. The value passed downstream is derived from a `url.URL` struct, not the raw query string, breaking the CodeQL SSRF taint chain at the handler boundary.
 
 ### Dependency security pins
 

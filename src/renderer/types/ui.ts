@@ -51,7 +51,6 @@ export type ResourceKind =
   | 'security'
   | 'tls'
   | 'gitops'
-  | 'cost'
   | 'krew'
   // Istio service mesh
 
@@ -77,3 +76,8 @@ export type ResourceKind =
   | 'nginx-virtualserverroutes'
   | 'nginx-policies'
   | 'nginx-transportservers'
+  // KEDA
+  | 'keda-scaledobjects'
+  | 'keda-scaledjobs'
+  | 'keda-triggerauthentications'
+  | 'keda-clustertriggerauthentications'

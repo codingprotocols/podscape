@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
@@ -234,7 +235,10 @@ var (
 			}
 			return listToIface(list.Items), nil
 		})
-	HandleEvents = MakeHandler("events", func(c *store.ContextCache) map[string]interface{} { return c.Events },
+	// handleEventsAll is the MakeHandler-generated handler for the Events section
+	// (returns all events in a namespace). Used internally by HandleEvents when
+	// no involvedObject filter is provided.
+	handleEventsAll = MakeHandler("events", func(c *store.ContextCache) map[string]interface{} { return c.Events },
 		func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
 			list, err := cs.CoreV1().Events(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
@@ -243,6 +247,65 @@ var (
 			return listToIface(list.Items), nil
 		})
 )
+
+// HandleEvents serves events from the informer cache. When the "uid" query
+// parameter is present it filters by involvedObject.UID — a single O(1)-style
+// string comparison against the globally-unique resource UID. The cache is
+// capped at 1000 events so the scan is bounded and fast.
+// Without uid it delegates to handleEventsAll (the events section view).
+func HandleEvents(w http.ResponseWriter, r *http.Request) {
+	uid := r.URL.Query().Get("uid")
+
+	// No involvedObject filter — use the standard section handler.
+	if uid == "" {
+		handleEventsAll(w, r)
+		return
+	}
+
+	store.Store.RLock()
+	ac := store.Store.ActiveCache
+	store.Store.RUnlock()
+
+	if ac == nil {
+		http.Error(w, "no active context", http.StatusServiceUnavailable)
+		return
+	}
+
+	// RBAC guard — same semantics as MakeHandler.
+	ac.RLock()
+	allowedResources := ac.AllowedResources
+	ac.RUnlock()
+	if allowedResources != nil && !allowedResources["events"] {
+		w.Header().Set("X-Podscape-Denied", "true")
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+		return
+	}
+
+	// Snapshot the events map under a read-lock.
+	ac.RLock()
+	data := ac.Events
+	snapshot := make([]interface{}, 0, len(data))
+	for _, v := range data {
+		snapshot = append(snapshot, v)
+	}
+	ac.RUnlock()
+
+	// Filter outside the lock by involvedObject.UID (globally unique).
+	filtered := make([]interface{}, 0)
+	for _, v := range snapshot {
+		ev, ok := v.(*corev1.Event)
+		if !ok {
+			continue
+		}
+		if string(ev.InvolvedObject.UID) == uid {
+			filtered = append(filtered, v)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(filtered)
+}
 
 // HandleCRDs serves CRDs from the informer cache, falling back to a direct
 // apiextensions API call whenever the cache is empty. The CRD informer uses a

@@ -95,7 +95,7 @@ export const setupMocks = () => {
             stopLogs: vi.fn().mockResolvedValue(undefined),
         },
         settings: {
-            get: vi.fn().mockResolvedValue({ shellPath: '', theme: 'dark', kubeconfigPath: '', prodContexts: [], prometheusUrls: {}, costUrls: {} }),
+            get: vi.fn().mockResolvedValue({ shellPath: '', theme: 'dark', kubeconfigPath: '', prodContexts: [], prometheusUrls: {} }),
             set: vi.fn().mockResolvedValue(undefined),
         },
         plugins: {

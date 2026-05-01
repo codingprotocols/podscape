@@ -12,6 +12,7 @@ const defaultProviders: ProviderSet = {
     traefik: false,
     nginxInc: false,
     nginxCommunity: false,
+    keda: false,
 }
 
 export const createProvidersSlice: StoreSlice<ProvidersSlice> = (set, get) => ({

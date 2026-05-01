@@ -4,7 +4,7 @@ import { app, shell, BrowserWindow, dialog, ipcMain } from 'electron'
 app.name = 'Podscape'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { registerKubectlHandlers, cancelAllLogStreams } from './ipc/kubectl'
+import { registerKubectlHandlers, cancelAllLogStreams, cancelAllPortForwardTimers } from './ipc/kubectl'
 import { registerTerminalHandlers, cancelAllExecStreams } from './ipc/terminal'
 import { registerSettingsHandlers } from './ipc/settings'
 import { registerHelmHandlers } from './ipc/helm'
@@ -153,6 +153,7 @@ app.on('before-quit', async (event) => {
     // don't fire with errors after the sidecar process is gone.
     cancelAllLogStreams()
     cancelAllExecStreams()
+    cancelAllPortForwardTimers()
     try {
       await stopSidecar()
     } catch (err) {

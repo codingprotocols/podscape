@@ -198,10 +198,15 @@ func HandleGetCurrentContext(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(ctxName))
 }
 
-// runRBACProbe probes access permissions for the given context and stores the
+// RunRBACProbe probes access permissions for the given context and stores the
 // result in the cache. It runs under a 10-second deadline so a slow API server
 // cannot delay informer startup by more than that. On failure, AllowedResources
 // is left nil (permissive: all informers start).
+// Exported so main.go can call it for the startup context.
+func RunRBACProbe(cache *store.ContextCache, ctxName string, cs kubernetes.Interface) {
+	runRBACProbe(cache, ctxName, cs)
+}
+
 func runRBACProbe(cache *store.ContextCache, ctxName string, cs kubernetes.Interface) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -239,6 +244,14 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing context parameter", http.StatusBadRequest)
 		return
 	}
+
+	// Serialize the synchronous switch body so concurrent requests don't both
+	// see isNew=true for the same cache, and capture a generation number for
+	// the background goroutine so it can abort if superseded.
+	store.Store.SwitchMu.Lock()
+	store.Store.SwitchGen++
+	myGen := store.Store.SwitchGen
+	store.Store.SwitchMu.Unlock()
 
 	// 1. Load kubeconfig and validate the context exists (in-app switch only — never writes to disk).
 	kubeconfigFile, err := clientcmd.LoadFromFile(store.Store.Kubeconfig)
@@ -329,6 +342,14 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[SwitchContext] instant switch to %q (cached) — refreshing informers in background", contextName)
 		go func() {
 			runRBACProbe(newCache, contextName, clientset)
+			// Abort if a newer switch has superseded this goroutine.
+			store.Store.SwitchMu.Lock()
+			superseded := store.Store.SwitchGen != myGen
+			store.Store.SwitchMu.Unlock()
+			if superseded {
+				log.Printf("[SwitchContext] goroutine for %q aborted (superseded by newer switch)", contextName)
+				return
+			}
 			informers.RestartInformers(newCache)
 			newCache.Lock()
 			newCache.CacheReady = true
@@ -343,6 +364,14 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 		newCache.Unlock()
 		go func() {
 			runRBACProbe(newCache, contextName, clientset)
+			// Abort if a newer switch has superseded this goroutine.
+			store.Store.SwitchMu.Lock()
+			superseded := store.Store.SwitchGen != myGen
+			store.Store.SwitchMu.Unlock()
+			if superseded {
+				log.Printf("[SwitchContext] goroutine for %q aborted (superseded by newer switch)", contextName)
+				return
+			}
 			syncInformersFunc(newCache, newStopCh, 60*time.Second)
 			newCache.Lock()
 			newCache.CacheReady = true

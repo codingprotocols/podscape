@@ -36,7 +36,7 @@ func makeDiscovery(groupVersions ...string) *fakediscovery.FakeDiscovery {
 
 func TestDetect_NoProviders(t *testing.T) {
 	ps := providers.Detect(makeDiscovery(), nil)
-	if ps.Istio || ps.Traefik || ps.NginxInc || ps.NginxCommunity {
+	if ps.Istio || ps.Traefik || ps.NginxInc || ps.NginxCommunity || ps.Keda {
 		t.Errorf("expected all false, got %+v", ps)
 	}
 }
@@ -128,9 +128,26 @@ func TestDetect_NginxCommunity_CaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestDetect_Keda(t *testing.T) {
+	ps := providers.Detect(makeDiscovery("keda.sh/v1alpha1"), nil)
+	if !ps.Keda {
+		t.Error("expected Keda=true when keda.sh API group present")
+	}
+	if ps.Istio || ps.Traefik || ps.NginxInc || ps.NginxCommunity {
+		t.Errorf("expected no other providers set, got %+v", ps)
+	}
+}
+
+func TestDetect_NoKeda_WhenGroupAbsent(t *testing.T) {
+	ps := providers.Detect(makeDiscovery("networking.istio.io/v1alpha3"), nil)
+	if ps.Keda {
+		t.Errorf("expected Keda=false when keda.sh not in groups, got %+v", ps)
+	}
+}
+
 func TestDetect_DiscoveryFailure_ReturnsEmptySet(t *testing.T) {
 	ps := providers.Detect(&errorDiscovery{}, nil)
-	if ps.Istio || ps.Traefik || ps.NginxInc || ps.NginxCommunity {
+	if ps.Istio || ps.Traefik || ps.NginxInc || ps.NginxCommunity || ps.Keda {
 		t.Errorf("expected all false on discovery error, got %+v", ps)
 	}
 }

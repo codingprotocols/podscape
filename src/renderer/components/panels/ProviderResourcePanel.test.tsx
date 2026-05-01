@@ -242,6 +242,68 @@ describe('ProviderResourcePanel — summary column', () => {
     await waitFor(() => screen.getByText('nvs-one'))
     expect(screen.getByText('app.example.com')).toBeInTheDocument()
   })
+
+  it('renders trigger count and replica range for keda-scaledobjects', async () => {
+    mockGetCustomResource.mockResolvedValue([{
+      metadata: { name: 'my-scaler', namespace: 'default', uid: 'k1', creationTimestamp: '2024-01-01T00:00:00Z' },
+      kind: 'ScaledObject',
+      spec: { minReplicaCount: 1, maxReplicaCount: 20, triggers: [{}, {}] },
+    }])
+    mockStore()
+    const { default: Panel } = await import('./ProviderResourcePanel')
+    render(<Panel section="keda-scaledobjects" />)
+    await waitFor(() => screen.getByText('my-scaler'))
+    expect(screen.getByText('1–20 • 2 triggers')).toBeInTheDocument()
+  })
+
+  it('renders singular "trigger" for keda-scaledjobs with 1 trigger', async () => {
+    mockGetCustomResource.mockResolvedValue([{
+      metadata: { name: 'my-job-scaler', namespace: 'default', uid: 'k2', creationTimestamp: '2024-01-01T00:00:00Z' },
+      kind: 'ScaledJob',
+      spec: { minReplicaCount: 0, maxReplicaCount: 5, triggers: [{}] },
+    }])
+    mockStore()
+    const { default: Panel } = await import('./ProviderResourcePanel')
+    render(<Panel section="keda-scaledjobs" />)
+    await waitFor(() => screen.getByText('my-job-scaler'))
+    expect(screen.getByText('0–5 • 1 trigger')).toBeInTheDocument()
+  })
+
+  it('renders "—" maxReplicaCount for keda-scaledobjects when max is absent', async () => {
+    mockGetCustomResource.mockResolvedValue([{
+      metadata: { name: 'no-max', namespace: 'default', uid: 'k3', creationTimestamp: '2024-01-01T00:00:00Z' },
+      kind: 'ScaledObject',
+      spec: { triggers: [] },
+    }])
+    mockStore()
+    const { default: Panel } = await import('./ProviderResourcePanel')
+    render(<Panel section="keda-scaledobjects" />)
+    await waitFor(() => screen.getByText('no-max'))
+    expect(screen.getByText('0–— • 0 triggers')).toBeInTheDocument()
+  })
+
+  it('renders provider key for keda-triggerauthentications', async () => {
+    mockGetCustomResource.mockResolvedValue([{
+      metadata: { name: 'my-ta', namespace: 'default', uid: 'k4', creationTimestamp: '2024-01-01T00:00:00Z' },
+      kind: 'TriggerAuthentication',
+      spec: { secretTargetRef: [{ parameter: 'password', name: 'my-secret', key: 'password' }] },
+    }])
+    mockStore()
+    const { default: Panel } = await import('./ProviderResourcePanel')
+    render(<Panel section="keda-triggerauthentications" />)
+    await waitFor(() => screen.getByText('my-ta'))
+    expect(screen.getByText('secret target ref')).toBeInTheDocument()
+  })
+
+  it('uses null namespace for keda-clustertriggerauthentications regardless of namespace selector', async () => {
+    mockGetCustomResource.mockResolvedValue([])
+    mockStore({ selectedNamespace: 'production' })
+    const { default: Panel } = await import('./ProviderResourcePanel')
+    render(<Panel section="keda-clustertriggerauthentications" />)
+    await waitFor(() => expect(mockGetCustomResource).toHaveBeenCalled())
+    const [, nsArg] = mockGetCustomResource.mock.calls[0]
+    expect(nsArg).toBeNull()
+  })
 })
 
 // ── Row selection & detail pane ───────────────────────────────────────────────

@@ -37,6 +37,9 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const [activeTab, setActiveTab] = useState<'logs' | 'metrics' | 'analysis' | 'lifecycle'>('logs')
   const [events, setEvents] = useState<KubeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
+  // Track whether events have been loaded for the current pod so we don't
+  // re-fetch on every tab switch, but do re-fetch when the pod changes.
+  const eventsLoadedRef = useRef(false)
   const { items: logs, append, reset, cancelFlush } = useLogBuffer<string>({ maxItems: MAX_LOG_LINES, flushIntervalMs: 100 })
   const [isStreaming, setIsStreaming] = useState(false)
   const [logError, setLogError] = useState<string | null>(null)
@@ -170,27 +173,9 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     setLogError(null)
     setSearch('')
     setEvents([])
+    eventsLoadedRef.current = false
     // Trigger scan
     scanCurrentPod()
-    // Fetch events for timeline
-    const fetchEvents = async () => {
-      if (!selectedContext) return
-      setEventsLoading(true)
-      try {
-        const evs = await window.kubectl.getResourceEvents(
-          selectedContext,
-          pod.metadata.namespace ?? '',
-          'Pod',
-          pod.metadata.name
-        )
-        setEvents(evs)
-      } catch (err) {
-        console.error('[PodDetail] Failed to fetch events:', err)
-      } finally {
-        setEventsLoading(false)
-      }
-    }
-    fetchEvents()
 
     // Read directly from ref to avoid stale closure
     const wasStreaming = activeStreamIdRef.current !== null
@@ -205,6 +190,26 @@ export default function PodDetail({ pod }: Props): JSX.Element {
       startStreamRef.current()
     }
   }, [pod.metadata.uid, selectedContainer, selectedContext, scanCurrentPod, reset])
+
+  // Lazy-load events only when the Lifecycle tab is first opened for this pod.
+  useEffect(() => {
+    if (activeTab !== 'lifecycle' || eventsLoadedRef.current || !selectedContext) return
+    const uid = pod.metadata.uid
+    if (!uid) return
+    eventsLoadedRef.current = true
+    setEventsLoading(true)
+    window.kubectl.getResourceEvents(
+      selectedContext,
+      pod.metadata.namespace ?? '',
+      uid
+    ).then(evs => {
+      setEvents(evs as KubeEvent[])
+    }).catch(err => {
+      console.error('[PodDetail] Failed to fetch events:', err)
+    }).finally(() => {
+      setEventsLoading(false)
+    })
+  }, [activeTab, pod.metadata.uid, selectedContext])
 
   const phase = pod.metadata.deletionTimestamp ? 'Terminating' : (pod.status.phase ?? 'Unknown')
   const filteredLogs = search
@@ -470,7 +475,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
               <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{pod.metadata.namespace} · POD</p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {(canVerb(allowedVerbs, 'pods', 'update') || canVerb(allowedVerbs, 'pods', 'patch')) && (
+              {phase !== 'Terminating' && (canVerb(allowedVerbs, 'pods', 'update') || canVerb(allowedVerbs, 'pods', 'patch')) && (
                 <button
                   onClick={() => openYAML('pod', pod.metadata.name, false, pod.metadata.namespace)}
                   disabled={yamlLoading}

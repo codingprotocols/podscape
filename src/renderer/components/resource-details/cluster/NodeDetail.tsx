@@ -137,11 +137,55 @@ export default function NodeDetail({ node }: Props): JSX.Element {
         )}
       </div>
 
-      {/* Prometheus metrics */}
+      {/* Resource usage — live metrics if available, allocatable otherwise */}
+      <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">
+            Resources
+          </h4>
+          {metrics ? (
+            <span className="flex items-center gap-1.5 text-[10px] font-bold text-blue-500 uppercase tracking-widest">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              Live
+            </span>
+          ) : (
+            <span
+              className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest cursor-default"
+              title="Install metrics-server to see live CPU and memory usage"
+            >
+              Allocatable only
+            </span>
+          )}
+        </div>
+        <div className="space-y-4 px-1">
+          <CombinedResourceBar
+            label="CPU"
+            liveUsed={metrics ? parseCpuMillicores(metrics.usage.cpu) : null}
+            allocatable={cpuAlloc}
+            capacity={cpuCap}
+            format={v => `${Math.round(v)}m`}
+          />
+          <CombinedResourceBar
+            label="Memory"
+            liveUsed={metrics ? parseMemoryMiB(metrics.usage.memory) : null}
+            allocatable={memAllocMiB}
+            capacity={memCapMiB}
+            format={v => v >= 1024 ? `${(v / 1024).toFixed(1)} Gi` : `${Math.round(v)} Mi`}
+          />
+          {node.status.capacity?.pods && (
+            <div className="flex items-baseline gap-2 pt-1">
+              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 w-28 shrink-0">Max Pods</span>
+              <span className="text-[11px] font-medium text-slate-700 dark:text-slate-200">{node.status.capacity.pods}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Prometheus time-series */}
       {prometheusAvailable && (
         <div className="px-6 py-4 border-b border-slate-100 dark:border-white/5">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Metrics</span>
+            <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Metrics History</span>
             <PrometheusTimeRangeBar />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -161,27 +205,6 @@ export default function NodeDetail({ node }: Props): JSX.Element {
         </dl>
       </div>
 
-      {/* Capacity */}
-      <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
-        <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4">Capacity</h4>
-        <div className="space-y-4 px-1">
-          <ResourceBar
-            label="CPU"
-            used={cpuAlloc}
-            total={cpuCap}
-            format={v => `${Math.round(v)}m`}
-          />
-          <ResourceBar
-            label="Memory"
-            used={memAllocMiB}
-            total={memCapMiB}
-            format={v => v >= 1024 ? `${(v / 1024).toFixed(1)}Gi` : `${Math.round(v)}Mi`}
-          />
-          {node.status.capacity?.pods && (
-            <Row label="Max Pods" value={node.status.capacity.pods} />
-          )}
-        </div>
-      </div>
 
       {/* System info */}
       {ni && (
@@ -239,29 +262,6 @@ export default function NodeDetail({ node }: Props): JSX.Element {
         </dl>
       </div>
 
-      {/* Live Metrics */}
-      {metrics && (
-        <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-blue-500/5">
-          <h4 className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-            Live Usage Metrics
-          </h4>
-          <div className="space-y-4 px-1">
-            <ResourceBar
-              label="Actual CPU Usage"
-              used={parseCpuMillicores(metrics.usage.cpu)}
-              total={cpuCap}
-              format={v => `${Math.round(v)}m`}
-            />
-            <ResourceBar
-              label="Actual Memory Usage"
-              used={parseMemoryMiB(metrics.usage.memory)}
-              total={memCapMiB}
-              format={v => v >= 1024 ? `${(v / 1024).toFixed(1)}Gi` : `${Math.round(v)}Mi`}
-            />
-          </div>
-        </div>
-      )}
 
       {/* Running Pods */}
       <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
@@ -367,22 +367,76 @@ function LabelGroup({ kv }: { kv?: Record<string, string> }) {
   )
 }
 
-function ResourceBar({ label, used, total, format }: {
-  label: string; used: number; total: number; format: (v: number) => string
+/**
+ * Shows live usage (if metrics-server is available) or allocatable vs capacity.
+ * When live data is present, a secondary allocatable marker is drawn on the bar.
+ */
+function CombinedResourceBar({ label, liveUsed, allocatable, capacity, format }: {
+  label: string
+  liveUsed: number | null   // null = metrics-server not available
+  allocatable: number
+  capacity: number
+  format: (v: number) => string
 }) {
-  const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0
+  const hasLive = liveUsed !== null
+  const primaryUsed = hasLive ? liveUsed! : allocatable
+  const pct = capacity > 0 ? Math.min(100, (primaryUsed / capacity) * 100) : 0
+  const allocPct = capacity > 0 ? Math.min(100, (allocatable / capacity) * 100) : 0
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-slate-400 dark:text-slate-500">{label}</span>
-        <span className="text-xs text-slate-600 dark:text-slate-300">{format(used)} / {format(total)}</span>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</span>
+        <div className="flex items-center gap-2 text-[11px]">
+          {hasLive ? (
+            <>
+              <span className="font-bold text-slate-700 dark:text-slate-200">{format(liveUsed!)} used</span>
+              <span className="text-slate-400 dark:text-slate-500">of {format(capacity)}</span>
+            </>
+          ) : (
+            <>
+              <span className="font-bold text-slate-700 dark:text-slate-200">{format(allocatable)} allocatable</span>
+              <span className="text-slate-400 dark:text-slate-500">of {format(capacity)}</span>
+            </>
+          )}
+        </div>
       </div>
-      <div className="h-2 bg-slate-200 dark:bg-white/5 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-500 ease-out shadow-[0_0_8px_rgba(59,130,246,0.3)] ${pct > 80 ? 'bg-red-500' : pct > 60 ? 'bg-yellow-500' : 'bg-blue-500'}`}
-          style={{ width: `${pct}%` }}
-        />
+
+      {/* Bar — overflow-hidden only on the fill track, not the marker wrapper */}
+      <div className="relative h-2.5">
+        <div className="absolute inset-0 bg-slate-200 dark:bg-white/5 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ease-out ${
+              pct > 80 ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]'
+              : pct > 60 ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]'
+              : 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.3)]'
+            }`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        {/* Allocatable boundary marker — sits outside overflow-hidden so it never gets clipped */}
+        {hasLive && (
+          <div
+            className="absolute top-0 h-full w-px bg-slate-500/60 dark:bg-white/30"
+            style={{ left: `${Math.min(allocPct, 99)}%` }}
+            title={`Allocatable: ${format(allocatable)}`}
+          />
+        )}
       </div>
+
+      {/* Sub-labels when live is available */}
+      {hasLive && (
+        <div className="flex items-center gap-3 mt-1.5 text-[10px] text-slate-400 dark:text-slate-500">
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-0.5 rounded bg-blue-500 inline-block" />
+            Live {Math.round(pct)}%
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-0.5 rounded bg-slate-400/50 dark:bg-white/20 inline-block" />
+            Allocatable {Math.round(allocPct)}%
+          </span>
+        </div>
+      )}
     </div>
   )
 }

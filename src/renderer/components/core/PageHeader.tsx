@@ -10,7 +10,6 @@ export default function PageHeader({ title, subtitle, children }: PageHeaderProp
   return (
     <div
       className="flex items-center justify-between pl-8 pr-6 py-7 border-b border-slate-200 dark:border-white/5 shrink-0 bg-white/5 backdrop-blur-md sticky top-0 z-30"
-      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
       <div className="flex items-center gap-4">
         <div>
@@ -25,10 +24,7 @@ export default function PageHeader({ title, subtitle, children }: PageHeaderProp
           )}
         </div>
       </div>
-      <div
-        className="flex items-center gap-4"
-        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-      >
+      <div className="flex items-center gap-4">
         {children}
       </div>
     </div>

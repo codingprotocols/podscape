@@ -97,4 +97,5 @@ export interface ProviderSet {
   traefikVersion?: string // "v2" | "v3"
   nginxInc: boolean       // kubernetes-ingress (NGINX Inc, CRD-based)
   nginxCommunity: boolean // ingress-nginx (community, annotation-based)
+  keda: boolean
 }

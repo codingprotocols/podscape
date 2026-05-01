@@ -15,7 +15,6 @@ describe('clusterSlice', () => {
             selectedContext: null,
             loadSection: vi.fn(),
             fetchProviders: vi.fn(),
-            probeCost: vi.fn(),
             fetchAllowedVerbs: vi.fn(),
             stopAllPortForwards: vi.fn(),
             hotbarContexts: [],

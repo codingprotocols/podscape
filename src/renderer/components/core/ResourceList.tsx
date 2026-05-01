@@ -230,13 +230,18 @@ const NodeRow = React.memo(function NodeRow({ node }: { node: KubeNode }) {
   const cordoned = !!node.spec.unschedulable
   const internalIP = (node.status.addresses ?? []).find(a => a.type === 'InternalIP')?.address ?? '—'
 
-  const cpuAlloc = parseCpuMillicores(node.status.allocatable?.cpu ?? '0')
   const cpuCap = parseCpuMillicores(node.status.capacity?.cpu ?? '0')
-  const memAllocMiB = parseMemoryMiB(node.status.allocatable?.memory ?? '0Ki')
+  const cpuAlloc = parseCpuMillicores(node.status.allocatable?.cpu ?? '0')
   const memCapMiB = parseMemoryMiB(node.status.capacity?.memory ?? '0Ki')
+  const memAllocMiB = parseMemoryMiB(node.status.allocatable?.memory ?? '0Ki')
 
-  const fmtCpu = (m: number) => m >= 1000 ? `${(m / 1000).toFixed(1)}` : `${m}m`
-  const fmtMem = (mib: number) => mib >= 1024 ? `${(mib / 1024).toFixed(0)}Gi` : `${Math.round(mib)}Mi`
+  // Live usage from metrics-server (may be absent if not installed)
+  const metrics = useAppStore(s => s.nodeMetrics.find(m => m.metadata.name === node.metadata.name))
+  const liveCpu = metrics ? parseCpuMillicores(metrics.usage.cpu) : null
+  const liveMem = metrics ? parseMemoryMiB(metrics.usage.memory) : null
+
+  const fmtCpu = (m: number) => m >= 1000 ? `${(m / 1000).toFixed(1)} CPU` : `${Math.round(m)}m`
+  const fmtMem = (mib: number) => mib >= 1024 ? `${(mib / 1024).toFixed(1)}Gi` : `${Math.round(mib)}Mi`
 
   const instanceType = getInstanceType(node)
   const nodePool = getNodePool(node)
@@ -268,11 +273,23 @@ const NodeRow = React.memo(function NodeRow({ node }: { node: KubeNode }) {
           />
         ) : <span className="text-xs text-slate-400 dark:text-slate-600">—</span>}
       </td>
-      <td className="px-6 py-3 text-xs text-slate-600 dark:text-slate-300 font-mono whitespace-nowrap">
-        {cpuAlloc > 0 ? `${fmtCpu(cpuAlloc)} / ${fmtCpu(cpuCap)}` : '—'}
+      <td className="px-6 py-3 text-xs font-mono whitespace-nowrap">
+        {liveCpu !== null ? (
+          <span className="text-slate-700 dark:text-slate-200" title={`Live: ${fmtCpu(liveCpu)} / ${fmtCpu(cpuCap)} capacity`}>
+            {fmtCpu(liveCpu)}<span className="text-slate-400 dark:text-slate-500"> / {fmtCpu(cpuCap)}</span>
+          </span>
+        ) : cpuAlloc > 0 ? (
+          <span className="text-slate-500 dark:text-slate-400" title="Allocatable (metrics-server not available)">{fmtCpu(cpuAlloc)} alloc</span>
+        ) : '—'}
       </td>
-      <td className="px-6 py-3 text-xs text-slate-600 dark:text-slate-300 font-mono whitespace-nowrap">
-        {memAllocMiB > 0 ? `${fmtMem(memAllocMiB)} / ${fmtMem(memCapMiB)}` : '—'}
+      <td className="px-6 py-3 text-xs font-mono whitespace-nowrap">
+        {liveMem !== null ? (
+          <span className="text-slate-700 dark:text-slate-200" title={`Live: ${fmtMem(liveMem)} / ${fmtMem(memCapMiB)} capacity`}>
+            {fmtMem(liveMem)}<span className="text-slate-400 dark:text-slate-500"> / {fmtMem(memCapMiB)}</span>
+          </span>
+        ) : memAllocMiB > 0 ? (
+          <span className="text-slate-500 dark:text-slate-400" title="Allocatable (metrics-server not available)">{fmtMem(memAllocMiB)} alloc</span>
+        ) : '—'}
       </td>
       <td className="px-6 py-3 text-xs font-bold text-slate-600 dark:text-slate-300 font-mono">{internalIP}</td>
       <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(node.metadata.creationTimestamp)}</td>
@@ -590,7 +607,7 @@ function CustomCheckbox({ checked, onChange, partiallyChecked = false }: { check
 
 export default function ResourceList(): JSX.Element {
   // Data fields — subscribed via shallow equality so any change triggers a re-render.
-  const { section, selectedResource, loadingResources, selectedNamespace, selectedContext, searchQuery, deniedSections } =
+  const { section, selectedResource, loadingResources, selectedNamespace, selectedContext, searchQuery, deniedSections, allowedVerbs } =
     useAppStore(useShallow(s => ({
       section: s.section,
       selectedResource: s.selectedResource,
@@ -599,9 +616,8 @@ export default function ResourceList(): JSX.Element {
       selectedContext: s.selectedContext,
       searchQuery: s.searchQuery,
       deniedSections: s.deniedSections,
+      allowedVerbs: s.allowedVerbs,
     })))
-
-  const allowedVerbs = useAppStore(s => s.allowedVerbs)
 
   // Action functions — stable refs created once; read directly from the store
   // without subscribing so they never cause re-renders.
@@ -654,6 +670,9 @@ export default function ResourceList(): JSX.Element {
   const [sortCol, setSortCol] = useState<string | null>('Name')
   const [sortAsc, setSortAsc] = useState(true)
 
+  // Node filter — only active on the pods section
+  const [nodeFilter, setNodeFilter] = useState<string>('')
+
   const handleSort = useCallback((col: string) => {
     if (sortCol === col) {
       setSortAsc(prev => !prev)
@@ -663,9 +682,25 @@ export default function ResourceList(): JSX.Element {
     }
   }, [sortCol])
 
+  // All unique node names from the current pod list (for the dropdown)
+  const podNodeNames = useMemo(() => {
+    if (section !== 'pods') return []
+    const names = new Set<string>()
+    for (const r of resources) {
+      const nodeName = (r as KubePod).spec?.nodeName
+      if (nodeName) names.add(nodeName)
+    }
+    return Array.from(names).sort()
+  }, [resources, section])
+
   const filtered = useMemo(() => {
     const q = searchQuery.toLowerCase()
     let result = resources.filter(r => r.metadata.name.toLowerCase().includes(q))
+
+    // Node filter — pods section only
+    if (section === 'pods' && nodeFilter) {
+      result = result.filter(r => (r as KubePod).spec?.nodeName === nodeFilter)
+    }
 
     if (sortCol) {
       result = [...result].sort((a, b) => {
@@ -686,13 +721,14 @@ export default function ResourceList(): JSX.Element {
     // is replaced wholesale by useResources(), which already invalidates this memo.
     // Including `section` would trigger a redundant sort on the old array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resources, searchQuery, sortCol, sortAsc])
+  }, [resources, searchQuery, nodeFilter, sortCol, sortAsc])
 
-  // Clear selection and sorting if section changes
+  // Clear selection, sorting, and pod-specific filters when section changes
   useEffect(() => {
     setSelectedUids(new Set())
     setSortCol('Name')
     setSortAsc(true)
+    setNodeFilter('')
   }, [section])
 
   // ── Virtualization ────────────────────────────────────────────────────────
@@ -884,6 +920,32 @@ export default function ResourceList(): JSX.Element {
         <div className="flex items-center justify-between gap-3 px-4 py-2 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800 shrink-0">
           <p className="text-xs font-medium text-red-600 dark:text-red-400">{restartError}</p>
           <button onClick={() => setRestartError(null)} className="text-red-500 hover:text-red-700 dark:hover:text-red-300 text-xs shrink-0">✕</button>
+        </div>
+      )}
+
+      {/* Node filter — pods section only */}
+      {section === 'pods' && podNodeNames.length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] shrink-0">
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 shrink-0">Node</span>
+          <select
+            value={nodeFilter}
+            onChange={e => setNodeFilter(e.target.value)}
+            className="text-[11px] font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-slate-700 dark:text-slate-200
+                       focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
+          >
+            <option value="">All nodes</option>
+            {podNodeNames.map(name => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+          {nodeFilter && (
+            <button
+              onClick={() => setNodeFilter('')}
+              className="text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+            >
+              ✕ Clear
+            </button>
+          )}
         </div>
       )}
 

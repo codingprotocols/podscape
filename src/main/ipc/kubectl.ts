@@ -111,7 +111,7 @@ export class KubectlProvider {
   }
 
   async getPodMetrics(_context: string, namespace: string | null): Promise<unknown[]> {
-    const url = `/metrics/pods${namespace ? `?namespace=${namespace}` : ''}`
+    const url = `/metrics/pods${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`
     const res = await sidecarFetch(url)
     if (res.ok) {
       const data = await res.json()
@@ -130,7 +130,7 @@ export class KubectlProvider {
   }
 
   async createDebugPod(_context: string, namespace: string, image: string, name: string): Promise<void> {
-    const url = `/debugpod/create?namespace=${namespace}&image=${encodeURIComponent(image)}&name=${encodeURIComponent(name)}`
+    const url = `/debugpod/create?namespace=${encodeURIComponent(namespace)}&image=${encodeURIComponent(image)}&name=${encodeURIComponent(name)}`
     await checkedSidecarFetch(url, { method: 'POST' })
   }
 
@@ -170,8 +170,8 @@ export class KubectlProvider {
     return 'Undo successful'
   }
 
-  async getResourceEvents(_context: string, namespace: string, kind: string, name: string): Promise<unknown[]> {
-    const url = `/events?namespace=${namespace}&kind=${kind}&name=${name}`
+  async getResourceEvents(_context: string, namespace: string, uid: string): Promise<unknown[]> {
+    const url = `/events?namespace=${encodeURIComponent(namespace)}&uid=${encodeURIComponent(uid)}`
     const res = await sidecarFetch(url)
     if (res.ok) return await res.json()
     return []
@@ -208,7 +208,7 @@ export class KubectlProvider {
   }
 
   async execCommand(_context: string, namespace: string, pod: string, container: string, command: string[]): Promise<{ stdout: string; exitCode: number }> {
-    const url = `/exec/oneshot?namespace=${namespace}&pod=${pod}&container=${container}&${command.map(c => `command=${encodeURIComponent(c)}`).join('&')}`
+    const url = `/exec/oneshot?namespace=${encodeURIComponent(namespace)}&pod=${encodeURIComponent(pod)}&container=${encodeURIComponent(container)}&${command.map(c => `command=${encodeURIComponent(c)}`).join('&')}`
     const res = await checkedSidecarFetch(url)
     const data = await res.json() as { stdout: string; stderr: string; error?: string }
     return { stdout: data.stdout + (data.stderr || ''), exitCode: data.error ? 1 : 0 }
@@ -218,7 +218,7 @@ export class KubectlProvider {
     _context: string, namespace: string, pod: string, container: string,
     localPath: string, remotePath: string
   ): Promise<void> {
-    const url = `/cp/to?namespace=${namespace}&pod=${pod}&container=${container}&path=${encodeURIComponent(remotePath)}&localPath=${encodeURIComponent(localPath)}`
+    const url = `/cp/to?namespace=${encodeURIComponent(namespace)}&pod=${encodeURIComponent(pod)}&container=${encodeURIComponent(container)}&path=${encodeURIComponent(remotePath)}&localPath=${encodeURIComponent(localPath)}`
     await checkedSidecarFetch(url, { method: 'POST' })
   }
 
@@ -226,7 +226,7 @@ export class KubectlProvider {
     _context: string, namespace: string, pod: string, container: string,
     remotePath: string, localPath: string
   ): Promise<void> {
-    const url = `/cp/from?namespace=${namespace}&pod=${pod}&container=${container}&path=${encodeURIComponent(remotePath)}`
+    const url = `/cp/from?namespace=${encodeURIComponent(namespace)}&pod=${encodeURIComponent(pod)}&container=${encodeURIComponent(container)}&path=${encodeURIComponent(remotePath)}`
     const res = await checkedSidecarFetch(url)
     if (!res.body) throw new Error('No response body from sidecar')
     const dest = createWriteStream(localPath)
@@ -297,6 +297,17 @@ export function cancelAllLogStreams(): void {
   }
 }
 
+// Module-level so cancelAllPortForwardTimers() can access it from index.ts
+// during app quit, same pattern as activeStreams above.
+const forwardAliveTimers = new Map<string, NodeJS.Timeout>()
+
+export function cancelAllPortForwardTimers(): void {
+  for (const [id, timer] of forwardAliveTimers) {
+    clearInterval(timer)
+    forwardAliveTimers.delete(id)
+  }
+}
+
 export function registerKubectlHandlers(): void {
   const provider = new KubectlProvider()
 
@@ -343,7 +354,7 @@ export function registerKubectlHandlers(): void {
   ipcMain.handle('kubectl:scaleResource', (_e, ctx, ns, kind, name, replicas) => provider.scaleResource(ctx, ns, kind, name, replicas))
   ipcMain.handle('kubectl:rolloutHistory', (_e, ctx, ns, kind, name) => provider.rolloutHistory(ctx, ns, kind, name))
   ipcMain.handle('kubectl:rolloutUndo', (_e, ctx, ns, kind, name, rev) => provider.rolloutUndo(ctx, ns, kind, name, rev))
-  ipcMain.handle('kubectl:getResourceEvents', (_e, ctx, ns, kind, name) => provider.getResourceEvents(ctx, ns, kind, name))
+  ipcMain.handle('kubectl:getResourceEvents', (_e, ctx, ns, uid) => provider.getResourceEvents(ctx, ns, uid))
   ipcMain.handle('kubectl:rolloutRestart', (_e, ctx, ns, kind, name) => provider.rolloutRestart(ctx, ns, kind, name))
   ipcMain.handle('kubectl:cordonNode', (_e, _ctx, name, unschedulable) => provider.cordonNode(name, unschedulable))
   ipcMain.handle('kubectl:drainNode', (_e, _ctx, name) => provider.drainNode(name))
@@ -365,7 +376,7 @@ export function registerKubectlHandlers(): void {
       try { old.close() } catch {}
     }
 
-    const ws = new WebSocket(`ws://${SIDECAR_HOST}:${activeSidecarPort}/logs?pod=${pod}&namespace=${ns}&container=${container || ''}`, {
+    const ws = new WebSocket(`ws://${SIDECAR_HOST}:${activeSidecarPort}/logs?pod=${encodeURIComponent(pod)}&namespace=${encodeURIComponent(ns)}&container=${encodeURIComponent(container || '')}`, {
       headers: { 'X-Podscape-Token': sidecarToken }
     })
     activeStreams.set(streamId, ws)
@@ -406,12 +417,40 @@ export function registerKubectlHandlers(): void {
 
   ipcMain.handle('kubectl:getTopology', (_e, ns) => getTopology(ns))
 
+  // Track alive-poll timers keyed by forward id so we can clear them on
+  // stopPortForward or when the tunnel exits on its own.
+  function clearForwardAliveTimer(id: string) {
+    const timer = forwardAliveTimers.get(id)
+    if (timer) {
+      clearInterval(timer)
+      forwardAliveTimers.delete(id)
+    }
+  }
+
   ipcMain.handle('kubectl:portForward', async (event, _ctx, ns, type, name, localPort, remotePort, id) => {
     try {
-      const url = `/portforward?id=${id}&namespace=${ns}&type=${type ?? 'pod'}&name=${name}&localPort=${localPort}&remotePort=${remotePort}`
+      const url = `/portforward?id=${encodeURIComponent(id)}&namespace=${encodeURIComponent(ns)}&type=${encodeURIComponent(type ?? 'pod')}&name=${encodeURIComponent(name)}&localPort=${localPort}&remotePort=${remotePort}`
       const res = await sidecarFetch(url)
       if (res.ok) {
         if (!event.sender.isDestroyed()) event.sender.send('portforward:ready', id, 'Forwarding started')
+
+        // Poll /portforward/alive every 5 s. When the sidecar reports the
+        // forward is gone (pod died, network error, context switch, etc.),
+        // emit portforward:exit so the UI removes the stale row.
+        const timer = setInterval(async () => {
+          try {
+            const aliveRes = await sidecarFetch(`/portforward/alive?id=${encodeURIComponent(id)}`)
+            if (!aliveRes.ok) {
+              clearForwardAliveTimer(id)
+              if (!event.sender.isDestroyed()) event.sender.send('portforward:exit', id)
+            }
+          } catch {
+            // Sidecar unreachable — treat as dead.
+            clearForwardAliveTimer(id)
+            if (!event.sender.isDestroyed()) event.sender.send('portforward:exit', id)
+          }
+        }, 5_000)
+        forwardAliveTimers.set(id, timer)
       } else {
         if (!event.sender.isDestroyed()) event.sender.send('portforward:error', id, `Sidecar error: ${res.status}`)
       }
@@ -421,6 +460,7 @@ export function registerKubectlHandlers(): void {
   })
 
   ipcMain.handle('kubectl:stopPortForward', async (_e, id) => {
+    clearForwardAliveTimer(id)
     try {
       await sidecarFetch(`/stopPortForward?id=${id}`)
     } catch (err) {
@@ -569,22 +609,7 @@ export function registerKubectlHandlers(): void {
     return res.json()
   })
 
-  ipcMain.handle('kubectl:costStatus', async (_e, url?: string) => {
-    const path = url ? `/cost/status?url=${encodeURIComponent(url)}` : '/cost/status'
-    const res = await checkedSidecarFetch(path)
-    return res.json()
-  })
 
-  ipcMain.handle('kubectl:costAllocation', async (_e, url: string | undefined, prov: string, win: string, agg: string, ns?: string) => {
-    const p = new URLSearchParams()
-    if (url) p.set('url', url)
-    p.set('provider', prov)
-    p.set('window', win)
-    p.set('aggregate', agg)
-    if (ns) p.set('namespace', ns)
-    const res = await checkedSidecarFetch(`/cost/allocation?${p.toString()}`)
-    return res.json()
-  })
 
   ipcMain.handle('kubectl:prometheusQueryBatch', async (_e, queries, start, end) => {
     const res = await checkedSidecarFetch('/prometheus/query_range_batch', {

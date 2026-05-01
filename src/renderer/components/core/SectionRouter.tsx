@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react'
+import React, { Suspense, useState, useCallback } from 'react'
 import { useAppStore } from '../../store'
 import { useShallow } from 'zustand/react/shallow'
 import { Search, Terminal } from 'lucide-react'
@@ -7,6 +7,7 @@ import { LIST_SECTIONS, CLUSTER_SCOPED_SECTIONS, SECTION_LABELS, PROVIDER_SECTIO
 import { KubeCRD, ResourceKind } from '../../types'
 import type { CreatableKind } from '../common/CreateResourceModal'
 import { canVerb } from '../../store/slices/clusterSlice'
+import { useAutoRefresh } from '../../hooks/useAutoRefresh'
 
 import Dashboard from './Dashboard'
 import ResourceList from './ResourceList'
@@ -31,7 +32,6 @@ const NetworkPanel = React.lazy(() => import('../panels/NetworkPanel'))
 const ConnectivityTester = React.lazy(() => import('../advanced/ConnectivityTester'))
 const DebugPodLauncher = React.lazy(() => import('../advanced/DebugPodLauncher'))
 const ProviderResourcePanel = React.lazy(() => import('../panels/ProviderResourcePanel'))
-const CostPanel = React.lazy(() => import('../panels/CostPanel'))
 const KrewPanel = React.lazy(() => import('../panels/KrewPanel'))
 
 const CREATABLE_SECTIONS: Partial<Record<string, CreatableKind>> = {
@@ -61,7 +61,6 @@ const LAZY_PANELS: Partial<Record<ResourceKind, React.LazyExoticComponent<React.
   gitops: GitOpsPanel,
   connectivity: ConnectivityTester,
   debugpod: DebugPodLauncher,
-  cost: CostPanel,
   krew: KrewPanel,
 }
 
@@ -94,6 +93,17 @@ export default function SectionRouter(): JSX.Element {
     allowedVerbs: s.allowedVerbs,
     openCreate: s.openCreate,
   })))
+
+  useAutoRefresh(LIST_SECTIONS.includes(section), refresh)
+
+  // Local refreshing flag so the RefreshButton spins for the duration of the
+  // async fetch without setting loadingResources (which would replace the list
+  // with a full-screen spinner and cause a flicker).
+  const [refreshing, setRefreshing] = useState(false)
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try { await refresh() } finally { setRefreshing(false) }
+  }, [refresh])
 
   if (!kubeconfigOk) {
     return <KubeConfigOnboarding />
@@ -160,8 +170,8 @@ export default function SectionRouter(): JSX.Element {
               </div>
 
               <RefreshButton
-                onClick={refresh}
-                loading={loadingResources}
+                onClick={handleRefresh}
+                loading={refreshing || loadingResources}
                 title="Refresh"
               />
 

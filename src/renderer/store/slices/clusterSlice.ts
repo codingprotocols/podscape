@@ -34,6 +34,12 @@ export interface ClusterSlice {
 }
 
 let contextSwitchSeq = 0
+// Name of the context whose switchContext HTTP request is currently in-flight.
+// Used to deduplicate concurrent calls to selectContext for the same target
+// (e.g. app-init and a sidebar click firing simultaneously). Without this,
+// both calls reach the sidecar and each launch a background goroutine, causing
+// duplicate RBAC probes and informer restarts that leave the cache inconsistent.
+let inflightSwitchTarget: string | null = null
 
 const safeGetItem = (key: string): string | null => {
     try { return localStorage.getItem(key) } catch { return null }
@@ -154,7 +160,8 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
         const currentSection = get().section as string
         const isProviderSection = currentSection.startsWith('istio-') ||
             currentSection.startsWith('traefik-') ||
-            currentSection.startsWith('nginx-')
+            currentSection.startsWith('nginx-') ||
+            currentSection.startsWith('keda-')
         set({
             selectedContext: name, isProduction: isProd, loadingNamespaces: true, loadingResources: true,
             namespaces: [], selectedNamespace: null, selectedResource: null, error: null,
@@ -167,14 +174,10 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             helmReleases: [],
             prometheusAvailable: null,
             prometheusProbeError: null,
-            costAvailable: null,
-            costProvider: '',
-            costError: null,
-            costAllocations: [],
             metricsError: null,
             // Reset provider detection so stale flags from the old cluster don't
             // briefly show sidebar groups that don't exist in the new cluster.
-            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false },
+            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false },
             // Navigate away from provider-specific sections so ProviderResourcePanel
             // doesn't attempt a fetch against a cluster that may lack those CRDs.
             ...(isProviderSection ? { section: 'dashboard' as const } : {}),
@@ -196,7 +199,19 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             // Tell the sidecar to switch its clientset + informer cache to the new
             // context BEFORE fetching any data. Without this the sidecar keeps
             // serving the previous context's cache.
-            await Promise.race([window.kubectl.switchContext(name), timeout])
+            //
+            // Dedup: if another call is already switching to the same context,
+            // skip the HTTP request and wait for it to finish instead. The Go
+            // sidecar also has a generation guard, but preventing the extra HTTP
+            // call avoids the redundant 10s RBAC probe entirely.
+            if (inflightSwitchTarget !== name) {
+                inflightSwitchTarget = name
+                try {
+                    await Promise.race([window.kubectl.switchContext(name), timeout])
+                } finally {
+                    if (inflightSwitchTarget === name) inflightSwitchTarget = null
+                }
+            }
             if (mySeq !== contextSwitchSeq) return
 
             set({ contextSwitchStatus: 'Loading namespaces…' })
@@ -233,7 +248,6 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
                 await get().loadSection(get().section)
                 get().preloadSearchResources() // background, fire-and-forget
                 get().fetchProviders()          // background, fire-and-forget
-                get().probeCost()               // background, fire-and-forget
                 get().fetchAllowedVerbs()       // background, fire-and-forget
                 // Prometheus is opt-in — only probe when the user clicks
                 // "Detect Now" in Settings. Auto-probing on every context
