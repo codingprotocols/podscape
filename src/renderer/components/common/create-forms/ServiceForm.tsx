@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { useAppStore } from '../../../store'
-import { ServiceFormState, generateServiceYAML, KVPair } from './generateYAML'
+import { ServiceFormState, generateServiceYAML } from './generateYAML'
 
 interface Props { onChange: (yaml: string) => void }
 
