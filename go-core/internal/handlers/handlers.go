@@ -27,9 +27,8 @@ import (
 // needing a live Kubernetes cluster.
 var syncInformersFunc = informers.SyncInformers
 
-// rbacCheckFunc is the function used to probe RBAC permissions before starting
-// informers. It is a variable so tests can substitute a stub.
-var rbacCheckFunc = rbac.CheckAccess
+// rbacVerbCheckFunc probes all 6 verbs. Injectable for tests.
+var rbacVerbCheckFunc = rbac.CheckVerbAccessFunc
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
@@ -199,21 +198,34 @@ func HandleGetCurrentContext(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(ctxName))
 }
 
-// runRBACProbe probes access permissions for the given context and stores the
+// RunRBACProbe probes access permissions for the given context and stores the
 // result in the cache. It runs under a 10-second deadline so a slow API server
 // cannot delay informer startup by more than that. On failure, AllowedResources
 // is left nil (permissive: all informers start).
+// Exported so main.go can call it for the startup context.
+func RunRBACProbe(cache *store.ContextCache, ctxName string, cs kubernetes.Interface) {
+	runRBACProbe(cache, ctxName, cs)
+}
+
 func runRBACProbe(cache *store.ContextCache, ctxName string, cs kubernetes.Interface) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	allowed, err := rbacCheckFunc(ctx, cs)
+	verbMap, err := rbacVerbCheckFunc(ctx, cs)
 	if err != nil {
 		log.Printf("[SwitchContext] RBAC probe failed for %q, proceeding without restriction: %v", ctxName, err)
 		return
 	}
+
+	// Derive AllowedResources (list+watch) for backward compat with MakeHandler / X-Podscape-Denied.
+	allowed := make(map[string]bool, len(verbMap))
+	for resource, verbs := range verbMap {
+		allowed[resource] = verbs["list"] && verbs["watch"]
+	}
+
 	cache.Lock()
 	cache.AllowedResources = allowed
+	cache.AllowedVerbs = verbMap
 	cache.Unlock()
 
 	denied := 0
@@ -232,6 +244,14 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing context parameter", http.StatusBadRequest)
 		return
 	}
+
+	// Serialize the synchronous switch body so concurrent requests don't both
+	// see isNew=true for the same cache, and capture a generation number for
+	// the background goroutine so it can abort if superseded.
+	store.Store.SwitchMu.Lock()
+	store.Store.SwitchGen++
+	myGen := store.Store.SwitchGen
+	store.Store.SwitchMu.Unlock()
 
 	// 1. Load kubeconfig and validate the context exists (in-app switch only — never writes to disk).
 	kubeconfigFile, err := clientcmd.LoadFromFile(store.Store.Kubeconfig)
@@ -322,6 +342,14 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[SwitchContext] instant switch to %q (cached) — refreshing informers in background", contextName)
 		go func() {
 			runRBACProbe(newCache, contextName, clientset)
+			// Abort if a newer switch has superseded this goroutine.
+			store.Store.SwitchMu.Lock()
+			superseded := store.Store.SwitchGen != myGen
+			store.Store.SwitchMu.Unlock()
+			if superseded {
+				log.Printf("[SwitchContext] goroutine for %q aborted (superseded by newer switch)", contextName)
+				return
+			}
 			informers.RestartInformers(newCache)
 			newCache.Lock()
 			newCache.CacheReady = true
@@ -336,6 +364,14 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 		newCache.Unlock()
 		go func() {
 			runRBACProbe(newCache, contextName, clientset)
+			// Abort if a newer switch has superseded this goroutine.
+			store.Store.SwitchMu.Lock()
+			superseded := store.Store.SwitchGen != myGen
+			store.Store.SwitchMu.Unlock()
+			if superseded {
+				log.Printf("[SwitchContext] goroutine for %q aborted (superseded by newer switch)", contextName)
+				return
+			}
 			syncInformersFunc(newCache, newStopCh, 60*time.Second)
 			newCache.Lock()
 			newCache.CacheReady = true
@@ -385,4 +421,27 @@ func (w *captureWriter) Write(p []byte) (n int, err error) {
 
 func (w *captureWriter) String() string {
 	return string(w.data)
+}
+
+// HandleGetAllowedVerbs returns the per-verb RBAC map for the active context.
+// Returns {} (empty object) when the probe has not run (treat as permissive).
+func HandleGetAllowedVerbs(w http.ResponseWriter, r *http.Request) {
+	store.Store.RLock()
+	ac := store.Store.ActiveCache
+	store.Store.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	if ac == nil {
+		w.Write([]byte("{}"))
+		return
+	}
+	ac.RLock()
+	verbs := ac.AllowedVerbs
+	ac.RUnlock()
+
+	if verbs == nil {
+		w.Write([]byte("{}"))
+		return
+	}
+	json.NewEncoder(w).Encode(verbs)
 }

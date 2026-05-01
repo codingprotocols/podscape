@@ -16,14 +16,14 @@ export default function PodRestartAnalyzer({ pod }: Props): JSX.Element {
     useEffect(() => {
         let mounted = true
         const fetchEvents = async () => {
-            if (!selectedContext) return
+            const uid = pod.metadata.uid
+            if (!selectedContext || !uid) return
             setLoading(true)
             try {
                 const podEvents = await window.kubectl.getResourceEvents(
                     selectedContext,
                     pod.metadata.namespace,
-                    'Pod',
-                    pod.metadata.name
+                    uid
                 )
                 if (mounted) setEvents(podEvents)
             } catch (err) {

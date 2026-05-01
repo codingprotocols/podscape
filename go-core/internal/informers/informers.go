@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/podscape/go-core/internal/store"
+	corev1 "k8s.io/api/core/v1"
 	apiextinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	k8sinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
@@ -131,7 +132,7 @@ func registerCriticalInformers(factory k8sinformers.SharedInformerFactory, c *st
 		setupInformer(factory.Apps().V1().Deployments().Informer(), c.Deployments, &c.RWMutex, true)
 	}
 	if rbacAllowed(allowed, "events") {
-		setupInformer(factory.Core().V1().Events().Informer(), c.Events, &c.RWMutex, true)
+		setupEventInformer(factory.Core().V1().Events().Informer(), c.Events, &c.RWMutex)
 	}
 }
 
@@ -253,6 +254,59 @@ func setupInformer(informer cache.SharedIndexInformer, targetMap map[string]inte
 		},
 		DeleteFunc: func(obj interface{}) {
 			key := getResourceKey(obj, namespaced)
+			mu.Lock()
+			delete(targetMap, key)
+			mu.Unlock()
+		},
+	})
+}
+
+const maxEvents = 1000
+
+// setupEventInformer is like setupInformer but caps c.Events at maxEvents items.
+// When an Add would push the map over the limit the oldest event (by
+// CreationTimestamp) is evicted first. Updates and Deletes never exceed the cap.
+func setupEventInformer(informer cache.SharedIndexInformer, targetMap map[string]interface{}, mu sync.Locker) {
+	evictOldest := func() {
+		if len(targetMap) < maxEvents {
+			return
+		}
+		var oldestKey string
+		var oldestTime time.Time
+		first := true
+		for k, v := range targetMap {
+			ev, ok := v.(*corev1.Event)
+			if !ok {
+				continue
+			}
+			t := ev.CreationTimestamp.Time
+			if first || t.Before(oldestTime) {
+				oldestKey = k
+				oldestTime = t
+				first = false
+			}
+		}
+		if oldestKey != "" {
+			delete(targetMap, oldestKey)
+		}
+	}
+
+	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			key := getResourceKey(obj, true)
+			mu.Lock()
+			evictOldest()
+			targetMap[key] = obj
+			mu.Unlock()
+		},
+		UpdateFunc: func(_, newObj interface{}) {
+			key := getResourceKey(newObj, true)
+			mu.Lock()
+			targetMap[key] = newObj
+			mu.Unlock()
+		},
+		DeleteFunc: func(obj interface{}) {
+			key := getResourceKey(obj, true)
 			mu.Lock()
 			delete(targetMap, key)
 			mu.Unlock()

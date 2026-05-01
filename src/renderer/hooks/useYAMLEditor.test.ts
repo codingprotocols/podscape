@@ -148,4 +148,75 @@ describe('_createYAMLEditorHandlers', () => {
 
         expect(state.yaml).toBeNull()
     })
+
+    it('close: also clears error so the modal dismisses after a fetch failure', () => {
+        state.error = 'Go sidecar returned 500'
+
+        const { close } = _createYAMLEditorHandlers(getYAML, applyYAML, refresh, setState)
+        close()
+
+        expect(state.error).toBeNull()
+    })
+
+    it('close: sets loading to false so the modal dismisses while loading', () => {
+        state.loading = true
+
+        const { close } = _createYAMLEditorHandlers(getYAML, applyYAML, refresh, setState)
+        close()
+
+        expect(state.loading).toBe(false)
+    })
+
+    it('open: discards result if close() was called before the fetch resolved', async () => {
+        let resolve!: (v: string) => void
+        getYAML.mockReturnValue(new Promise<string>(r => { resolve = r }))
+
+        const genRef = { current: 0 }
+        const { open, close } = _createYAMLEditorHandlers(getYAML, applyYAML, refresh, setState, genRef)
+
+        const opening = open('pod', 'my-pod', false, 'default')
+        close()          // invalidate the in-flight fetch
+        resolve('yaml content')
+        await opening
+
+        // yaml must remain null — close won the race
+        expect(state.yaml).toBeNull()
+        expect(state.loading).toBe(false)
+    })
+
+    it('open: discards error if close() was called before the fetch rejected', async () => {
+        let reject!: (e: Error) => void
+        getYAML.mockReturnValue(new Promise<string>((_, r) => { reject = r }))
+
+        const genRef = { current: 0 }
+        const { open, close } = _createYAMLEditorHandlers(getYAML, applyYAML, refresh, setState, genRef)
+
+        const opening = open('pod', 'my-pod', false, 'default')
+        close()
+        reject(new Error('connection lost'))
+        await opening
+
+        expect(state.error).toBeNull()
+        expect(state.loading).toBe(false)
+    })
+
+    // ── not-found error friendliness ───────────────────────────────────────────
+
+    it('open: shows human-readable message when sidecar returns "not found"', async () => {
+        getYAML.mockRejectedValue(new Error('Go sidecar returned 500 for /getYAML: pods "my-pod" not found'))
+
+        const { open } = _createYAMLEditorHandlers(getYAML, applyYAML, refresh, setState)
+        await open('pod', 'my-pod', false, 'default')
+
+        expect(state.error).toBe('Resource not found — it may have been deleted or is still terminating.')
+    })
+
+    it('open: shows human-readable message when error contains 404', async () => {
+        getYAML.mockRejectedValue(new Error('request failed with status 404'))
+
+        const { open } = _createYAMLEditorHandlers(getYAML, applyYAML, refresh, setState)
+        await open('pod', 'my-pod', false, 'default')
+
+        expect(state.error).toBe('Resource not found — it may have been deleted or is still terminating.')
+    })
 })

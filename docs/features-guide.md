@@ -189,30 +189,6 @@ Select the source pod, enter the host, port, and optional path, choose a protoco
 
 ---
 
-## Cost Estimation
-
-Podscape integrates with **Kubecost** and **OpenCost** to provide real-time cost allocation and efficiency metrics for your workloads. This allows you to track spending at the namespace, controller, or pod level directly from the dashboard.
-
-### How it works
-
-Podscape automatically attempts to discover a cost provider (Kubecost or OpenCost) running in your cluster. It checks common service names and proxy paths to find the cost API. once detected, a **Cost** tab appears in the Sidebar and cost metrics are injected into relevant detail views.
-
-### Configuration
-
-If the cost provider is not automatically detected, or is running on a custom URL (e.g., via a port-forward or an external ingress), you can specify the URL in **Settings**:
-
-1. Navigate to **Settings**.
-2. Find the **Cost Provider URLs** section.
-3. Add an entry for your current context: `my-cluster: http://kubecost-analyzer.kubecost.svc:9090`.
-
-### Cost Allocation Views
-
-- **Cluster-wide Overview**: The main Cost panel shows a breakdown of costs across all namespaces for the selected time window (1d, 7d, 30d).
-- **Namespace Details**: Filters the allocation view to a single namespace.
-- **Resource Injections**: Pod and Deployment detail views show the estimated daily cost for that specific resource when a cost provider is active.
-
----
-
 ## CronJob Manual Triggering
 
 You can manually instantiate a Job from a CronJob at any time, bypassing the schedule. This is useful for testing CronJobs or running unscheduled maintenance tasks.

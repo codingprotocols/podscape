@@ -26,9 +26,10 @@ export default function ReplicaSetDetail({ replicaSet: rs }: Props): JSX.Element
   const ownerName = (rs.metadata as any).ownerReferences?.find((o: any) => o.kind === 'Deployment')?.name
 
   useEffect(() => {
-    if (!selectedContext || tab !== 'events') return
+    const uid = rs.metadata.uid
+    if (!selectedContext || tab !== 'events' || !uid) return
     setEventsLoading(true)
-    window.kubectl.getResourceEvents(selectedContext, rs.metadata.namespace ?? 'default', 'ReplicaSet', rs.metadata.name)
+    window.kubectl.getResourceEvents(selectedContext, rs.metadata.namespace ?? 'default', uid)
       .then(setEvents)
       .catch(() => setEvents([]))
       .finally(() => setEventsLoading(false))

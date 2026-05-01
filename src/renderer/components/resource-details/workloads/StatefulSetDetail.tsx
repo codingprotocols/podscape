@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import type { KubeStatefulSet, KubeEvent } from '../../../types'
 import { formatAge } from '../../../types'
 import { useAppStore } from '../../../store'
+import { canVerb } from '../../../store/slices/clusterSlice'
 import { FileCode, X, Activity, RefreshCw, Zap, Server } from 'lucide-react'
 import YAMLViewer from '../../common/YAMLViewer'
 import AnalysisView from '../../advanced/AnalysisView'
@@ -14,6 +15,7 @@ type Tab = 'overview' | 'events' | 'analysis'
 
 export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Element {
   const { rolloutRestart, selectedContext, selectedNamespace, scanResource, scanResults, isScanning } = useAppStore()
+  const allowedVerbs = useAppStore(s => s.allowedVerbs)
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const [tab, setTab] = useState<Tab>('overview')
   const [showScale, setShowScale] = useState(false)
@@ -58,10 +60,11 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
   }
 
   const loadEvents = async () => {
-    if (!selectedContext) return
+    const uid = s.metadata.uid
+    if (!selectedContext || !uid) return
     setEventsLoading(true)
     try {
-      const evts = await window.kubectl.getResourceEvents(selectedContext, ns, 'StatefulSet', s.metadata.name)
+      const evts = await window.kubectl.getResourceEvents(selectedContext, ns, uid)
       setEvents(evts)
     } catch {
       setEvents([])
@@ -87,28 +90,34 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
             <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{s.metadata.namespace}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => openYAML('statefulset', s.metadata.name, false, s.metadata.namespace)}
-              disabled={yamlLoading}
-              className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
-            >
-              <FileCode size={14} className="group-hover:text-blue-400 transition-colors" />
-              {yamlLoading ? 'Loading...' : 'YAML'}
-            </button>
+            {(canVerb(allowedVerbs, 'statefulsets', 'update') || canVerb(allowedVerbs, 'statefulsets', 'patch')) && (
+              <button
+                onClick={() => openYAML('statefulset', s.metadata.name, false, s.metadata.namespace)}
+                disabled={yamlLoading}
+                className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
+              >
+                <FileCode size={14} className="group-hover:text-blue-400 transition-colors" />
+                {yamlLoading ? 'Loading...' : 'YAML'}
+              </button>
+            )}
             <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold outline outline-1 ${ready >= desired ? 'bg-emerald-500/10 text-emerald-500 outline-emerald-500/20' : 'bg-amber-500/10 text-amber-500 outline-amber-500/20'}`}>
               {ready}/{desired} READY
             </span>
           </div>
         </div>
         <div className="flex gap-2 mt-4">
-          <button onClick={() => setShowScale(true)}
-            className="text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all flex items-center gap-2">
-            <Zap size={14} /> Scale
-          </button>
-          <button onClick={handleRestart}
-            className="text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2">
-            <RefreshCw size={14} /> Restart
-          </button>
+          {(canVerb(allowedVerbs, 'statefulsets', 'update') || canVerb(allowedVerbs, 'statefulsets', 'patch')) && (
+            <button onClick={() => setShowScale(true)}
+              className="text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all flex items-center gap-2">
+              <Zap size={14} /> Scale
+            </button>
+          )}
+          {(canVerb(allowedVerbs, 'statefulsets', 'update') || canVerb(allowedVerbs, 'statefulsets', 'patch')) && (
+            <button onClick={handleRestart}
+              className="text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2">
+              <RefreshCw size={14} /> Restart
+            </button>
+          )}
         </div>
         {(restartMsg || scaleMsg) && (
           <p className={`text-[10px] font-bold mt-3 uppercase tracking-wider ${scaleMsg.startsWith('Error') ? 'text-red-400' : 'text-emerald-400'}`}>

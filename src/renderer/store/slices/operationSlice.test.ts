@@ -198,4 +198,27 @@ describe('operationSlice', () => {
         const unsubReady = windowMock.kubectl.onPortForwardReady.mock.results.at(-1)?.value
         expect(unsubReady).toBeDefined()
     })
+
+    // ── createKind / openCreate / closeCreate ─────────────────────────────────
+
+    it('createKind initialises as null', () => {
+        const slice = (createOperationSlice as any)(set, get)
+        expect(slice.createKind).toBeNull()
+    })
+
+    it('openCreate sets createKind to the given kind', () => {
+        const slice = (createOperationSlice as any)(set, get)
+        slice.openCreate('deployment')
+        expect(set).toHaveBeenCalledWith(expect.any(Function))
+        // Verify the state was updated correctly
+        expect(state.createKind).toBe('deployment')
+    })
+
+    it('closeCreate clears createKind to null after openCreate', () => {
+        const slice = (createOperationSlice as any)(set, get)
+        slice.openCreate('secret')
+        expect(state.createKind).toBe('secret')
+        slice.closeCreate()
+        expect(state.createKind).toBeNull()
+    })
 })

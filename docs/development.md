@@ -141,10 +141,8 @@ App settings are stored in `~/.podscape/settings.json`. The file is created auto
   "theme": "dark",
   "prodContexts": [],
   "prometheusUrls": {},
-  "costUrls": {},
   "tourCompleted": false,
   "pluginsEnabled": true,
-  "finopsEnabled": true,
   "gitopsEnabled": true,
   "networkEnabled": true
 }
@@ -157,10 +155,8 @@ App settings are stored in `~/.podscape/settings.json`. The file is created auto
 | `theme` | `"dark" \| "light" \| ""` | `"dark"` | UI colour theme. Empty string defers to the last-used or OS preference. |
 | `prodContexts` | `string[]` | `[]` | List of kubeconfig context names to treat as production. Any matching context activates the red border + banner in the UI. |
 | `prometheusUrls` | `Record<string, string>` | `{}` | Per-context manual Prometheus base URLs (e.g. `{ "my-ctx": "https://prometheus.example.com" }`). Empty string for a context means auto-discover via Kubernetes service proxy. |
-| `costUrls` | `Record<string, string>` | `{}` | Per-context Kubecost / OpenCost base URLs. Empty string means auto-detect. |
 | `tourCompleted` | `boolean` | `false` | Whether the post-connection onboarding tour has been shown and dismissed. |
 | `pluginsEnabled` | `boolean` | `true` | Show the Plugins (Krew) panel in the sidebar. |
-| `finopsEnabled` | `boolean` | `true` | Show the FinOps / Cost panel in the sidebar. |
 | `gitopsEnabled` | `boolean` | `true` | Show the GitOps panel in the sidebar. |
 | `networkEnabled` | `boolean` | `true` | Show the Network Map and Connectivity Tester panels in the sidebar. |
 

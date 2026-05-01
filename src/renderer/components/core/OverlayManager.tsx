@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow'
 import CommandPalette from './CommandPalette'
 import TourOverlay from './TourOverlay'
 import ExecPanel from '../panels/ExecPanel'
+import CreateResourceModal from '../common/CreateResourceModal'
 
 
 
@@ -16,6 +17,8 @@ export default function OverlayManager(): JSX.Element {
     error,
     clearError,
     refresh,
+    createKind,
+    closeCreate,
   } = useAppStore(useShallow(s => ({
     showTour: s.showTour,
     setShowTour: s.setShowTour,
@@ -24,6 +27,8 @@ export default function OverlayManager(): JSX.Element {
     error: s.error,
     clearError: s.clearError,
     refresh: s.refresh,
+    createKind: s.createKind,
+    closeCreate: s.closeCreate,
   })))
 
 
@@ -45,6 +50,10 @@ export default function OverlayManager(): JSX.Element {
       
       {/* Full-screen exec overlay — shown when sessions are open but user is not in multi-terminal section */}
       {execSessions.length > 0 && section !== 'multi-terminal' && <ExecPanel />}
+
+      {createKind && (
+        <CreateResourceModal kind={createKind} onClose={closeCreate} />
+      )}
 
       {/* Error Toast */}
       {error && (

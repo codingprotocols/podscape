@@ -1,10 +1,13 @@
-import React, { Suspense } from 'react'
+import React, { Suspense, useState, useCallback } from 'react'
 import { useAppStore } from '../../store'
 import { useShallow } from 'zustand/react/shallow'
 import { Search, Terminal } from 'lucide-react'
 import { RefreshButton } from '../common'
 import { LIST_SECTIONS, CLUSTER_SCOPED_SECTIONS, SECTION_LABELS, PROVIDER_SECTIONS } from '../../config'
 import { KubeCRD, ResourceKind } from '../../types'
+import type { CreatableKind } from '../common/CreateResourceModal'
+import { canVerb } from '../../store/slices/clusterSlice'
+import { useAutoRefresh } from '../../hooks/useAutoRefresh'
 
 import Dashboard from './Dashboard'
 import ResourceList from './ResourceList'
@@ -29,8 +32,15 @@ const NetworkPanel = React.lazy(() => import('../panels/NetworkPanel'))
 const ConnectivityTester = React.lazy(() => import('../advanced/ConnectivityTester'))
 const DebugPodLauncher = React.lazy(() => import('../advanced/DebugPodLauncher'))
 const ProviderResourcePanel = React.lazy(() => import('../panels/ProviderResourcePanel'))
-const CostPanel = React.lazy(() => import('../panels/CostPanel'))
 const KrewPanel = React.lazy(() => import('../panels/KrewPanel'))
+
+const CREATABLE_SECTIONS: Partial<Record<string, CreatableKind>> = {
+  deployments: 'deployment',
+  services: 'service',
+  configmaps: 'configmap',
+  secrets: 'secret',
+  namespaces: 'namespace',
+}
 
 // Sections that render directly (no Suspense needed)
 const DIRECT_PANELS: Partial<Record<ResourceKind, React.ComponentType>> = {
@@ -51,7 +61,6 @@ const LAZY_PANELS: Partial<Record<ResourceKind, React.LazyExoticComponent<React.
   gitops: GitOpsPanel,
   connectivity: ConnectivityTester,
   debugpod: DebugPodLauncher,
-  cost: CostPanel,
   krew: KrewPanel,
 }
 
@@ -68,6 +77,8 @@ export default function SectionRouter(): JSX.Element {
     kubeconfigOk,
     selectResource,
     execSessions,
+    allowedVerbs,
+    openCreate,
   } = useAppStore(useShallow(s => ({
     section: s.section,
     selectedNamespace: s.selectedNamespace,
@@ -79,11 +90,26 @@ export default function SectionRouter(): JSX.Element {
     kubeconfigOk: s.kubeconfigOk,
     selectResource: s.selectResource,
     execSessions: s.execSessions,
+    allowedVerbs: s.allowedVerbs,
+    openCreate: s.openCreate,
   })))
+
+  useAutoRefresh(LIST_SECTIONS.includes(section), refresh)
+
+  // Local refreshing flag so the RefreshButton spins for the duration of the
+  // async fetch without setting loadingResources (which would replace the list
+  // with a full-screen spinner and cause a flicker).
+  const [refreshing, setRefreshing] = useState(false)
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try { await refresh() } finally { setRefreshing(false) }
+  }, [refresh])
 
   if (!kubeconfigOk) {
     return <KubeConfigOnboarding />
   }
+
+  const creatableKind = CREATABLE_SECTIONS[section]
 
   const DirectPanel = DIRECT_PANELS[section]
   const LazyPanel = LAZY_PANELS[section]
@@ -144,10 +170,25 @@ export default function SectionRouter(): JSX.Element {
               </div>
 
               <RefreshButton
-                onClick={refresh}
-                loading={loadingResources}
+                onClick={handleRefresh}
+                loading={refreshing || loadingResources}
                 title="Refresh"
               />
+
+              {creatableKind && canVerb(allowedVerbs, section, 'create') && (
+                <button
+                  type="button"
+                  onClick={() => openCreate(creatableKind)}
+                  className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold rounded-xl
+                             bg-blue-600 hover:bg-blue-500 text-white transition-colors
+                             shadow-sm shadow-blue-500/30"
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M5 1v8M1 5h8" />
+                  </svg>
+                  New
+                </button>
+              )}
             </div>
           </PageHeader>
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import type { KubeDaemonSet } from '../../../types'
 import { formatAge } from '../../../types'
 import { useAppStore } from '../../../store'
+import { canVerb } from '../../../store/slices/clusterSlice'
 import { FileCode, X, Activity, Layers, Settings, Box, Info, AlertTriangle, CheckCircle } from 'lucide-react'
 import YAMLViewer from '../../common/YAMLViewer'
 import AnalysisView from '../../advanced/AnalysisView'
@@ -15,6 +16,7 @@ type Tab = 'overview' | 'events' | 'analysis'
 
 export default function DaemonSetDetail({ daemonSet: ds }: Props): JSX.Element {
   const { scanResource, scanResults, isScanning, selectedContext: ctx } = useAppStore()
+  const allowedVerbs = useAppStore(s => s.allowedVerbs)
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const [tab, setTab] = useState<Tab>('overview')
   const { events } = useResourceEvents(ctx, ds.metadata.name, 'DaemonSet', ds.metadata.namespace)
@@ -35,14 +37,16 @@ export default function DaemonSetDetail({ daemonSet: ds }: Props): JSX.Element {
             <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{ds.metadata.namespace} · DAEMONSET</p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => openYAML('daemonset', ds.metadata.name, false, ds.metadata.namespace)}
-              disabled={yamlLoading}
-              className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
-            >
-              <FileCode size={14} className="group-hover:text-blue-400 transition-colors" />
-              {yamlLoading ? 'Loading...' : 'YAML'}
-            </button>
+            {(canVerb(allowedVerbs, 'daemonsets', 'update') || canVerb(allowedVerbs, 'daemonsets', 'patch')) && (
+              <button
+                onClick={() => openYAML('daemonset', ds.metadata.name, false, ds.metadata.namespace)}
+                disabled={yamlLoading}
+                className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
+              >
+                <FileCode size={14} className="group-hover:text-blue-400 transition-colors" />
+                {yamlLoading ? 'Loading...' : 'YAML'}
+              </button>
+            )}
             <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold outline outline-1 ${ds.status.numberReady >= desired ? 'bg-emerald-500/10 text-emerald-500 outline-emerald-500/20' : 'bg-amber-500/10 text-amber-500 outline-amber-500/20'}`}>
               {ds.status.numberReady}/{desired} READY
             </span>

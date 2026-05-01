@@ -12,7 +12,7 @@ describe('providersSlice', () => {
     beforeEach(() => {
         state = {
             selectedContext: 'ctx-a',
-            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false },
+            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false },
             providersLoading: false,
         }
         set = vi.fn((update: any) => {
@@ -64,7 +64,7 @@ describe('providersSlice', () => {
         expect(set).toHaveBeenCalledWith({ providersLoading: true })
         // Error path: reset to defaults
         expect(set).toHaveBeenCalledWith({
-            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false },
+            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false },
             providersLoading: false,
         })
     })
@@ -92,6 +92,6 @@ describe('providersSlice', () => {
         expect(set).toHaveBeenCalledTimes(1)
         expect(set).toHaveBeenCalledWith({ providersLoading: true })
         // providers state must not have been updated.
-        expect(state.providers).toEqual({ istio: false, traefik: false, nginxInc: false, nginxCommunity: false })
+        expect(state.providers).toEqual({ istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false })
     })
 })

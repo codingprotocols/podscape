@@ -14,7 +14,6 @@ import type { RolloutRevision } from '../../common/constants'
 import { AnalysisSlice } from './slices/analysisSlice'
 import { OperationSlice } from './slices/operationSlice'
 import { ProvidersSlice } from './slices/providersSlice'
-import { CostSlice } from './slices/costSlice'
 import { NavigationSlice } from './slices/navigationSlice'
 import { KrewSlice } from './slices/krewSlice'
 
@@ -62,7 +61,7 @@ declare global {
             rolloutRestart: (context: string, namespace: string, kind: string, name: string) => Promise<string>
             rolloutHistory: (context: string, namespace: string, kind: string, name: string) => Promise<RolloutRevision[]>
             rolloutUndo: (context: string, namespace: string, kind: string, name: string, revision?: number) => Promise<string>
-            getResourceEvents: (context: string, namespace: string, kind: string, name: string) => Promise<KubeEvent[]>
+            getResourceEvents: (context: string, namespace: string, uid: string) => Promise<KubeEvent[]>
             cordonNode: (context: string, name: string, unschedulable: boolean) => Promise<void>
             drainNode: (context: string, name: string) => Promise<void>
             triggerCronJob: (context: string, namespace: string, name: string) => Promise<string>
@@ -90,8 +89,6 @@ declare global {
             onSecurityProgress: (cb: (line: string) => void) => () => void
             prometheusStatus: (url?: string) => Promise<{ available: boolean; error?: string }>
             prometheusQueryBatch: (queries: Array<{ query: string; label: string }>, start: number, end: number) => Promise<Array<{ label: string; points: Array<{ t: number; v: number }>; error?: string }>>
-            costStatus: (url?: string) => Promise<{ available: boolean; provider: string; error?: string }>
-            costAllocation: (url: string | undefined, provider: string, timeWindow: string, aggregate: string, namespace?: string) => Promise<unknown[]>
             getOwnerChain: (kind: string, name: string, namespace: string) => Promise<OwnerChainResponse>
             getTLSCerts: (namespace?: string) => Promise<any[]>
             getGitOps: (namespace?: string) => Promise<any>
@@ -127,8 +124,8 @@ declare global {
             onExit: (id: string, cb: () => void) => () => void
         }
         settings: {
-            get: () => Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; costUrls?: Record<string, string>; tourCompleted: boolean }>
-            set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; costUrls?: Record<string, string>; tourCompleted: boolean }) => Promise<void>
+            get: () => Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean }>
+            set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean }) => Promise<void>
             checkTools: () => Promise<{ kubeconfigOk: boolean; trivyOk: boolean }>
         }
         kubeconfig: {
@@ -180,7 +177,7 @@ export interface ExecSession {
     target: ExecTarget
 }
 
-export interface AppStore extends AnalysisSlice, OperationSlice, ProvidersSlice, CostSlice, NavigationSlice, KrewSlice {
+export interface AppStore extends AnalysisSlice, OperationSlice, ProvidersSlice, NavigationSlice, KrewSlice {
     // Navigation removed - inherited from NavigationSlice
     
     // Cluster selection

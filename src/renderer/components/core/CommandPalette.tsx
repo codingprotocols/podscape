@@ -45,7 +45,6 @@ const SECTION_SHORTCUTS: Array<{ label: string; section: ResourceKind; icon: str
   { label: 'Security Hub', section: 'security', icon: ICONS.secret, keywords: ['scan', 'trivy', 'kubesec', 'vulnerability'] },
   { label: 'TLS Certificates', section: 'tls', icon: ICONS.secret, keywords: ['cert', 'ssl', 'x509', 'expiry'] },
   { label: 'GitOps', section: 'gitops', icon: ICONS.deploy, keywords: ['flux', 'argo', 'argocd', 'kustomize', 'gitops'] },
-  { label: 'Cost & Waste', section: 'cost', icon: ICONS.metrics, keywords: ['cost', 'billing', 'efficiency', 'waste', 'resources'] },
   { label: 'Helm Charts', section: 'helm', icon: ICONS.helm, keywords: ['helm', 'releases', 'charts', 'package'] },
   { label: 'Settings', section: 'settings', icon: ICONS.settings, keywords: ['config', 'preferences', 'theme'] },
 ]

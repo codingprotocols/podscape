@@ -154,3 +154,84 @@ func CheckAccess(ctx context.Context, cs kubernetes.Interface) (map[string]bool,
 
 	return allowed, nil
 }
+
+// CheckVerbAccessFunc is injectable for tests.
+var CheckVerbAccessFunc = CheckVerbAccess
+
+// CheckVerbAccess runs SelfSubjectAccessReviews for every resource in AllResources
+// across 6 verbs: list, watch, delete, update, patch, create.
+// Returns resource → verb → allowed. Returns (nil, err) on API failure.
+func CheckVerbAccess(ctx context.Context, cs kubernetes.Interface) (map[string]map[string]bool, error) {
+	type sarResult struct {
+		resource string
+		verb     string
+		allowed  bool
+	}
+
+	var (
+		mu       sync.Mutex
+		wg       sync.WaitGroup
+		sem      = make(chan struct{}, 8)
+		firstErr error
+	)
+
+	verbs := []string{"list", "watch", "delete", "update", "patch", "create"}
+	results := make([]sarResult, 0, len(AllResources)*len(verbs))
+
+	for _, rd := range AllResources {
+		for _, verb := range verbs {
+			rd, verb := rd, verb
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
+				if err := ctx.Err(); err != nil {
+					mu.Lock()
+					defer mu.Unlock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					return
+				}
+
+				review := &authv1.SelfSubjectAccessReview{
+					Spec: authv1.SelfSubjectAccessReviewSpec{
+						ResourceAttributes: &authv1.ResourceAttributes{
+							Verb:     verb,
+							Resource: rd.Resource,
+							Group:    rd.Group,
+						},
+					},
+				}
+				resp, err := cs.AuthorizationV1().SelfSubjectAccessReviews().Create(ctx, review, metav1.CreateOptions{})
+				mu.Lock()
+				defer mu.Unlock()
+				if err != nil {
+					if firstErr == nil {
+						firstErr = err
+					}
+					return
+				}
+				results = append(results, sarResult{resource: rd.Resource, verb: verb, allowed: resp.Status.Allowed})
+			}()
+		}
+	}
+
+	wg.Wait()
+	if firstErr != nil {
+		return nil, firstErr
+	}
+
+	out := make(map[string]map[string]bool, len(AllResources))
+	for _, rd := range AllResources {
+		out[rd.Resource] = make(map[string]bool, len(verbs))
+	}
+	for _, r := range results {
+		if r.allowed {
+			out[r.resource][r.verb] = true
+		}
+	}
+	return out, nil
+}

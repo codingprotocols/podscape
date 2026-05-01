@@ -1,5 +1,6 @@
 import { StoreSlice, ExecTarget, ExecSession } from '../types'
 import { PortForwardEntry } from '../../types'
+import type { CreatableKind } from '../../components/common/CreateResourceModal'
 
 // Keyed by port-forward ID; holds the three IPC unsubscribe functions so they
 // can be called when the forward is stopped or exits on its own.
@@ -22,11 +23,17 @@ export interface OperationSlice {
     setActiveExecId: (id: string) => void
     closeExecTab: (id: string) => void
     closeExec: () => void
+    createKind: CreatableKind | null
+    openCreate: (kind: CreatableKind) => void
+    closeCreate: () => void
 }
 
 export const createOperationSlice: StoreSlice<OperationSlice> = (set, get) => ({
     execSessions: [],
     activeExecId: null,
+    createKind: null,
+    openCreate: (kind) => set(() => ({ createKind: kind })),
+    closeCreate: () => set(() => ({ createKind: null })),
     openExec: (target) => {
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
         const session: ExecSession = { id, target }
@@ -106,7 +113,10 @@ export const createOperationSlice: StoreSlice<OperationSlice> = (set, get) => ({
             set(s => ({ portForwards: s.portForwards.map(f => f.id === entry.id ? { ...f, status: 'error', error: msg } : f) }))
         )
         const unsubExit = window.kubectl.onPortForwardExit(entry.id, () => {
-            pfUnsubs.delete(entry.id)
+            // Call all three unsub functions to remove the IPC listeners before
+            // deleting the entry — otherwise ready/error/exit listeners leak.
+            const fns = pfUnsubs.get(entry.id)
+            if (fns) { fns.forEach(fn => fn()); pfUnsubs.delete(entry.id) }
             set(s => ({ portForwards: s.portForwards.filter(f => f.id !== entry.id) }))
         })
 

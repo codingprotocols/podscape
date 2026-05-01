@@ -302,20 +302,24 @@ func TestHandleCRDs_DeniedByRBAC_ReturnsEmptyArrayWithHeader(t *testing.T) {
 }
 
 func TestHandleSwitchContext_RBACProbeStored(t *testing.T) {
-	// Stub rbacCheckFunc to return a fixed map so we can verify it's written
+	// Stub rbacVerbCheckFunc to return a fixed verb map so we can verify it's written
 	// to the cache without requiring a live API server.
-	fakeAllowed := map[string]bool{"pods": true, "secrets": false}
-	orig := rbacCheckFunc
-	rbacCheckFunc = func(_ context.Context, _ kubernetes.Interface) (map[string]bool, error) {
-		return fakeAllowed, nil
+	fakeVerbMap := map[string]map[string]bool{
+		"pods":    {"list": true, "watch": true, "delete": true, "update": true, "patch": true, "create": true},
+		"secrets": {"list": false, "watch": false, "delete": false, "update": false, "patch": false, "create": false},
 	}
-	t.Cleanup(func() { rbacCheckFunc = orig })
+	orig := rbacVerbCheckFunc
+	rbacVerbCheckFunc = func(_ context.Context, _ kubernetes.Interface) (map[string]map[string]bool, error) {
+		return fakeVerbMap, nil
+	}
+	t.Cleanup(func() { rbacVerbCheckFunc = orig })
 
 	ac := store.NewContextCache(fake.NewSimpleClientset(), &rest.Config{})
 	runRBACProbe(ac, "test-ctx", fake.NewSimpleClientset())
 
 	ac.RLock()
 	allowed := ac.AllowedResources
+	verbs := ac.AllowedVerbs
 	ac.RUnlock()
 
 	if allowed == nil {
@@ -327,15 +331,24 @@ func TestHandleSwitchContext_RBACProbeStored(t *testing.T) {
 	if allowed["secrets"] {
 		t.Error("expected secrets to be denied")
 	}
+	if verbs == nil {
+		t.Fatal("expected AllowedVerbs to be set")
+	}
+	if !verbs["pods"]["list"] {
+		t.Error("expected pods list to be allowed in AllowedVerbs")
+	}
+	if verbs["secrets"]["list"] {
+		t.Error("expected secrets list to be denied in AllowedVerbs")
+	}
 }
 
 func TestHandleSwitchContext_RBACProbeFailed_NilAllowed(t *testing.T) {
-	// When the probe fails, AllowedResources must remain nil (permissive).
-	orig := rbacCheckFunc
-	rbacCheckFunc = func(_ context.Context, _ kubernetes.Interface) (map[string]bool, error) {
+	// When the probe fails, AllowedResources and AllowedVerbs must remain nil (permissive).
+	orig := rbacVerbCheckFunc
+	rbacVerbCheckFunc = func(_ context.Context, _ kubernetes.Interface) (map[string]map[string]bool, error) {
 		return nil, context.DeadlineExceeded
 	}
-	t.Cleanup(func() { rbacCheckFunc = orig })
+	t.Cleanup(func() { rbacVerbCheckFunc = orig })
 
 	ac := store.NewContextCache(fake.NewSimpleClientset(), &rest.Config{})
 	runRBACProbe(ac, "test-ctx", fake.NewSimpleClientset())

@@ -6,14 +6,10 @@ import (
 	"log"
 	"net/http"
 
-	"context"
-	"time"
-
 	"github.com/podscape/go-core/internal/client"
 	"github.com/podscape/go-core/internal/handlers"
 	"github.com/podscape/go-core/internal/informers"
 	"github.com/podscape/go-core/internal/portforward"
-	"github.com/podscape/go-core/internal/rbac"
 	"github.com/podscape/go-core/internal/store"
 	"k8s.io/client-go/util/homedir"
 
@@ -72,6 +68,7 @@ func main() {
 	http.HandleFunc("/logs", handlers.HandleLogs)
 	http.HandleFunc("/portforward", handlers.HandlePortForward)
 	http.HandleFunc("/stopPortForward", handlers.HandleStopPortForward)
+	http.HandleFunc("/portforward/alive", handlers.HandlePortForwardAlive)
 
 	http.HandleFunc("/scale", handlers.HandleScale)
 	http.HandleFunc("/delete", handlers.HandleDelete)
@@ -88,6 +85,7 @@ func main() {
 	http.HandleFunc("/config/contexts", handlers.HandleGetContexts)
 	http.HandleFunc("/config/current-context", handlers.HandleGetCurrentContext)
 	http.HandleFunc("/config/switch", handlers.HandleSwitchContext)
+	http.HandleFunc("/rbac", handlers.HandleGetAllowedVerbs)
 	http.HandleFunc("/helm/rollback", handlers.HandleHelmRollback)
 	http.HandleFunc("/helm/uninstall", handlers.HandleHelmUninstall)
 	http.HandleFunc("/metrics/pods", handlers.HandleGetPodMetrics)
@@ -136,10 +134,6 @@ func main() {
 
 	// Generic CRD resource lister (Istio, Traefik, Nginx, etc.)
 	http.HandleFunc("/customresource", handlers.HandleCustomResource)
-
-	// Cost allocation (Kubecost or OpenCost — detects whichever is deployed)
-	http.HandleFunc("/cost/status", handlers.HandleCostStatus)
-	http.HandleFunc("/cost/allocation", handlers.HandleCostAllocation)
 
 	// Build the middleware chain: mux → [token auth]
 	// CORS headers are intentionally omitted — the sidecar binds to 127.0.0.1
@@ -203,28 +197,14 @@ func main() {
 		log.Fatal(http.ListenAndServe("127.0.0.1:"+*port, handler))
 	}()
 
-	// Probe RBAC permissions before starting informers so the informer guards
-	// can skip resources the current user cannot access. A 10-second deadline
-	// prevents a slow API server from delaying startup significantly.
-	{
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		allowed, err := rbac.CheckAccessFunc(ctx, bundle.Clientset)
-		cancel()
-		if err != nil {
-			log.Printf("[main] RBAC probe failed, starting all informers: %v", err)
-		} else {
-			denied := 0
-			for _, ok := range allowed {
-				if !ok {
-					denied++
-				}
-			}
-			log.Printf("[main] RBAC probe complete: %d/%d resources accessible", len(allowed)-denied, len(allowed))
-			initialCache.Lock()
-			initialCache.AllowedResources = allowed
-			initialCache.Unlock()
-		}
-	}
+	// Run the full RBAC probe (all 6 verbs) concurrently with informer startup
+	// so a slow or temporarily-unreachable API server does not delay the sidecar
+	// becoming ready. This sets both AllowedResources (controls which informers
+	// start) and AllowedVerbs (controls which action buttons are shown in the UI).
+	// Starting informers with nil AllowedResources is the permissive default —
+	// all informers start. MakeHandler enforces RBAC on every request regardless
+	// of whether the probe ran before or after informers started.
+	go handlers.RunRBACProbe(initialCache, bundle.ContextName, bundle.Clientset)
 
 	// Block until the critical informers are synced, then mark the sidecar ready.
 	// /health returns 503 until this completes, so startSidecar() keeps polling.

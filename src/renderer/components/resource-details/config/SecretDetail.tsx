@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import type { KubeSecret } from '../../../types'
 import { formatAge } from '../../../types'
 import { useAppStore } from '../../../store'
+import { canVerb } from '../../../store/slices/clusterSlice'
 import { Eye, EyeOff, Key, Copy, Check, FileCode, X, Activity } from 'lucide-react'
 import YAMLViewer from '../../common/YAMLViewer'
 import { useYAMLEditor } from '../../../hooks/useYAMLEditor'
@@ -10,6 +11,7 @@ interface Props { secret: KubeSecret }
 
 export default function SecretDetail({ secret }: Props): JSX.Element {
   const { getSecretValue } = useAppStore()
+  const allowedVerbs = useAppStore(s => s.allowedVerbs)
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const entries = Object.entries(secret.data ?? {})
   const [revealed, setRevealed] = useState<Record<string, string>>({})
@@ -18,20 +20,18 @@ export default function SecretDetail({ secret }: Props): JSX.Element {
 
   const handleReveal = async (key: string) => {
     if (revealed[key]) {
-      const newRevealed = { ...revealed }
-      delete newRevealed[key]
-      setRevealed(newRevealed)
+      setRevealed(prev => { const next = { ...prev }; delete next[key]; return next })
       return
     }
 
-    setLoading({ ...loading, [key]: true })
+    setLoading(prev => ({ ...prev, [key]: true }))
     try {
       const value = await getSecretValue(secret.metadata.name, key, secret.metadata.namespace ?? 'default')
-      setRevealed({ ...revealed, [key]: value })
+      setRevealed(prev => ({ ...prev, [key]: value }))
     } catch (err) {
       console.error('Failed to reveal secret:', err)
     } finally {
-      setLoading({ ...loading, [key]: false })
+      setLoading(prev => ({ ...prev, [key]: false }))
     }
   }
 
@@ -51,14 +51,16 @@ export default function SecretDetail({ secret }: Props): JSX.Element {
               {secret.metadata.namespace} · {secret.type} · {formatAge(secret.metadata.creationTimestamp)} ago
             </p>
           </div>
-          <button
-            onClick={() => openYAML('secret', secret.metadata.name, false, secret.metadata.namespace)}
-            disabled={yamlLoading}
-            className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
-          >
-            <FileCode size={14} className="group-hover:text-blue-400 transition-colors" />
-            {yamlLoading ? 'Loading...' : 'YAML'}
-          </button>
+          {(canVerb(allowedVerbs, 'secrets', 'update') || canVerb(allowedVerbs, 'secrets', 'patch')) && (
+            <button
+              onClick={() => openYAML('secret', secret.metadata.name, false, secret.metadata.namespace)}
+              disabled={yamlLoading}
+              className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
+            >
+              <FileCode size={14} className="group-hover:text-blue-400 transition-colors" />
+              {yamlLoading ? 'Loading...' : 'YAML'}
+            </button>
+          )}
         </div>
       </div>
 

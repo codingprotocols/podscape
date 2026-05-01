@@ -26,9 +26,10 @@ export default function NamespaceDetail({ namespace: ns }: Props): JSX.Element {
       : 'bg-slate-500/10 text-slate-500 outline-slate-500/20'
 
   useEffect(() => {
-    if (!selectedContext || tab !== 'events') return
+    const uid = ns.metadata.uid
+    if (!selectedContext || tab !== 'events' || !uid) return
     setEventsLoading(true)
-    window.kubectl.getResourceEvents(selectedContext, ns.metadata.name, 'Namespace', ns.metadata.name)
+    window.kubectl.getResourceEvents(selectedContext, ns.metadata.name, uid)
       .then(setEvents)
       .catch(() => setEvents([]))
       .finally(() => setEventsLoading(false))

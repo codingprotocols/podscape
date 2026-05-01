@@ -89,12 +89,13 @@ export const setupMocks = () => {
             costStatus: vi.fn().mockResolvedValue({ available: false, provider: '' }),
             costAllocation: vi.fn().mockResolvedValue([]),
             getProviders: vi.fn(),
+            getAllowedVerbs: vi.fn().mockResolvedValue({}),
             cancelAllStreams: vi.fn().mockResolvedValue(undefined),
             streamLogs: vi.fn().mockResolvedValue('stream-1'),
             stopLogs: vi.fn().mockResolvedValue(undefined),
         },
         settings: {
-            get: vi.fn().mockResolvedValue({ shellPath: '', theme: 'dark', kubeconfigPath: '', prodContexts: [], prometheusUrls: {}, costUrls: {} }),
+            get: vi.fn().mockResolvedValue({ shellPath: '', theme: 'dark', kubeconfigPath: '', prodContexts: [], prometheusUrls: {} }),
             set: vi.fn().mockResolvedValue(undefined),
         },
         plugins: {

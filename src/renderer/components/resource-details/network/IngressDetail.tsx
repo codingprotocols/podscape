@@ -167,10 +167,11 @@ export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
   }
 
   const loadEvents = async () => {
-    if (!selectedContext) return
+    const uid = ing.metadata.uid
+    if (!selectedContext || !uid) return
     setEventsLoading(true)
     try {
-      const evts = await window.kubectl.getResourceEvents(selectedContext, ns, 'Ingress', ing.metadata.name)
+      const evts = await window.kubectl.getResourceEvents(selectedContext, ns, uid)
       setEvents(evts)
     } catch {
       setEvents([])

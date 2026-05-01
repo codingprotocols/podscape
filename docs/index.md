@@ -64,7 +64,6 @@ npm run dev
 | Log Streaming | Real-time WebSocket log streaming with search and fullscreen mode |
 | Network Topology | Force-directed graph of pod-to-service relationships with cross-namespace connectivity testing |
 | TLS Dashboard | Cluster-wide certificate inventory with expiry tracking |
-| Cost Estimation | Kubecost / OpenCost integration with per-namespace allocation tracking |
 | GitOps Panel | Argo CD / Flux resource overview |
 | Debug Pod | Launch an ephemeral debug container on any node |
 | Node Ops | Cordon, uncordon, and drain nodes with safety checks |
@@ -77,4 +76,4 @@ npm run dev
 | Connectivity Tester | Pod-to-pod / pod-to-service network diagnostics with curl, netcat, and ping; automated DNS→TCP→HTTP flow |
 | Auto-Updater | In-app update checks with download progress and one-click install |
 | Kubectl Plugin Panel | Curated kubectl plugins (via Krew) with dedicated UIs — install, run, and view output without leaving the app |
-| Panel Toggles | Enable or disable Plugins, FinOps, GitOps, and Network panels from Settings — sidebar updates immediately |
+| Panel Toggles | Enable or disable Plugins, GitOps, and Network panels from Settings — sidebar updates immediately |

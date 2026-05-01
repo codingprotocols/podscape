@@ -71,8 +71,8 @@ const kubectl = {
     ipcRenderer.invoke('kubectl:rolloutHistory', context, namespace, kind, name),
   rolloutUndo: (context: string, namespace: string, kind: string, name: string, revision?: number) =>
     ipcRenderer.invoke('kubectl:rolloutUndo', context, namespace, kind, name, revision),
-  getResourceEvents: (context: string, namespace: string, kind: string, name: string) =>
-    ipcRenderer.invoke('kubectl:getResourceEvents', context, namespace, kind, name),
+  getResourceEvents: (context: string, namespace: string, uid: string) =>
+    ipcRenderer.invoke('kubectl:getResourceEvents', context, namespace, uid),
   cordonNode: (context: string, name: string, unschedulable: boolean): Promise<void> =>
     ipcRenderer.invoke('kubectl:cordonNode', context, name, unschedulable),
   drainNode: (context: string, name: string): Promise<void> =>
@@ -137,6 +137,9 @@ const kubectl = {
 
   getProviders: () =>
     ipcRenderer.invoke('kubectl:getProviders'),
+
+  getAllowedVerbs: (context: string): Promise<Record<string, Record<string, boolean>>> =>
+    ipcRenderer.invoke('kubectl:getAllowedVerbs', context),
 
   // Port Forwarding
   portForward: (context: string, namespace: string, type: string, name: string, localPort: number, remotePort: number, id: string) =>
@@ -229,11 +232,6 @@ const kubectl = {
   prometheusStatus: (url?: string) => ipcRenderer.invoke('kubectl:prometheusStatus', url),
   prometheusQueryBatch: (queries: any[], start: number, end: number) =>
     ipcRenderer.invoke('kubectl:prometheusQueryBatch', queries, start, end),
-
-  // Cost allocation (Kubecost / OpenCost)
-  costStatus: (url?: string) => ipcRenderer.invoke('kubectl:costStatus', url),
-  costAllocation: (url: string | undefined, provider: string, timeWindow: string, aggregate: string, namespace?: string) =>
-    ipcRenderer.invoke('kubectl:costAllocation', url, provider, timeWindow, aggregate, namespace),
 
   // Owner chain
   getOwnerChain: (kind: string, name: string, namespace: string) =>
@@ -382,9 +380,9 @@ const helm = {
 // ─── settings API ─────────────────────────────────────────────────────────────
 
 const settings = {
-  get: (): Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; costUrls?: Record<string, string>; tourCompleted: boolean; pluginsEnabled: boolean; finopsEnabled: boolean; gitopsEnabled: boolean; networkEnabled: boolean }> =>
+  get: (): Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean; pluginsEnabled: boolean; gitopsEnabled: boolean; networkEnabled: boolean }> =>
     ipcRenderer.invoke('settings:get'),
-  set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; costUrls?: Record<string, string>; tourCompleted: boolean; pluginsEnabled: boolean; finopsEnabled: boolean; gitopsEnabled: boolean; networkEnabled: boolean }): Promise<void> =>
+  set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean; pluginsEnabled: boolean; gitopsEnabled: boolean; networkEnabled: boolean }): Promise<void> =>
     ipcRenderer.invoke('settings:set', s),
   checkTools: (): Promise<{ kubeconfigOk: boolean; trivyOk: boolean }> =>
     ipcRenderer.invoke('settings:checkTools')

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { isMac } from '../../utils/platform'
 import Editor from '@monaco-editor/react'
 import { useAppStore } from '../../store'
-import { Save, CheckCircle, Monitor, Terminal, FileCode, Activity, DollarSign, Shield, RefreshCw, AlertCircle, Cpu, Copy } from 'lucide-react'
+import { Save, CheckCircle, Monitor, Terminal, FileCode, Activity, Shield, RefreshCw, AlertCircle, Cpu, Copy } from 'lucide-react'
 
 interface SettingsForm {
   shellPath: string
@@ -10,10 +10,8 @@ interface SettingsForm {
   kubeconfigPath: string
   prodContexts: string[]
   prometheusUrls: Record<string, string>
-  costUrls: Record<string, string>
   tourCompleted: boolean
   pluginsEnabled: boolean
-  finopsEnabled: boolean
   gitopsEnabled: boolean
   networkEnabled: boolean
 }
@@ -31,9 +29,8 @@ const CloudClusterGuideBox = ({ title, description }: CloudClusterGuideBoxProps)
 )
 
 export default function SettingsPanel(): JSX.Element {
-  const { theme, setTheme, init, prodContexts, probePrometheus, prometheusAvailable, probeCost, costAvailable, selectedContext, setPluginsEnabled, setFinopsEnabled, setGitopsEnabled, setNetworkEnabled } = useAppStore()
-  const [form, setForm] = useState<SettingsForm>({ shellPath: '', theme, kubeconfigPath: '', prodContexts: [], prometheusUrls: {}, costUrls: {}, tourCompleted: false, pluginsEnabled: true, finopsEnabled: true, gitopsEnabled: true, networkEnabled: true })
-  const [costProbing, setCostProbing] = useState(false)
+  const { theme, setTheme, init, prodContexts, probePrometheus, prometheusAvailable, selectedContext, setPluginsEnabled, setGitopsEnabled, setNetworkEnabled } = useAppStore()
+  const [form, setForm] = useState<SettingsForm>({ shellPath: '', theme, kubeconfigPath: '', prodContexts: [], prometheusUrls: {}, tourCompleted: false, pluginsEnabled: true, gitopsEnabled: true, networkEnabled: true })
   const [probing, setProbing] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -68,7 +65,7 @@ export default function SettingsPanel(): JSX.Element {
   }, [])
 
   useEffect(() => {
-    window.settings.get().then(s => setForm({ ...s, prodContexts: s.prodContexts ?? prodContexts, prometheusUrls: s.prometheusUrls ?? {}, costUrls: s.costUrls ?? {}, tourCompleted: s.tourCompleted ?? false, pluginsEnabled: s.pluginsEnabled ?? true, finopsEnabled: s.finopsEnabled ?? true, gitopsEnabled: s.gitopsEnabled ?? true, networkEnabled: s.networkEnabled ?? true })).catch(err => {
+    window.settings.get().then(s => setForm({ ...s, prodContexts: s.prodContexts ?? prodContexts, prometheusUrls: s.prometheusUrls ?? {}, tourCompleted: s.tourCompleted ?? false, pluginsEnabled: s.pluginsEnabled ?? true, gitopsEnabled: s.gitopsEnabled ?? true, networkEnabled: s.networkEnabled ?? true })).catch(err => {
       console.error('[SettingsPanel] Failed to load settings:', err)
       setForm(f => ({ ...f, prodContexts }))
     })
@@ -129,7 +126,6 @@ export default function SettingsPanel(): JSX.Element {
       // Apply changes immediately to store
       if (form.theme === 'light' || form.theme === 'dark') setTheme(form.theme)
       setPluginsEnabled(form.pluginsEnabled)
-      setFinopsEnabled(form.finopsEnabled)
       setGitopsEnabled(form.gitopsEnabled)
       setNetworkEnabled(form.networkEnabled)
       setSaved(true)
@@ -252,7 +248,6 @@ export default function SettingsPanel(): JSX.Element {
             <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-3xl p-6 space-y-4 shadow-sm">
               {([
                 { key: 'pluginsEnabled', label: 'Plugins',  description: 'kubectl plugin manager (Krew)' },
-                { key: 'finopsEnabled',  label: 'FinOps',   description: 'Cost allocation and usage (Kubecost / OpenCost)' },
                 { key: 'gitopsEnabled',  label: 'GitOps',   description: 'Argo CD / Flux resource overview' },
                 { key: 'networkEnabled', label: 'Network',  description: 'Network Map topology and Connectivity Tester' },
               ] as const).map(({ key, label, description }) => (
@@ -498,79 +493,6 @@ export default function SettingsPanel(): JSX.Element {
             </div>
           </section>
 
-          {/* ── Cost (Kubecost / OpenCost) ──────────────────────────────────────── */}
-          <section className="space-y-6">
-            <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] flex items-center gap-3">
-              <DollarSign size={14} />
-              FinOps
-              <span className="flex-1 h-px bg-slate-100 dark:bg-white/5" />
-            </h3>
-            <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-3xl overflow-hidden shadow-sm">
-              <div className="px-8 py-6 bg-slate-100/30 dark:bg-white/5 flex items-center justify-between border-b border-slate-100 dark:border-white/5">
-                <div>
-                  <h4 className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Cost Integration</h4>
-                  <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-tighter">Kubecost or OpenCost — per-context cost data source</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  {costAvailable === true  && <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full uppercase tracking-widest">Connected</span>}
-                  {costAvailable === false && <span className="text-[10px] font-black text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3 py-1 rounded-full uppercase tracking-widest">Unavailable</span>}
-                  {costAvailable === null  && <span className="text-[10px] font-black text-slate-500 bg-slate-500/10 border border-slate-500/20 px-3 py-1 rounded-full uppercase tracking-widest">Not Probed</span>}
-                </div>
-              </div>
-
-              <div className="p-8 space-y-6">
-                <CloudClusterGuideBox
-                  title="Cloud Cluster Guide (EKS/GKE/AKS)"
-                  description={
-                    <>
-                      Use Built-in Port Forwards for easy access. Map Kubecost to local port <code className="bg-blue-500/20 px-1 rounded text-blue-300">9090</code> or OpenCost to <code className="bg-blue-500/20 px-1 rounded text-blue-300">9003</code> for auto-detection.
-                    </>
-                  }
-                />
-
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Manual Endpoint URL</label>
-                    <span className="text-[10px] font-mono text-slate-400 opacity-60">{selectedContext}</span>
-                  </div>
-                  <div className="flex gap-4">
-                    <input
-                      type="text"
-                      value={selectedContext ? (form.costUrls[selectedContext] ?? '') : ''}
-                      onChange={e => {
-                        if (!selectedContext) return
-                        const url = e.target.value
-                        setForm(f => ({ ...f, costUrls: { ...f.costUrls, [selectedContext]: url } }))
-                      }}
-                      placeholder="http://127.0.0.1:9090"
-                      className="flex-1 text-[11px] bg-white dark:bg-black/40 border border-slate-200 dark:border-white/10
-                                 text-slate-800 dark:text-slate-100 placeholder-slate-400
-                                 rounded-xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-mono shadow-inner"
-                    />
-                    <button
-                      onClick={async () => {
-                        setCostProbing(true)
-                        try {
-                          const current = await window.settings.get()
-                          await window.settings.set({ ...current, costUrls: form.costUrls })
-                        } catch (err) {
-                          console.error('[SettingsPanel] Failed to save Cost URL:', err)
-                        }
-                        await probeCost()
-                        setCostProbing(false)
-                      }}
-                      disabled={costProbing}
-                      className="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-blue-400 hover:text-blue-300
-                                 bg-blue-500/10 border border-blue-500/20 rounded-xl transition-all"
-                    >
-                      {costProbing ? 'Probing...' : 'Detect Now'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-          
           {/* ── MCP Integration ─────────────────────────────────────────────── */}
           <section className="space-y-6">
             <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] flex items-center gap-3">

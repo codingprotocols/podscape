@@ -30,6 +30,10 @@ type ContextCache struct {
 	//   populated map  — probe ran; check map[plural] for individual access
 	AllowedResources map[string]bool
 
+	// AllowedVerbs is the per-verb RBAC probe result. Structure: resource → verb → allowed.
+	// nil means probe not run (permissive). Empty inner map means all verbs denied for that resource.
+	AllowedVerbs map[string]map[string]bool
+
 	// Resource maps
 	Nodes               map[string]interface{}
 	Pods                map[string]interface{}
@@ -191,6 +195,15 @@ type ClusterStore struct {
 	ActiveContextName string
 	ActiveCache       *ContextCache
 	caches            map[string]*ContextCache
+
+	// SwitchMu serializes the synchronous body of HandleSwitchContext so that
+	// concurrent switch requests don't both see isNew=true for the same cache.
+	SwitchMu sync.Mutex
+	// SwitchGen is incremented each time HandleSwitchContext begins. Background
+	// goroutines capture their generation at launch and abort early if a newer
+	// switch has superseded them, preventing redundant RBAC probes and duplicate
+	// informer restarts.
+	SwitchGen int64
 }
 
 // GetOrCreateCache returns (existing cache, false) or (new cache, true).

@@ -40,7 +40,7 @@ Less context switching. Faster debugging.
 
 - **No account required** — works with your existing kubeconfig, nothing else
 - **Real-time via informers** — not polling; state updates the moment Kubernetes does
-- **Everything in one window** — logs, Helm, exec, metrics, security, cost, network map
+- **Everything in one window** — logs, Helm, exec, metrics, security, network map
 - **AI-ready** — MCP server lets Claude and Cursor talk directly to your cluster
 - **Open source** — Apache 2.0, no telemetry, no subscription
 
@@ -100,7 +100,6 @@ Uses your existing `kubeconfig` — no extra setup required.
 - **Helm management** — list releases, inspect values, view history, rollback, and direct upgrades with automated update detection
 - **Connectivity Tester** — source-to-target network diagnostics (DNS, TCP, HTTP) with automated NetworkPolicy and endpoint failure analysis
 - **Production Context Protection** — visual banners and frame indicators when connected to sensitive clusters
-- **Cost Estimation** — real-time cost allocation via Kubecost / OpenCost integration
 - **CRD Browser** — explorer and editor for any Custom Resource Definition installed in the cluster
 - **Network topology** — force-directed graph of pod-to-service relationships
 - **Security scan** — per-pod security posture analysis (privileged containers, missing resource limits, host namespace access)
@@ -224,7 +223,6 @@ podscape-electron/
 │       ├── prometheus/      # Prometheus auto-discovery and query cache
 │       ├── ownerchain/      # Owner reference traversal
 │       ├── providers/       # Service mesh / ingress provider detection
-│       ├── costalloc/       # Kubecost / OpenCost cost allocation
 │       ├── graph/           # Resource dependency graph engine
 │       └── topology/        # Graph post-processing
 ├── resources/         # Icons, splash screen

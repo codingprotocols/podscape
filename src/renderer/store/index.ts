@@ -6,7 +6,6 @@ import { createResourceSlice } from './slices/resourceSlice'
 import { createOperationSlice } from './slices/operationSlice'
 import { createAnalysisSlice } from './slices/analysisSlice'
 import { createProvidersSlice } from './slices/providersSlice'
-import { createCostSlice } from './slices/costSlice'
 import { createKrewSlice } from './slices/krewSlice'
 import { KubeContextEntry } from '../types'
 
@@ -17,7 +16,6 @@ export const useAppStore = create<AppStore>()((...a) => ({
     ...createOperationSlice(...a),
     ...createAnalysisSlice(...a),
     ...createProvidersSlice(...a),
-    ...createCostSlice(...a),
     ...createKrewSlice(...a),
 
     // ── Combined actions (init) ────────────────────────────────────────────────
@@ -43,7 +41,6 @@ export const useAppStore = create<AppStore>()((...a) => ({
                 trivyAvailable: toolsState.trivyOk,
                 prodContexts: settings.prodContexts || [],
                 pluginsEnabled: settings.pluginsEnabled ?? true,
-                finopsEnabled: settings.finopsEnabled ?? true,
                 gitopsEnabled: settings.gitopsEnabled ?? true,
                 networkEnabled: settings.networkEnabled ?? true,
             })

@@ -33,6 +33,11 @@ const SECTION_TO_CRD: Partial<Record<ResourceKind, string>> = {
     'nginx-virtualserverroutes':  'virtualserverroutes.k8s.nginx.org',
     'nginx-policies':             'policies.k8s.nginx.org',
     'nginx-transportservers':     'transportservers.k8s.nginx.org',
+    // KEDA
+    'keda-scaledobjects':                 'scaledobjects.keda.sh',
+    'keda-scaledjobs':                    'scaledjobs.keda.sh',
+    'keda-triggerauthentications':        'triggerauthentications.keda.sh',
+    'keda-clustertriggerauthentications': 'clustertriggerauthentications.keda.sh',
 }
 
 const SECTION_LABELS: Partial<Record<ResourceKind, string>> = {
@@ -56,7 +61,16 @@ const SECTION_LABELS: Partial<Record<ResourceKind, string>> = {
     'nginx-virtualserverroutes': 'Virtual Server Routes',
     'nginx-policies':            'Policies',
     'nginx-transportservers':    'Transport Servers',
+    'keda-scaledobjects':                 'Scaled Objects',
+    'keda-scaledjobs':                    'Scaled Jobs',
+    'keda-triggerauthentications':        'Trigger Authentications',
+    'keda-clustertriggerauthentications': 'Cluster Trigger Authentications',
 }
+
+/** Sections whose resources are cluster-scoped — always fetch without namespace filter. */
+const CLUSTER_SCOPED_PROVIDER_SECTIONS = new Set<ResourceKind>([
+    'keda-clustertriggerauthentications',
+])
 
 /** Safe conversion of an unknown spec value to a display string. */
 function safeStr(v: unknown, fallback = '—'): string {
@@ -158,6 +172,21 @@ function itemSummary(section: ResourceKind, item: Record<string, unknown>): stri
             const n = (spec.subroutes as unknown[] ?? []).length
             return n > 0 ? `${n} subroute${n !== 1 ? 's' : ''}` : safeStr(spec.host)
         }
+        case 'keda-scaledobjects':
+        case 'keda-scaledjobs': {
+            const min = (spec.minReplicaCount as number | undefined) ?? 0
+            const max = (spec.maxReplicaCount as number | undefined) !== undefined
+                ? String(spec.maxReplicaCount)
+                : '—'
+            const triggers = (spec.triggers as unknown[]) ?? []
+            return `${min}–${max} • ${triggers.length} trigger${triggers.length !== 1 ? 's' : ''}`
+        }
+        case 'keda-triggerauthentications':
+        case 'keda-clustertriggerauthentications': {
+            const providerKeys = ['secretTargetRef', 'env', 'hashiCorpVault', 'azureKeyVault', 'gcpSecretManager', 'podIdentity']
+            const found = providerKeys.find(k => (spec as Record<string, unknown>)[k] !== undefined)
+            return found ? found.replace(/([A-Z])/g, ' $1').trim().toLowerCase() : '—'
+        }
         default:
             return ''
     }
@@ -189,7 +218,9 @@ export default function ProviderResourcePanel({ section }: { section: ResourceKi
         setLoading(true)
         setError(null)
         try {
-            const ns = selectedNamespace === '_all' ? null : selectedNamespace
+            const ns = CLUSTER_SCOPED_PROVIDER_SECTIONS.has(section)
+                ? null
+                : selectedNamespace === '_all' ? null : selectedNamespace
             const data = await window.kubectl.getCustomResource(selectedContext, ns, resolvedCrdName)
             setItems(Array.isArray(data) ? data : [])
         } catch (err) {
@@ -207,7 +238,7 @@ export default function ProviderResourcePanel({ section }: { section: ResourceKi
 
     // Derived from SECTION_TO_CRD so no manual list to maintain
     const hasSummaryColumn = section in SECTION_TO_CRD
-    const showNamespaceCol = selectedNamespace === '_all'
+    const showNamespaceCol = selectedNamespace === '_all' && !CLUSTER_SCOPED_PROVIDER_SECTIONS.has(section)
 
     return (
         <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden">

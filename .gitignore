@@ -134,4 +134,6 @@ go-core/*.exe
 go-core/*.test
 # Added by code-review-graph
 .code-review-graph/
+.mcp.json.superpowers/
 .mcp.json
+.superpowers

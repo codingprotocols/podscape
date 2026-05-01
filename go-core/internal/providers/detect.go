@@ -16,6 +16,7 @@ type ProviderSet struct {
 	TraefikVersion string `json:"traefikVersion,omitempty"` // "v2" or "v3"
 	NginxInc       bool   `json:"nginxInc"`                 // kubernetes-ingress (NGINX Inc, CRD-based)
 	NginxCommunity bool   `json:"nginxCommunity"`           // ingress-nginx (community, annotation-based)
+	Keda           bool   `json:"keda"`
 }
 
 // Detect probes the cluster's API group list and IngressClass resources to
@@ -48,6 +49,8 @@ func Detect(disco discovery.DiscoveryInterface, ingressClasses []networkingv1.In
 			}
 		case "k8s.nginx.org":
 			ps.NginxInc = true
+		case "keda.sh":
+			ps.Keda = true
 		}
 	}
 

@@ -95,7 +95,6 @@ The table below lists every section searchable through the Command Palette, alon
 | Security Hub | `security` | scan, trivy, kubesec, vulnerability |
 | TLS Certificates | `tls` | cert, ssl, x509, expiry |
 | GitOps | `gitops` | flux, argo, argocd, kustomize, gitops |
-| Cost & Waste | `costview` | cost, billing, efficiency, waste, resources |
 | Helm Charts | `helm` | helm, releases, charts, package |
 | Settings | `settings` | config, preferences, theme |
 
