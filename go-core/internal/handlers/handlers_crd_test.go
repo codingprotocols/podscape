@@ -342,6 +342,16 @@ func TestHandleSwitchContext_RBACProbeStored(t *testing.T) {
 	}
 }
 
+// TestAllResourceDefs_Count guards against a resource being added to AllResourceDefs
+// without the corresponding route in main.go being verified. Update the constant
+// when adding a new standard resource to the registry.
+func TestAllResourceDefs_Count(t *testing.T) {
+	const want = 26
+	if got := len(AllResourceDefs); got != want {
+		t.Errorf("AllResourceDefs has %d entries, want %d — update this constant after adding/removing a resource", got, want)
+	}
+}
+
 func TestHandleSwitchContext_RBACProbeFailed_NilAllowed(t *testing.T) {
 	// When the probe fails, AllowedResources and AllowedVerbs must remain nil (permissive).
 	orig := rbacVerbCheckFunc

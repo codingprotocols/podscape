@@ -5,7 +5,7 @@ import {
     KubeIngressClass, KubeNetworkPolicy, KubeEndpoints, KubeConfigMap,
     KubeSecret, KubePVC, KubePV, KubeStorageClass, KubeServiceAccount,
     KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
-    KubeNode, KubeNamespace, KubeCRD,
+    KubeNode, KubeNamespace, KubeCRD, KubeEvent,
 } from '../types/k8s'
 import { CustomScanOptions } from './types'
 
@@ -23,9 +23,11 @@ export type SectionConfig = {
     searchFields: (r: any) => (string | null | undefined)[]
 }
 
-function labelsToStrings(labels?: Record<string, string>): string[] {
+export function labelsToStrings(labels?: Record<string, string>): string[] {
     if (!labels) return []
-    return Object.entries(labels).map(([k, v]) => `${k}=${v}`)
+    const result: string[] = []
+    for (const k in labels) result.push(`${k}=${labels[k]}`)
+    return result
 }
 
 export const SECTION_CONFIG: Partial<Record<ResourceKind, SectionConfig>> = {
@@ -106,7 +108,7 @@ export const SECTION_CONFIG: Partial<Record<ResourceKind, SectionConfig>> = {
             r.metadata.name,
             r.metadata.namespace,
             r.spec?.schedule,
-            r.spec?.suspend ? 'suspended' : 'active',
+            r.spec?.suspend ? 'suspended' : null,
             ...labelsToStrings(r.metadata.labels),
         ],
     },
@@ -136,7 +138,7 @@ export const SECTION_CONFIG: Partial<Record<ResourceKind, SectionConfig>> = {
             r.metadata.namespace,
             r.spec?.type,
             r.spec?.clusterIP,
-            (r.spec as any)?.externalName,
+            r.spec?.externalName,
             ...r.spec?.clusterIPs ?? [],
             ...r.spec?.externalIPs ?? [],
             ...r.status?.loadBalancer?.ingress?.map(i => i.ip ?? i.hostname) ?? [],
@@ -179,7 +181,7 @@ export const SECTION_CONFIG: Partial<Record<ResourceKind, SectionConfig>> = {
         searchFields: (r: KubeConfigMap) => [
             r.metadata.name,
             r.metadata.namespace,
-            ...Object.keys(r.data ?? []),
+            ...Object.keys(r.data ?? {}),
             ...labelsToStrings(r.metadata.labels),
         ],
     },
@@ -238,7 +240,7 @@ export const SECTION_CONFIG: Partial<Record<ResourceKind, SectionConfig>> = {
     },
     events: {
         stateKey: 'events', fetch: (c, ns) => window.kubectl.getEvents(c, ns), namespaced: true,
-        searchFields: (r: any) => [
+        searchFields: (r: KubeEvent) => [
             r.metadata.name,
             r.metadata.namespace,
             r.reason,

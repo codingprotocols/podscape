@@ -111,6 +111,7 @@ export interface KubeDeployment extends KubeResource {
 // ─── StatefulSet ──────────────────────────────────────────────────────────────
 
 export interface KubeStatefulSet extends KubeResource {
+  metadata: NamespacedMeta
   spec: {
     replicas?: number
     selector: { matchLabels?: Record<string, string> }
@@ -131,6 +132,7 @@ export interface KubeStatefulSet extends KubeResource {
 // ─── ReplicaSet ───────────────────────────────────────────────────────────────
 
 export interface KubeReplicaSet extends KubeResource {
+  metadata: NamespacedMeta
   spec: { replicas?: number; selector: { matchLabels?: Record<string, string> } }
   status: {
     replicas: number
@@ -143,6 +145,7 @@ export interface KubeReplicaSet extends KubeResource {
 // ─── Job ──────────────────────────────────────────────────────────────────────
 
 export interface KubeJob extends KubeResource {
+  metadata: NamespacedMeta
   spec: {
     completions?: number
     parallelism?: number
@@ -162,6 +165,7 @@ export interface KubeJob extends KubeResource {
 // ─── CronJob ──────────────────────────────────────────────────────────────────
 
 export interface KubeCronJob extends KubeResource {
+  metadata: NamespacedMeta
   spec: {
     schedule: string
     suspend?: boolean
@@ -188,11 +192,13 @@ export interface ServicePort {
 }
 
 export interface KubeService extends KubeResource {
+  metadata: NamespacedMeta
   spec: {
     type?: string
     clusterIP?: string
     clusterIPs?: string[]
     externalIPs?: string[]
+    externalName?: string
     loadBalancerIP?: string
     ports?: ServicePort[]
     selector?: Record<string, string>
@@ -207,6 +213,7 @@ export interface KubeService extends KubeResource {
 // ─── Ingress ──────────────────────────────────────────────────────────────────
 
 export interface KubeIngress extends KubeResource {
+  metadata: NamespacedMeta
   spec: {
     ingressClassName?: string
     rules?: Array<{
@@ -258,6 +265,7 @@ export interface KubeNode extends KubeResource {
 // ─── ConfigMap ────────────────────────────────────────────────────────────────
 
 export interface KubeConfigMap extends KubeResource {
+  metadata: NamespacedMeta
   data?: Record<string, string>
   binaryData?: Record<string, string>
 }
@@ -265,6 +273,7 @@ export interface KubeConfigMap extends KubeResource {
 // ─── Secret ───────────────────────────────────────────────────────────────────
 
 export interface KubeSecret extends KubeResource {
+  metadata: NamespacedMeta
   type?: string
   data?: Record<string, string>
 }
@@ -310,6 +319,7 @@ export interface KubeCRD extends KubeResource {
 // ─── DaemonSet ────────────────────────────────────────────────────────────────
 
 export interface KubeDaemonSet extends KubeResource {
+  metadata: NamespacedMeta
   spec: {
     selector: { matchLabels?: Record<string, string> }
     template: { metadata: Partial<ObjectMeta>; spec: PodSpec }
@@ -329,6 +339,7 @@ export interface KubeDaemonSet extends KubeResource {
 // ─── HorizontalPodAutoscaler ──────────────────────────────────────────────────
 
 export interface KubeHPA extends KubeResource {
+  metadata: NamespacedMeta
   spec: {
     scaleTargetRef: { apiVersion?: string; kind: string; name: string }
     minReplicas?: number
@@ -347,6 +358,7 @@ export interface KubeHPA extends KubeResource {
 // ─── PodDisruptionBudget ──────────────────────────────────────────────────────
 
 export interface KubePDB extends KubeResource {
+  metadata: NamespacedMeta
   spec: {
     minAvailable?: number | string
     maxUnavailable?: number | string
@@ -401,6 +413,7 @@ export interface NetworkPolicyEgressRule {
 }
 
 export interface KubeNetworkPolicy extends KubeResource {
+  metadata: NamespacedMeta
   spec: {
     podSelector: { matchLabels?: Record<string, string> }
     policyTypes?: string[]
@@ -412,6 +425,7 @@ export interface KubeNetworkPolicy extends KubeResource {
 // ─── Endpoints ────────────────────────────────────────────────────────────────
 
 export interface KubeEndpoints extends KubeResource {
+  metadata: NamespacedMeta
   subsets?: Array<{
     addresses?: Array<{ ip: string; nodeName?: string; targetRef?: { kind: string; name: string } }>
     notReadyAddresses?: Array<{ ip: string; nodeName?: string; targetRef?: { kind: string; name: string } }>
@@ -422,6 +436,7 @@ export interface KubeEndpoints extends KubeResource {
 // ─── PersistentVolumeClaim ────────────────────────────────────────────────────
 
 export interface KubePVC extends KubeResource {
+  metadata: NamespacedMeta
   spec: {
     accessModes?: string[]
     storageClassName?: string
@@ -467,6 +482,7 @@ export interface KubeStorageClass extends KubeResource {
 // ─── ServiceAccount ───────────────────────────────────────────────────────────
 
 export interface KubeServiceAccount extends KubeResource {
+  metadata: NamespacedMeta
   secrets?: Array<{ name: string }>
   imagePullSecrets?: Array<{ name: string }>
   automountServiceAccountToken?: boolean
@@ -483,6 +499,7 @@ export interface PolicyRule {
 }
 
 export interface KubeRole extends KubeResource {
+  metadata: NamespacedMeta
   rules?: PolicyRule[]
 }
 
@@ -506,6 +523,7 @@ export interface Subject {
 }
 
 export interface KubeRoleBinding extends KubeResource {
+  metadata: NamespacedMeta
   roleRef: RoleRef
   subjects?: Subject[]
 }

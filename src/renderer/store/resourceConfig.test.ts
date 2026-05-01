@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { SECTION_CONFIG } from './resourceConfig'
+import { SECTION_CONFIG, labelsToStrings } from './resourceConfig'
 
 // Minimal ObjectMeta helper — only fields required by BaseObjectMeta
 function meta(name: string, namespace?: string, labels?: Record<string, string>) {
@@ -280,5 +280,146 @@ describe('SECTION_CONFIG searchFields', () => {
                 expect(typeof SECTION_CONFIG[section]?.searchFields).toBe('function')
             })
         }
+    })
+
+    // Registry integrity: if you add a new section here, update the count below.
+    // This catches the class of bug where a resource is added to SECTION_CONFIG
+    // but the developer forgets to add a sidecar route (Go AllResourceDefs).
+    it('SECTION_CONFIG has exactly 28 entries', () => {
+        expect(Object.keys(SECTION_CONFIG).length).toBe(28)
+    })
+
+    // ── cronjob suspend logic ─────────────────────────────────────────────────
+    describe('cronjobs suspend indexing', () => {
+        const fn = SECTION_CONFIG.cronjobs!.searchFields
+
+        it('indexes "suspended" when suspend=true', () => {
+            const cj = { metadata: meta('nightly', 'default'), spec: { schedule: '0 0 * * *', suspend: true }, status: {} }
+            expect(fn(cj)).toContain('suspended')
+        })
+
+        it('does not index "active" for non-suspended cronjob', () => {
+            const cj = { metadata: meta('nightly', 'default'), spec: { schedule: '0 0 * * *', suspend: false }, status: {} }
+            expect(fn(cj)).not.toContain('active')
+        })
+
+        it('does not index "active" when suspend is absent', () => {
+            const cj = { metadata: meta('nightly', 'default'), spec: { schedule: '0 0 * * *' }, status: {} }
+            expect(fn(cj)).not.toContain('active')
+        })
+    })
+
+    // ── null-safety: bare-minimum resources with no spec/status ──────────────
+    describe('null-safety: searchFields does not throw on missing spec/status', () => {
+        const bare = (name: string, ns?: string) => ({ metadata: meta(name, ns) })
+
+        it('pods — no spec/status', () => {
+            expect(() => SECTION_CONFIG.pods!.searchFields(bare('p', 'default'))).not.toThrow()
+            expect(SECTION_CONFIG.pods!.searchFields(bare('p', 'default'))).toContain('p')
+        })
+
+        it('services — no spec/status', () => {
+            expect(() => SECTION_CONFIG.services!.searchFields(bare('s', 'default'))).not.toThrow()
+        })
+
+        it('roles — no rules', () => {
+            expect(() => SECTION_CONFIG.roles!.searchFields(bare('r', 'default'))).not.toThrow()
+        })
+
+        it('clusterroles — no rules', () => {
+            expect(() => SECTION_CONFIG.clusterroles!.searchFields(bare('cr'))).not.toThrow()
+        })
+
+        it('ingresses — no spec', () => {
+            expect(() => SECTION_CONFIG.ingresses!.searchFields(bare('ing', 'default'))).not.toThrow()
+        })
+
+        it('nodes — no status', () => {
+            expect(() => SECTION_CONFIG.nodes!.searchFields(bare('node-1'))).not.toThrow()
+        })
+
+        it('pvs — no spec/status', () => {
+            expect(() => SECTION_CONFIG.pvs!.searchFields(bare('pv-1'))).not.toThrow()
+        })
+
+        it('deployments — no spec', () => {
+            expect(() => SECTION_CONFIG.deployments!.searchFields(bare('d', 'default'))).not.toThrow()
+        })
+
+        it('statefulsets — no spec', () => {
+            expect(() => SECTION_CONFIG.statefulsets!.searchFields(bare('ss', 'default'))).not.toThrow()
+        })
+
+        it('daemonsets — no spec', () => {
+            expect(() => SECTION_CONFIG.daemonsets!.searchFields(bare('ds', 'default'))).not.toThrow()
+        })
+
+        it('replicasets — no spec', () => {
+            expect(() => SECTION_CONFIG.replicasets!.searchFields(bare('rs', 'default'))).not.toThrow()
+        })
+
+        it('jobs — no spec', () => {
+            expect(() => SECTION_CONFIG.jobs!.searchFields(bare('j', 'default'))).not.toThrow()
+        })
+
+        it('hpas — no spec', () => {
+            expect(() => SECTION_CONFIG.hpas!.searchFields(bare('h', 'default'))).not.toThrow()
+        })
+
+        it('pdbs — no spec', () => {
+            expect(() => SECTION_CONFIG.pdbs!.searchFields(bare('pdb', 'default'))).not.toThrow()
+        })
+
+        it('networkpolicies — no spec', () => {
+            expect(() => SECTION_CONFIG.networkpolicies!.searchFields(bare('np', 'default'))).not.toThrow()
+        })
+
+        it('endpoints — no subsets', () => {
+            expect(() => SECTION_CONFIG.endpoints!.searchFields(bare('ep', 'default'))).not.toThrow()
+        })
+
+        it('configmaps — no data', () => {
+            expect(() => SECTION_CONFIG.configmaps!.searchFields(bare('cm', 'default'))).not.toThrow()
+        })
+
+        it('pvcs — no spec/status', () => {
+            expect(() => SECTION_CONFIG.pvcs!.searchFields(bare('pvc', 'default'))).not.toThrow()
+        })
+
+        it('serviceaccounts — no secrets', () => {
+            expect(() => SECTION_CONFIG.serviceaccounts!.searchFields(bare('sa', 'default'))).not.toThrow()
+        })
+
+        it('rolebindings — no subjects', () => {
+            expect(() => SECTION_CONFIG.rolebindings!.searchFields(bare('rb', 'default'))).not.toThrow()
+        })
+
+        it('clusterrolebindings — no subjects', () => {
+            expect(() => SECTION_CONFIG.clusterrolebindings!.searchFields({ metadata: meta('crb'), roleRef: { apiGroup: '', kind: 'ClusterRole', name: 'x' } })).not.toThrow()
+        })
+
+        it('events — no involvedObject fields', () => {
+            expect(() => SECTION_CONFIG.events!.searchFields({ metadata: meta('ev', 'default'), involvedObject: { kind: 'Pod', name: 'p' } })).not.toThrow()
+        })
+
+        it('namespaces — no status', () => {
+            expect(() => SECTION_CONFIG.namespaces!.searchFields(bare('ns-1'))).not.toThrow()
+        })
+
+        it('crds — no spec', () => {
+            expect(() => SECTION_CONFIG.crds!.searchFields(bare('foo.example.com'))).not.toThrow()
+        })
+
+        it('ingressclasses — no spec', () => {
+            expect(() => SECTION_CONFIG.ingressclasses!.searchFields(bare('nginx'))).not.toThrow()
+        })
+
+        it('storageclasses — bare (provisioner required by k8s but may be absent at runtime)', () => {
+            expect(() => SECTION_CONFIG.storageclasses!.searchFields(bare('fast'))).not.toThrow()
+        })
+
+        it('secrets — no type', () => {
+            expect(() => SECTION_CONFIG.secrets!.searchFields(bare('sec', 'default'))).not.toThrow()
+        })
     })
 })

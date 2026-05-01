@@ -16,6 +16,7 @@ import ScaleDialog from '../common/ScaleDialog'
 import DeleteConfirm from '../common/DeleteConfirm'
 import YAMLViewer from '../common/YAMLViewer'
 import { kindLabel } from '../../store/slices/resourceSlice'
+import { buildSearchIndex, filterByQuery } from '../../store/searchUtils'
 import { canVerb } from '../../store/slices/clusterSlice'
 import { Layers, ShieldOff } from 'lucide-react'
 import { SECTION_LABELS, COLUMNS, CLUSTER_SCOPED_SECTIONS } from '../../config'
@@ -693,52 +694,49 @@ export default function ResourceList(): JSX.Element {
     return Array.from(names).sort()
   }, [resources, section])
 
-  // Search index: built once when resources arrive, reused on every keystroke.
-  // Each entry is a pre-lowercased, null-delimited string of all searchable
-  // fields so filtering is a single .includes() scan with no per-keystroke
-  // allocations. Deps are [resources, section] — NOT searchQuery.
+  // Search index: built only when a query is active and invalidated when
+  // resources or section change. Using hasQuery (boolean) instead of searchQuery
+  // (string) in deps means the index never rebuilds on each keystroke — only
+  // when the query transitions empty↔non-empty or when resources refresh.
+  const hasQuery = searchQuery.trim().length > 0
   const searchIndex = useMemo(() => {
+    if (!hasQuery) return new Map<string, string>()
     const searchFn = SECTION_CONFIG[section as ResourceKind]?.searchFields
-    const index = new Map<string, string>()
-    for (const r of resources) {
-      const fields = searchFn ? searchFn(r) : [r.metadata.name]
-      index.set(r.metadata.uid, fields.filter(Boolean).join('\0').toLowerCase())
-    }
-    return index
+    return buildSearchIndex(resources, searchFn)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resources, section])
+  }, [resources, section, hasQuery])
 
-  const filtered = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim()
-    let result = q
-      ? resources.filter(r => searchIndex.get(r.metadata.uid)?.includes(q) ?? false)
-      : resources
-
+  // Filter: runs on every keystroke. O(n) single .includes() scan per resource.
+  const filteredUnsorted = useMemo(() => {
+    let result = filterByQuery(resources, searchIndex, searchQuery)
     // Node filter — pods section only
     if (section === 'pods' && nodeFilter) {
       result = result.filter(r => (r as KubePod).spec?.nodeName === nodeFilter)
     }
-
-    if (sortCol) {
-      result = [...result].sort((a, b) => {
-        const valA = getSortValue(a, section, sortCol)
-        const valB = getSortValue(b, section, sortCol)
-
-        if (typeof valA === 'number' && typeof valB === 'number') {
-          return sortAsc ? valA - valB : valB - valA
-        }
-
-        const strA = String(valA).toLowerCase()
-        const strB = String(valB).toLowerCase()
-        return sortAsc ? strA.localeCompare(strB) : strB.localeCompare(strA)
-      })
-    }
     return result
-    // `section` is intentionally excluded: when section changes, `resources`
-    // is replaced wholesale by useResources(), which already invalidates this memo.
-    // Including `section` would trigger a redundant sort on the old array.
+    // `section` is intentionally excluded — see note below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchIndex, searchQuery, nodeFilter, sortCol, sortAsc])
+  }, [searchIndex, searchQuery, nodeFilter])
+
+  // Sort: runs only when the filtered set or sort params change, not on every
+  // keystroke. Separating from the filter memo means the O(n log n) sort is
+  // not paid during typing when the user hasn't touched the sort column.
+  // `section` is intentionally excluded: when section changes, `resources` is
+  // replaced wholesale by useResources(), which already invalidates filteredUnsorted.
+  const filtered = useMemo(() => {
+    if (!sortCol) return filteredUnsorted
+    return [...filteredUnsorted].sort((a, b) => {
+      const valA = getSortValue(a, section, sortCol)
+      const valB = getSortValue(b, section, sortCol)
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return sortAsc ? valA - valB : valB - valA
+      }
+      const strA = String(valA).toLowerCase()
+      const strB = String(valB).toLowerCase()
+      return sortAsc ? strA.localeCompare(strB) : strB.localeCompare(strA)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredUnsorted, sortCol, sortAsc])
 
   // Clear selection, sorting, and pod-specific filters when section changes
   useEffect(() => {
