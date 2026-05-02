@@ -423,6 +423,8 @@ export default function Sidebar(): JSX.Element {
           <NavGroup title="Autoscaling">
             <NavItem label="HPA" section="hpas" icon={ICONS.hpa} />
             <NavItem label="Pod Disruption Budgets" section="pdbs" icon={ICONS.pdb} />
+            <NavItem label="Resource Quotas" section="resourcequotas" icon={ICONS.configmap} />
+            <NavItem label="Limit Ranges" section="limitranges" icon={ICONS.configmap} />
           </NavGroup>
 
           <NavGroup title="Network">

@@ -5,7 +5,7 @@ import {
     KubeIngressClass, KubeNetworkPolicy, KubeEndpoints, KubeConfigMap,
     KubeSecret, KubePVC, KubePV, KubeStorageClass, KubeServiceAccount,
     KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
-    KubeNode, KubeNamespace, KubeCRD, KubeEvent,
+    KubeNode, KubeNamespace, KubeCRD, KubeEvent, KubeResourceQuota, KubeLimitRange,
 } from '../types/k8s'
 import { CustomScanOptions } from './types'
 
@@ -129,6 +129,25 @@ export const SECTION_CONFIG: Partial<Record<ResourceKind, SectionConfig>> = {
             r.metadata.namespace,
             ...labelsToStrings(r.metadata.labels),
             ...labelsToStrings(r.spec?.selector?.matchLabels),
+        ],
+    },
+    resourcequotas: {
+        stateKey: 'resourcequotas', fetch: (c, ns) => window.kubectl.getResourceQuotas(c, ns), namespaced: true,
+        searchFields: (r: KubeResourceQuota) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            ...Object.keys(r.spec?.hard ?? {}),
+            ...r.spec?.scopes ?? [],
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    limitranges: {
+        stateKey: 'limitranges', fetch: (c, ns) => window.kubectl.getLimitRanges(c, ns), namespaced: true,
+        searchFields: (r: KubeLimitRange) => [
+            r.metadata.name,
+            r.metadata.namespace,
+            ...r.spec?.limits?.map(l => l.type) ?? [],
+            ...labelsToStrings(r.metadata.labels),
         ],
     },
     services: {
@@ -364,6 +383,8 @@ export const kindToSection: Record<string, ResourceKind> = {
     Node: 'nodes',
     Namespace: 'namespaces',
     HorizontalPodAutoscaler: 'hpas',
+    ResourceQuota: 'resourcequotas',
+    LimitRange: 'limitranges',
     PersistentVolumeClaim: 'pvcs',
     PersistentVolume: 'pvs',
     ServiceAccount: 'serviceaccounts',
@@ -378,6 +399,7 @@ export function kindLabel(section: string): string {
         pods: 'pod', deployments: 'deployment', daemonsets: 'daemonset',
         statefulsets: 'statefulset', replicasets: 'replicaset', jobs: 'job', cronjobs: 'cronjob',
         hpas: 'horizontalpodautoscaler', pdbs: 'poddisruptionbudget',
+        resourcequotas: 'resourcequota', limitranges: 'limitrange',
         services: 'service', ingresses: 'ingress', ingressclasses: 'ingressclass',
         networkpolicies: 'networkpolicy', endpoints: 'endpoints',
         configmaps: 'configmap', secrets: 'secret',

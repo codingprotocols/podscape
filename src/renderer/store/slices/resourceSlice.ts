@@ -1,7 +1,7 @@
 import { StoreSlice, AppStore } from '../types'
 import {
     KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet,
-    KubeReplicaSet, KubeJob, KubeCronJob, KubeHPA, KubePDB,
+    KubeReplicaSet, KubeJob, KubeCronJob, KubeHPA, KubePDB, KubeResourceQuota, KubeLimitRange,
     KubeService, KubeIngress, KubeIngressClass, KubeNetworkPolicy, KubeEndpoints,
     KubeConfigMap, KubeSecret, KubePVC, KubePV, KubeStorageClass,
     KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
@@ -24,6 +24,8 @@ export interface ResourceSlice {
     cronjobs: KubeCronJob[]
     hpas: KubeHPA[]
     pdbs: KubePDB[]
+    resourcequotas: KubeResourceQuota[]
+    limitranges: KubeLimitRange[]
     services: KubeService[]
     ingresses: KubeIngress[]
     ingressclasses: KubeIngressClass[]
@@ -80,6 +82,8 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     cronjobs: [],
     hpas: [],
     pdbs: [],
+    resourcequotas: [],
+    limitranges: [],
     services: [],
     ingresses: [],
     ingressclasses: [],

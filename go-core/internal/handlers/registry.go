@@ -187,6 +187,30 @@ var AllResourceDefs = []ResourceDef{
 			return listToIface(list.Items), nil
 		},
 	},
+	{
+		Resource:    "resourcequotas",
+		SidecarPath: "resourcequotas",
+		GetCache:    func(c *store.ContextCache) map[string]interface{} { return c.ResourceQuotas },
+		ListFn: func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.CoreV1().ResourceQuotas(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		},
+	},
+	{
+		Resource:    "limitranges",
+		SidecarPath: "limitranges",
+		GetCache:    func(c *store.ContextCache) map[string]interface{} { return c.LimitRanges },
+		ListFn: func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.CoreV1().LimitRanges(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		},
+	},
 
 	// ── Networking ───────────────────────────────────────────────────────────
 	{

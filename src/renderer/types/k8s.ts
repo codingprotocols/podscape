@@ -357,6 +357,35 @@ export interface KubeHPA extends KubeResource {
 
 // ─── PodDisruptionBudget ──────────────────────────────────────────────────────
 
+export interface KubeResourceQuota extends KubeResource {
+  metadata: NamespacedMeta
+  spec: {
+    hard?: Record<string, string>
+    scopeSelector?: { matchExpressions?: Array<{ scopeName: string; operator: string; values?: string[] }> }
+    scopes?: string[]
+  }
+  status: {
+    hard?: Record<string, string>
+    used?: Record<string, string>
+  }
+}
+
+export interface LimitRangeItem {
+  type: string
+  max?: Record<string, string>
+  min?: Record<string, string>
+  default?: Record<string, string>
+  defaultRequest?: Record<string, string>
+  maxLimitRequestRatio?: Record<string, string>
+}
+
+export interface KubeLimitRange extends KubeResource {
+  metadata: NamespacedMeta
+  spec: {
+    limits: LimitRangeItem[]
+  }
+}
+
 export interface KubePDB extends KubeResource {
   metadata: NamespacedMeta
   spec: {
@@ -535,6 +564,8 @@ export interface KubeClusterRoleBinding extends KubeResource {
 }
 
 export type AnyKubeResource =
+  | KubeResourceQuota
+  | KubeLimitRange
   | KubePod
   | KubeDeployment
   | KubeDaemonSet

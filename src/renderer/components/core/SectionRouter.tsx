@@ -40,6 +40,10 @@ const CREATABLE_SECTIONS: Partial<Record<string, CreatableKind>> = {
   configmaps: 'configmap',
   secrets: 'secret',
   namespaces: 'namespace',
+  roles: 'role',
+  clusterroles: 'clusterrole',
+  rolebindings: 'rolebinding',
+  clusterrolebindings: 'clusterrolebinding',
 }
 
 // Sections that render directly (no Suspense needed)

@@ -21,6 +21,8 @@ import ReplicaSetDetail from '../resource-details/workloads/ReplicaSetDetail'
 import NamespaceDetail from '../resource-details/cluster/NamespaceDetail'
 import CRDDetail from '../resource-details/cluster/CRDDetail'
 import PDBDetail from '../resource-details/workloads/PDBDetail'
+import ResourceQuotaDetail from '../resource-details/config/ResourceQuotaDetail'
+import LimitRangeDetail from '../resource-details/config/LimitRangeDetail'
 import IngressClassDetail from '../resource-details/network/IngressClassDetail'
 import NetworkPolicyDetail from '../resource-details/network/NetworkPolicyDetail'
 import EndpointsDetail from '../resource-details/network/EndpointsDetail'
@@ -31,7 +33,8 @@ import {
   AnyKubeResource, KubePod, KubeDeployment,  KubeDaemonSet, KubeStatefulSet, KubeReplicaSet, KubeJob, KubeCronJob,
   KubeService, KubeIngress, KubeConfigMap, KubeSecret, KubePVC, KubePV,
   KubeServiceAccount, KubeNode, KubeNamespace, KubeCRD, KubeIngressClass,
-  KubeNetworkPolicy, KubeEndpoints, KubeStorageClass, KubeHPA, KubePDB
+  KubeNetworkPolicy, KubeEndpoints, KubeStorageClass, KubeHPA, KubePDB,
+  KubeResourceQuota, KubeLimitRange
 } from '../../types'
 
 interface DetailPanelProps {
@@ -65,6 +68,8 @@ export default function DetailPanel({ resource, section }: DetailPanelProps): JS
     case 'hpas': content = <HPADetail hpa={resource as KubeHPA} />; break
     case 'keda-scaledobjects': content = <ScaledObjectDetail resource={resource as unknown as Record<string, unknown>} />; break
     case 'pdbs': content = <PDBDetail pdb={resource as KubePDB} />; break
+    case 'resourcequotas': content = <ResourceQuotaDetail quota={resource as KubeResourceQuota} />; break
+    case 'limitranges': content = <LimitRangeDetail lr={resource as KubeLimitRange} />; break
     case 'ingressclasses': content = <IngressClassDetail ic={resource as KubeIngressClass} />; break
     case 'networkpolicies': content = <NetworkPolicyDetail np={resource as KubeNetworkPolicy} />; break
     case 'endpoints': content = <EndpointsDetail ep={resource as KubeEndpoints} />; break

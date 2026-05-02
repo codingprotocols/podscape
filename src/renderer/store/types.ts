@@ -1,7 +1,7 @@
 import { StateCreator } from 'zustand'
 import {
     KubeContextEntry, KubeNamespace, KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet,
-    KubeReplicaSet, KubeJob, KubeCronJob, KubeHPA, KubePDB,
+    KubeReplicaSet, KubeJob, KubeCronJob, KubeHPA, KubePDB, KubeResourceQuota, KubeLimitRange,
     KubeService, KubeIngress, KubeIngressClass, KubeNetworkPolicy, KubeEndpoints,
     KubeConfigMap, KubeSecret, KubePVC, KubePV, KubeStorageClass,
     KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
@@ -34,6 +34,8 @@ declare global {
             getCronJobs: (context: string, namespace: string | null) => Promise<KubeCronJob[]>
             getHPAs: (context: string, namespace: string | null) => Promise<KubeHPA[]>
             getPodDisruptionBudgets: (context: string, namespace: string | null) => Promise<KubePDB[]>
+            getResourceQuotas: (context: string, namespace: string | null) => Promise<KubeResourceQuota[]>
+            getLimitRanges: (context: string, namespace: string | null) => Promise<KubeLimitRange[]>
             getServices: (context: string, namespace: string | null) => Promise<KubeService[]>
             getIngresses: (context: string, namespace: string | null) => Promise<KubeIngress[]>
             getCustomResource: (context: string, namespace: string | null, crdName: string) => Promise<unknown[]>

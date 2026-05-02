@@ -285,8 +285,8 @@ describe('SECTION_CONFIG searchFields', () => {
     // Registry integrity: if you add a new section here, update the count below.
     // This catches the class of bug where a resource is added to SECTION_CONFIG
     // but the developer forgets to add a sidecar route (Go AllResourceDefs).
-    it('SECTION_CONFIG has exactly 28 entries', () => {
-        expect(Object.keys(SECTION_CONFIG).length).toBe(28)
+    it('SECTION_CONFIG has exactly 30 entries', () => {
+        expect(Object.keys(SECTION_CONFIG).length).toBe(30)
     })
 
     // ── cronjob suspend logic ─────────────────────────────────────────────────

@@ -45,6 +45,8 @@ type ContextCache struct {
 	CronJobs            map[string]interface{}
 	HPAs                map[string]interface{}
 	PDBs                map[string]interface{}
+	ResourceQuotas      map[string]interface{}
+	LimitRanges         map[string]interface{}
 	Services            map[string]interface{}
 	Ingresses           map[string]interface{}
 	IngressClasses      map[string]interface{}
@@ -81,6 +83,8 @@ func NewContextCache(clientset kubernetes.Interface, config *rest.Config) *Conte
 		CronJobs:            make(map[string]interface{}),
 		HPAs:                make(map[string]interface{}),
 		PDBs:                make(map[string]interface{}),
+		ResourceQuotas:      make(map[string]interface{}),
+		LimitRanges:         make(map[string]interface{}),
 		Services:            make(map[string]interface{}),
 		Ingresses:           make(map[string]interface{}),
 		IngressClasses:      make(map[string]interface{}),
@@ -166,6 +170,8 @@ func (c *ContextCache) ClearMaps() {
 	c.CronJobs = make(map[string]interface{})
 	c.HPAs = make(map[string]interface{})
 	c.PDBs = make(map[string]interface{})
+	c.ResourceQuotas = make(map[string]interface{})
+	c.LimitRanges = make(map[string]interface{})
 	c.Services = make(map[string]interface{})
 	c.Ingresses = make(map[string]interface{})
 	c.IngressClasses = make(map[string]interface{})

@@ -59,6 +59,8 @@ export class KubectlProvider {
       'cronjobs': 'cronjobs',
       'horizontalpodautoscalers': 'hpas',
       'poddisruptionbudgets': 'pdbs',
+      'resourcequotas': 'resourcequotas',
+      'limitranges': 'limitranges',
       'services': 'services',
       'ingresses': 'ingresses',
       'ingressclasses': 'ingressclasses',
@@ -324,6 +326,8 @@ export function registerKubectlHandlers(): void {
   ipcMain.handle('kubectl:getDaemonSets', (_e, ctx, ns) => provider.getResources(ctx, ns, 'daemonsets'))
   ipcMain.handle('kubectl:getHPAs', (_e, ctx, ns) => provider.getResources(ctx, ns, 'horizontalpodautoscalers'))
   ipcMain.handle('kubectl:getPodDisruptionBudgets', (_e, ctx, ns) => provider.getResources(ctx, ns, 'poddisruptionbudgets'))
+  ipcMain.handle('kubectl:getResourceQuotas', (_e, ctx, ns) => provider.getResources(ctx, ns, 'resourcequotas'))
+  ipcMain.handle('kubectl:getLimitRanges', (_e, ctx, ns) => provider.getResources(ctx, ns, 'limitranges'))
   ipcMain.handle('kubectl:getServices', (_e, ctx, ns) => provider.getResources(ctx, ns, 'services'))
   ipcMain.handle('kubectl:getIngresses', (_e, ctx, ns) => provider.getResources(ctx, ns, 'ingresses'))
   ipcMain.handle('kubectl:getIngressClasses', (_e, ctx) => provider.getResources(ctx, undefined, 'ingressclasses'))

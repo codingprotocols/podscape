@@ -8,8 +8,12 @@ import ServiceForm from './create-forms/ServiceForm'
 import ConfigMapForm from './create-forms/ConfigMapForm'
 import SecretForm from './create-forms/SecretForm'
 import NamespaceForm from './create-forms/NamespaceForm'
+import RoleForm from './create-forms/RoleForm'
+import ClusterRoleForm from './create-forms/ClusterRoleForm'
+import RoleBindingForm from './create-forms/RoleBindingForm'
+import ClusterRoleBindingForm from './create-forms/ClusterRoleBindingForm'
 
-export type CreatableKind = 'deployment' | 'service' | 'configmap' | 'secret' | 'namespace'
+export type CreatableKind = 'deployment' | 'service' | 'configmap' | 'secret' | 'namespace' | 'role' | 'clusterrole' | 'rolebinding' | 'clusterrolebinding'
 
 interface Props {
     kind: CreatableKind
@@ -22,6 +26,10 @@ const TITLES: Record<CreatableKind, string> = {
     configmap: 'New ConfigMap',
     secret: 'New Secret',
     namespace: 'New Namespace',
+    role: 'New Role',
+    clusterrole: 'New ClusterRole',
+    rolebinding: 'New RoleBinding',
+    clusterrolebinding: 'New ClusterRoleBinding',
 }
 
 export default function CreateResourceModal({ kind, onClose }: Props): JSX.Element {
@@ -72,11 +80,15 @@ export default function CreateResourceModal({ kind, onClose }: Props): JSX.Eleme
                 <div className="flex flex-1 min-h-0 overflow-hidden">
                     {/* Form column */}
                     <div className="w-[380px] shrink-0 overflow-y-auto border-r border-slate-100 dark:border-white/5 p-5">
-                        {kind === 'deployment' && <DeploymentForm onChange={setGeneratedYaml} />}
-                        {kind === 'service'    && <ServiceForm    onChange={setGeneratedYaml} />}
-                        {kind === 'configmap'  && <ConfigMapForm  onChange={setGeneratedYaml} />}
-                        {kind === 'secret'     && <SecretForm     onChange={setGeneratedYaml} />}
-                        {kind === 'namespace'  && <NamespaceForm  onChange={setGeneratedYaml} />}
+                        {kind === 'deployment'          && <DeploymentForm          onChange={setGeneratedYaml} />}
+                        {kind === 'service'             && <ServiceForm             onChange={setGeneratedYaml} />}
+                        {kind === 'configmap'           && <ConfigMapForm           onChange={setGeneratedYaml} />}
+                        {kind === 'secret'              && <SecretForm              onChange={setGeneratedYaml} />}
+                        {kind === 'namespace'           && <NamespaceForm           onChange={setGeneratedYaml} />}
+                        {kind === 'role'                && <RoleForm                onChange={setGeneratedYaml} />}
+                        {kind === 'clusterrole'         && <ClusterRoleForm         onChange={setGeneratedYaml} />}
+                        {kind === 'rolebinding'         && <RoleBindingForm         onChange={setGeneratedYaml} />}
+                        {kind === 'clusterrolebinding'  && <ClusterRoleBindingForm  onChange={setGeneratedYaml} />}
                     </div>
 
                     {/* YAML preview column */}

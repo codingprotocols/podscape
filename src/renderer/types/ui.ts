@@ -23,6 +23,8 @@ export type ResourceKind =
   | 'cronjobs'
   | 'hpas'
   | 'pdbs'
+  | 'resourcequotas'
+  | 'limitranges'
   | 'services'
   | 'ingresses'
   | 'ingressclasses'
