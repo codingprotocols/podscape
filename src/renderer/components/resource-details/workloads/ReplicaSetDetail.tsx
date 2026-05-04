@@ -42,7 +42,7 @@ export default function ReplicaSetDetail({ replicaSet: rs }: Props): JSX.Element
         <div className="flex items-start justify-between">
           <div className="min-w-0">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white font-mono truncate">{rs.metadata.name}</h3>
-            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{rs.metadata.namespace} · REPLICSET</p>
+            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{rs.metadata.namespace} · REPLICASET</p>
           </div>
           <div className="flex items-center gap-2">
             <button
