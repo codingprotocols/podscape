@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { SECTION_CONFIG, labelsToStrings } from './resourceConfig'
+import { SECTION_CONFIG } from './resourceConfig'
 
 // Minimal ObjectMeta helper — only fields required by BaseObjectMeta
 function meta(name: string, namespace?: string, labels?: Record<string, string>) {
