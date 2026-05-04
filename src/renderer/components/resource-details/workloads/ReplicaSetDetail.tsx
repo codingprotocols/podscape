@@ -46,7 +46,7 @@ export default function ReplicaSetDetail({ replicaSet: rs }: Props): JSX.Element
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => openYAML('replicaset', rs.metadata.name, false, rs.metadata.namespace)}
+              onClick={() => openYAML('replicaset', rs.metadata.name, false, rs.metadata.namespace ?? 'default')}
               disabled={yamlLoading}
               className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
             >
