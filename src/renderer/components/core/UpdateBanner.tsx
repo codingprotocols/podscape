@@ -158,7 +158,7 @@ export default function UpdateBanner(): JSX.Element | null {
                 await window.updater?.install()
               } catch (err: unknown) {
                 const message =
-                  err instanceof Error && err.message
+                  err instanceof Error
                     ? err.message
                     : 'Failed to install update.'
                 setUpdate({ status: 'error', message })
