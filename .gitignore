@@ -120,6 +120,7 @@ CLAUDE.md
 .claude/
 UI_DESIGN_PATTERNS.md
 docs/superpowers/*
+graphify-out/
 
 # Podscape specific
 /out/
