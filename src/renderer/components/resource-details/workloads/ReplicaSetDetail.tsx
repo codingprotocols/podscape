@@ -42,11 +42,11 @@ export default function ReplicaSetDetail({ replicaSet: rs }: Props): JSX.Element
         <div className="flex items-start justify-between">
           <div className="min-w-0">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white font-mono truncate">{rs.metadata.name}</h3>
-            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{rs.metadata.namespace} · REPLICSET</p>
+            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-widest">{rs.metadata.namespace} · REPLICASET</p>
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => openYAML('replicaset', rs.metadata.name, false, rs.metadata.namespace)}
+              onClick={() => openYAML('replicaset', rs.metadata.name, false, rs.metadata.namespace ?? 'default')}
               disabled={yamlLoading}
               className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 group disabled:opacity-50"
             >
