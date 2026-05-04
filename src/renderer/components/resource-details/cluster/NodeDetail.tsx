@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import type { KubeNode } from '../../../types'
 import { formatAge, getNodeReady, parseMemoryMiB, parseCpuMillicores } from '../../../types'
 import { useAppStore } from '../../../store'
@@ -17,6 +17,10 @@ export default function NodeDetail({ node }: Props): JSX.Element {
   const [yamlError, setYamlError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<'cordon' | 'uncordon' | 'drain' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+
+  const nodeName = node.metadata.name
+  const promCpuQueries    = useMemo(() => [nodeCpuQuery(nodeName)],    [nodeName])
+  const promMemoryQueries = useMemo(() => [nodeMemoryQuery(nodeName)], [nodeName])
 
   const nodePods = pods.filter(p => p.spec.nodeName === node.metadata.name)
   const metrics = nodeMetrics.find(m => m.metadata.name === node.metadata.name)
@@ -189,8 +193,8 @@ export default function NodeDetail({ node }: Props): JSX.Element {
             <PrometheusTimeRangeBar />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <TimeSeriesChart queries={[nodeCpuQuery(node.metadata.name)]} title="CPU" unit="%" />
-            <TimeSeriesChart queries={[nodeMemoryQuery(node.metadata.name)]} title="Memory" unit="%" />
+            <TimeSeriesChart queries={promCpuQueries}    title="CPU"    unit="%" />
+            <TimeSeriesChart queries={promMemoryQueries} title="Memory" unit="%" />
           </div>
         </div>
       )}

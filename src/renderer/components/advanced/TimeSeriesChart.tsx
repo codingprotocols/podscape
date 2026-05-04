@@ -20,6 +20,9 @@ interface SeriesPoint {
   [label: string]: number
 }
 
+// Caching and in-flight deduplication are handled by the Go sidecar
+// (singleflight + 60s TTL per query). The renderer just fetches and renders.
+
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
 const PRESETS: TimeRangePreset[] = ['1h', '6h', '24h', '7d']
 
@@ -61,10 +64,10 @@ export default function TimeSeriesChart({ queries, title, unit, className }: Pro
 
   const fetchData = useCallback(async () => {
     if (!window.kubectl.prometheusQueryBatch) return
+    const { start, end } = prometheusTimeRange
     setLoading(true)
     setError(null)
     try {
-      const { start, end } = prometheusTimeRange
       const results = await window.kubectl.prometheusQueryBatch(queries, start, end)
       if (!Array.isArray(results) || results.length === 0) { setData([]); return }
       const merged: Record<number, SeriesPoint> = {}
@@ -120,7 +123,7 @@ export default function TimeSeriesChart({ queries, title, unit, className }: Pro
           {title ?? ''}
         </span>
         <button
-          onClick={fetchData}
+          onClick={() => fetchData()}
           disabled={loading}
           className="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-blue-500 transition-colors disabled:opacity-40"
           title="Refresh"

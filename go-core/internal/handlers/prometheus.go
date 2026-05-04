@@ -42,3 +42,15 @@ func HandlePrometheusQueryBatch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(results)
 }
+
+// HandlePrometheusClearCache evicts all cached query results immediately.
+// Called by the renderer's global refresh action so charts always refetch
+// fresh Prometheus data after an explicit user-initiated refresh.
+func HandlePrometheusClearCache(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	prometheus.ClearCache()
+	w.WriteHeader(http.StatusNoContent)
+}

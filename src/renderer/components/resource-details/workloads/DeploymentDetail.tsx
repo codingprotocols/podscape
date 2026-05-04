@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import type { RolloutRevision } from '../../../../common/constants'
 import type { KubeDeployment, KubeEvent } from '../../../types'
 import { formatAge } from '../../../types'
@@ -36,6 +36,11 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
   // Events
   const [events, setEvents] = useState<KubeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
+
+  const dName = d.metadata.name
+  const dNs = d.metadata.namespace ?? ''
+  const promCpuQueries    = useMemo(() => [deploymentCpuQuery(dName, dNs)],    [dName, dNs])
+  const promMemoryQueries = useMemo(() => [deploymentMemoryQuery(dName, dNs)], [dName, dNs])
 
   const desired = d.spec.replicas ?? 0
   const ready = d.status.readyReplicas ?? 0
@@ -232,16 +237,8 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
                   <PrometheusTimeRangeBar />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <TimeSeriesChart
-                    queries={[deploymentCpuQuery(d.metadata.name, d.metadata.namespace ?? '')]}
-                    title="CPU"
-                    unit="m"
-                  />
-                  <TimeSeriesChart
-                    queries={[deploymentMemoryQuery(d.metadata.name, d.metadata.namespace ?? '')]}
-                    title="Memory"
-                    unit=" MiB"
-                  />
+                  <TimeSeriesChart queries={promCpuQueries}    title="CPU"    unit="m"     />
+                  <TimeSeriesChart queries={promMemoryQueries} title="Memory" unit=" MiB"  />
                 </div>
               </section>
             )}

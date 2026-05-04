@@ -91,6 +91,7 @@ declare global {
             onSecurityProgress: (cb: (line: string) => void) => () => void
             prometheusStatus: (url?: string) => Promise<{ available: boolean; error?: string }>
             prometheusQueryBatch: (queries: Array<{ query: string; label: string }>, start: number, end: number) => Promise<Array<{ label: string; points: Array<{ t: number; v: number }>; error?: string }>>
+            prometheusFlushCache: () => Promise<void>
             getOwnerChain: (kind: string, name: string, namespace: string) => Promise<OwnerChainResponse>
             getTLSCerts: (namespace?: string) => Promise<any[]>
             getGitOps: (namespace?: string) => Promise<any>

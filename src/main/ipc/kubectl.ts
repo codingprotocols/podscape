@@ -624,6 +624,10 @@ export function registerKubectlHandlers(): void {
     return res.json()
   })
 
+  ipcMain.handle('kubectl:prometheusFlushCache', async () => {
+    await checkedSidecarFetch('/prometheus/cache/clear', { method: 'POST' })
+  })
+
   ipcMain.handle('kubectl:getOwnerChain', async (_e, kind, name, namespace) => {
     const params = new URLSearchParams({ kind, name, namespace: namespace ?? '' })
     const res = await checkedSidecarFetch(`/owner-chain?${params}`)

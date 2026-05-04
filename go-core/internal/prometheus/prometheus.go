@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	"github.com/podscape/go-core/internal/store"
 	"github.com/podscape/go-core/internal/urlutil"
 )
@@ -49,7 +51,8 @@ type cacheEntry struct {
 }
 
 var (
-	queryCache  sync.Map // cacheKey string → *cacheEntry
+	queryCache  sync.Map          // cacheKey string → *cacheEntry
+	fetchGroup  singleflight.Group // deduplicates concurrent identical Prometheus calls
 	manualURL   string
 	manualURLMu sync.RWMutex
 	// prometheusClient is a dedicated, hardened http.Client with a safe timeout
@@ -354,29 +357,36 @@ func QueryRangeBatch(req BatchQueryRequest) []QueryResult {
 }
 
 func queryRangeSingle(query string, start, end, step int64) ([]DataPoint, error) {
-	cacheKey := fmt.Sprintf("%s|%d|%d|%d", query, start, end, step)
-	if entry, ok := queryCache.Load(cacheKey); ok {
+	key := fmt.Sprintf("%s|%d|%d|%d", query, start, end, step)
+
+	// Serve from cache when the entry is still fresh.
+	if entry, ok := queryCache.Load(key); ok {
 		e := entry.(*cacheEntry)
 		if time.Now().Before(e.expiresAt) {
 			return e.result, e.err
 		}
 	}
 
-	raw, fetchErr := fetchQueryRange(query, start, end, step)
+	// Deduplicate concurrent callers for the same key: only one goroutine fires
+	// the real HTTP request; all others wait and share the result.
+	v, fetchErr, _ := fetchGroup.Do(key, func() (interface{}, error) {
+		return fetchQueryRange(query, start, end, step)
+	})
+
 	var points []DataPoint
 	if fetchErr == nil {
 		var parseErr error
-		points, parseErr = parseRangeResult(raw)
+		points, parseErr = parseRangeResult(v.([]byte))
 		if parseErr != nil {
 			fetchErr = parseErr
 		}
 	}
 
-	ttl := 30 * time.Second
+	ttl := 60 * time.Second
 	if fetchErr != nil {
 		ttl = 5 * time.Second
 	}
-	queryCache.Store(cacheKey, &cacheEntry{
+	queryCache.Store(key, &cacheEntry{
 		result:    points,
 		err:       fetchErr,
 		expiresAt: time.Now().Add(ttl),
