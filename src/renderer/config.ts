@@ -5,7 +5,7 @@ import { ResourceKind } from './types/ui'
 /** Sections that show a list + detail panel */
 export const LIST_SECTIONS: ResourceKind[] = [
   'pods', 'deployments', 'daemonsets', 'statefulsets', 'replicasets',
-  'jobs', 'cronjobs', 'hpas', 'pdbs',
+  'jobs', 'cronjobs', 'hpas', 'pdbs', 'resourcequotas', 'limitranges',
   'services', 'ingresses', 'ingressclasses', 'networkpolicies', 'endpoints',
   'configmaps', 'secrets',
   'pvcs', 'pvs', 'storageclasses',
@@ -42,6 +42,8 @@ export const SECTION_LABELS: Record<string, string> = {
   cronjobs: 'CronJobs',
   hpas: 'HorizontalPodAutoscalers',
   pdbs: 'PodDisruptionBudgets',
+  resourcequotas: 'ResourceQuotas',
+  limitranges: 'LimitRanges',
   services: 'Services',
   ingresses: 'Ingresses',
   ingressclasses: 'IngressClasses',
@@ -74,6 +76,8 @@ export const COLUMNS: Record<string, string[]> = {
   cronjobs: ['Name', 'Schedule', 'Status', 'Age'],
   hpas: ['Name', 'Target', 'Min', 'Max', 'Current/Desired', 'Age'],
   pdbs: ['Name', 'Min Available', 'Max Unavailable', 'Healthy/Expected', 'Age'],
+  resourcequotas: ['Name', 'Requests', 'Limits', 'Age'],
+  limitranges: ['Name', 'Types', 'Age'],
   services: ['Name', 'Type', 'Cluster IP', 'External IP', 'Ports'],
   ingresses: ['Name', 'Hosts', 'Address', 'Class'],
   ingressclasses: ['Name', 'Controller', 'Default', 'Age'],

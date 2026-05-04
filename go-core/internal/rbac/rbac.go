@@ -36,6 +36,8 @@ var AllResources = []ResourceDescriptor{
 	{Resource: "cronjobs", Group: "batch"},
 	{Resource: "horizontalpodautoscalers", Group: "autoscaling"},
 	{Resource: "poddisruptionbudgets", Group: "policy"},
+	{Resource: "resourcequotas", Group: ""},
+	{Resource: "limitranges", Group: ""},
 	// Networking
 	{Resource: "services", Group: ""},
 	{Resource: "ingresses", Group: "networking.k8s.io"},

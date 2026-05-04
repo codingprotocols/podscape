@@ -6,7 +6,7 @@ import { SECTION_CONFIG } from '../../store/slices/resourceSlice'
 import LoadingAnimation from './LoadingAnimation'
 import type {
   KubePod, KubeDeployment, KubeDaemonSet, KubeStatefulSet, KubeReplicaSet, KubeJob, KubeCronJob,
-  KubeHPA, KubePDB, KubeService, KubeIngress, KubeIngressClass, KubeNetworkPolicy, KubeEndpoints,
+  KubeHPA, KubePDB, KubeResourceQuota, KubeLimitRange, KubeService, KubeIngress, KubeIngressClass, KubeNetworkPolicy, KubeEndpoints,
   KubeConfigMap, KubeSecret, KubePVC, KubePV, KubeStorageClass,
   KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
   KubeNode, KubeNamespace, KubeCRD, AnyKubeResource, ResourceKind
@@ -16,6 +16,7 @@ import ScaleDialog from '../common/ScaleDialog'
 import DeleteConfirm from '../common/DeleteConfirm'
 import YAMLViewer from '../common/YAMLViewer'
 import { kindLabel } from '../../store/slices/resourceSlice'
+import { buildSearchIndex, filterByQuery } from '../../store/searchUtils'
 import { canVerb } from '../../store/slices/clusterSlice'
 import { Layers, ShieldOff } from 'lucide-react'
 import { SECTION_LABELS, COLUMNS, CLUSTER_SCOPED_SECTIONS } from '../../config'
@@ -376,6 +377,36 @@ function PDBRow({ pdb }: { pdb: KubePDB }) {
   )
 }
 
+function ResourceQuotaRow({ rq }: { rq: KubeResourceQuota }) {
+  const hard = rq.spec?.hard ?? {}
+  const used = rq.status?.used ?? {}
+  const cpuReq = hard['requests.cpu']
+  const memReq = hard['requests.memory']
+  const cpuLim = hard['limits.cpu']
+  const memLim = hard['limits.memory']
+  const requests = [cpuReq && `cpu: ${used['requests.cpu'] ?? '0'}/${cpuReq}`, memReq && `mem: ${used['requests.memory'] ?? '0'}/${memReq}`].filter(Boolean).join(' · ') || '—'
+  const limits = [cpuLim && `cpu: ${used['limits.cpu'] ?? '0'}/${cpuLim}`, memLim && `mem: ${used['limits.memory'] ?? '0'}/${memLim}`].filter(Boolean).join(' · ') || '—'
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{rq.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono">{requests}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono">{limits}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(rq.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
+function LimitRangeRow({ lr }: { lr: KubeLimitRange }) {
+  const types = [...new Set(lr.spec?.limits?.map(l => l.type) ?? [])].join(', ') || '—'
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{lr.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{types}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(lr.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
 function IngressClassRow({ ic }: { ic: KubeIngressClass }) {
   const isDefault = ic.metadata.annotations?.['ingressclass.kubernetes.io/is-default-class'] === 'true'
   return (
@@ -540,6 +571,8 @@ function ResourceRow({ resource, section }: { resource: AnyKubeResource; section
     case 'cronjobs': return <CronJobRow cj={resource as KubeCronJob} />
     case 'hpas': return <HPARow hpa={resource as KubeHPA} />
     case 'pdbs': return <PDBRow pdb={resource as KubePDB} />
+    case 'resourcequotas': return <ResourceQuotaRow rq={resource as KubeResourceQuota} />
+    case 'limitranges': return <LimitRangeRow lr={resource as KubeLimitRange} />
     case 'services': return <ServiceRow svc={resource as KubeService} />
     case 'ingresses': return <IngressRow ing={resource as KubeIngress} />
     case 'ingressclasses': return <IngressClassRow ic={resource as KubeIngressClass} />
@@ -693,35 +726,49 @@ export default function ResourceList(): JSX.Element {
     return Array.from(names).sort()
   }, [resources, section])
 
-  const filtered = useMemo(() => {
-    const q = searchQuery.toLowerCase()
-    let result = resources.filter(r => r.metadata.name.toLowerCase().includes(q))
+  // Search index: built only when a query is active and invalidated when
+  // resources or section change. Using hasQuery (boolean) instead of searchQuery
+  // (string) in deps means the index never rebuilds on each keystroke — only
+  // when the query transitions empty↔non-empty or when resources refresh.
+  const hasQuery = searchQuery.trim().length > 0
+  const searchIndex = useMemo(() => {
+    if (!hasQuery) return new Map<string, string>()
+    const searchFn = SECTION_CONFIG[section as ResourceKind]?.searchFields
+    return buildSearchIndex(resources, searchFn)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resources, section, hasQuery])
 
+  // Filter: runs on every keystroke. O(n) single .includes() scan per resource.
+  const filteredUnsorted = useMemo(() => {
+    let result = filterByQuery(resources, searchIndex, searchQuery)
     // Node filter — pods section only
     if (section === 'pods' && nodeFilter) {
       result = result.filter(r => (r as KubePod).spec?.nodeName === nodeFilter)
     }
-
-    if (sortCol) {
-      result = [...result].sort((a, b) => {
-        const valA = getSortValue(a, section, sortCol)
-        const valB = getSortValue(b, section, sortCol)
-
-        if (typeof valA === 'number' && typeof valB === 'number') {
-          return sortAsc ? valA - valB : valB - valA
-        }
-
-        const strA = String(valA).toLowerCase()
-        const strB = String(valB).toLowerCase()
-        return sortAsc ? strA.localeCompare(strB) : strB.localeCompare(strA)
-      })
-    }
     return result
-    // `section` is intentionally excluded: when section changes, `resources`
-    // is replaced wholesale by useResources(), which already invalidates this memo.
-    // Including `section` would trigger a redundant sort on the old array.
+    // `section` is intentionally excluded — see note below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resources, searchQuery, nodeFilter, sortCol, sortAsc])
+  }, [searchIndex, searchQuery, nodeFilter])
+
+  // Sort: runs only when the filtered set or sort params change, not on every
+  // keystroke. Separating from the filter memo means the O(n log n) sort is
+  // not paid during typing when the user hasn't touched the sort column.
+  // `section` is intentionally excluded: when section changes, `resources` is
+  // replaced wholesale by useResources(), which already invalidates filteredUnsorted.
+  const filtered = useMemo(() => {
+    if (!sortCol) return filteredUnsorted
+    return [...filteredUnsorted].sort((a, b) => {
+      const valA = getSortValue(a, section, sortCol)
+      const valB = getSortValue(b, section, sortCol)
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return sortAsc ? valA - valB : valB - valA
+      }
+      const strA = String(valA).toLowerCase()
+      const strB = String(valB).toLowerCase()
+      return sortAsc ? strA.localeCompare(strB) : strB.localeCompare(strA)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredUnsorted, sortCol, sortAsc])
 
   // Clear selection, sorting, and pod-specific filters when section changes
   useEffect(() => {
@@ -1422,6 +1469,15 @@ function getSortValue(resource: any, section: string, col: string): string | num
     if (col === 'Min Available') return resource.spec?.minAvailable ?? ''
     if (col === 'Max Unavailable') return resource.spec?.maxUnavailable ?? ''
     if (col === 'Healthy/Expected') return resource.status?.currentHealthy ?? 0
+  }
+
+  if (section === 'resourcequotas') {
+    if (col === 'Requests') return resource.spec?.hard?.['requests.cpu'] ?? ''
+    if (col === 'Limits') return resource.spec?.hard?.['limits.cpu'] ?? ''
+  }
+
+  if (section === 'limitranges') {
+    if (col === 'Types') return (resource.spec?.limits ?? []).map((l: any) => l.type).join(', ')
   }
 
   if (section === 'services') {

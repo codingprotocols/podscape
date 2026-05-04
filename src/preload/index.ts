@@ -99,6 +99,10 @@ const kubectl = {
     ipcRenderer.invoke('kubectl:getHPAs', context, namespace),
   getPodDisruptionBudgets: (context: string, namespace: string | null) =>
     ipcRenderer.invoke('kubectl:getPodDisruptionBudgets', context, namespace),
+  getResourceQuotas: (context: string, namespace: string | null) =>
+    ipcRenderer.invoke('kubectl:getResourceQuotas', context, namespace),
+  getLimitRanges: (context: string, namespace: string | null) =>
+    ipcRenderer.invoke('kubectl:getLimitRanges', context, namespace),
 
   // Extended Network
   getIngressClasses: (context: string) =>

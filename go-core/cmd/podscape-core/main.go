@@ -30,37 +30,16 @@ func main() {
 
 	// Register all routes before starting the server.
 	http.HandleFunc("/health", handlers.HandleHealth)
-	http.HandleFunc("/nodes", handlers.HandleNodes)
-	http.HandleFunc("/namespaces", handlers.HandleNamespaces)
-	http.HandleFunc("/pods", handlers.HandlePods)
-	http.HandleFunc("/deployments", handlers.HandleDeployments)
-	http.HandleFunc("/daemonsets", handlers.HandleDaemonSets)
-	http.HandleFunc("/statefulsets", handlers.HandleStatefulSets)
-	http.HandleFunc("/replicasets", handlers.HandleReplicaSets)
-	http.HandleFunc("/jobs", handlers.HandleJobs)
-	http.HandleFunc("/cronjobs", handlers.HandleCronJobs)
-	http.HandleFunc("/hpas", handlers.HandleHPAs)
-	http.HandleFunc("/pdbs", handlers.HandlePDBs)
 
-	http.HandleFunc("/services", handlers.HandleServices)
-	http.HandleFunc("/ingresses", handlers.HandleIngresses)
-	http.HandleFunc("/ingressclasses", handlers.HandleIngressClasses)
-	http.HandleFunc("/networkpolicies", handlers.HandleNetworkPolicies)
-	http.HandleFunc("/endpoints", handlers.HandleEndpoints)
+	// Standard resources — routes and handlers are generated from AllResourceDefs.
+	// To add a new standard resource, add an entry there; no changes needed here.
+	for _, rd := range handlers.AllResourceDefs {
+		http.HandleFunc("/"+rd.Path(), rd.Handler())
+	}
 
-	http.HandleFunc("/configmaps", handlers.HandleConfigMaps)
-	http.HandleFunc("/secrets", handlers.HandleSecrets)
-	http.HandleFunc("/pvcs", handlers.HandlePVCs)
-	http.HandleFunc("/pvs", handlers.HandlePVs)
-	http.HandleFunc("/storageclasses", handlers.HandleStorageClasses)
-
-	http.HandleFunc("/serviceaccounts", handlers.HandleServiceAccounts)
-	http.HandleFunc("/roles", handlers.HandleRoles)
-	http.HandleFunc("/clusterroles", handlers.HandleClusterRoles)
-	http.HandleFunc("/rolebindings", handlers.HandleRoleBindings)
-	http.HandleFunc("/clusterrolebindings", handlers.HandleClusterRoleBindings)
-	http.HandleFunc("/crds", handlers.HandleCRDs)
+	// Resources with bespoke handler logic registered manually.
 	http.HandleFunc("/events", handlers.HandleEvents)
+	http.HandleFunc("/crds", handlers.HandleCRDs)
 	http.HandleFunc("/helm/list", handlers.HandleHelmList)
 	http.HandleFunc("/helm/status", handlers.HandleHelmStatus)
 	http.HandleFunc("/helm/values", handlers.HandleHelmValues)

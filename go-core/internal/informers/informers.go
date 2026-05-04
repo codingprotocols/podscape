@@ -166,6 +166,12 @@ func registerBackgroundInformers(factory k8sinformers.SharedInformerFactory, c *
 	if rbacAllowed(allowed, "poddisruptionbudgets") {
 		setupInformer(factory.Policy().V1().PodDisruptionBudgets().Informer(), c.PDBs, &c.RWMutex, true)
 	}
+	if rbacAllowed(allowed, "resourcequotas") {
+		setupInformer(factory.Core().V1().ResourceQuotas().Informer(), c.ResourceQuotas, &c.RWMutex, true)
+	}
+	if rbacAllowed(allowed, "limitranges") {
+		setupInformer(factory.Core().V1().LimitRanges().Informer(), c.LimitRanges, &c.RWMutex, true)
+	}
 
 	// Networking
 	if rbacAllowed(allowed, "services") {

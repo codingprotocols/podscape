@@ -125,3 +125,116 @@ export function generateNamespaceYAML(s: NamespaceFormState): string {
         metadata: meta,
     }, { noRefs: true, lineWidth: -1 })
 }
+
+// ─── RBAC shared ─────────────────────────────────────────────────────────────
+
+export const RBAC_VERBS = ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete'] as const
+
+export interface PolicyRule {
+    apiGroups: string   // comma-separated; empty string = core API group
+    resources: string   // comma-separated
+    verbs: string[]
+    _rowId: number
+}
+
+export interface RoleSubject {
+    kind: 'User' | 'Group' | 'ServiceAccount'
+    name: string
+    namespace: string   // only used when kind === 'ServiceAccount'
+    _rowId: number
+}
+
+function parseCSV(s: string): string[] {
+    return s.split(',').map(v => v.trim()).filter(Boolean)
+}
+
+function buildRules(rules: PolicyRule[]) {
+    return rules
+        .filter(r => r.resources.trim() && r.verbs.length > 0)
+        .map(r => ({
+            apiGroups: parseCSV(r.apiGroups),
+            resources: parseCSV(r.resources),
+            verbs: r.verbs,
+        }))
+}
+
+function buildSubjects(subjects: RoleSubject[]) {
+    return subjects
+        .filter(s => s.name.trim())
+        .map(s => {
+            const sub: Record<string, string> = { kind: s.kind, name: s.name }
+            if (s.kind === 'ServiceAccount') sub.namespace = s.namespace || 'default'
+            return sub
+        })
+}
+
+// ─── Role ─────────────────────────────────────────────────────────────────────
+
+export interface RoleFormState {
+    name: string
+    namespace: string
+    rules: PolicyRule[]
+}
+
+export function generateRoleYAML(s: RoleFormState): string {
+    return yaml.dump({
+        apiVersion: 'rbac.authorization.k8s.io/v1',
+        kind: 'Role',
+        metadata: { name: s.name, namespace: s.namespace },
+        rules: buildRules(s.rules),
+    }, { noRefs: true, lineWidth: -1 })
+}
+
+// ─── ClusterRole ──────────────────────────────────────────────────────────────
+
+export interface ClusterRoleFormState {
+    name: string
+    rules: PolicyRule[]
+}
+
+export function generateClusterRoleYAML(s: ClusterRoleFormState): string {
+    return yaml.dump({
+        apiVersion: 'rbac.authorization.k8s.io/v1',
+        kind: 'ClusterRole',
+        metadata: { name: s.name },
+        rules: buildRules(s.rules),
+    }, { noRefs: true, lineWidth: -1 })
+}
+
+// ─── RoleBinding ──────────────────────────────────────────────────────────────
+
+export interface RoleBindingFormState {
+    name: string
+    namespace: string
+    roleRefKind: 'Role' | 'ClusterRole'
+    roleRefName: string
+    subjects: RoleSubject[]
+}
+
+export function generateRoleBindingYAML(s: RoleBindingFormState): string {
+    return yaml.dump({
+        apiVersion: 'rbac.authorization.k8s.io/v1',
+        kind: 'RoleBinding',
+        metadata: { name: s.name, namespace: s.namespace },
+        roleRef: { apiGroup: 'rbac.authorization.k8s.io', kind: s.roleRefKind, name: s.roleRefName },
+        subjects: buildSubjects(s.subjects),
+    }, { noRefs: true, lineWidth: -1 })
+}
+
+// ─── ClusterRoleBinding ───────────────────────────────────────────────────────
+
+export interface ClusterRoleBindingFormState {
+    name: string
+    roleRefName: string
+    subjects: RoleSubject[]
+}
+
+export function generateClusterRoleBindingYAML(s: ClusterRoleBindingFormState): string {
+    return yaml.dump({
+        apiVersion: 'rbac.authorization.k8s.io/v1',
+        kind: 'ClusterRoleBinding',
+        metadata: { name: s.name },
+        roleRef: { apiGroup: 'rbac.authorization.k8s.io', kind: 'ClusterRole', name: s.roleRefName },
+        subjects: buildSubjects(s.subjects),
+    }, { noRefs: true, lineWidth: -1 })
+}

@@ -1,3 +1,35 @@
+## [3.2.2] — 2026-05-02
+
+### New features
+
+#### Resource creation forms
+
+- **RBAC creation forms** (`src/renderer/components/common/create-forms/`) — Four new forms extending the `CreateResourceModal` to cover RBAC resources:
+  - **`RoleForm`** — name, namespace (from store), repeating policy rules with API groups, resources, and verb toggle buttons
+  - **`ClusterRoleForm`** — same rule builder without namespace selector
+  - **`RoleBindingForm`** — name, namespace, roleRef (kind: Role/ClusterRole + name), repeating subjects (kind: ServiceAccount/User/Group; ServiceAccount subjects show a namespace picker)
+  - **`ClusterRoleBindingForm`** — same subjects builder with hard-coded `ClusterRole` roleRef kind
+
+- **`+ New` extended to RBAC sections** (`SectionRouter.tsx`) — The blue `+ New` page-header button now appears on Roles, ClusterRoles, RoleBindings, and ClusterRoleBindings in addition to the original five sections. Hidden when `canVerb` returns false for `create`.
+
+#### Detail views
+
+- **`ResourceQuotaDetail`** (`src/renderer/components/resource-details/config/ResourceQuotaDetail.tsx`) — Usage table (hard/used columns) for each quota resource, scopes list, and YAML viewer.
+
+- **`LimitRangeDetail`** (`src/renderer/components/resource-details/config/LimitRangeDetail.tsx`) — Limit rules list (type, resource, min/max/default/defaultRequest/maxLimitRequestRatio) and YAML viewer.
+
+### Bug fixes
+
+#### Renderer
+
+- **Cluster context menu rendered under sticky page header** (`Sidebar.tsx`) — The cluster right-click dropdown was a normally positioned child of the sidebar. On contexts that have a sticky `PageHeader` with `backdrop-filter: blur`, Chromium promotes the header to a GPU compositor layer which paints above elements regardless of CSS z-index. Fixed by rendering the menu via `createPortal(…, document.body)`, escaping all stacking contexts. Overlay and menu divs raised to `z-[9990]`/`z-[9991]`.
+
+- **`getResourceQuotas` / `getLimitRanges` missing from `window.kubectl` type** (`src/renderer/store/types.ts`) — Both methods were exposed via IPC and preload but absent from the `window.kubectl` TypeScript declaration. TypeScript silently inferred `any`, masking type errors at all call sites. Added signatures with correct parameter and return types.
+
+- **`ResourceQuota` / `LimitRange` missing from `kindToSection` map** (`src/renderer/store/resourceConfig.ts`) — `navigateToResource('ResourceQuota', …)` and `navigateToResource('LimitRange', …)` were silent no-ops because neither kind had an entry in `kindToSection`. Added `ResourceQuota → 'resourcequotas'` and `LimitRange → 'limitranges'`.
+
+---
+
 ## [3.2.1] — 2026-05-01
 
 ### Bug fixes

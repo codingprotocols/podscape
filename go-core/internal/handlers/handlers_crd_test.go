@@ -213,7 +213,7 @@ func TestMakeHandler_DeniedResource_ReturnsEmptyArrayWithHeader(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/pods", nil)
 	rr := httptest.NewRecorder()
-	HandlePods(rr, req)
+	HandlerForResource("pods")(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
@@ -236,13 +236,13 @@ func TestMakeHandler_AllowedResource_ReturnsData(t *testing.T) {
 	ac.AllowedResources = map[string]bool{
 		"pods":        true,
 		"deployments": true,
-		// others intentionally absent — only "pods" is checked by HandlePods
+		// others intentionally absent — only "pods" is checked
 	}
 	setActiveCache(t, ac)
 
 	req := httptest.NewRequest(http.MethodGet, "/pods", nil)
 	rr := httptest.NewRecorder()
-	HandlePods(rr, req)
+	HandlerForResource("pods")(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
@@ -261,7 +261,7 @@ func TestMakeHandler_NilAllowedResources_Permissive(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/pods", nil)
 	rr := httptest.NewRecorder()
-	HandlePods(rr, req)
+	HandlerForResource("pods")(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
@@ -339,6 +339,16 @@ func TestHandleSwitchContext_RBACProbeStored(t *testing.T) {
 	}
 	if verbs["secrets"]["list"] {
 		t.Error("expected secrets list to be denied in AllowedVerbs")
+	}
+}
+
+// TestAllResourceDefs_Count guards against a resource being added to AllResourceDefs
+// without the corresponding route in main.go being verified. Update the constant
+// when adding a new standard resource to the registry.
+func TestAllResourceDefs_Count(t *testing.T) {
+	const want = 28
+	if got := len(AllResourceDefs); got != want {
+		t.Errorf("AllResourceDefs has %d entries, want %d — update this constant after adding/removing a resource", got, want)
 	}
 }
 
