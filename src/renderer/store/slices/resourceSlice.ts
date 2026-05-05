@@ -75,6 +75,9 @@ export interface ResourceSlice {
 // a user switches sections rapidly (e.g. Pods → Deployments → Pods in < 100 ms
 // before the first Pods fetch resolves). Module-level so it survives re-renders.
 const inFlightSections = new Set<string>()
+// Exported so clusterSlice can clear it on context switch, preventing the new
+// context's loadSection call from being blocked by a stale in-flight key.
+export const clearInFlightSections = () => inFlightSections.clear()
 
 export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     pods: [],

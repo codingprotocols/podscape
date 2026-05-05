@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -51,10 +52,11 @@ type cacheEntry struct {
 }
 
 var (
-	queryCache  sync.Map          // cacheKey string → *cacheEntry
-	fetchGroup  singleflight.Group // deduplicates concurrent identical Prometheus calls
-	manualURL   string
-	manualURLMu sync.RWMutex
+	queryCache      sync.Map           // cacheKey string → *cacheEntry
+	fetchGroup      singleflight.Group // deduplicates concurrent identical Prometheus calls
+	cacheGeneration uint64             // incremented by ClearCache; included in keys to isolate pre-clear in-flight writes
+	manualURL       string
+	manualURLMu     sync.RWMutex
 	// prometheusClient is a dedicated, hardened http.Client with a safe timeout
 	// and default configuration for Prometheus communication.
 	prometheusClient = &http.Client{
@@ -140,7 +142,14 @@ func parseKubeSvcURL(rawURL string) *kubeSvcRef {
 
 // ClearCache drops all cached query results. Call on context switch so stale
 // results from the previous cluster are never served to the new one.
+//
+// Incrementing cacheGeneration means any in-flight singleflight calls that
+// complete after this point will write their results under a now-orphaned key
+// (prefixed with the old generation number). New callers use the new generation
+// prefix and will never read those stale entries, preventing cross-context
+// cache poisoning without needing to cancel in-flight goroutines.
 func ClearCache() {
+	atomic.AddUint64(&cacheGeneration, 1)
 	queryCache.Range(func(k, _ any) bool { queryCache.Delete(k); return true })
 }
 
@@ -357,7 +366,10 @@ func QueryRangeBatch(req BatchQueryRequest) []QueryResult {
 }
 
 func queryRangeSingle(query string, start, end, step int64) ([]DataPoint, error) {
-	key := fmt.Sprintf("%s|%d|%d|%d", query, start, end, step)
+	// Include the current generation in the key so that entries written by
+	// pre-ClearCache in-flight goroutines are never served to post-clear readers.
+	gen := atomic.LoadUint64(&cacheGeneration)
+	key := fmt.Sprintf("%d|%s|%d|%d|%d", gen, query, start, end, step)
 
 	// Serve from cache when the entry is still fresh.
 	if entry, ok := queryCache.Load(key); ok {
