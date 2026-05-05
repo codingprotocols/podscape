@@ -26,10 +26,10 @@ Renderer (React / TypeScript)
 
 | Slice | Responsibility |
 |---|---|
-| `clusterSlice` | Context/namespace selection, RBAC denied tracking, provider detection trigger |
+| `clusterSlice` | Context/namespace selection, RBAC denied tracking, provider detection trigger; on context switch clears `inFlightSections` and evicts the Go Prometheus cache |
 | `navigationSlice` | Active section, theme, sidebar width, search state, tour state (`showTour`), panel toggles (`pluginsEnabled`, `gitopsEnabled`, `networkEnabled`), unified log pod selection (`unifiedLogsSelectedPods`) |
 
-| `resourceSlice` | All 28 resource arrays, section loading, dashboard fetch, resource navigation |
+| `resourceSlice` | All 28 resource arrays, section loading with 30s TTL + module-level `inFlightSections` deduplication guard, dashboard fetch, resource navigation |
 | `operationSlice` | Scale/delete/YAML modals, exec session management, port-forward state |
 | `analysisSlice` | Security scanning (kubesec + trivy), `scanInBackground` state for background scans, owner chain, debug pods, Prometheus config |
 | `providersSlice` | Istio/Traefik/NGINX provider detection state |
@@ -65,7 +65,7 @@ The sidecar is a standalone HTTP server compiled as `podscape-core`. It is the s
 | `internal/exec/` | WebSocket-based container exec (PTY) |
 | `internal/logs/` | WebSocket-based log streaming |
 | `internal/ownerchain/` | Upward + downward owner reference traversal with 30s reverse-index TTL |
-| `internal/prometheus/` | Prometheus auto-discovery via k8s service proxy, batch query with 30s result cache |
+| `internal/prometheus/` | Prometheus auto-discovery via k8s service proxy; batch query with 60s TTL result cache + `singleflight` deduplication; atomic generation counter in `ClearCache()` prevents cross-context cache poisoning after context switch |
 | `internal/helm/` | `HelmRepoManager` — repo list, chart search, version fetch, values, SSE install |
 | `internal/topology/` | Cluster network topology graph (nodes → pods → services) |
 | `internal/providers/` | Provider detection logic (Istio, Traefik, NGINX) used by the `/providers` endpoint |
@@ -151,7 +151,7 @@ Exposes six namespaced APIs to the renderer via `contextBridge`:
 
 | Namespace | Purpose |
 |---|---|
-| `window.kubectl` | All k8s operations, port-forward, log streaming, file copy, owner chain, prometheus |
+| `window.kubectl` | All k8s operations, port-forward, log streaming, file copy, owner chain, Prometheus queries + `prometheusFlushCache` |
 | `window.helm` | Helm release operations and repo browser |
 | `window.exec` | PTY exec-into-container sessions |
 | `window.settings` | Read / write app settings |

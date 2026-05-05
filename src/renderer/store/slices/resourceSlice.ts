@@ -71,6 +71,14 @@ export interface ResourceSlice {
     navigateToResource: (kind: string, name: string, namespace: string) => Promise<void>
 }
 
+// In-flight guard for loadSection. Prevents duplicate parallel fetches when
+// a user switches sections rapidly (e.g. Pods → Deployments → Pods in < 100 ms
+// before the first Pods fetch resolves). Module-level so it survives re-renders.
+const inFlightSections = new Set<string>()
+// Exported so clusterSlice can clear it on context switch, preventing the new
+// context's loadSection call from being blocked by a stale in-flight key.
+export const clearInFlightSections = () => inFlightSections.clear()
+
 export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     pods: [],
     apps: [],
@@ -160,6 +168,10 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         const SECTION_TTL = 30_000
         const cacheKey = `${section}:${nsArg ?? '_all'}`
         if (Date.now() - (get().sectionLoadedAt[cacheKey] ?? 0) < SECTION_TTL) return
+        if (inFlightSections.has(cacheKey)) return
+
+        inFlightSections.add(cacheKey)
+        try {
 
         // Panel sections with multi-resource custom loading
         if (section === 'metrics') {
@@ -332,6 +344,10 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                 set({ error: (err as Error).message, loadingResources: false })
             }
         }
+
+        } finally {
+            inFlightSections.delete(cacheKey)
+        }
     },
 
     loadDashboard: async () => {
@@ -436,8 +452,11 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     },
 
     refresh: () => {
-        // Clear the TTL cache for the current section and the dashboard so the
-        // next loadSection call always fetches fresh data from the sidecar.
+        // Clear all caches so the next load always fetches fresh data.
+        inFlightSections.clear()
+        // Fire-and-forget: evict the Go sidecar's Prometheus cache so charts
+        // fetch fresh data after a manual refresh. Safe to ignore errors.
+        window.kubectl.prometheusFlushCache?.().catch(() => {})
         set({ lastDashboardLoadedAt: 0, sectionLoadedAt: {} })
         return get().loadSection(get().section)
     },

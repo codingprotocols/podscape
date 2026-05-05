@@ -79,6 +79,7 @@ func main() {
 	// Prometheus
 	http.HandleFunc("/prometheus/status", handlers.HandlePrometheusStatus)
 	http.HandleFunc("/prometheus/query_range_batch", handlers.HandlePrometheusQueryBatch)
+	http.HandleFunc("/prometheus/cache/clear", handlers.HandlePrometheusClearCache)
 
 	// Owner chain
 	http.HandleFunc("/owner-chain", handlers.HandleOwnerChain)

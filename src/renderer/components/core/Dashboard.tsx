@@ -382,6 +382,9 @@ export default function Dashboard(): JSX.Element {
   const [warningDismissed, setWarningDismissed] = useState(false)
   useEffect(() => { setWarningDismissed(false) }, [selectedContext])
 
+  const promClusterCpuQueries    = useMemo(() => [clusterCpuQuery()],    [])
+  const promClusterMemoryQueries = useMemo(() => [clusterMemoryQuery()], [])
+
   // ── Derived health data ───────────────────────────────────────────────────
   const { problemPods, totalProblemPods, degradedDeployments } = useMemo(
     () => derivedHealth(pods, deployments),
@@ -533,14 +536,14 @@ export default function Dashboard(): JSX.Element {
                        <div className="p-2 rounded-xl bg-blue-500/10 text-blue-500"><Cpu size={16} /></div>
                        <span className="text-[11px] font-black uppercase tracking-widest text-slate-400">Cluster CPU Demand</span>
                     </div>
-                    <TimeSeriesChart queries={[clusterCpuQuery()]} title="" unit="m" />
+                    <TimeSeriesChart queries={promClusterCpuQueries} title="" unit="m" />
                   </div>
                   <div className="bg-white dark:bg-white/[0.02] p-8 rounded-[32px] border border-slate-100 dark:border-white/5 shadow-inner">
                     <div className="flex items-center gap-3 mb-6">
                        <div className="p-2 rounded-xl bg-purple-500/10 text-purple-500"><Database size={16} /></div>
                        <span className="text-[11px] font-black uppercase tracking-widest text-slate-400">Memory Allocation</span>
                     </div>
-                    <TimeSeriesChart queries={[clusterMemoryQuery()]} title="" unit=" GiB" />
+                    <TimeSeriesChart queries={promClusterMemoryQueries} title="" unit=" GiB" />
                   </div>
                 </div>
               </section>

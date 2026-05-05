@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { isMac } from '../../../utils/platform'
 import type { KubePod, KubeEvent } from '../../../types'
 import { podPhaseBg, formatAge } from '../../../types'
 import { useAppStore } from '../../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { canVerb } from '../../../store/slices/clusterSlice'
 import { Maximize2, Minimize2, Copy, Download, Search, X, ChevronDown, Terminal, Trash2, Activity, FileCode } from 'lucide-react'
 import { useYAMLEditor } from '../../../hooks/useYAMLEditor'
@@ -31,7 +32,17 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     selectedContext, selectedNamespace, openExec,
     scanResults, scanResource, isScanning, prometheusAvailable,
     pendingResourceAction, setPendingResourceAction
-  } = useAppStore()
+  } = useAppStore(useShallow(s => ({
+    selectedContext: s.selectedContext,
+    selectedNamespace: s.selectedNamespace,
+    openExec: s.openExec,
+    scanResults: s.scanResults,
+    scanResource: s.scanResource,
+    isScanning: s.isScanning,
+    prometheusAvailable: s.prometheusAvailable,
+    pendingResourceAction: s.pendingResourceAction,
+    setPendingResourceAction: s.setPendingResourceAction,
+  })))
   const allowedVerbs = useAppStore(s => s.allowedVerbs)
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const [activeTab, setActiveTab] = useState<'logs' | 'metrics' | 'analysis' | 'lifecycle'>('logs')
@@ -46,6 +57,11 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const [autoScroll, setAutoScroll] = useState(true)
   const [copyMsg, setCopyMsg] = useState('')
   const isDebugPod = pod.metadata.name.startsWith(DEBUG_POD_PREFIX)
+  const podName = pod.metadata.name
+  const podNs = pod.metadata.namespace ?? ''
+  const promCpuQueries    = useMemo(() => [podCpuQuery(podName, podNs)],     [podName, podNs])
+  const promMemoryQueries = useMemo(() => [podMemoryQuery(podName, podNs)],  [podName, podNs])
+  const promNetQueries    = useMemo(() => [podNetworkRxQuery(podName, podNs), podNetworkTxQuery(podName, podNs)], [podName, podNs])
   const [selectedContainer, setSelectedContainer] = useState(
     isDebugPod ? 'debug' : (pod.spec.containers[0]?.name ?? '')
   )
@@ -692,25 +708,9 @@ export default function PodDetail({ pod }: Props): JSX.Element {
                 <PrometheusTimeRangeBar />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <TimeSeriesChart
-                  queries={[podCpuQuery(pod.metadata.name, pod.metadata.namespace ?? '')]}
-                  title="CPU"
-                  unit="m"
-                />
-                <TimeSeriesChart
-                  queries={[podMemoryQuery(pod.metadata.name, pod.metadata.namespace ?? '')]}
-                  title="Memory"
-                  unit=" MiB"
-                />
-                <TimeSeriesChart
-                  queries={[
-                    podNetworkRxQuery(pod.metadata.name, pod.metadata.namespace ?? ''),
-                    podNetworkTxQuery(pod.metadata.name, pod.metadata.namespace ?? ''),
-                  ]}
-                  title="Network I/O"
-                  unit=" KiB/s"
-                  className="col-span-2"
-                />
+                <TimeSeriesChart queries={promCpuQueries}    title="CPU"        unit="m"      />
+                <TimeSeriesChart queries={promMemoryQueries} title="Memory"     unit=" MiB"   />
+                <TimeSeriesChart queries={promNetQueries}    title="Network I/O" unit=" KiB/s" className="col-span-2" />
               </div>
             </div>
           </div>
