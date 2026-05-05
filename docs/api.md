@@ -138,23 +138,30 @@ The main-process `getResources` IPC handler detects this header and throws `RBAC
 | Method | Path | Description |
 |---|---|---|
 | GET | `/prometheus/status` | Auto-discover Prometheus via k8s service proxy or manual URL |
-| POST | `/prometheus/query_range_batch` | Batch PromQL range queries with 30s result cache |
+| POST | `/prometheus/query_range_batch` | Batch PromQL range queries — 60s TTL cache + singleflight deduplication per query |
+| POST | `/prometheus/cache/clear` | Evict all cached Prometheus results (called on context switch and manual refresh) |
 
 **Batch request body:**
 ```json
-[
-  { "query": "rate(container_cpu_usage_seconds_total[5m])", "label": "CPU" },
-  { "query": "container_memory_working_set_bytes", "label": "Memory" }
-]
+{
+  "queries": [
+    { "query": "rate(container_cpu_usage_seconds_total[5m])", "label": "CPU" },
+    { "query": "container_memory_working_set_bytes", "label": "Memory" }
+  ],
+  "start": 1700000000,
+  "end":   1700003600
+}
 ```
 
 **Batch response:**
 ```json
 [
-  { "label": "CPU", "timestamps": [1700000000, ...], "values": [0.02, ...] },
-  { "label": "Memory", "timestamps": [...], "values": [...] }
+  { "label": "CPU",    "points": [{ "t": 1700000000, "v": 0.02 }, ...] },
+  { "label": "Memory", "points": [{ "t": 1700000000, "v": 134217728 }, ...], "error": "" }
 ]
 ```
+
+**Caching behaviour:** each `(query, start, end, step)` tuple is cached for 60 seconds on success (5 seconds on error). Concurrent identical requests are deduplicated via `singleflight` — only one HTTP call is made to Prometheus regardless of how many charts mount simultaneously. `POST /prometheus/cache/clear` increments an atomic generation counter, making all pre-clear in-flight writes land under orphaned keys that new readers never look up; no goroutine cancellation is needed.
 
 ---
 
