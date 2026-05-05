@@ -236,6 +236,7 @@ const kubectl = {
   prometheusStatus: (url?: string) => ipcRenderer.invoke('kubectl:prometheusStatus', url),
   prometheusQueryBatch: (queries: any[], start: number, end: number) =>
     ipcRenderer.invoke('kubectl:prometheusQueryBatch', queries, start, end),
+  prometheusFlushCache: () => ipcRenderer.invoke('kubectl:prometheusFlushCache'),
 
   // Owner chain
   getOwnerChain: (kind: string, name: string, namespace: string) =>

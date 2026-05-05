@@ -1,6 +1,6 @@
 import { StoreSlice } from '../types'
 import { KubeContextEntry, KubeNamespace, OwnerChainResponse, ResourceKind } from '../../types'
-import { sectionClearState } from './resourceSlice'
+import { sectionClearState, clearInFlightSections } from './resourceSlice'
 import { defaultTimeRange } from '../../utils/prometheusQueries'
 
 export interface ClusterSlice {
@@ -153,6 +153,14 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
         const previousNamespaces = get().namespaces
         const previousSelectedNamespace = get().selectedNamespace
         const isProd = get().prodContexts.includes(name)
+        // Unblock any section fetches that were in-flight for the previous context.
+        // Without this, loadSection for the new context can see a stale in-flight key
+        // (same section + same namespace name) and bail out, leaving the section empty.
+        clearInFlightSections()
+        // Evict the Go sidecar's Prometheus cache. The cache key does not include the
+        // cluster context or Prometheus URL, so entries from the old cluster would
+        // otherwise be served to the new cluster's charts for up to 60 s.
+        window.kubectl.prometheusFlushCache?.().catch(() => {})
         // If the user is viewing a provider-specific section (Istio/Traefik/Nginx),
         // navigate back to dashboard before the context flips. This prevents
         // ProviderResourcePanel from firing a getCustomResource fetch against a
