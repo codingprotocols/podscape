@@ -17,6 +17,13 @@ import { ProvidersSlice } from './slices/providersSlice'
 import { NavigationSlice } from './slices/navigationSlice'
 import { KrewSlice } from './slices/krewSlice'
 
+export interface KubeTLSCert {
+    name?: string
+    namespace?: string
+    expiry?: string
+    issuer?: string
+    [key: string]: unknown
+}
 
 declare global {
     interface Window {
@@ -93,7 +100,7 @@ declare global {
             prometheusQueryBatch: (queries: Array<{ query: string; label: string }>, start: number, end: number) => Promise<Array<{ label: string; points: Array<{ t: number; v: number }>; error?: string }>>
             prometheusFlushCache: () => Promise<void>
             getOwnerChain: (kind: string, name: string, namespace: string) => Promise<OwnerChainResponse>
-            getTLSCerts: (namespace?: string) => Promise<any[]>
+            getTLSCerts: (namespace?: string) => Promise<KubeTLSCert[]>
             getGitOps: (namespace?: string) => Promise<any>
             reconcileGitOps: (kind: string, name: string, namespace: string) => Promise<void>
             suspendGitOps: (kind: string, name: string, namespace: string, suspend: boolean) => Promise<void>
