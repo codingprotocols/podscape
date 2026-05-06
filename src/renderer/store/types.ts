@@ -277,4 +277,16 @@ export interface AppStore extends AnalysisSlice, OperationSlice, ProvidersSlice,
     navigateToResource: (kind: string, name: string, namespace: string) => void
 }
 
+/**
+ * Shared type for Zustand slice factory functions used to compose `AppStore`.
+ *
+ * `StoreSlice<T>` represents a `StateCreator` that:
+ * - receives the full `AppStore` context,
+ * - does not apply additional middleware mutators (`[], []`),
+ * - returns the slice shape `T`.
+ *
+ * Use this for slice creators (for example, `createClusterSlice`,
+ * `createResourceSlice`, etc.) so each slice is consistently typed
+ * when merged into the root store.
+ */
 export type StoreSlice<T> = StateCreator<AppStore, [], [], T>
