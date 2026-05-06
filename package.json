@@ -123,7 +123,7 @@
   },
   "overrides": {
     "dompurify": ">=3.4.0",
-    "@xmldom/xmldom": "^0.8.12",
+    "@xmldom/xmldom": "^0.8.13",
     "lodash": "^4.18.1",
     "brace-expansion": "^1.1.13",
     "@electron/universal": {
@@ -168,7 +168,7 @@
     "electron-vite": "^5.0.0",
     "jsdom": "^29.0.1",
     "lucide-react": "^0.400.0",
-    "postcss": "^8.4.39",
+    "postcss": "^8.5.13",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^3.8.1",
