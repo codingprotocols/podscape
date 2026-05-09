@@ -224,6 +224,7 @@ const kubectl = {
     ipcRenderer.invoke('kubectl:copyFromContainer', context, namespace, pod, container, remotePath, localPath),
 
   scanSecurity: () => ipcRenderer.invoke('kubectl:scanSecurity'),
+  scanKubesec: (yaml: string) => ipcRenderer.invoke('kubectl:scanKubesec', yaml),
   scanKubesecBatch: (resources: any[]) => ipcRenderer.invoke('kubectl:scanKubesecBatch', resources),
   scanTrivyImages: (workloads: any[]) => ipcRenderer.invoke('kubectl:scanTrivyImages', workloads),
   onSecurityProgress: (cb: (line: string) => void): (() => void) => {

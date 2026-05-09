@@ -5,17 +5,45 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/podscape/go-core/internal/client"
 	"github.com/podscape/go-core/internal/handlers"
 	"github.com/podscape/go-core/internal/informers"
 	"github.com/podscape/go-core/internal/portforward"
 	"github.com/podscape/go-core/internal/store"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/homedir"
-
+	klog "k8s.io/klog/v2"
 )
 
+type filteredWriter struct {
+	w       *os.File
+	filters []string
+}
+
+func (fw *filteredWriter) Write(p []byte) (int, error) {
+	s := string(p)
+	for _, f := range fw.filters {
+		if strings.Contains(s, f) {
+			return len(p), nil
+		}
+	}
+	return fw.w.Write(p)
+}
+
+func newFilteredStderr(filters ...string) *filteredWriter {
+	return &filteredWriter{w: os.Stderr, filters: filters}
+}
+
 func main() {
+	// klog v2 defaults logtostderr=true which bypasses SetOutput and writes
+	// directly to os.Stderr. Register klog's own flags so we can disable that
+	// before flag.Parse(), then redirect through a filter.
+	klog.InitFlags(nil)
+	rest.SetDefaultWarningHandler(rest.NoWarnings{})
+
 	var kubeconfig *string
 	if home := homedir.HomeDir(); home != "" {
 		kubeconfig = flag.String("kubeconfig", "", "(optional) absolute path to the kubeconfig file")
@@ -25,6 +53,14 @@ func main() {
 	port := flag.String("port", "5050", "port to listen on")
 	token := flag.String("token", "", "shared secret; requests without X-Podscape-Token matching this value are rejected")
 	flag.Parse()
+
+	// Now that flags are parsed, turn off klog's direct-stderr path and redirect
+	// through a filter that drops bookmark noise. Errors still pass through.
+	flag.Set("logtostderr", "false") //nolint:errcheck
+	klog.SetOutput(newFilteredStderr(
+		"bookmark expired",
+		"hasn't received required bookmark event",
+	))
 
 	store.Store.Kubeconfig = *kubeconfig
 

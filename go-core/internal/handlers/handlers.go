@@ -199,12 +199,7 @@ func HandleGetCurrentContext(w http.ResponseWriter, r *http.Request) {
 // result in the cache. It runs under a 10-second deadline so a slow API server
 // cannot delay informer startup by more than that. On failure, AllowedResources
 // is left nil (permissive: all informers start).
-// Exported so main.go can call it for the startup context.
 func RunRBACProbe(cache *store.ContextCache, ctxName string, cs kubernetes.Interface) {
-	runRBACProbe(cache, ctxName, cs)
-}
-
-func runRBACProbe(cache *store.ContextCache, ctxName string, cs kubernetes.Interface) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -233,6 +228,25 @@ func runRBACProbe(cache *store.ContextCache, ctxName string, cs kubernetes.Inter
 	}
 	log.Printf("[SwitchContext] RBAC probe complete for %q: %d/%d resources accessible",
 		ctxName, len(allowed)-denied, len(allowed))
+}
+
+// runContextSwitch is launched as a goroutine by HandleSwitchContext. It probes
+// RBAC, aborts if a newer switch has superseded this one, then calls
+// startInformers to warm or refresh the cache and marks it ready.
+func runContextSwitch(cache *store.ContextCache, ctxName string, cs kubernetes.Interface, myGen int64, logMsg string, startInformers func()) {
+	RunRBACProbe(cache, ctxName, cs)
+	store.Store.SwitchMu.Lock()
+	superseded := store.Store.SwitchGen != myGen
+	store.Store.SwitchMu.Unlock()
+	if superseded {
+		log.Printf("[SwitchContext] goroutine for %q aborted (superseded by newer switch)", ctxName)
+		return
+	}
+	startInformers()
+	cache.Lock()
+	cache.CacheReady = true
+	cache.Unlock()
+	log.Printf("[SwitchContext] %s for %q", logMsg, ctxName)
 }
 
 func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
@@ -292,12 +306,7 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 	store.Store.RUnlock()
 
 	if oldCache != nil && oldCache != newCache {
-		oldCache.Lock()
-		if oldCache.StopCh != nil {
-			close(oldCache.StopCh)
-			oldCache.StopCh = nil
-		}
-		oldCache.Unlock()
+		oldCache.StopInformers()
 	}
 
 	// NOTE: No blocking connectivity check here. Switching context is always
@@ -337,44 +346,18 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 	if !isNew && hasData {
 		// Known context: serve stale cache immediately, refresh in background.
 		log.Printf("[SwitchContext] instant switch to %q (cached) — refreshing informers in background", contextName)
-		go func() {
-			runRBACProbe(newCache, contextName, clientset)
-			// Abort if a newer switch has superseded this goroutine.
-			store.Store.SwitchMu.Lock()
-			superseded := store.Store.SwitchGen != myGen
-			store.Store.SwitchMu.Unlock()
-			if superseded {
-				log.Printf("[SwitchContext] goroutine for %q aborted (superseded by newer switch)", contextName)
-				return
-			}
+		go runContextSwitch(newCache, contextName, clientset, myGen, "informer refresh complete", func() {
 			informers.RestartInformers(newCache)
-			newCache.Lock()
-			newCache.CacheReady = true
-			newCache.Unlock()
-			log.Printf("[SwitchContext] informer refresh complete for %q", contextName)
-		}()
+		})
 	} else {
 		// 6b. New context or cache has no data yet: warm informers in background.
 		newStopCh := make(chan struct{})
 		newCache.Lock()
 		newCache.StopCh = newStopCh
 		newCache.Unlock()
-		go func() {
-			runRBACProbe(newCache, contextName, clientset)
-			// Abort if a newer switch has superseded this goroutine.
-			store.Store.SwitchMu.Lock()
-			superseded := store.Store.SwitchGen != myGen
-			store.Store.SwitchMu.Unlock()
-			if superseded {
-				log.Printf("[SwitchContext] goroutine for %q aborted (superseded by newer switch)", contextName)
-				return
-			}
+		go runContextSwitch(newCache, contextName, clientset, myGen, "cache sync complete", func() {
 			syncInformersFunc(newCache, newStopCh, 60*time.Second)
-			newCache.Lock()
-			newCache.CacheReady = true
-			newCache.Unlock()
-			log.Printf("[SwitchContext] cache sync complete for %q", contextName)
-		}()
+		})
 	}
 
 	log.Printf("[SwitchContext] switched to %q", contextName)

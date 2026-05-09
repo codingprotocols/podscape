@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 
 	corev1 "k8s.io/api/core/v1"
@@ -99,7 +100,10 @@ func HandlePortForward(w http.ResponseWriter, r *http.Request) {
 
 	podName := name
 	if resourceType == "service" {
-		resolved, resolveErr := resolveServiceToPod(namespace, name)
+		store.Store.RLock()
+		ac := store.Store.ActiveCache
+		store.Store.RUnlock()
+		resolved, resolveErr := resolveServiceToPod(ac, namespace, name)
 		if resolveErr != nil {
 			http.Error(w, resolveErr.Error(), http.StatusBadRequest)
 			return
@@ -116,61 +120,31 @@ func HandlePortForward(w http.ResponseWriter, r *http.Request) {
 }
 
 // resolveServiceToPod finds a ready pod that matches the given service's selector.
-func resolveServiceToPod(namespace, serviceName string) (string, error) {
-	store.Store.RLock()
-	c := store.Store.ActiveCache
-	store.Store.RUnlock()
+// c must be non-nil; callers are responsible for reading it from store.Store.
+func resolveServiceToPod(c *store.ContextCache, namespace, serviceName string) (string, error) {
 	if c == nil {
 		return "", fmt.Errorf("no active Kubernetes context")
 	}
 	c.RLock()
-	svcRaw, ok := c.Services[namespace+"/"+serviceName]
+	svcRaw, ok := c.Services[store.ResourceKey(namespace, serviceName)]
 	c.RUnlock()
 	if !ok {
-		return "", fmt.Errorf("service %s/%s not found in cache", namespace, serviceName)
+		return "", fmt.Errorf("service %q not found in namespace %q", serviceName, namespace)
 	}
 	svc, ok := svcRaw.(*corev1.Service)
 	if !ok {
-		return "", fmt.Errorf("unexpected type for service %s/%s", namespace, serviceName)
+		return "", fmt.Errorf("service %q has unexpected type in cache", serviceName)
 	}
 	selector := svc.Spec.Selector
 	if len(selector) == 0 {
-		return "", fmt.Errorf("service %s/%s has no selector (headless or external)", namespace, serviceName)
+		return "", fmt.Errorf("service %q has no selector (headless or external)", serviceName)
 	}
 
+	// Single pass: track both a Running+Ready candidate and any-match fallback
+	// simultaneously so we never iterate c.Pods twice under the read-lock.
 	c.RLock()
 	defer c.RUnlock()
-	for key, podRaw := range c.Pods {
-		pod, ok := podRaw.(*corev1.Pod)
-		if !ok {
-			continue
-		}
-		// Must be in the same namespace.
-		if pod.Namespace != namespace {
-			continue
-		}
-		_ = key
-		// Check all selector labels match.
-		match := true
-		for k, v := range selector {
-			if pod.Labels[k] != v {
-				match = false
-				break
-			}
-		}
-		if !match {
-			continue
-		}
-		// Prefer Running + Ready pods.
-		if pod.Status.Phase == corev1.PodRunning {
-			for _, cond := range pod.Status.Conditions {
-				if cond.Type == corev1.PodReady && cond.Status == corev1.ConditionTrue {
-					return pod.Name, nil
-				}
-			}
-		}
-	}
-	// Fall back to any pod matching the selector (may not be ready yet).
+	var readyPod, anyPod string
 	for _, podRaw := range c.Pods {
 		pod, ok := podRaw.(*corev1.Pod)
 		if !ok || pod.Namespace != namespace {
@@ -183,9 +157,29 @@ func resolveServiceToPod(namespace, serviceName string) (string, error) {
 				break
 			}
 		}
-		if match {
-			return pod.Name, nil
+		if !match {
+			continue
 		}
+		if anyPod == "" {
+			anyPod = pod.Name
+		}
+		if readyPod == "" && pod.Status.Phase == corev1.PodRunning {
+			for _, cond := range pod.Status.Conditions {
+				if cond.Type == corev1.PodReady && cond.Status == corev1.ConditionTrue {
+					readyPod = pod.Name
+					break
+				}
+			}
+		}
+		if readyPod != "" {
+			break // best candidate found; no need to continue
+		}
+	}
+	if readyPod != "" {
+		return readyPod, nil
+	}
+	if anyPod != "" {
+		return anyPod, nil
 	}
 	return "", fmt.Errorf("no pods found for service %s/%s", namespace, serviceName)
 }
@@ -223,58 +217,44 @@ func HandlePortForwardAlive(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// contextCacheWrapper implements graph.ResourceCache for store.ContextCache.
-type contextCacheWrapper struct {
-	cache *store.ContextCache
+// snapshotCache is a zero-lock, point-in-time copy of the cache maps needed by
+// graph discoverers. All maps are copied once under a single ac.RLock() call in
+// HandleTopology, so GetRawObject never needs to acquire a lock. This eliminates
+// N individual RLock/RUnlock pairs (one per discoverer lookup) and reduces lock
+// contention on large clusters.
+type snapshotCache struct {
+	pods            map[string]interface{}
+	services        map[string]interface{}
+	workloads       map[string]interface{} // merged: Deployments > ReplicaSets > DaemonSets > StatefulSets > Jobs > CronJobs
+	ingresses       map[string]interface{}
+	pvcs            map[string]interface{}
+	nodes           map[string]interface{}
+	networkPolicies map[string]interface{}
 }
 
-func (w *contextCacheWrapper) GetRawObject(kind graph.NodeKind, namespace, name string) (interface{}, bool) {
-	w.cache.RLock()
-	defer w.cache.RUnlock()
-
-	key := namespace + "/" + name
-	if namespace == "" {
-		key = name
-	}
-
+func (s *snapshotCache) GetRawObject(kind graph.NodeKind, namespace, name string) (interface{}, bool) {
+	key := store.ResourceKey(namespace, name)
 	switch kind {
 	case graph.KindPod:
-		v, ok := w.cache.Pods[key]
+		v, ok := s.pods[key]
 		return v, ok
 	case graph.KindService:
-		v, ok := w.cache.Services[key]
+		v, ok := s.services[key]
 		return v, ok
-	case graph.KindWorkload: // covers Deployment, ReplicaSet, DaemonSet, StatefulSet, Job, CronJob
-		if v, ok := w.cache.Deployments[key]; ok {
-			return v, true
-		}
-		if v, ok := w.cache.ReplicaSets[key]; ok {
-			return v, true
-		}
-		if v, ok := w.cache.DaemonSets[key]; ok {
-			return v, true
-		}
-		if v, ok := w.cache.StatefulSets[key]; ok {
-			return v, true
-		}
-		if v, ok := w.cache.Jobs[key]; ok {
-			return v, true
-		}
-		if v, ok := w.cache.CronJobs[key]; ok {
-			return v, true
-		}
-		return nil, false
+	case graph.KindWorkload:
+		v, ok := s.workloads[key]
+		return v, ok
 	case graph.KindIngress:
-		v, ok := w.cache.Ingresses[key]
+		v, ok := s.ingresses[key]
 		return v, ok
 	case graph.KindPVC:
-		v, ok := w.cache.PVCs[key]
+		v, ok := s.pvcs[key]
 		return v, ok
 	case graph.KindNode:
-		v, ok := w.cache.Nodes[key]
+		v, ok := s.nodes[key]
 		return v, ok
 	case graph.KindNetworkPolicy:
-		v, ok := w.cache.NetworkPolicies[key]
+		v, ok := s.networkPolicies[key]
 		return v, ok
 	}
 	return nil, false
@@ -292,149 +272,227 @@ func HandleTopology(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Convert Cache (filtered by namespace) to Initial Nodes
-	initialNodes := make([]graph.Node, 0)
+	// 1. Convert cache entries to initial graph nodes via a type registry.
+	// Each nodeSource pairs a cache map with a builder that casts, filters by
+	// namespace, and returns the graph.Node. To add a new resource to the topology
+	// add one entry here — no other code needs to change.
 	ac.RLock()
-	
-	// Add Pods
-	for _, obj := range ac.Pods {
-		p := obj.(*corev1.Pod)
-		if ns != "" && p.Namespace != ns { continue }
-		ownerUID := ""
-		for _, o := range p.OwnerReferences { if o.Controller != nil && *o.Controller { ownerUID = string(o.UID); break } }
-		initialNodes = append(initialNodes, graph.Node{
-			ID: fmt.Sprintf("pod:%s", p.UID), Kind: graph.KindPod, Name: p.Name, Namespace: p.Namespace,
-			Labels: p.Labels, UID: string(p.UID), Phase: string(p.Status.Phase),
-			OwnerUID: ownerUID,
-		})
+
+	type nodeSource struct {
+		cacheMap map[string]interface{}
+		build    func(obj interface{}) (graph.Node, bool)
 	}
-	// Add Services
-	for _, obj := range ac.Services {
-		s := obj.(*corev1.Service)
-		if ns != "" && s.Namespace != ns { continue }
-		ports := []string{}
-		for _, p := range s.Spec.Ports { ports = append(ports, fmt.Sprintf("%d/%s", p.Port, p.Protocol)) }
-		pNode := graph.Node{
-			Kind: graph.KindService, Name: s.Name, Namespace: s.Namespace,
-			Labels: s.Labels, ServiceType: string(s.Spec.Type), Ports: ports, UID: string(s.UID),
+
+	sources := []nodeSource{
+		{ac.Pods, func(obj interface{}) (graph.Node, bool) {
+			p := obj.(*corev1.Pod)
+			if ns != "" && p.Namespace != ns {
+				return graph.Node{}, false
+			}
+			ownerUID := ""
+			for _, o := range p.OwnerReferences {
+				if o.Controller != nil && *o.Controller {
+					ownerUID = string(o.UID)
+					break
+				}
+			}
+			return graph.Node{
+				ID: fmt.Sprintf("pod:%s", p.UID), Kind: graph.KindPod,
+				Name: p.Name, Namespace: p.Namespace, Labels: p.Labels,
+				UID: string(p.UID), Phase: string(p.Status.Phase), OwnerUID: ownerUID,
+			}, true
+		}},
+		{ac.Services, func(obj interface{}) (graph.Node, bool) {
+			s := obj.(*corev1.Service)
+			if ns != "" && s.Namespace != ns {
+				return graph.Node{}, false
+			}
+			ports := make([]string, 0, len(s.Spec.Ports))
+			for _, p := range s.Spec.Ports {
+				ports = append(ports, fmt.Sprintf("%d/%s", p.Port, p.Protocol))
+			}
+			n := graph.Node{
+				Kind: graph.KindService, Name: s.Name, Namespace: s.Namespace,
+				Labels: s.Labels, ServiceType: string(s.Spec.Type), Ports: ports, UID: string(s.UID),
+			}
+			n.ID = n.ComputeID()
+			return n, true
+		}},
+		{ac.Deployments, func(obj interface{}) (graph.Node, bool) {
+			d := obj.(*appsv1.Deployment)
+			if ns != "" && d.Namespace != ns {
+				return graph.Node{}, false
+			}
+			n := graph.Node{
+				Kind: graph.KindDeployment, Name: d.Name, Namespace: d.Namespace,
+				WorkloadKind: "Deployment", UID: string(d.UID), Labels: d.Labels,
+			}
+			n.ID = n.ComputeID()
+			return n, true
+		}},
+		{ac.ReplicaSets, func(obj interface{}) (graph.Node, bool) {
+			rs := obj.(*appsv1.ReplicaSet)
+			if ns != "" && rs.Namespace != ns {
+				return graph.Node{}, false
+			}
+			ownerUID := ""
+			for _, o := range rs.OwnerReferences {
+				if o.Controller != nil && *o.Controller {
+					ownerUID = string(o.UID)
+					break
+				}
+			}
+			n := graph.Node{
+				Kind: graph.KindReplicaSet, Name: rs.Name, Namespace: rs.Namespace,
+				WorkloadKind: "ReplicaSet", OwnerUID: ownerUID, UID: string(rs.UID), Labels: rs.Labels,
+			}
+			n.ID = n.ComputeID()
+			return n, true
+		}},
+		{ac.DaemonSets, func(obj interface{}) (graph.Node, bool) {
+			ds := obj.(*appsv1.DaemonSet)
+			if ns != "" && ds.Namespace != ns {
+				return graph.Node{}, false
+			}
+			n := graph.Node{
+				Kind: graph.KindDaemonSet, Name: ds.Name, Namespace: ds.Namespace,
+				WorkloadKind: "DaemonSet", UID: string(ds.UID), Labels: ds.Labels,
+			}
+			n.ID = n.ComputeID()
+			return n, true
+		}},
+		{ac.StatefulSets, func(obj interface{}) (graph.Node, bool) {
+			ss := obj.(*appsv1.StatefulSet)
+			if ns != "" && ss.Namespace != ns {
+				return graph.Node{}, false
+			}
+			n := graph.Node{
+				Kind: graph.KindStatefulSet, Name: ss.Name, Namespace: ss.Namespace,
+				WorkloadKind: "StatefulSet", UID: string(ss.UID), Labels: ss.Labels,
+			}
+			n.ID = n.ComputeID()
+			return n, true
+		}},
+		{ac.Jobs, func(obj interface{}) (graph.Node, bool) {
+			j := obj.(*batchv1.Job)
+			if ns != "" && j.Namespace != ns {
+				return graph.Node{}, false
+			}
+			n := graph.Node{
+				Kind: graph.KindJob, Name: j.Name, Namespace: j.Namespace,
+				WorkloadKind: "Job", UID: string(j.UID), Labels: j.Labels,
+			}
+			n.ID = n.ComputeID()
+			return n, true
+		}},
+		{ac.CronJobs, func(obj interface{}) (graph.Node, bool) {
+			cj := obj.(*batchv1.CronJob)
+			if ns != "" && cj.Namespace != ns {
+				return graph.Node{}, false
+			}
+			n := graph.Node{
+				Kind: graph.KindCronJob, Name: cj.Name, Namespace: cj.Namespace,
+				WorkloadKind: "CronJob", UID: string(cj.UID), Labels: cj.Labels,
+			}
+			n.ID = n.ComputeID()
+			return n, true
+		}},
+		{ac.Ingresses, func(obj interface{}) (graph.Node, bool) {
+			ing := obj.(*networkingv1.Ingress)
+			if ns != "" && ing.Namespace != ns {
+				return graph.Node{}, false
+			}
+			return graph.Node{
+				ID: fmt.Sprintf("ingress:%s:%s", ing.Namespace, ing.Name),
+				Kind: graph.KindIngress, Name: ing.Name, Namespace: ing.Namespace,
+			}, true
+		}},
+		{ac.PVCs, func(obj interface{}) (graph.Node, bool) {
+			pvc := obj.(*corev1.PersistentVolumeClaim)
+			if ns != "" && pvc.Namespace != ns {
+				return graph.Node{}, false
+			}
+			n := graph.Node{
+				Kind: graph.KindPVC, Name: pvc.Name, Namespace: pvc.Namespace,
+				Phase: string(pvc.Status.Phase), UID: string(pvc.UID), Labels: pvc.Labels,
+			}
+			n.ID = n.ComputeID()
+			return n, true
+		}},
+		{ac.Nodes, func(obj interface{}) (graph.Node, bool) {
+			// Cluster-scoped: always included regardless of ns filter.
+			node := obj.(*corev1.Node)
+			n := graph.Node{
+				Kind: graph.KindNode, Name: node.Name, UID: string(node.UID), Labels: node.Labels,
+			}
+			n.ID = n.ComputeID()
+			return n, true
+		}},
+		{ac.NetworkPolicies, func(obj interface{}) (graph.Node, bool) {
+			np := obj.(*networkingv1.NetworkPolicy)
+			if ns != "" && np.Namespace != ns {
+				return graph.Node{}, false
+			}
+			n := graph.Node{
+				Kind: graph.KindNetworkPolicy, Name: np.Name, Namespace: np.Namespace,
+				UID: string(np.UID), Labels: np.Labels,
+			}
+			n.ID = n.ComputeID()
+			return n, true
+		}},
+	}
+
+	// Pre-size to avoid repeated slice growth; actual count may be less after
+	// namespace filtering, but the upper bound eliminates all reallocs.
+	totalCapacity := len(ac.Pods) + len(ac.Services) + len(ac.Deployments) +
+		len(ac.ReplicaSets) + len(ac.DaemonSets) + len(ac.StatefulSets) +
+		len(ac.Jobs) + len(ac.CronJobs) + len(ac.Ingresses) +
+		len(ac.PVCs) + len(ac.Nodes) + len(ac.NetworkPolicies)
+	initialNodes := make([]graph.Node, 0, totalCapacity)
+	for _, src := range sources {
+		for _, obj := range src.cacheMap {
+			if n, ok := src.build(obj); ok {
+				initialNodes = append(initialNodes, n)
+			}
 		}
-		pNode.ID = pNode.ComputeID()
-		initialNodes = append(initialNodes, pNode)
 	}
-	// Add Deployments
-	for _, obj := range ac.Deployments {
-		d := obj.(*appsv1.Deployment)
-		if ns != "" && d.Namespace != ns { continue }
-		pNode := graph.Node{
-			Kind: graph.KindDeployment, Name: d.Name, Namespace: d.Namespace,
-			WorkloadKind: "Deployment", UID: string(d.UID), Labels: d.Labels,
-		}
-		pNode.ID = pNode.ComputeID()
-		initialNodes = append(initialNodes, pNode)
+
+	// Snapshot all maps the discoverers need while the read-lock is still held.
+	// Workloads are merged in ascending priority order so higher-priority types
+	// (Deployments) overwrite lower-priority ones on key collision.
+	snap := &snapshotCache{
+		pods:            make(map[string]interface{}, len(ac.Pods)),
+		services:        make(map[string]interface{}, len(ac.Services)),
+		workloads:       make(map[string]interface{}, len(ac.Deployments)+len(ac.ReplicaSets)+len(ac.DaemonSets)+len(ac.StatefulSets)+len(ac.Jobs)+len(ac.CronJobs)),
+		ingresses:       make(map[string]interface{}, len(ac.Ingresses)),
+		pvcs:            make(map[string]interface{}, len(ac.PVCs)),
+		nodes:           make(map[string]interface{}, len(ac.Nodes)),
+		networkPolicies: make(map[string]interface{}, len(ac.NetworkPolicies)),
 	}
-	// Add ReplicaSets
-	for _, obj := range ac.ReplicaSets {
-		rs := obj.(*appsv1.ReplicaSet)
-		if ns != "" && rs.Namespace != ns { continue }
-		ownerUID := ""
-		for _, o := range rs.OwnerReferences { if o.Controller != nil && *o.Controller { ownerUID = string(o.UID); break } }
-		pNode := graph.Node{
-			Kind: graph.KindReplicaSet, Name: rs.Name, Namespace: rs.Namespace,
-			WorkloadKind: "ReplicaSet", OwnerUID: ownerUID, UID: string(rs.UID), Labels: rs.Labels,
-		}
-		pNode.ID = pNode.ComputeID()
-		initialNodes = append(initialNodes, pNode)
-	}
-	// Add DaemonSets
-	for _, obj := range ac.DaemonSets {
-		ds := obj.(*appsv1.DaemonSet)
-		if ns != "" && ds.Namespace != ns { continue }
-		pNode := graph.Node{
-			Kind: graph.KindDaemonSet, Name: ds.Name, Namespace: ds.Namespace,
-			WorkloadKind: "DaemonSet", UID: string(ds.UID), Labels: ds.Labels,
-		}
-		pNode.ID = pNode.ComputeID()
-		initialNodes = append(initialNodes, pNode)
-	}
-	// Add StatefulSets
-	for _, obj := range ac.StatefulSets {
-		ss := obj.(*appsv1.StatefulSet)
-		if ns != "" && ss.Namespace != ns { continue }
-		pNode := graph.Node{
-			Kind: graph.KindStatefulSet, Name: ss.Name, Namespace: ss.Namespace,
-			WorkloadKind: "StatefulSet", UID: string(ss.UID), Labels: ss.Labels,
-		}
-		pNode.ID = pNode.ComputeID()
-		initialNodes = append(initialNodes, pNode)
-	}
-	// Add Jobs
-	for _, obj := range ac.Jobs {
-		j := obj.(*batchv1.Job)
-		if ns != "" && j.Namespace != ns { continue }
-		pNode := graph.Node{
-			Kind: graph.KindJob, Name: j.Name, Namespace: j.Namespace,
-			WorkloadKind: "Job", UID: string(j.UID), Labels: j.Labels,
-		}
-		pNode.ID = pNode.ComputeID()
-		initialNodes = append(initialNodes, pNode)
-	}
-	// Add CronJobs
-	for _, obj := range ac.CronJobs {
-		cj := obj.(*batchv1.CronJob)
-		if ns != "" && cj.Namespace != ns { continue }
-		pNode := graph.Node{
-			Kind: graph.KindCronJob, Name: cj.Name, Namespace: cj.Namespace,
-			WorkloadKind: "CronJob", UID: string(cj.UID), Labels: cj.Labels,
-		}
-		pNode.ID = pNode.ComputeID()
-		initialNodes = append(initialNodes, pNode)
-	}
-	// Add Ingresses
-	for _, obj := range ac.Ingresses {
-		ing := obj.(*networkingv1.Ingress)
-		if ns != "" && ing.Namespace != ns { continue }
-		initialNodes = append(initialNodes, graph.Node{
-			ID: fmt.Sprintf("ingress:%s:%s", ing.Namespace, ing.Name), Kind: graph.KindIngress, Name: ing.Name, Namespace: ing.Namespace,
-		})
-	}
-	// Add PVCs
-	for _, obj := range ac.PVCs {
-		pvc := obj.(*corev1.PersistentVolumeClaim)
-		if ns != "" && pvc.Namespace != ns { continue }
-		pNode := graph.Node{
-			Kind: graph.KindPVC, Name: pvc.Name, Namespace: pvc.Namespace,
-			Phase: string(pvc.Status.Phase), UID: string(pvc.UID), Labels: pvc.Labels,
-		}
-		pNode.ID = pNode.ComputeID()
-		initialNodes = append(initialNodes, pNode)
-	}
-	// Add Nodes
-	for _, obj := range ac.Nodes {
-		node := obj.(*corev1.Node)
-		// Nodes are cluster-scoped, so no namespace filter applies to the node itself,
-		// but we only include them if we are doing a cluster-wide view or if needed.
-		// For feature parity with legacy BuildTopology, we always include them.
-		pNode := graph.Node{
-			Kind: graph.KindNode, Name: node.Name, UID: string(node.UID), Labels: node.Labels,
-		}
-		pNode.ID = pNode.ComputeID()
-		initialNodes = append(initialNodes, pNode)
-	}
-	// Add NetworkPolicies
-	for _, obj := range ac.NetworkPolicies {
-		np := obj.(*networkingv1.NetworkPolicy)
-		if ns != "" && np.Namespace != ns { continue }
-		pNode := graph.Node{
-			Kind: graph.KindNetworkPolicy, Name: np.Name, Namespace: np.Namespace, UID: string(np.UID), Labels: np.Labels,
-		}
-		pNode.ID = pNode.ComputeID()
-		initialNodes = append(initialNodes, pNode)
-	}
+	for k, v := range ac.Pods { snap.pods[k] = v }
+	for k, v := range ac.Services { snap.services[k] = v }
+	for k, v := range ac.CronJobs { snap.workloads[k] = v }
+	for k, v := range ac.Jobs { snap.workloads[k] = v }
+	for k, v := range ac.StatefulSets { snap.workloads[k] = v }
+	for k, v := range ac.DaemonSets { snap.workloads[k] = v }
+	for k, v := range ac.ReplicaSets { snap.workloads[k] = v }
+	for k, v := range ac.Deployments { snap.workloads[k] = v }
+	for k, v := range ac.Ingresses { snap.ingresses[k] = v }
+	for k, v := range ac.PVCs { snap.pvcs[k] = v }
+	for k, v := range ac.Nodes { snap.nodes[k] = v }
+	for k, v := range ac.NetworkPolicies { snap.networkPolicies[k] = v }
 
 	ac.RUnlock()
 
+	// Sort by ID so map-iteration non-determinism doesn't reorder nodes between
+	// requests. A stable order prevents the force-directed layout from jumping
+	// when the graph hasn't actually changed.
+	sort.Slice(initialNodes, func(i, j int) bool {
+		return initialNodes[i].ID < initialNodes[j].ID
+	})
+
 	// 2. Build Graph using the new Discovery Engine
-	builder := graph.NewGraphBuilder(&contextCacheWrapper{cache: ac})
+	builder := graph.NewGraphBuilder(snap)
 	g := builder.Build(initialNodes)
 
 	w.Header().Set("Content-Type", "application/json")

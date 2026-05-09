@@ -3,6 +3,7 @@ package graph
 import (
 	"fmt"
 	"log"
+	"sort"
 	"sync"
 )
 
@@ -90,10 +91,25 @@ func (b *GraphBuilder) collapseResources(graph *Graph) {
 	newNodes := make([]Node, 0, len(graph.Nodes))
 	removedIndices := make(map[int]bool)
 
-	for _, indices := range groups {
+	// Sort group keys so collapsed nodes are appended in a deterministic order.
+	groupKeys := make([]string, 0, len(groups))
+	for k := range groups {
+		groupKeys = append(groupKeys, k)
+	}
+	sort.Strings(groupKeys)
+
+	for _, key := range groupKeys {
+		indices := groups[key]
 		if len(indices) <= 1 {
 			continue
 		}
+
+		// Sort indices by node name so the base node (and its display label) is
+		// always the lexicographically first pod/RS in the group, not whichever
+		// happened to arrive first from non-deterministic map iteration.
+		sort.Slice(indices, func(a, b int) bool {
+			return graph.Nodes[indices[a]].Name < graph.Nodes[indices[b]].Name
+		})
 
 		// Create collapsed node
 		base := graph.Nodes[indices[0]]

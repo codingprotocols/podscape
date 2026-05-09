@@ -5,13 +5,17 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/gorilla/websocket"
+	"github.com/podscape/go-core/internal/graph"
 	"github.com/podscape/go-core/internal/store"
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	fakeapiext "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
@@ -315,7 +319,7 @@ func TestHandleSwitchContext_RBACProbeStored(t *testing.T) {
 	t.Cleanup(func() { rbacVerbCheckFunc = orig })
 
 	ac := store.NewContextCache(fake.NewSimpleClientset(), &rest.Config{})
-	runRBACProbe(ac, "test-ctx", fake.NewSimpleClientset())
+	RunRBACProbe(ac, "test-ctx", fake.NewSimpleClientset())
 
 	ac.RLock()
 	allowed := ac.AllowedResources
@@ -361,7 +365,7 @@ func TestHandleSwitchContext_RBACProbeFailed_NilAllowed(t *testing.T) {
 	t.Cleanup(func() { rbacVerbCheckFunc = orig })
 
 	ac := store.NewContextCache(fake.NewSimpleClientset(), &rest.Config{})
-	runRBACProbe(ac, "test-ctx", fake.NewSimpleClientset())
+	RunRBACProbe(ac, "test-ctx", fake.NewSimpleClientset())
 
 	ac.RLock()
 	allowed := ac.AllowedResources
@@ -369,5 +373,235 @@ func TestHandleSwitchContext_RBACProbeFailed_NilAllowed(t *testing.T) {
 
 	if allowed != nil {
 		t.Errorf("expected nil AllowedResources on probe failure, got %v", allowed)
+	}
+}
+
+// ── runContextSwitch generation guard ─────────────────────────────────────────
+
+// setSwitchGen sets store.Store.SwitchGen to gen and registers a cleanup that
+// resets it to 0 after the test.
+func setSwitchGen(t *testing.T, gen int64) {
+	t.Helper()
+	store.Store.SwitchMu.Lock()
+	store.Store.SwitchGen = gen
+	store.Store.SwitchMu.Unlock()
+	t.Cleanup(func() {
+		store.Store.SwitchMu.Lock()
+		store.Store.SwitchGen = 0
+		store.Store.SwitchMu.Unlock()
+	})
+}
+
+func TestRunContextSwitch_Superseded_DoesNotCallStartInformers(t *testing.T) {
+	orig := rbacVerbCheckFunc
+	rbacVerbCheckFunc = func(_ context.Context, _ kubernetes.Interface) (map[string]map[string]bool, error) {
+		return map[string]map[string]bool{}, nil
+	}
+	t.Cleanup(func() { rbacVerbCheckFunc = orig })
+
+	ac := store.NewContextCache(fake.NewSimpleClientset(), &rest.Config{})
+
+	// Global generation is 2 — myGen=1 is already superseded.
+	setSwitchGen(t, 2)
+
+	var mu sync.Mutex
+	startInformersCalled := false
+	runContextSwitch(ac, "test-ctx", fake.NewSimpleClientset(), 1, "msg", func() {
+		mu.Lock()
+		startInformersCalled = true
+		mu.Unlock()
+	})
+
+	mu.Lock()
+	called := startInformersCalled
+	mu.Unlock()
+	if called {
+		t.Error("expected startInformers NOT to be called for a superseded switch")
+	}
+	ac.RLock()
+	ready := ac.CacheReady
+	ac.RUnlock()
+	if ready {
+		t.Error("expected CacheReady=false for a superseded switch")
+	}
+}
+
+func TestRunContextSwitch_NotSuperseded_CallsStartInformers(t *testing.T) {
+	orig := rbacVerbCheckFunc
+	rbacVerbCheckFunc = func(_ context.Context, _ kubernetes.Interface) (map[string]map[string]bool, error) {
+		return map[string]map[string]bool{}, nil
+	}
+	t.Cleanup(func() { rbacVerbCheckFunc = orig })
+
+	ac := store.NewContextCache(fake.NewSimpleClientset(), &rest.Config{})
+
+	// myGen == SwitchGen — not superseded.
+	setSwitchGen(t, 1)
+
+	startInformersCalled := false
+	runContextSwitch(ac, "test-ctx", fake.NewSimpleClientset(), 1, "sync complete", func() {
+		startInformersCalled = true
+	})
+
+	if !startInformersCalled {
+		t.Error("expected startInformers to be called for a non-superseded switch")
+	}
+	ac.RLock()
+	ready := ac.CacheReady
+	ac.RUnlock()
+	if !ready {
+		t.Error("expected CacheReady=true after a successful (non-superseded) switch")
+	}
+}
+
+// ── HandleTopology ────────────────────────────────────────────────────────────
+
+// TestHandleTopology_NodeKindsAndEdge verifies that HandleTopology builds pod
+// and service nodes from the cache and that the SelectorDiscoverer creates at
+// least one edge when service selector matches pod labels.
+func TestHandleTopology_NodeKindsAndEdge(t *testing.T) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "web-pod", Namespace: "default",
+			UID:    types.UID("pod-uid-1"),
+			Labels: map[string]string{"app": "web"},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "web-svc", Namespace: "default",
+			UID: types.UID("svc-uid-1"),
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{"app": "web"},
+			Type:     corev1.ServiceTypeClusterIP,
+		},
+	}
+
+	ac := store.NewContextCache(fake.NewSimpleClientset(), &rest.Config{})
+	ac.Lock()
+	ac.Pods[store.ResourceKey(pod.Namespace, pod.Name)] = pod
+	ac.Services[store.ResourceKey(svc.Namespace, svc.Name)] = svc
+	ac.CacheReady = true
+	ac.HasData = true
+	ac.Unlock()
+	setActiveCache(t, ac)
+
+	req := httptest.NewRequest(http.MethodGet, "/topology?namespace=default", nil)
+	rr := httptest.NewRecorder()
+	HandleTopology(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var g graph.Graph
+	if err := json.NewDecoder(rr.Body).Decode(&g); err != nil {
+		t.Fatalf("decode topology response: %v", err)
+	}
+
+	kinds := map[graph.NodeKind]int{}
+	for _, n := range g.Nodes {
+		kinds[n.Kind]++
+	}
+	if kinds[graph.KindPod] < 1 {
+		t.Errorf("expected ≥1 pod node, got %d; all kinds: %v", kinds[graph.KindPod], kinds)
+	}
+	if kinds[graph.KindService] < 1 {
+		t.Errorf("expected ≥1 service node, got %d; all kinds: %v", kinds[graph.KindService], kinds)
+	}
+	if len(g.Edges) == 0 {
+		t.Error("expected ≥1 edge (service→pod via selector), got none")
+	}
+}
+
+// ── resolveServiceToPod ───────────────────────────────────────────────────────
+
+func makeServiceCache(svc *corev1.Service, pods ...*corev1.Pod) *store.ContextCache {
+	ac := store.NewContextCache(fake.NewSimpleClientset(), &rest.Config{})
+	ac.Lock()
+	ac.Services[store.ResourceKey(svc.Namespace, svc.Name)] = svc
+	for _, p := range pods {
+		ac.Pods[store.ResourceKey(p.Namespace, p.Name)] = p
+	}
+	ac.Unlock()
+	return ac
+}
+
+func TestResolveServiceToPod_NilCache_ReturnsError(t *testing.T) {
+	_, err := resolveServiceToPod(nil, "default", "web-svc")
+	if err == nil {
+		t.Error("expected error for nil cache, got nil")
+	}
+}
+
+func TestResolveServiceToPod_ServiceNotFound_ReturnsError(t *testing.T) {
+	ac := store.NewContextCache(fake.NewSimpleClientset(), &rest.Config{})
+	_, err := resolveServiceToPod(ac, "default", "missing-svc")
+	if err == nil {
+		t.Error("expected error for missing service, got nil")
+	}
+}
+
+func TestResolveServiceToPod_PrefersRunningReadyPod(t *testing.T) {
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: "default"},
+		Spec:       corev1.ServiceSpec{Selector: map[string]string{"app": "web"}},
+	}
+	pending := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "pod-pending", Namespace: "default", Labels: map[string]string{"app": "web"}},
+		Status:     corev1.PodStatus{Phase: corev1.PodPending},
+	}
+	ready := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "pod-ready", Namespace: "default", Labels: map[string]string{"app": "web"}},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+			Conditions: []corev1.PodCondition{
+				{Type: corev1.PodReady, Status: corev1.ConditionTrue},
+			},
+		},
+	}
+	ac := makeServiceCache(svc, pending, ready)
+	got, err := resolveServiceToPod(ac, "default", "svc")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "pod-ready" {
+		t.Errorf("expected pod-ready (running+ready), got %q", got)
+	}
+}
+
+func TestResolveServiceToPod_FallsBackToAnyMatchingPod(t *testing.T) {
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: "default"},
+		Spec:       corev1.ServiceSpec{Selector: map[string]string{"app": "web"}},
+	}
+	pending := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "pod-pending", Namespace: "default", Labels: map[string]string{"app": "web"}},
+		Status:     corev1.PodStatus{Phase: corev1.PodPending},
+	}
+	ac := makeServiceCache(svc, pending)
+	got, err := resolveServiceToPod(ac, "default", "svc")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "pod-pending" {
+		t.Errorf("expected pod-pending (fallback), got %q", got)
+	}
+}
+
+func TestResolveServiceToPod_NoMatchingPod_ReturnsError(t *testing.T) {
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: "default"},
+		Spec:       corev1.ServiceSpec{Selector: map[string]string{"app": "web"}},
+	}
+	unrelated := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "other-pod", Namespace: "default", Labels: map[string]string{"app": "other"}},
+	}
+	ac := makeServiceCache(svc, unrelated)
+	_, err := resolveServiceToPod(ac, "default", "svc")
+	if err == nil {
+		t.Error("expected error when no pod matches selector, got nil")
 	}
 }

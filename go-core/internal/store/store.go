@@ -110,7 +110,7 @@ func NewContextCache(clientset kubernetes.Interface, config *rest.Config) *Conte
 
 // GetPod returns the typed pod from the cache. Key is "namespace/name".
 func (c *ContextCache) GetPod(namespace, name string) (*corev1.Pod, bool) {
-	v, ok := c.Pods[namespace+"/"+name]
+	v, ok := c.Pods[ResourceKey(namespace, name)]
 	if !ok {
 		return nil, false
 	}
@@ -130,7 +130,7 @@ func (c *ContextCache) GetNode(name string) (*corev1.Node, bool) {
 
 // GetDeployment returns the typed deployment from the cache. Key is "namespace/name".
 func (c *ContextCache) GetDeployment(namespace, name string) (*appsv1.Deployment, bool) {
-	v, ok := c.Deployments[namespace+"/"+name]
+	v, ok := c.Deployments[ResourceKey(namespace, name)]
 	if !ok {
 		return nil, false
 	}
@@ -140,7 +140,7 @@ func (c *ContextCache) GetDeployment(namespace, name string) (*appsv1.Deployment
 
 // GetService returns the typed service from the cache. Key is "namespace/name".
 func (c *ContextCache) GetService(namespace, name string) (*corev1.Service, bool) {
-	v, ok := c.Services[namespace+"/"+name]
+	v, ok := c.Services[ResourceKey(namespace, name)]
 	if !ok {
 		return nil, false
 	}
@@ -150,12 +150,34 @@ func (c *ContextCache) GetService(namespace, name string) (*corev1.Service, bool
 
 // GetEvent returns the typed event from the cache. Key is "namespace/name".
 func (c *ContextCache) GetEvent(namespace, name string) (*corev1.Event, bool) {
-	v, ok := c.Events[namespace+"/"+name]
+	v, ok := c.Events[ResourceKey(namespace, name)]
 	if !ok {
 		return nil, false
 	}
 	event, ok := v.(*corev1.Event)
 	return event, ok
+}
+
+// StopInformers closes StopCh under the write-lock and nils it, signalling all
+// watching informers to shut down. Safe to call concurrently: the lock+nil
+// pattern ensures the channel is closed at most once even if two goroutines race.
+func (c *ContextCache) StopInformers() {
+	c.Lock()
+	if c.StopCh != nil {
+		close(c.StopCh)
+		c.StopCh = nil
+	}
+	c.Unlock()
+}
+
+// ResourceKey returns the canonical cache-map key for a resource.
+// Namespaced resources use "namespace/name"; cluster-scoped use plain "name".
+// All callers must use this function — never assemble the key inline.
+func ResourceKey(namespace, name string) string {
+	if namespace == "" {
+		return name
+	}
+	return namespace + "/" + name
 }
 
 // ClearMaps resets all resource maps. Caller must hold cache.Lock().
