@@ -144,7 +144,7 @@
     "electron-updater": "^6.8.3",
     "js-yaml": "^4.1.0",
     "react-window": "^2.2.7",
-    "ws": "^8.19.0"
+    "ws": "^8.20.1"
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^1.0.1",
