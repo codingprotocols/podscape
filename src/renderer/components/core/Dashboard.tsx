@@ -19,6 +19,7 @@ import {
   CheckCircle2
 } from 'lucide-react'
 import { RefreshButton } from '../common'
+import { useLastDashboardUpdated } from '../../hooks/useLastUpdated'
 
 // ─── Ring chart (SVG donut) ───────────────────────────────────────────────────
 
@@ -379,6 +380,8 @@ export default function Dashboard(): JSX.Element {
     setSection: s.setSection,
   })))
 
+  const lastUpdated = useLastDashboardUpdated()
+
   const [warningDismissed, setWarningDismissed] = useState(false)
   useEffect(() => { setWarningDismissed(false) }, [selectedContext])
 
@@ -482,11 +485,18 @@ export default function Dashboard(): JSX.Element {
                   <span className="w-6 h-px bg-slate-200 dark:bg-white/5" />
                   Cluster Overview
                 </h2>
-                <RefreshButton
-                  onClick={refresh}
-                  loading={loadingResources}
-                  label="Refresh"
-                />
+                <div className="flex items-center gap-3">
+                  {lastUpdated && (
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 tabular-nums whitespace-nowrap">
+                      Updated {lastUpdated}
+                    </span>
+                  )}
+                  <RefreshButton
+                    onClick={refresh}
+                    loading={loadingResources}
+                    label="Refresh"
+                  />
+                </div>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard

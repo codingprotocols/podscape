@@ -8,6 +8,7 @@ import { KubeCRD, ResourceKind } from '../../types'
 import type { CreatableKind } from '../common/CreateResourceModal'
 import { canVerb } from '../../store/slices/clusterSlice'
 import { useAutoRefresh } from '../../hooks/useAutoRefresh'
+import { useLastUpdated } from '../../hooks/useLastUpdated'
 
 import Dashboard from './Dashboard'
 import ResourceList from './ResourceList'
@@ -100,6 +101,8 @@ export default function SectionRouter(): JSX.Element {
 
   useAutoRefresh(LIST_SECTIONS.includes(section), refresh)
 
+  const lastUpdated = useLastUpdated()
+
   // Local refreshing flag so the RefreshButton spins for the duration of the
   // async fetch without setting loadingResources (which would replace the list
   // with a full-screen spinner and cause a flicker).
@@ -173,6 +176,11 @@ export default function SectionRouter(): JSX.Element {
                 />
               </div>
 
+              {lastUpdated && (
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 tabular-nums whitespace-nowrap">
+                  Updated {lastUpdated}
+                </span>
+              )}
               <RefreshButton
                 onClick={handleRefresh}
                 loading={refreshing || loadingResources}

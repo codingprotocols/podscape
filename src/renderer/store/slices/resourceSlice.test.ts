@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
-import { createResourceSlice, SECTION_CONFIG, sectionClearState } from './resourceSlice'
+import { createResourceSlice, SECTION_CONFIG, sectionClearState, clearInFlightSections } from './resourceSlice'
 import { createOperationSlice } from './operationSlice'
 import { createAnalysisSlice } from './analysisSlice'
 import { createClusterSlice } from './clusterSlice'
@@ -422,6 +422,81 @@ describe('resourceSlice', () => {
 
             slice.setActiveExecId(firstId)
             expect(state.activeExecId).toBe(firstId)
+        })
+    })
+
+    // ── inFlightSections dedup guard ──────────────────────────────────────────
+
+    describe('inFlightSections guard', () => {
+        beforeEach(() => {
+            clearInFlightSections()
+        })
+
+        it('concurrent loadSection calls for the same key invoke the IPC only once', async () => {
+            let resolve!: (v: any[]) => void
+            const deferred = new Promise<any[]>(r => { resolve = r })
+            windowMock.kubectl.getPods.mockReturnValue(deferred)
+
+            const slice = (createResourceSlice as any)(set, get)
+
+            // Start two calls without awaiting the first — second must hit the guard.
+            const p1 = slice.loadSection('pods')
+            const p2 = slice.loadSection('pods')
+
+            resolve([])
+            await Promise.all([p1, p2])
+
+            expect(windowMock.kubectl.getPods).toHaveBeenCalledTimes(1)
+        })
+
+        it('guard key is removed after completion so the next call goes through', async () => {
+            windowMock.kubectl.getPods.mockResolvedValue([])
+
+            const slice = (createResourceSlice as any)(set, get)
+
+            await slice.loadSection('pods')
+            // Clear the 30s TTL cache so the second call is not blocked by it;
+            // this test is specifically about the inFlightSections guard.
+            state.sectionLoadedAt = {}
+            await slice.loadSection('pods')
+
+            expect(windowMock.kubectl.getPods).toHaveBeenCalledTimes(2)
+        })
+
+        it('different sections are tracked independently', async () => {
+            windowMock.kubectl.getPods.mockResolvedValue([])
+            windowMock.kubectl.getDeployments.mockResolvedValue([])
+
+            const slice = (createResourceSlice as any)(set, get)
+
+            // Two different sections started concurrently — both must reach the IPC.
+            await Promise.all([slice.loadSection('pods'), slice.loadSection('deployments')])
+
+            expect(windowMock.kubectl.getPods).toHaveBeenCalledTimes(1)
+            expect(windowMock.kubectl.getDeployments).toHaveBeenCalledTimes(1)
+        })
+    })
+
+    // ── sectionLoadedAt TTL stamping ──────────────────────────────────────────
+
+    describe('sectionLoadedAt TTL stamping', () => {
+        beforeEach(() => { clearInFlightSections() })
+
+        it('does not stamp sectionLoadedAt when fetch returns empty array', async () => {
+            windowMock.kubectl.getPods.mockResolvedValue([])
+            const slice = (createResourceSlice as any)(set, get)
+            await slice.loadSection('pods')
+            // Empty result must NOT cache — informer may not have synced yet.
+            expect(state.sectionLoadedAt?.['pods:ns1']).toBeUndefined()
+        })
+
+        it('stamps sectionLoadedAt when fetch returns at least one resource', async () => {
+            const before = Date.now()
+            windowMock.kubectl.getPods.mockResolvedValue([{ metadata: { uid: 'u1', name: 'p1', namespace: 'ns1' } }])
+            const slice = (createResourceSlice as any)(set, get)
+            await slice.loadSection('pods')
+            const stamped = state.sectionLoadedAt?.['pods:ns1']
+            expect(stamped).toBeGreaterThanOrEqual(before)
         })
     })
 })

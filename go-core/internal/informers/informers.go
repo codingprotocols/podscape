@@ -1,7 +1,6 @@
 package informers
 
 import (
-	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -131,6 +130,9 @@ func registerCriticalInformers(factory k8sinformers.SharedInformerFactory, c *st
 	if rbacAllowed(allowed, "deployments") {
 		setupInformer(factory.Apps().V1().Deployments().Informer(), c.Deployments, &c.RWMutex, true)
 	}
+	if rbacAllowed(allowed, "services") {
+		setupInformer(factory.Core().V1().Services().Informer(), c.Services, &c.RWMutex, true)
+	}
 	if rbacAllowed(allowed, "events") {
 		setupEventInformer(factory.Core().V1().Events().Informer(), c.Events, &c.RWMutex)
 	}
@@ -174,9 +176,6 @@ func registerBackgroundInformers(factory k8sinformers.SharedInformerFactory, c *
 	}
 
 	// Networking
-	if rbacAllowed(allowed, "services") {
-		setupInformer(factory.Core().V1().Services().Informer(), c.Services, &c.RWMutex, true)
-	}
 	if rbacAllowed(allowed, "ingresses") {
 		setupInformer(factory.Networking().V1().Ingresses().Informer(), c.Ingresses, &c.RWMutex, true)
 	}
@@ -323,14 +322,14 @@ func setupEventInformer(informer cache.SharedIndexInformer, targetMap map[string
 func getResourceKey(obj interface{}, namespaced bool) string {
 	if !namespaced {
 		if meta, ok := obj.(interface{ GetName() string }); ok {
-			return meta.GetName()
+			return store.ResourceKey("", meta.GetName())
 		}
 	} else {
 		if meta, ok := obj.(interface {
 			GetNamespace() string
 			GetName() string
 		}); ok {
-			return fmt.Sprintf("%s/%s", meta.GetNamespace(), meta.GetName())
+			return store.ResourceKey(meta.GetNamespace(), meta.GetName())
 		}
 	}
 	return ""

@@ -19,6 +19,23 @@ import (
 	"github.com/podscape/go-core/internal/store"
 )
 
+// kubesecLogger is a package-level singleton so callers don't pay
+// zap.NewProduction() allocation + defer logger.Sync() on every request.
+var (
+	kubesecSugar     *zap.SugaredLogger
+	kubesecSugarOnce sync.Once
+)
+
+func getKubesecLogger() *zap.SugaredLogger {
+	kubesecSugarOnce.Do(func() {
+		l, _ := zap.NewProduction()
+		kubesecSugar = l.Sugar()
+	})
+	return kubesecSugar
+}
+
+const trivyImageWorkers = 4
+
 // KubesecIssue is a normalised kubesec finding we return to the frontend.
 type KubesecIssue struct {
 	ID       string `json:"id"`
@@ -152,9 +169,7 @@ func HandleKubesec(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Use kubesec Go package directly
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
-	sugar := logger.Sugar()
+	sugar := getKubesecLogger()
 
 	schemaConfig := ruler.NewDefaultSchemaConfig()
 	schemaConfig.DisableValidation = true // Resources from cluster
@@ -205,9 +220,7 @@ func HandleKubesecBatch(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
 	defer cancel()
 
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
-	sugar := logger.Sugar()
+	sugar := getKubesecLogger()
 
 	schemaConfig := ruler.NewDefaultSchemaConfig()
 	schemaConfig.DisableValidation = true
@@ -351,50 +364,75 @@ func HandleTrivyImages(w http.ResponseWriter, r *http.Request) {
 		Results   []interface{} `json:"Results"`
 	}
 
-	var resources []resourceEntry
+	// Scan up to trivyImageWorkers images concurrently. Results are stored in
+	// a slice indexed by imageOrder position so the final output is deterministic.
+	// SSE events (progress/error) require serialization because http.ResponseWriter
+	// is not safe for concurrent use.
+	perImageResults := make([][]resourceEntry, len(imageOrder))
+	var sseMu sync.Mutex
+	sendSSE := func(eventType, data string) {
+		sseMu.Lock()
+		sseEvent(w, flusher, eventType, data)
+		sseMu.Unlock()
+	}
 
+	sem := make(chan struct{}, trivyImageWorkers)
+	var wg sync.WaitGroup
 	for i, image := range imageOrder {
-		select {
-		case <-ctx.Done():
-			sseEvent(w, flusher, "error", "scan timed out or was cancelled")
-			return
-		default:
-		}
+		wg.Add(1)
+		go func(idx int, img string) {
+			defer wg.Done()
+			select {
+			case <-ctx.Done():
+				return
+			case sem <- struct{}{}:
+			}
+			defer func() { <-sem }()
 
-		sseEvent(w, flusher, "progress", fmt.Sprintf("[%d/%d] Scanning %s", i+1, len(imageOrder), image))
+			sendSSE("progress", fmt.Sprintf("[%d/%d] Scanning %s", idx+1, len(imageOrder), img))
 
-		cmd := osexec.CommandContext(ctx, "trivy", "image", "--format", "json", "--timeout", "10m0s", "--quiet", image)
-		output, err := cmd.Output()
-		if err != nil {
-			sseEvent(w, flusher, "progress", fmt.Sprintf("Skipping %s: %s", image, err.Error()))
-			continue
-		}
+			cmd := osexec.CommandContext(ctx, "trivy", "image", "--format", "json", "--timeout", "10m0s", "--quiet", img)
+			output, err := cmd.Output()
+			if err != nil {
+				sendSSE("progress", fmt.Sprintf("Skipping %s: %s", img, err.Error()))
+				return
+			}
 
-		var trivyOut map[string]interface{}
-		if jsonErr := json.Unmarshal(output, &trivyOut); jsonErr != nil {
-			sseEvent(w, flusher, "progress", fmt.Sprintf("Skipping %s: failed to parse result", image))
-			continue
-		}
+			var trivyOut map[string]interface{}
+			if jsonErr := json.Unmarshal(output, &trivyOut); jsonErr != nil {
+				sendSSE("progress", fmt.Sprintf("Skipping %s: failed to parse result", img))
+				return
+			}
 
-		var imageResults []interface{}
-		if results, ok := trivyOut["Results"].([]interface{}); ok {
-			imageResults = results
-		}
+			var imageResults []interface{}
+			if results, ok := trivyOut["Results"].([]interface{}); ok {
+				imageResults = results
+			}
 
-		for _, wl := range imageWorkloads[image] {
-			resources = append(resources, resourceEntry{
-				Namespace: wl.namespace,
-				Kind:      wl.kind,
-				Name:      wl.name,
-				Results:   imageResults,
-			})
-		}
+			var entries []resourceEntry
+			for _, wl := range imageWorkloads[img] {
+				entries = append(entries, resourceEntry{
+					Namespace: wl.namespace,
+					Kind:      wl.kind,
+					Name:      wl.name,
+					Results:   imageResults,
+				})
+			}
+			perImageResults[idx] = entries
+		}(i, image)
+	}
+	wg.Wait()
+
+	// Flatten per-image results in imageOrder order so output is stable.
+	var resources []resourceEntry
+	for _, entries := range perImageResults {
+		resources = append(resources, entries...)
 	}
 
 	resultJSON, err := json.Marshal(map[string]interface{}{"Resources": resources})
 	if err != nil {
-		sseEvent(w, flusher, "error", "failed to marshal results: "+err.Error())
+		sendSSE("error", "failed to marshal results: "+err.Error())
 		return
 	}
-	sseEvent(w, flusher, "result", string(resultJSON))
+	sendSSE("result", string(resultJSON))
 }

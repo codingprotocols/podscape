@@ -67,16 +67,22 @@ export interface ResourceSlice {
     preloadSearchResources: () => Promise<void>
     lastPreloadedAt: number
     lastDashboardLoadedAt: number
+    lastRefreshedAt: number
     sectionLoadedAt: Partial<Record<string, number>>
     navigateToResource: (kind: string, name: string, namespace: string) => Promise<void>
 }
 
 // In-flight guard for loadSection. Prevents duplicate parallel fetches when
 // a user switches sections rapidly (e.g. Pods → Deployments → Pods in < 100 ms
-// before the first Pods fetch resolves). Module-level so it survives re-renders.
+// before the first Pods fetch resolves).
+//
+// Intentionally module-level (not Zustand state): JS is single-threaded, so
+// the has() check and add() that follow are atomic within a single call frame.
+// Putting it in Zustand state would split the check and the write across two
+// separate get()/set() calls, introducing a window where two callers could both
+// pass the check before either writes. clusterSlice calls clearInFlightSections()
+// on every context switch to prevent stale keys from blocking the new context.
 const inFlightSections = new Set<string>()
-// Exported so clusterSlice can clear it on context switch, preventing the new
-// context's loadSection call from being blocked by a stale in-flight key.
 export const clearInFlightSections = () => inFlightSections.clear()
 
 export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
@@ -119,6 +125,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     securityScanResults: null,
     lastPreloadedAt: 0,
     lastDashboardLoadedAt: 0,
+    lastRefreshedAt: 0,
     sectionLoadedAt: {},
     selectedResource: null,
     loadingResources: false,
@@ -261,7 +268,10 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     loadingResources: false,
                     sectionLoadedAt: { ...get().sectionLoadedAt, [cacheKey]: Date.now() },
                 })
-            } catch { if (get().selectedContext === snapshotCtx) set({ loadingResources: false }) }
+            } catch (err) {
+                if (get().selectedContext === snapshotCtx)
+                    set({ loadingResources: false, error: (err as Error).message })
+            }
             return
         }
 
@@ -287,7 +297,10 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     loadingResources: false,
                     sectionLoadedAt: { ...get().sectionLoadedAt, [cacheKey]: Date.now() },
                 })
-            } catch { if (get().selectedContext === snapshotCtx) set({ loadingResources: false }) }
+            } catch (err) {
+                if (get().selectedContext === snapshotCtx)
+                    set({ loadingResources: false, error: (err as Error).message })
+            }
             return
         }
 
@@ -324,7 +337,12 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             const update: Partial<AppStore> = {
                 [config.stateKey]: freshData,
                 loadingResources: false,
-                sectionLoadedAt: { ...get().sectionLoadedAt, [cacheKey]: Date.now() },
+                // Only stamp the TTL when we actually received data — an empty
+                // result may mean the informer hasn't synced yet, and caching it
+                // would block the next real fetch for 30 seconds.
+                ...(freshData.length > 0
+                    ? { sectionLoadedAt: { ...get().sectionLoadedAt, [cacheKey]: Date.now() } }
+                    : {}),
             }
             if (currentSelected) {
                 update.selectedResource = freshData.find(r => r.metadata.uid === currentSelected.metadata.uid) ?? null
@@ -452,32 +470,39 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     },
 
     refresh: () => {
+        // Prevent accidental double-tap from firing 14+ concurrent fetches.
+        const now = Date.now()
+        if (now - get().lastRefreshedAt < 2_000) return Promise.resolve()
         // Clear all caches so the next load always fetches fresh data.
         inFlightSections.clear()
         // Fire-and-forget: evict the Go sidecar's Prometheus cache so charts
         // fetch fresh data after a manual refresh. Safe to ignore errors.
         window.kubectl.prometheusFlushCache?.().catch(() => {})
-        set({ lastDashboardLoadedAt: 0, sectionLoadedAt: {} })
+        set({ lastDashboardLoadedAt: 0, sectionLoadedAt: {}, lastRefreshedAt: now })
         return get().loadSection(get().section)
     },
 
     preloadSearchResources: async () => {
-        const { selectedContext: ctx, lastPreloadedAt } = get()
+        const { selectedContext: ctx, lastPreloadedAt, selectedNamespace } = get()
         if (!ctx) return
         // Skip if data is fresh (< 60s old) to avoid redundant fetches on repeated search opens.
         if (Date.now() - lastPreloadedAt < 60_000) return
         set({ lastPreloadedAt: Date.now() })
 
-        // Fetch essential resources for search across all namespaces.
+        // Scope to the selected namespace when one is active. Fetching all-namespaces
+        // on a scoped cluster wastes bandwidth proportional to namespace count.
+        const ns = selectedNamespace === '_all' ? null : selectedNamespace
+
+        // Fetch essential resources for search in the current scope.
         // Promise.allSettled so a permission-denied on one type (e.g. secrets in
         // restricted clusters) doesn't block the others from being cached.
         const keys = ['pods', 'deployments', 'services', 'configmaps', 'secrets'] as const
         const results = await Promise.allSettled([
-            window.kubectl.getPods(ctx, null),
-            window.kubectl.getDeployments(ctx, null),
-            window.kubectl.getServices(ctx, null),
-            window.kubectl.getConfigMaps(ctx, null),
-            window.kubectl.getSecrets(ctx, null),
+            window.kubectl.getPods(ctx, ns),
+            window.kubectl.getDeployments(ctx, ns),
+            window.kubectl.getServices(ctx, ns),
+            window.kubectl.getConfigMaps(ctx, ns),
+            window.kubectl.getSecrets(ctx, ns),
         ])
         // Discard results if the context switched while fetches were in-flight.
         if (get().selectedContext !== ctx) return

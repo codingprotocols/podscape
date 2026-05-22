@@ -1125,7 +1125,7 @@ func TestRunRBACProbe_PopulatesCache(t *testing.T) {
 	}
 
 	cache := &store.ContextCache{}
-	runRBACProbe(cache, "test-ctx", nil)
+	RunRBACProbe(cache, "test-ctx", nil)
 
 	cache.RLock()
 	defer cache.RUnlock()
@@ -1160,7 +1160,7 @@ func TestRunRBACProbe_ErrorLeavesNil(t *testing.T) {
 	}
 
 	cache := &store.ContextCache{}
-	runRBACProbe(cache, "test-ctx", nil)
+	RunRBACProbe(cache, "test-ctx", nil)
 
 	cache.RLock()
 	defer cache.RUnlock()

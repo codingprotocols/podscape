@@ -236,8 +236,7 @@ export class KubectlProvider {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await pipeline(Readable.fromWeb(res.body as any), dest)
     } catch (err) {
-      // Clean up the partial file so the caller doesn't see a corrupted download.
-      await unlink(localPath).catch(() => {})
+      await unlink(localPath).catch((e) => console.error('[kubectl:copyFromContainer] failed to remove partial file:', e))
       throw err
     }
   }
@@ -308,6 +307,59 @@ export function cancelAllPortForwardTimers(): void {
     clearInterval(timer)
     forwardAliveTimers.delete(id)
   }
+}
+
+type ScanSender = { isDestroyed(): boolean; send(channel: string, ...args: unknown[]): void }
+
+function handleScanResponse(
+  res: import('http').IncomingMessage,
+  path: string,
+  sender: ScanSender,
+  resolve: (value: unknown) => void,
+  reject: (reason: unknown) => void
+): void {
+  const contentType = res.headers['content-type'] ?? ''
+
+  if (!contentType.includes('text/event-stream')) {
+    let body = ''
+    res.on('data', (chunk: Buffer) => { body += chunk.toString() })
+    res.on('end', () => {
+      if (res.statusCode !== 200) {
+        reject(new Error(`Go sidecar returned ${res.statusCode} for ${path}: ${body}`))
+      } else {
+        try { resolve(JSON.parse(body)) } catch (e) { reject(new Error(`Failed to parse sidecar response from ${path}: ${e}`)) }
+      }
+    })
+    return
+  }
+
+  let buffer = ''
+  res.on('data', (chunk: Buffer) => {
+    buffer += chunk.toString()
+    const blocks = buffer.split('\n\n')
+    buffer = blocks.pop() ?? ''
+    for (const block of blocks) {
+      let eventType = 'message'
+      let data = ''
+      for (const line of block.split('\n')) {
+        if (line.startsWith('event: ')) eventType = line.slice(7).trim()
+        else if (line.startsWith('data: ')) data = line.slice(6)
+      }
+      if (eventType === 'progress' && data) {
+        if (!sender.isDestroyed()) sender.send('security:progress', data)
+      } else if (eventType === 'result') {
+        res.destroy()
+        try { resolve(JSON.parse(data)) } catch (e) { reject(e) }
+        return
+      } else if (eventType === 'error') {
+        res.destroy()
+        reject(new Error(`trivy scan failed: ${data}`))
+        return
+      }
+    }
+  })
+  res.on('end', () => resolve(null))
+  res.on('error', reject)
 }
 
 export function registerKubectlHandlers(): void {
@@ -411,6 +463,9 @@ export function registerKubectlHandlers(): void {
       ws.removeAllListeners()
       activeStreams.delete(streamId)
       try { ws.close() } catch {}
+      // Send logEnd so the preload's cleanup path removes its chunk/end listeners.
+      // Without this the preload accumulates two leaked listeners per stop call.
+      if (!_e.sender.isDestroyed()) _e.sender.send('kubectl:logEnd', streamId)
     }
   })
 
@@ -491,55 +546,7 @@ export function registerKubectlHandlers(): void {
       const req = http.get(
         { hostname: SIDECAR_HOST, port: activeSidecarPort, path: '/security/scan',
           headers: { 'X-Podscape-Token': sidecarToken } },
-        (res) => {
-          const contentType = res.headers['content-type'] ?? ''
-
-          // Non-SSE: trivy_not_found 503 or unexpected status.
-          if (!contentType.includes('text/event-stream')) {
-            let body = ''
-            res.on('data', (chunk: Buffer) => { body += chunk.toString() })
-            res.on('end', () => {
-              if (res.statusCode !== 200) {
-                reject(new Error(`Go sidecar returned ${res.statusCode} for /security/scan: ${body}`))
-              } else {
-                try { resolve(JSON.parse(body)) } catch { resolve(null) }
-              }
-            })
-            return
-          }
-
-          // SSE stream: parse event blocks and relay progress to the renderer.
-          let buffer = ''
-          res.on('data', (chunk: Buffer) => {
-            buffer += chunk.toString()
-            const blocks = buffer.split('\n\n')
-            buffer = blocks.pop() ?? ''
-
-            for (const block of blocks) {
-              let eventType = 'message'
-              let data = ''
-              for (const line of block.split('\n')) {
-                if (line.startsWith('event: ')) eventType = line.slice(7).trim()
-                else if (line.startsWith('data: ')) data = line.slice(6)
-              }
-
-              if (eventType === 'progress' && data) {
-                if (!event.sender.isDestroyed()) event.sender.send('security:progress', data)
-              } else if (eventType === 'result') {
-                res.destroy()
-                try { resolve(JSON.parse(data)) } catch (e) { reject(e) }
-                return
-              } else if (eventType === 'error') {
-                res.destroy()
-                reject(new Error(`trivy scan failed: ${data}`))
-                return
-              }
-            }
-          })
-
-          res.on('end', () => resolve(null))
-          res.on('error', reject)
-        }
+        (res) => handleScanResponse(res, '/security/scan', event.sender, resolve, reject)
       )
       req.on('error', reject)
     })
@@ -557,47 +564,7 @@ export function registerKubectlHandlers(): void {
             'Content-Length': Buffer.byteLength(reqBody),
           },
         },
-        (res) => {
-          const contentType = res.headers['content-type'] ?? ''
-          if (!contentType.includes('text/event-stream')) {
-            let body = ''
-            res.on('data', (chunk: Buffer) => { body += chunk.toString() })
-            res.on('end', () => {
-              if (res.statusCode !== 200) {
-                reject(new Error(`Go sidecar returned ${res.statusCode} for /security/trivy/images: ${body}`))
-              } else {
-                try { resolve(JSON.parse(body)) } catch { resolve(null) }
-              }
-            })
-            return
-          }
-          let buffer = ''
-          res.on('data', (chunk: Buffer) => {
-            buffer += chunk.toString()
-            const blocks = buffer.split('\n\n')
-            buffer = blocks.pop() ?? ''
-            for (const block of blocks) {
-              let eventType = 'message', data = ''
-              for (const line of block.split('\n')) {
-                if (line.startsWith('event: ')) eventType = line.slice(7).trim()
-                else if (line.startsWith('data: ')) data = line.slice(6)
-              }
-              if (eventType === 'progress' && data) {
-                if (!event.sender.isDestroyed()) event.sender.send('security:progress', data)
-              } else if (eventType === 'result') {
-                res.destroy()
-                try { resolve(JSON.parse(data)) } catch (e) { reject(e) }
-                return
-              } else if (eventType === 'error') {
-                res.destroy()
-                reject(new Error(`trivy scan failed: ${data}`))
-                return
-              }
-            }
-          })
-          res.on('end', () => resolve(null))
-          res.on('error', reject)
-        }
+        (res) => handleScanResponse(res, '/security/trivy/images', event.sender, resolve, reject)
       )
       req.on('error', reject)
       req.write(reqBody)
