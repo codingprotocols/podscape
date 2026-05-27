@@ -134,6 +134,9 @@
     },
     "filelist": {
       "brace-expansion": "^2.0.3"
+    },
+    "minimatch": {
+      "brace-expansion": "^5.0.6"
     }
   },
   "dependencies": {
@@ -144,7 +147,7 @@
     "electron-updater": "^6.8.3",
     "js-yaml": "^4.1.0",
     "react-window": "^2.2.7",
-    "ws": "^8.19.0"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^1.0.1",

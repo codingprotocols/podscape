@@ -90,26 +90,6 @@ function GraphDefs() {
         </feMerge>
       </filter>
       
-      {/* Node Gradients for 3D effect */}
-      {KIND_DEFS.map(k => (
-        <radialGradient key={k.filterKey} id={`grad-${k.filterKey}`} cx="30%" cy="30%" r="70%">
-          <stop offset="0%" stopColor="white" stopOpacity="0.4" />
-          <stop offset="100%" stopColor={k.color} stopOpacity="0.9" />
-        </radialGradient>
-      ))}
-      <radialGradient id="grad-pod-pending" cx="30%" cy="30%" r="70%">
-        <stop offset="0%" stopColor="white" stopOpacity="0.4" />
-        <stop offset="100%" stopColor="#fbbf24" stopOpacity="0.9" />
-      </radialGradient>
-      <radialGradient id="grad-pod-failed" cx="30%" cy="30%" r="70%">
-        <stop offset="0%" stopColor="white" stopOpacity="0.4" />
-        <stop offset="100%" stopColor="#f87171" stopOpacity="0.9" />
-      </radialGradient>
-      <radialGradient id="grad-pod-running" cx="30%" cy="30%" r="70%">
-        <stop offset="0%" stopColor="white" stopOpacity="0.4" />
-        <stop offset="100%" stopColor="#34d399" stopOpacity="0.9" />
-      </radialGradient>
-
       {ALL_EDGE_COLORS.map(c => (
         <marker key={c} id={`arr-${c.slice(1)}`} markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
           <path d="M0 0L6 3L0 6z" fill={c} fillOpacity={0.6} />
@@ -1167,35 +1147,20 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
               : n.kind === 'workload' ? workloadIcon(n.workloadKind)
               : '●'
 
-            const gradientId = n.kind === 'pod' 
-              ? `grad-pod-${(n.phase || 'running').toLowerCase()}`
-              : `grad-${n.kind === 'workload' ? n.workloadKind : n.kind}`
-
             return (
               <g key={n.id} data-nid={n.id} style={{ cursor: 'pointer', opacity: nodeOpacity, transition: 'opacity 0.2s' }}
                 onMouseEnter={e => { setTooltip({ node: n, x: e.clientX, y: e.clientY }); setHoveredNodeId(n.id) }}
                 onMouseMove={e => setTooltip(t => t ? { ...t, x: e.clientX, y: e.clientY } : null)}
                 onMouseLeave={() => { setTooltip(null); setHoveredNodeId(null) }}
               >
-                {/* Status Glow Ring */}
-                {(n.phase === 'Running' || n.kind !== 'pod') && (
-                  <circle cx={p.x} cy={p.y} r={NODE_R + 6} fill={color} fillOpacity={0.15}>
-                    <animate attributeName="r" values={`${NODE_R+4};${NODE_R+8};${NODE_R+4}`} dur="3s" repeatCount="indefinite" />
-                    <animate attributeName="opacity" values="0.1;0.2;0.1" dur="3s" repeatCount="indefinite" />
-                  </circle>
-                )}
-                
-                {/* 3D Sphere Node */}
                 <circle cx={p.x} cy={p.y} r={NODE_R}
-                  fill={`url(#${gradientId})`} 
-                  stroke={active ? 'white' : color} 
+                  fill={color}
+                  fillOpacity={0.9}
+                  stroke={active ? 'white' : color}
                   strokeWidth={active ? 2 : 1.2}
                   style={{ filter: active ? 'url(#glow)' : 'none' }}
                   className="transition-all duration-300"
                 />
-                
-                {/* Glassy Overlay for sheen */}
-                <circle cx={p.x} cy={p.y} r={NODE_R} fill="white" fillOpacity={0.05} pointerEvents="none" />
                 
                 <text x={p.x} y={p.y - 3} textAnchor="middle" fontSize={11}
                   fill={dark ? 'white' : 'black'} fillOpacity={0.6} style={{ userSelect: 'none', filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.2))' }}>
