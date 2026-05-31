@@ -152,6 +152,8 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
         // Snapshot namespace state so we can restore it if the connection attempt fails.
         const previousNamespaces = get().namespaces
         const previousSelectedNamespace = get().selectedNamespace
+        // Snapshot provider state so it can be restored if the connection attempt fails.
+        const previousProviders = get().providers
         const isProd = get().prodContexts.includes(name)
         // Unblock any section fetches that were in-flight for the previous context.
         // Without this, loadSection for the new context can see a stale in-flight key
@@ -174,7 +176,13 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             selectedContext: name, isProduction: isProd, loadingNamespaces: true, loadingResources: true,
             namespaces: [], selectedNamespace: null, selectedResource: null, error: null,
             // Reset security scan state so stale results from the previous context are not shown.
-            securityScanResults: null, kubesecBatchResults: null, trivyAvailable: null,
+            securityScanResults: null, kubesecBatchResults: null, trivyAvailable: null, securityScanProgressLines: [],
+            // Reset scanning flags so the new context's scan button is not stuck disabled
+            // if a background scan was in-flight when the context switched.
+            securityScanning: false, scanInBackground: false,
+            // Reset provider loading flag so it doesn't get stuck if the previous fetch
+            // was in-flight and the stale-guard fires without resetting it.
+            providersLoading: false,
             // Reset freshness timestamps so next dashboard/preload fetch always runs.
             lastPreloadedAt: 0, lastDashboardLoadedAt: 0,
             // Clear owner chains cached from previous context.
@@ -185,7 +193,7 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             metricsError: null,
             // Reset provider detection so stale flags from the old cluster don't
             // briefly show sidebar groups that don't exist in the new cluster.
-            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false },
+            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false, cilium: false, hubbleRelay: false },
             // Navigate away from provider-specific sections so ProviderResourcePanel
             // doesn't attempt a fetch against a cluster that may lack those CRDs.
             ...(isProviderSection ? { section: 'dashboard' as const } : {}),
@@ -204,6 +212,8 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             try { await window.kubectl.cancelAllStreams() } catch {}
             // Stop all active port forwards — they belong to the previous context.
             get().stopAllPortForwards()
+            // Close any open exec sessions — their PTY connections belong to the previous context.
+            get().closeExec()
             // Tell the sidecar to switch its clientset + informer cache to the new
             // context BEFORE fetching any data. Without this the sidecar keeps
             // serving the previous context's cache.
@@ -240,6 +250,9 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
                         // Restore namespace list so the user is not left with an empty sidebar.
                         namespaces: previousNamespaces,
                         selectedNamespace: previousSelectedNamespace,
+                        // Restore provider state so sidebar groups are not wiped on a failed switch.
+                        providers: previousProviders,
+                        providersLoading: false,
                     })
                 }
                 const msg = (connectErr as Error).message

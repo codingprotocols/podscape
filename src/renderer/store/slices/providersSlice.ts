@@ -13,7 +13,14 @@ const defaultProviders: ProviderSet = {
     nginxInc: false,
     nginxCommunity: false,
     keda: false,
+    cilium: false,
+    hubbleRelay: false,
 }
+
+// Monotonic counter incremented on every fetchProviders() call. Used alongside
+// the string-context guard to reject results from A→B→A switch sequences where
+// the string comparison alone would pass for the original stale fetch.
+let fetchSeq = 0
 
 export const createProvidersSlice: StoreSlice<ProvidersSlice> = (set, get) => ({
     providers: defaultProviders,
@@ -22,16 +29,21 @@ export const createProvidersSlice: StoreSlice<ProvidersSlice> = (set, get) => ({
     fetchProviders: async () => {
         const ctx = get().selectedContext
         if (!ctx) return
+        const mySeq = ++fetchSeq
         set({ providersLoading: true })
         try {
             const ps = await window.kubectl.getProviders()
-            // Discard result if context switched while the request was in-flight
-            // (same guard as probePrometheus to prevent stale-context overwrites).
-            if (get().selectedContext !== ctx) return
+            if (mySeq !== fetchSeq || get().selectedContext !== ctx) {
+                set({ providersLoading: false })
+                return
+            }
             set({ providers: ps, providersLoading: false })
         } catch (err) {
             console.error('[providers] detection failed:', err)
-            if (get().selectedContext !== ctx) return
+            if (mySeq !== fetchSeq || get().selectedContext !== ctx) {
+                set({ providersLoading: false })
+                return
+            }
             set({ providers: defaultProviders, providersLoading: false })
         }
     },

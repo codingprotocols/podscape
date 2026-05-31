@@ -136,8 +136,8 @@ const kubectl = {
   isReady: (): Promise<boolean> =>
     ipcRenderer.invoke('kubectl:isReady'),
 
-  getTopology: (namespace: string) =>
-    ipcRenderer.invoke('kubectl:getTopology', namespace),
+  getTopology: (namespace: string, flowWindow?: number) =>
+    ipcRenderer.invoke('kubectl:getTopology', namespace, flowWindow),
 
   getProviders: () =>
     ipcRenderer.invoke('kubectl:getProviders'),

@@ -1,3 +1,35 @@
+## [3.3.0] — 2026-05-30
+
+### New features
+
+#### Cilium Hubble network flows
+
+- **Live traffic edges in the network map** (`NetworkPanel.tsx`, `NetworkPanel.utils.ts`) — When Cilium with Hubble Relay is present in the cluster, the network map now overlays observed pod-to-pod traffic as teal `hubble-flow` edges. DROPPED and ERROR flows are labelled and visually distinct from forwarded traffic. Edges are opt-in via a **Hubble Flows** filter pill that only appears when `providers.hubbleRelay` is true, so the panel is unaffected on clusters without Hubble.
+
+- **Hubble Relay gRPC client** (`go-core/internal/hubble/client.go`) — Lazy-connecting `Manager` singleton that programmatically port-forwards to a `hubble-relay` pod in `kube-system` on first use, then streams flows via the Cilium Observer gRPC API. Key design properties:
+  - Connection setup runs outside the manager lock — concurrent context switches (`Reset`) are never blocked for up to the 15 s port-forward timeout.
+  - A generation counter on every `Reset` lets in-flight fetches detect a cluster switch and discard stale results.
+  - A per-generation negative cache (pod-not-found only) prevents repeated API calls on clusters without Hubble; transient port-forward and gRPC failures do not cache and retry on the next request.
+  - Concurrent dial race handled: if two goroutines both attempt to create a connection, the loser discards its tunnel and streams from the winner's connection.
+
+- **`HubbleDiscoverer`** (`go-core/internal/hubble/discoverer.go`) — Implements `graph.Discoverer`; queries all flows from the last 60 s, deduplicates by pod-pair (DROPPED/ERROR wins over FORWARDED), and emits `hubble-flow` edges into the topology graph. Always registered — returns zero edges silently when Hubble is unavailable.
+
+- **`EdgeHubbleFlow` edge kind** (`go-core/internal/graph/graph.go`) — New `EdgeKind = "hubble-flow"` constant; rendered in teal with a 1.2 s animated stroke.
+
+- **Provider detection extended** (`go-core/internal/providers/detect.go`, `go-core/internal/handlers/providers.go`) — `ProviderSet` gains `Cilium` (detected via `cilium.io` API group) and `HubbleRelay` (detected by the existence of the `hubble-relay` Service in `kube-system`). The renderer `ProviderSet` type and `providersSlice` default state updated to match. Context-switch reset in `clusterSlice` now includes both new fields.
+
+### Bug fixes
+
+#### Go sidecar
+
+- **`tools_diag.go` `detect_providers` silently swallowed hubble-relay probe errors** — Added `k8serrors.IsNotFound` check; unexpected API errors are now logged rather than silently treated as "not installed".
+
+#### Renderer
+
+- **Context-switch provider reset missing `cilium` and `hubbleRelay`** (`clusterSlice.ts`) — The inline reset object in `selectContext` did not include the two new provider fields, so stale Hubble values persisted across context switches until `fetchProviders` resolved. Both fields are now explicitly reset to `false`.
+
+---
+
 ## [3.2.2] — 2026-05-02
 
 ### New features

@@ -121,7 +121,13 @@ func (d *VolumeDiscoverer) Discover(nodes []Node, cache ResourceCache) []Edge {
 
 		for _, vol := range pod.Spec.Volumes {
 			if vol.PersistentVolumeClaim != nil {
-				pvcID := fmt.Sprintf("%s:%s:%s", KindPVC, node.Namespace, vol.PersistentVolumeClaim.ClaimName)
+				claimName := vol.PersistentVolumeClaim.ClaimName
+				pvcID := fmt.Sprintf("%s:%s:%s", KindPVC, node.Namespace, claimName)
+				if pvcObj, ok := cache.GetRawObject(KindPVC, node.Namespace, claimName); ok {
+					if pvc, ok := pvcObj.(*corev1.PersistentVolumeClaim); ok && pvc.UID != "" {
+						pvcID = fmt.Sprintf("%s:%s", KindPVC, pvc.UID)
+					}
+				}
 				edges = append(edges, Edge{
 					ID:     fmt.Sprintf("volume:%s->%s", node.ID, pvcID),
 					Source: node.ID,
@@ -155,7 +161,13 @@ func (d *NodeDiscoverer) Discover(nodes []Node, cache ResourceCache) []Edge {
 			continue
 		}
 
-		nodeID := fmt.Sprintf("node:%s", pod.Spec.NodeName)
+		nodeName := pod.Spec.NodeName
+		nodeID := fmt.Sprintf("node:%s", nodeName)
+		if kubeNodeObj, ok := cache.GetRawObject(KindNode, "", nodeName); ok {
+			if kubeNode, ok := kubeNodeObj.(*corev1.Node); ok && kubeNode.UID != "" {
+				nodeID = fmt.Sprintf("node:%s", kubeNode.UID)
+			}
+		}
 		edges = append(edges, Edge{
 			ID:     fmt.Sprintf("node:%s->%s", node.ID, nodeID),
 			Source: node.ID,

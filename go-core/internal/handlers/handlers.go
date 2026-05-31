@@ -10,6 +10,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/podscape/go-core/internal/helm"
+	"github.com/podscape/go-core/internal/hubble"
 	"github.com/podscape/go-core/internal/informers"
 	"github.com/podscape/go-core/internal/portforward"
 	"github.com/podscape/go-core/internal/prometheus"
@@ -339,6 +340,8 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 	// the Prometheus probe to return "Connected" for the wrong cluster.
 	portforward.Manager.StopAll()
 	portforward.Manager.UpdateClients(clientset, restConfig)
+	hubble.DefaultManager.Reset(clientset, restConfig)
+	hubble.DefaultManager.WarmUp()
 	// Clear the Prometheus query cache so cluster A results are never served
 	// to cluster B even if the PromQL strings and time range happen to match.
 	prometheus.ClearCache()

@@ -282,8 +282,10 @@ export class KubectlProvider {
   }
 }
 
-async function getTopology(ns: string): Promise<any> {
-  const url = `/topology?namespace=${encodeURIComponent(ns)}`
+async function getTopology(ns: string, flowWindow?: number): Promise<unknown> {
+  const params = new URLSearchParams({ namespace: ns })
+  if (flowWindow !== undefined && flowWindow !== 60) params.set('flowWindow', String(flowWindow))
+  const url = `/topology?${params.toString()}`
   const res = await checkedSidecarFetch(url)
   return await res.json()
 }
@@ -474,7 +476,7 @@ export function registerKubectlHandlers(): void {
     cancelAllExecStreams()
   })
 
-  ipcMain.handle('kubectl:getTopology', (_e, ns) => getTopology(ns))
+  ipcMain.handle('kubectl:getTopology', (_e, ns, flowWindow) => getTopology(ns, flowWindow))
 
   // Track alive-poll timers keyed by forward id so we can clear them on
   // stopPortForward or when the tunnel exits on its own.

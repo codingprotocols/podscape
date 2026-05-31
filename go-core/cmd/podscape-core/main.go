@@ -10,6 +10,7 @@ import (
 
 	"github.com/podscape/go-core/internal/client"
 	"github.com/podscape/go-core/internal/handlers"
+	"github.com/podscape/go-core/internal/hubble"
 	"github.com/podscape/go-core/internal/informers"
 	"github.com/podscape/go-core/internal/portforward"
 	"github.com/podscape/go-core/internal/store"
@@ -174,6 +175,7 @@ func main() {
 	// Initialize the portforward manager early (with nil clients) so handlers
 	// like HandleSwitchContext can safely call Manager.StopAll() immediately.
 	portforward.Init(nil, nil)
+	hubble.Init(nil, nil)
 
 	// Build the k8s client; fail gracefully into setup mode if no valid kubeconfig exists.
 	// If the file is missing (fresh install, CI, new machine), run in no-kubeconfig
@@ -205,6 +207,8 @@ func main() {
 
 	// Update the portforward manager with valid clients now that we have them.
 	portforward.Manager.UpdateClients(bundle.Clientset, bundle.Config)
+	hubble.Init(bundle.Clientset, bundle.Config)
+	hubble.DefaultManager.WarmUp()
 
 	// Start the HTTP server — /health returns 503 until informers sync, so
 	// startSidecar() keeps polling. portforward is already initialised above.

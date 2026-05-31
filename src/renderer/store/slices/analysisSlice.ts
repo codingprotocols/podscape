@@ -23,6 +23,10 @@ export interface AnalysisSlice {
 // called again before a previous scan completes.
 let activeProgressUnsub: (() => void) | null = null
 
+// Monotonic counter — prevents a completed scan's finally block from clearing the
+// securityScanning flag when a newer scan has already started (A→B overlap race).
+let scanSeq = 0
+
 export const createAnalysisSlice: StoreSlice<AnalysisSlice> = (set, get) => ({
     scanResults: {},
     isScanning: false,
@@ -58,6 +62,7 @@ export const createAnalysisSlice: StoreSlice<AnalysisSlice> = (set, get) => ({
         // Snapshot the context at scan start. Trivy + kubesec can take several
         // minutes; discard results if the user switched context mid-scan.
         const scanCtx = get().selectedContext
+        const mySeq = ++scanSeq
         set({ securityScanning: true, scanInBackground: background, error: null, securityScanProgressLines: [] })
 
         // Synthetic milestone helper — prefixed with '› ' so the UI can style them distinctly.
@@ -198,7 +203,8 @@ export const createAnalysisSlice: StoreSlice<AnalysisSlice> = (set, get) => ({
         } finally {
             unsubProgress()
             activeProgressUnsub = null
-            set({ securityScanning: false, scanInBackground: false })
+            // Only clear the scanning flag if no newer scan has started since this one.
+            if (mySeq === scanSeq) set({ securityScanning: false, scanInBackground: false })
         }
     },
 })

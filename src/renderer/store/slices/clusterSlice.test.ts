@@ -17,6 +17,9 @@ describe('clusterSlice', () => {
             fetchProviders: vi.fn(),
             fetchAllowedVerbs: vi.fn(),
             stopAllPortForwards: vi.fn(),
+            closeExec: vi.fn(),
+            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false, cilium: false, hubbleRelay: false },
+            providersLoading: false,
             hotbarContexts: [],
             prodContexts: [],
         }

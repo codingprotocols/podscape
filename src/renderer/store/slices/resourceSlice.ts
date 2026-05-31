@@ -191,7 +191,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     window.kubectl.getNodes(ctx),
                     window.kubectl.getHPAs(ctx, nsArg)
                 ])
-                if (get().selectedContext !== snapshotCtx) return
+                if (get().selectedContext !== snapshotCtx) { set({ loadingResources: false }); return }
                 set({
                     podMetrics: Array.isArray(pm) ? pm : [],
                     nodeMetrics: Array.isArray(nm) ? nm : [],
@@ -258,7 +258,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     window.kubectl.getNamespaces(ctx),
                     window.kubectl.getNetworkPolicies(ctx, nsArg)
                 ])
-                if (get().selectedContext !== snapshotCtx) return
+                if (get().selectedContext !== snapshotCtx) { set({ loadingResources: false }); return }
                 set({
                     services: svcs as KubeService[],
                     ingresses: ings as KubeIngress[],
@@ -286,7 +286,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     window.kubectl.getJobs(ctx, nsArg),
                     window.kubectl.getCronJobs(ctx, nsArg)
                 ])
-                if (get().selectedContext !== snapshotCtx) return
+                if (get().selectedContext !== snapshotCtx) { set({ loadingResources: false }); return }
                 set({
                     pods: pds as KubePod[],
                     deployments: depls as KubeDeployment[],

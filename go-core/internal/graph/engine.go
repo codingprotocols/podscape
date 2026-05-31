@@ -81,7 +81,7 @@ func (b *GraphBuilder) Build(initialNodes []Node) *Graph {
 func (b *GraphBuilder) collapseResources(graph *Graph) {
 	groups := make(map[string][]int) // key -> indices in graph.Nodes
 	for i, n := range graph.Nodes {
-		if (n.Kind == KindPod || n.Kind == KindReplicaSet) && n.OwnerUID != "" {
+		if (n.Kind == KindPod || n.WorkloadKind == "ReplicaSet") && n.OwnerUID != "" {
 			key := fmt.Sprintf("%s:%s:%s", n.Kind, n.Namespace, n.OwnerUID)
 			groups[key] = append(groups[key], i)
 		}
@@ -127,10 +127,6 @@ func (b *GraphBuilder) collapseResources(graph *Graph) {
 		collapsedNode.ID = collapsedID
 		collapsedNode.ReplicaCount = len(indices)
 		collapsedNode.ReplicaNames = names
-		// Shorten name if it ends with a hash/suffix, usually owners share a prefix
-		if len(collapsedNode.Name) > 10 {
-			collapsedNode.Name = collapsedNode.Name[:len(collapsedNode.Name)-6] + ".."
-		}
 
 		newNodes = append(newNodes, collapsedNode)
 	}
@@ -143,10 +139,14 @@ func (b *GraphBuilder) collapseResources(graph *Graph) {
 	}
 	graph.Nodes = newNodes
 
-	// Update edges
+	// Update edges: remap endpoints, re-ID, and merge duplicate labels.
+	// edgeSeen maps new edge ID → index in newEdges so that when multiple
+	// pre-collapse edges land on the same post-collapse endpoint pair we can
+	// merge their labels rather than silently discarding one. "dropped" always
+	// wins, matching the same priority rule used by HubbleDiscoverer.
 	if len(idMap) > 0 {
 		newEdges := make([]Edge, 0, len(graph.Edges))
-		edgeSeen := make(map[string]bool)
+		edgeSeen := make(map[string]int)
 		for _, e := range graph.Edges {
 			if newSrc, ok := idMap[e.Source]; ok {
 				e.Source = newSrc
@@ -154,11 +154,14 @@ func (b *GraphBuilder) collapseResources(graph *Graph) {
 			if newTarget, ok := idMap[e.Target]; ok {
 				e.Target = newTarget
 			}
-			// Update edge ID to reflect new endpoints
 			e.ID = fmt.Sprintf("edge:%s:%s:%s", e.Source, e.Target, e.Kind)
-			if !edgeSeen[e.ID] {
+			if idx, seen := edgeSeen[e.ID]; seen {
+				if e.Label == "dropped" && newEdges[idx].Label != "dropped" {
+					newEdges[idx].Label = "dropped"
+				}
+			} else {
+				edgeSeen[e.ID] = len(newEdges)
 				newEdges = append(newEdges, e)
-				edgeSeen[e.ID] = true
 			}
 		}
 		graph.Edges = newEdges

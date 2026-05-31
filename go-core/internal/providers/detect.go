@@ -17,14 +17,23 @@ type ProviderSet struct {
 	NginxInc       bool   `json:"nginxInc"`                 // kubernetes-ingress (NGINX Inc, CRD-based)
 	NginxCommunity bool   `json:"nginxCommunity"`           // ingress-nginx (community, annotation-based)
 	Keda           bool   `json:"keda"`
+	Cilium         bool   `json:"cilium"`
+	HubbleRelay    bool   `json:"hubbleRelay"`
 }
 
 // Detect probes the cluster's API group list and IngressClass resources to
 // determine which ingress and service mesh providers are installed.
-// It is intentionally best-effort: discovery failures return an empty
-// ProviderSet so the rest of the app keeps working regardless.
-func Detect(disco discovery.DiscoveryInterface, ingressClasses []networkingv1.IngressClass) ProviderSet {
+// hubbleRelayPresent should be true when the hubble-relay Service exists in
+// kube-system; it is set independently of API-group discovery so it survives
+// clusters with restricted discovery RBAC. All other providers require a
+// successful ServerGroups call — failures leave them false so the app degrades
+// gracefully.
+func Detect(disco discovery.DiscoveryInterface, ingressClasses []networkingv1.IngressClass, hubbleRelayPresent bool) ProviderSet {
 	var ps ProviderSet
+
+	// HubbleRelay is based on a Service existence check, not API-group
+	// discovery, so assign it before the ServerGroups error guard.
+	ps.HubbleRelay = hubbleRelayPresent
 
 	groups, err := disco.ServerGroups()
 	if err != nil {
@@ -51,6 +60,8 @@ func Detect(disco discovery.DiscoveryInterface, ingressClasses []networkingv1.In
 			ps.NginxInc = true
 		case "keda.sh":
 			ps.Keda = true
+		case "cilium.io":
+			ps.Cilium = true
 		}
 	}
 

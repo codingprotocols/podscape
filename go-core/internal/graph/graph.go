@@ -46,13 +46,14 @@ type Node struct {
 type EdgeKind string
 
 const (
-	EdgeOwner             EdgeKind = "controller-pod"
+	EdgeOwner              EdgeKind = "controller-pod"
 	EdgeControllerWorkload EdgeKind = "controller-workload"
-	EdgeSelector          EdgeKind = "svc-pod"
-	EdgeVolume            EdgeKind = "pod-pvc"
-	EdgeConnection        EdgeKind = "ing-svc"
-	EdgePolicy            EdgeKind = "policy-pod"
-	EdgePodNode           EdgeKind = "pod-node"
+	EdgeSelector           EdgeKind = "svc-pod"
+	EdgeVolume             EdgeKind = "pod-pvc"
+	EdgeConnection         EdgeKind = "ing-svc"
+	EdgePolicy             EdgeKind = "policy-pod"
+	EdgePodNode            EdgeKind = "pod-node"
+	EdgeHubbleFlow         EdgeKind = "hubble-flow"
 )
 
 // Edge represents a directed relationship between two nodes.

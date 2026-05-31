@@ -7,8 +7,9 @@ import (
 
 	"github.com/podscape/go-core/internal/providers"
 	"github.com/podscape/go-core/internal/store"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // HandleProviders detects which ingress controllers and service mesh providers
@@ -31,7 +32,19 @@ func HandleProviders(w http.ResponseWriter, r *http.Request) {
 		icList = icl.Items
 	}
 
-	ps := providers.Detect(cs.Discovery(), icList)
+	const (
+		hubbleNamespace   = "kube-system"
+		hubbleServiceName = "hubble-relay"
+	)
+	hubbleRelayPresent := false
+	_, hubbleErr := cs.CoreV1().Services(hubbleNamespace).Get(r.Context(), hubbleServiceName, metav1.GetOptions{})
+	if hubbleErr == nil {
+		hubbleRelayPresent = true
+	} else if !k8serrors.IsNotFound(hubbleErr) {
+		log.Printf("[providers] failed to check hubble-relay service: %v", hubbleErr)
+	}
+
+	ps := providers.Detect(cs.Discovery(), icList, hubbleRelayPresent)
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(ps); err != nil {

@@ -140,6 +140,8 @@ func HandleSecurityScan(w http.ResponseWriter, r *http.Request) {
 		msg := "trivy scan failed"
 		if waitErr != nil {
 			msg = waitErr.Error()
+		} else if readErr != nil {
+			msg = readErr.Error()
 		}
 		sseEvent(w, flusher, "error", msg)
 		return
@@ -305,7 +307,11 @@ func HandleTrivyImages(w http.ResponseWriter, r *http.Request) {
 			Kind      string `json:"kind"`
 		} `json:"workloads"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Workloads) == 0 {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if len(req.Workloads) == 0 {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"Resources": []interface{}{}})
 		return

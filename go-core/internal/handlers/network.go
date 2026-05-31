@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/podscape/go-core/internal/graph"
+	"github.com/podscape/go-core/internal/hubble"
 	"github.com/podscape/go-core/internal/logs"
 	"github.com/podscape/go-core/internal/portforward"
 	"github.com/podscape/go-core/internal/store"
@@ -492,7 +494,17 @@ func HandleTopology(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// 2. Build Graph using the new Discovery Engine
+	// HubbleDiscoverer is always registered; it lazily connects on first use
+	// and returns zero edges when Hubble Relay is absent or unreachable.
+	// flowWindow defaults to 60 s; callers may pass ?flowWindow=<seconds> (5–3600).
+	flowWindowSecs := 60
+	if fw := r.URL.Query().Get("flowWindow"); fw != "" {
+		if n, err := strconv.Atoi(fw); err == nil && n >= 5 && n <= 3600 {
+			flowWindowSecs = n
+		}
+	}
 	builder := graph.NewGraphBuilder(snap)
+	builder.AddDiscoverer(hubble.NewDiscoverer(hubble.DefaultManager, time.Duration(flowWindowSecs)*time.Second))
 	g := builder.Build(initialNodes)
 
 	w.Header().Set("Content-Type", "application/json")
