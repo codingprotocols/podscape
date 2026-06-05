@@ -61,6 +61,9 @@ func main() {
 	klog.SetOutput(newFilteredStderr(
 		"bookmark expired",
 		"hasn't received required bookmark event",
+		// client-go logs this when a POST body read is cancelled mid-flight by a
+		// context timeout (e.g. during the RBAC SAR probe). Not actionable noise.
+		"Unexpected error when reading response body",
 	))
 
 	store.Store.Kubeconfig = *kubeconfig
@@ -187,12 +190,18 @@ func main() {
 		store.Store.Lock()
 		store.Store.NoKubeconfig = true
 		store.Store.Unlock()
+		setupErr := make(chan error, 1)
 		go func() {
 			fmt.Printf("Go sidecar listening on port %s\n", *port)
-			log.Fatal(http.ListenAndServe("127.0.0.1:"+*port, handler))
+			if err := http.ListenAndServe("127.0.0.1:"+*port, handler); err != nil {
+				setupErr <- err
+			}
 		}()
 		fmt.Printf("Go sidecar ready on port %s (no kubeconfig — onboarding mode)\n", *port)
-		select {} // block until Electron kills the process
+		select {
+		case err := <-setupErr:
+			log.Fatalf("HTTP server error: %v", err)
+		}
 	}
 
 	// Bootstrap the initial context cache and set it as active.
@@ -212,9 +221,12 @@ func main() {
 
 	// Start the HTTP server — /health returns 503 until informers sync, so
 	// startSidecar() keeps polling. portforward is already initialised above.
+	serverErr := make(chan error, 1)
 	go func() {
 		fmt.Printf("Go sidecar listening on port %s\n", *port)
-		log.Fatal(http.ListenAndServe("127.0.0.1:"+*port, handler))
+		if err := http.ListenAndServe("127.0.0.1:"+*port, handler); err != nil {
+			serverErr <- err
+		}
 	}()
 
 	// Run the full RBAC probe (all 6 verbs) concurrently with informer startup
@@ -224,7 +236,7 @@ func main() {
 	// Starting informers with nil AllowedResources is the permissive default —
 	// all informers start. MakeHandler enforces RBAC on every request regardless
 	// of whether the probe ran before or after informers started.
-	go handlers.RunRBACProbe(initialCache, bundle.ContextName, bundle.Clientset)
+	go handlers.RunRBACProbe(initialCache.CacheCtx, initialCache, bundle.ContextName, bundle.Clientset)
 
 	// Block until the critical informers are synced, then mark the sidecar ready.
 	// /health returns 503 until this completes, so startSidecar() keeps polling.
@@ -238,5 +250,10 @@ func main() {
 	fmt.Printf("Go sidecar ready on port %s (kubeconfig: %s)\n", *port, bundle.Kubeconfig)
 
 	// Block the main goroutine — process lifetime is managed by Electron (SIGTERM).
-	select {}
+	// If the HTTP server fails to bind (e.g. port already in use), surface the
+	// error via log.Fatal rather than silently calling os.Exit(1) from a goroutine.
+	select {
+	case err := <-serverErr:
+		log.Fatalf("HTTP server error: %v", err)
+	}
 }

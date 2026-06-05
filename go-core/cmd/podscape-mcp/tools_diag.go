@@ -548,7 +548,7 @@ func handleDetectProviders(ctx context.Context, req mcp.CallToolRequest) (*mcp.C
 	}
 
 	hubbleRelayPresent := false
-	_, hubbleErr := b.Clientset.CoreV1().Services("kube-system").Get(apiCtx, "hubble-relay", metav1.GetOptions{})
+	_, hubbleErr := b.Clientset.CoreV1().Services(providers.HubbleRelayNamespace).Get(apiCtx, providers.HubbleRelayService, metav1.GetOptions{})
 	if hubbleErr == nil {
 		hubbleRelayPresent = true
 	} else if !k8serrors.IsNotFound(hubbleErr) {

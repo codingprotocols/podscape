@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Search, Download, AlignLeft } from 'lucide-react'
 import Editor, { DiffEditor } from '@monaco-editor/react'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import YAMLEditor from './YAMLEditor'
 
 interface Props {
@@ -11,17 +12,27 @@ interface Props {
 }
 
 export default function YAMLViewer({ content, editable = false, onSave }: Props): JSX.Element {
-  const { theme, isProduction } = useAppStore()
+  const { theme, isProduction } = useAppStore(useShallow(s => ({ theme: s.theme, isProduction: s.isProduction })))
   const [value, setValue] = useState(content)
   const [showConfirm, setShowConfirm] = useState(false)
   const [showDiff, setShowDiff] = useState(false)
   const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on')
   const editorRef = useRef<any>(null)
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Sync editor content when the prop changes (e.g. switching resources or ConfigMap keys)
   useEffect(() => {
     setValue(content)
   }, [content])
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current)
+      if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current)
+    }
+  }, [])
+
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
   const [saveError, setSaveError] = useState<{ kind: 'immutable' | 'generic'; message: string } | null>(null)
@@ -30,7 +41,8 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
   const handleCopy = () => {
     navigator.clipboard.writeText(value)
     setCopyMsg('Copied!')
-    setTimeout(() => setCopyMsg(''), 2000)
+    if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current)
+    copyTimerRef.current = setTimeout(() => setCopyMsg(''), 2000)
   }
 
   const handleDownload = () => {
@@ -61,7 +73,8 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
     try {
       await onSave(value)
       setSaveMsg('Applied!')
-      setTimeout(() => setSaveMsg(''), 4000)
+      if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = setTimeout(() => setSaveMsg(''), 4000)
     } catch (err) {
       const msg = (err as Error).message
       if (msg.includes('immutable') || msg.includes('422')) {
@@ -71,7 +84,8 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
         setSaveError({ kind: 'generic', message: msg })
         setSaveMsg('Error: apply failed')
       }
-      setTimeout(() => setSaveMsg(''), 4000)
+      if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = setTimeout(() => setSaveMsg(''), 4000)
     } finally {
       setSaving(false)
     }
@@ -89,7 +103,7 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [editable, onSave, saving, value, showConfirm])
+  }, [editable, onSave, saving, value, showConfirm, isProduction])
 
   return (
     <div className="flex flex-col h-full min-h-[400px] bg-slate-50 dark:bg-[hsl(var(--bg-dark))]">
@@ -217,7 +231,12 @@ export default function YAMLViewer({ content, editable = false, onSave }: Props)
 // ─── Apply YAML panel (full editor for applying new manifests) ────────────────
 
 export function ApplyYAMLPanel(): JSX.Element {
-  const { applyYAML, theme, selectedContext, isProduction } = useAppStore()
+  const { applyYAML, theme, selectedContext, isProduction } = useAppStore(useShallow(s => ({
+    applyYAML: s.applyYAML,
+    theme: s.theme,
+    selectedContext: s.selectedContext,
+    isProduction: s.isProduction,
+  })))
   const [content, setContent] = useState('# Paste your YAML manifest here\n')
   const [result, setResult] = useState('')
   const [applying, setApplying] = useState(false)

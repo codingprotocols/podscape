@@ -45,6 +45,11 @@ func InitInformers(c *store.ContextCache, stopCh <-chan struct{}) {
 		registerBackgroundInformers(factory, c, stopCh)
 		factory.Start(stopCh) // no-op for already-started informers; starts new ones
 		factory.WaitForCacheSync(stopCh) // block until background informers complete their initial LIST
+		select {
+		case <-stopCh:
+			return // context switched away before sync completed — do not mark cache as ready
+		default:
+		}
 		c.Lock()
 		c.HasData = true
 		c.Unlock()
@@ -79,6 +84,11 @@ func SyncInformers(c *store.ContextCache, stopCh <-chan struct{}, timeout time.D
 		registerBackgroundInformers(factory, c, stopCh)
 		factory.Start(stopCh)
 		factory.WaitForCacheSync(stopCh) // block until background informers complete their initial LIST
+		select {
+		case <-stopCh:
+			return // context switched away before sync completed — do not mark cache as ready
+		default:
+		}
 		c.Lock()
 		c.HasData = true
 		c.Unlock()
@@ -90,17 +100,32 @@ func SyncInformers(c *store.ContextCache, stopCh <-chan struct{}, timeout time.D
 
 // StartInformers starts all informers without blocking. Used after context
 // switches when the caller has already returned a response to the UI.
+// A background goroutine waits for cache sync and then marks the cache ready.
 func StartInformers(c *store.ContextCache, stopCh <-chan struct{}) {
 	factory := k8sinformers.NewSharedInformerFactory(c.Clientset, time.Minute*10)
 	registerCriticalInformers(factory, c)
 	registerBackgroundInformers(factory, c, stopCh)
 	factory.Start(stopCh)
+	go func() {
+		factory.WaitForCacheSync(stopCh)
+		select {
+		case <-stopCh:
+			return // context switched away before sync completed
+		default:
+		}
+		c.Lock()
+		c.HasData = true
+		c.CacheReady = true
+		c.Unlock()
+		log.Println("[Informers] cache sync complete after restart")
+	}()
 }
 
 // RestartInformers creates a fresh StopCh on the cache and starts all informers
 // in the background. Used when switching back to a known context whose informers
 // were stopped.
 func RestartInformers(c *store.ContextCache) {
+	c.StopInformers()
 	newStopCh := make(chan struct{})
 	c.Lock()
 	c.StopCh = newStopCh
@@ -228,6 +253,7 @@ func registerBackgroundInformers(factory k8sinformers.SharedInformerFactory, c *
 		apiextFactory := apiextinformers.NewSharedInformerFactory(apiextClient, time.Minute*10)
 		setupInformer(apiextFactory.Apiextensions().V1().CustomResourceDefinitions().Informer(), c.CRDs, &c.RWMutex, false)
 		apiextFactory.Start(stopCh)
+		apiextFactory.WaitForCacheSync(stopCh)
 	}
 }
 
@@ -247,18 +273,30 @@ func setupInformer(informer cache.SharedIndexInformer, targetMap map[string]inte
 	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			key := getResourceKey(obj, namespaced)
+			if key == "" {
+				return
+			}
 			mu.Lock()
 			targetMap[key] = obj
 			mu.Unlock()
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			key := getResourceKey(newObj, namespaced)
+			if key == "" {
+				return
+			}
 			mu.Lock()
 			targetMap[key] = newObj
 			mu.Unlock()
 		},
 		DeleteFunc: func(obj interface{}) {
+			if d, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+				obj = d.Obj
+			}
 			key := getResourceKey(obj, namespaced)
+			if key == "" {
+				return
+			}
 			mu.Lock()
 			delete(targetMap, key)
 			mu.Unlock()
@@ -299,6 +337,9 @@ func setupEventInformer(informer cache.SharedIndexInformer, targetMap map[string
 	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			key := getResourceKey(obj, true)
+			if key == "" {
+				return
+			}
 			mu.Lock()
 			evictOldest()
 			targetMap[key] = obj
@@ -306,12 +347,21 @@ func setupEventInformer(informer cache.SharedIndexInformer, targetMap map[string
 		},
 		UpdateFunc: func(_, newObj interface{}) {
 			key := getResourceKey(newObj, true)
+			if key == "" {
+				return
+			}
 			mu.Lock()
 			targetMap[key] = newObj
 			mu.Unlock()
 		},
 		DeleteFunc: func(obj interface{}) {
+			if d, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+				obj = d.Obj
+			}
 			key := getResourceKey(obj, true)
+			if key == "" {
+				return
+			}
 			mu.Lock()
 			delete(targetMap, key)
 			mu.Unlock()
@@ -320,6 +370,11 @@ func setupEventInformer(informer cache.SharedIndexInformer, targetMap map[string
 }
 
 func getResourceKey(obj interface{}, namespaced bool) string {
+	// Unwrap tombstones emitted after a watch re-list (410 Gone). The reflector
+	// wraps objects deleted during a network gap in DeletedFinalStateUnknown.
+	if d, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+		obj = d.Obj
+	}
 	if !namespaced {
 		if meta, ok := obj.(interface{ GetName() string }); ok {
 			return store.ResourceKey("", meta.GetName())

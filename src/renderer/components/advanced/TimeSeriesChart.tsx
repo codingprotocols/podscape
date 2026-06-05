@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
 } from 'recharts'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import type { QuerySpec, TimeRangePreset } from '../../utils/prometheusQueries'
 import { presetToSeconds } from '../../utils/prometheusQueries'
 
@@ -30,7 +31,10 @@ const PRESETS: TimeRangePreset[] = ['1h', '6h', '24h', '7d']
 // Render this ONCE above a group of charts — never show presets inside each chart.
 
 export function PrometheusTimeRangeBar(): JSX.Element {
-  const { prometheusActivePreset, setPrometheusTimeRange } = useAppStore()
+  const { prometheusActivePreset, setPrometheusTimeRange } = useAppStore(useShallow(s => ({
+    prometheusActivePreset: s.prometheusActivePreset,
+    setPrometheusTimeRange: s.setPrometheusTimeRange,
+  })))
   const handlePreset = (preset: TimeRangePreset) => {
     const end = Math.floor(Date.now() / 1000)
     setPrometheusTimeRange({ start: end - presetToSeconds(preset), end }, preset)
@@ -57,18 +61,24 @@ export function PrometheusTimeRangeBar(): JSX.Element {
 // ── Chart ─────────────────────────────────────────────────────────────────────
 
 export default function TimeSeriesChart({ queries, title, unit, className }: Props): JSX.Element | null {
-  const { prometheusTimeRange, prometheusActivePreset } = useAppStore()
+  const { prometheusTimeRange, prometheusActivePreset } = useAppStore(useShallow(s => ({
+    prometheusTimeRange: s.prometheusTimeRange,
+    prometheusActivePreset: s.prometheusActivePreset,
+  })))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<SeriesPoint[] | null>(null)
+  const fetchIdRef = useRef(0)
 
   const fetchData = useCallback(async () => {
     if (!window.kubectl.prometheusQueryBatch) return
+    const myId = ++fetchIdRef.current
     const { start, end } = prometheusTimeRange
     setLoading(true)
     setError(null)
     try {
       const results = await window.kubectl.prometheusQueryBatch(queries, start, end)
+      if (myId !== fetchIdRef.current) return
       if (!Array.isArray(results) || results.length === 0) { setData([]); return }
       const merged: Record<number, SeriesPoint> = {}
       for (const result of results) {
@@ -80,9 +90,10 @@ export default function TimeSeriesChart({ queries, title, unit, className }: Pro
       }
       setData(Object.values(merged).sort((a, b) => a.t - b.t))
     } catch (err) {
+      if (myId !== fetchIdRef.current) return
       setError((err as Error).message)
     } finally {
-      setLoading(false)
+      if (myId === fetchIdRef.current) setLoading(false)
     }
   }, [queries, prometheusTimeRange])
 

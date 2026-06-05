@@ -110,6 +110,8 @@ export const createAnalysisSlice: StoreSlice<AnalysisSlice> = (set, get) => ({
         if (activeProgressUnsub) { activeProgressUnsub(); activeProgressUnsub = null }
         // Wire up the progress relay before starting the scan so no lines are missed.
         const unsubProgress = window.kubectl.onSecurityProgress((line: string) => {
+            // Discard progress from a stale scan if the user switched context.
+            if (get().selectedContext !== scanCtx) { unsubProgress(); return }
             const clean = line.replace(TRIVY_PREFIX_RE, '').trim()
             if (!clean) return
             // Suppress trivy internal noise that isn't actionable for the user.
@@ -200,9 +202,14 @@ export const createAnalysisSlice: StoreSlice<AnalysisSlice> = (set, get) => ({
                     }
                 })
             }
+        } catch (err) {
+            if (get().selectedContext !== scanCtx) return
+            if (mySeq === scanSeq) set({ error: `Scan failed: ${(err as Error).message || 'Unknown error'}` })
         } finally {
             unsubProgress()
-            activeProgressUnsub = null
+            // Only null the global slot if it still points at this scan's unsubscriber.
+            // A stale scan's finally must not null out a newer scan's reference.
+            if (activeProgressUnsub === unsubProgress) activeProgressUnsub = null
             // Only clear the scanning flag if no newer scan has started since this one.
             if (mySeq === scanSeq) set({ securityScanning: false, scanInBackground: false })
         }

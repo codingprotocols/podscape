@@ -9,7 +9,7 @@ import type {
   KubeHPA, KubePDB, KubeResourceQuota, KubeLimitRange, KubeService, KubeIngress, KubeIngressClass, KubeNetworkPolicy, KubeEndpoints,
   KubeConfigMap, KubeSecret, KubePVC, KubePV, KubeStorageClass,
   KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
-  KubeNode, KubeNamespace, KubeCRD, AnyKubeResource, ResourceKind
+  KubeNode, KubeNamespace, KubeCRD, AnyKubeResource, ResourceKind, NodeMetrics
 } from '../../types'
 import { podPhaseBg, totalRestarts, formatAge, getNodeReady, parseCpuMillicores, parseMemoryMiB } from '../../types'
 import ScaleDialog from '../common/ScaleDialog'
@@ -28,10 +28,12 @@ import { SECTION_LABELS, COLUMNS, CLUSTER_SCOPED_SECTIONS } from '../../config'
 // Derived from SECTION_CONFIG so adding a new resource type only requires one
 // change (in resourceSlice.ts) instead of two.
 
+const EMPTY: AnyKubeResource[] = []
+
 function useResources(): AnyKubeResource[] {
   return useAppStore(s => {
     const key = SECTION_CONFIG[s.section as ResourceKind]?.stateKey
-    return key ? (s[key as keyof typeof s] as AnyKubeResource[]) ?? [] : []
+    return key ? (s[key as keyof typeof s] as AnyKubeResource[]) ?? EMPTY : EMPTY
   })
 }
 
@@ -226,7 +228,7 @@ function getCapacityType(node: KubeNode): string {
   return labels['karpenter.sh/capacity-type'] ?? '—'
 }
 
-const NodeRow = React.memo(function NodeRow({ node }: { node: KubeNode }) {
+const NodeRow = React.memo(function NodeRow({ node, metrics }: { node: KubeNode; metrics?: NodeMetrics | null }) {
   const ready = getNodeReady(node)
   const cordoned = !!node.spec.unschedulable
   const internalIP = (node.status.addresses ?? []).find(a => a.type === 'InternalIP')?.address ?? '—'
@@ -237,7 +239,6 @@ const NodeRow = React.memo(function NodeRow({ node }: { node: KubeNode }) {
   const memAllocMiB = parseMemoryMiB(node.status.allocatable?.memory ?? '0Ki')
 
   // Live usage from metrics-server (may be absent if not installed)
-  const metrics = useAppStore(s => s.nodeMetrics.find(m => m.metadata.name === node.metadata.name))
   const liveCpu = metrics ? parseCpuMillicores(metrics.usage.cpu) : null
   const liveMem = metrics ? parseMemoryMiB(metrics.usage.memory) : null
 
@@ -560,7 +561,7 @@ function ClusterRoleBindingRow({ crb }: { crb: KubeClusterRoleBinding }) {
 
 // ─── Row dispatcher ───────────────────────────────────────────────────────────
 
-function ResourceRow({ resource, section }: { resource: AnyKubeResource; section: string }) {
+function ResourceRow({ resource, section, nodeMetricsMap }: { resource: AnyKubeResource; section: string; nodeMetricsMap?: Map<string, NodeMetrics> | null }) {
   switch (section) {
     case 'pods': return <PodRow pod={resource as KubePod} />
     case 'deployments': return <DeploymentRow d={resource as KubeDeployment} />
@@ -588,7 +589,7 @@ function ResourceRow({ resource, section }: { resource: AnyKubeResource; section
     case 'clusterroles': return <ClusterRoleRow role={resource as KubeClusterRole} />
     case 'rolebindings': return <RoleBindingRow rb={resource as KubeRoleBinding} />
     case 'clusterrolebindings': return <ClusterRoleBindingRow crb={resource as KubeClusterRoleBinding} />
-    case 'nodes': return <NodeRow node={resource as KubeNode} />
+    case 'nodes': return <NodeRow node={resource as KubeNode} metrics={nodeMetricsMap?.get((resource as KubeNode).metadata.name)} />
     case 'namespaces': return <NamespaceRow ns={resource as KubeNamespace} />
     case 'crds': return <CRDRow crd={resource as KubeCRD} />
     default: return <td className="px-6 py-3 text-xs font-semibold">{resource.metadata.name}</td>
@@ -640,7 +641,7 @@ function CustomCheckbox({ checked, onChange, partiallyChecked = false }: { check
 
 export default function ResourceList(): JSX.Element {
   // Data fields — subscribed via shallow equality so any change triggers a re-render.
-  const { section, selectedResource, loadingResources, selectedNamespace, selectedContext, searchQuery, deniedSections, allowedVerbs } =
+  const { section, selectedResource, loadingResources, selectedNamespace, selectedContext, searchQuery, deniedSections, allowedVerbs, nodeMetricsArr } =
     useAppStore(useShallow(s => ({
       section: s.section,
       selectedResource: s.selectedResource,
@@ -650,6 +651,7 @@ export default function ResourceList(): JSX.Element {
       searchQuery: s.searchQuery,
       deniedSections: s.deniedSections,
       allowedVerbs: s.allowedVerbs,
+      nodeMetricsArr: s.section === 'nodes' ? s.nodeMetrics : null,
     })))
 
   // Action functions — stable refs created once; read directly from the store
@@ -659,6 +661,10 @@ export default function ResourceList(): JSX.Element {
     rolloutRestart, openExec, scaleStatefulSet, startPortForward,
   } = useAppStore.getState()
   const resources = useResources()
+  const nodeMetricsMap = useMemo(
+    () => nodeMetricsArr ? new Map(nodeMetricsArr.map(m => [m.metadata.name, m])) : null,
+    [nodeMetricsArr]
+  )
   const [scaleTarget, setScaleTarget] = useState<KubeDeployment | null>(null)
   const [stsScaleTarget, setStsScaleTarget] = useState<KubeStatefulSet | null>(null)
   const [stsScaleVal, setStsScaleVal] = useState('')
@@ -770,12 +776,13 @@ export default function ResourceList(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredUnsorted, sortCol, sortAsc])
 
-  // Clear selection, sorting, and pod-specific filters when section changes
+  // Clear selection, sorting, pod-specific filters, and context menu when section changes
   useEffect(() => {
     setSelectedUids(new Set())
     setSortCol('Name')
     setSortAsc(true)
     setNodeFilter('')
+    setContextMenu(null)
   }, [section])
 
   // ── Virtualization ────────────────────────────────────────────────────────
@@ -785,6 +792,7 @@ export default function ResourceList(): JSX.Element {
   // actual heights after mount via measureElement.
 
   const tableContainerRef = useRef<HTMLDivElement>(null)
+  const yamlFetchGenRef = useRef(0)
 
   const rowVirtualizer = useVirtualizer({
     count: filtered.length,
@@ -824,6 +832,7 @@ export default function ResourceList(): JSX.Element {
   }
 
   const handleViewYAML = async (resource: AnyKubeResource) => {
+    const myGen = ++yamlFetchGenRef.current
     setContextMenu(null)
     setYamlContent(null)
     setYamlError(null)
@@ -831,11 +840,13 @@ export default function ResourceList(): JSX.Element {
     try {
       const kind = kindLabel(section)
       const yaml = await getYAML(kind, resource.metadata.name, clusterScoped, resource.metadata.namespace)
+      if (myGen !== yamlFetchGenRef.current) return
       setYamlContent(yaml)
     } catch (err) {
+      if (myGen !== yamlFetchGenRef.current) return
       setYamlError((err as Error).message ?? 'Failed to fetch YAML')
     } finally {
-      setYamlLoading(false)
+      if (myGen === yamlFetchGenRef.current) setYamlLoading(false)
     }
   }
 
@@ -935,6 +946,7 @@ export default function ResourceList(): JSX.Element {
       if (e.key === 'Escape') {
         if (contextMenu) setContextMenu(null)
         else if (yamlContent !== null || yamlLoading || yamlError) {
+          ++yamlFetchGenRef.current
           setYamlContent(null)
           setYamlError(null)
           setYamlLoading(false)
@@ -1097,7 +1109,7 @@ export default function ResourceList(): JSX.Element {
                         />
                       </div>
                     </td>
-                    <ResourceRow resource={resource} section={section} />
+                    <ResourceRow resource={resource} section={section} nodeMetricsMap={nodeMetricsMap} />
                     {showNsCol && (
                       <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500 font-mono font-medium">
                         {resource.metadata.namespace ?? '—'}
@@ -1257,7 +1269,7 @@ export default function ResourceList(): JSX.Element {
                 </div>
                 <button
                   type="button"
-                  onClick={() => { setYamlContent(null); setYamlError(null); setYamlLoading(false) }}
+                  onClick={() => { ++yamlFetchGenRef.current; setYamlContent(null); setYamlError(null); setYamlLoading(false) }}
                   className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors"
                   aria-label="Close"
                 >
@@ -1327,7 +1339,9 @@ export default function ResourceList(): JSX.Element {
                     await scaleStatefulSet(stsScaleTarget.metadata.name, reps, stsScaleTarget.metadata.namespace)
                     setStsScaleTarget(null)
                   } catch { /* error handled by store */ }
-                  setStsScaleLoading(false)
+                  finally {
+                    setStsScaleLoading(false)
+                  }
                 }} disabled={stsScaleLoading}
                   className="flex-1 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50">
                   {stsScaleLoading ? 'Scaling…' : 'Scale'}

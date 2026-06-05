@@ -20,9 +20,8 @@ func HandlePrometheusStatus(w http.ResponseWriter, r *http.Request) {
 		// Explicitly clear any stale manual URL so auto-discovery takes over.
 		prometheus.SetManualURL("") //nolint:errcheck — empty string always succeeds
 	}
-	result := prometheus.ProbePrometheus()
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	result := prometheus.ProbePrometheus(r.Context())
+	writeJSON(w, result)
 }
 
 func HandlePrometheusQueryBatch(w http.ResponseWriter, r *http.Request) {
@@ -37,10 +36,8 @@ func HandlePrometheusQueryBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results := prometheus.QueryRangeBatch(req)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(results)
+	results := prometheus.QueryRangeBatch(r.Context(), req)
+	writeJSON(w, results)
 }
 
 // HandlePrometheusClearCache evicts all cached query results immediately.

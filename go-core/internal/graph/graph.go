@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"context"
 	"fmt"
 )
 
@@ -75,13 +76,17 @@ type Graph struct {
 // Discoverer is the interface for components that can find relationships in the graph.
 type Discoverer interface {
 	Name() string
-	Discover(nodes []Node, cache ResourceCache) []Edge
+	Discover(ctx context.Context, nodes []Node, cache ResourceCache) []Edge
 }
 
 // ResourceCache provides access to the underlying K8s objects for deep inspection.
 // This abstraction allows the discovery engine to work with different data sources.
 type ResourceCache interface {
 	GetRawObject(kind NodeKind, namespace, name string) (interface{}, bool)
+	// GetRawObjectByUID looks up a workload object by its Kubernetes UID rather than
+	// by name. This avoids false matches when two different workload types share the
+	// same namespace/name (e.g. a Job and a Deployment both named "migrate").
+	GetRawObjectByUID(uid string) (interface{}, bool)
 }
 
 // NewNode creates a standard node ID from its components.

@@ -9,6 +9,9 @@ import { createProvidersSlice } from './slices/providersSlice'
 import { createKrewSlice } from './slices/krewSlice'
 import { KubeContextEntry } from '../types'
 
+// React StrictMode double-mounts in dev — guard so init() only runs once.
+let initStarted = false
+
 export const useAppStore = create<AppStore>()((...a) => ({
     ...createNavigationSlice(...a),
     ...createClusterSlice(...a),
@@ -20,6 +23,8 @@ export const useAppStore = create<AppStore>()((...a) => ({
 
     // ── Combined actions (init) ────────────────────────────────────────────────
     init: async () => {
+        if (initStarted) return
+        initStarted = true
         const [set, get] = a
         // Sync theme on init
         const currentTheme = get().theme

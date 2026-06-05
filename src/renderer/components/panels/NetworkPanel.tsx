@@ -579,6 +579,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [scale, setScale] = useState(1)
   const panRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
+  const fitRafRef = useRef(0)
   const [tooltip, setTooltip] = useState<{ node: GraphNode; x: number; y: number } | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
 
@@ -607,7 +608,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
   const fitToScreen = useCallback(() => {
     if (!svgRef.current || !finalPositions.size) return
     const { width: svgW, height: svgH } = svgRef.current.getBoundingClientRect()
-    if (svgW === 0 || svgH === 0) { requestAnimationFrame(fitToScreen); return }
+    if (svgW === 0 || svgH === 0) { fitRafRef.current = requestAnimationFrame(fitToScreen); return }
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
     for (const p of finalPositions.values()) {
       minX = Math.min(minX, p.x - NODE_W / 2); maxX = Math.max(maxX, p.x + NODE_W / 2)
@@ -624,7 +625,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
     setScale(newScale)
   }, [finalPositions, lanes])
 
-  useEffect(() => { requestAnimationFrame(fitToScreen) }, [graph, groupByNs])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fitRafRef.current = requestAnimationFrame(fitToScreen); return () => cancelAnimationFrame(fitRafRef.current) }, [graph, groupByNs])  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (fitTrigger > 0) fitToScreen() }, [fitTrigger, fitToScreen])
 
   // Auto-pan to search matches
@@ -641,7 +642,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
     const { width: svgW, height: svgH } = svgRef.current.getBoundingClientRect()
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
     setPan({ x: svgW / 2 - cx * scale, y: svgH / 2 - cy * scale })
-  }, [matchedIds])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [matchedIds, scale])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const onWheel = (e: React.WheelEvent<SVGSVGElement>) => {
     e.preventDefault()
@@ -867,6 +868,7 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
 
   const panRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
   const dragRef = useRef<{ id: string; mx: number; my: number; nx: number; ny: number } | null>(null)
+  const fitRafRef = useRef(0)
 
   // Run simulation asynchronously with rAF — shows ring layout immediately, animates into place
   useEffect(() => {
@@ -937,7 +939,7 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
   const fitToScreen = useCallback(() => {
     if (!svgRef.current || !nodePos.size) return
     const { width: svgW, height: svgH } = svgRef.current.getBoundingClientRect()
-    if (svgW === 0 || svgH === 0) { requestAnimationFrame(fitToScreen); return }
+    if (svgW === 0 || svgH === 0) { fitRafRef.current = requestAnimationFrame(fitToScreen); return }
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
     for (const p of nodePos.values()) {
       minX = Math.min(minX, p.x - NODE_R); maxX = Math.max(maxX, p.x + NODE_R)
@@ -950,7 +952,7 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
     setScale(newScale)
   }, [nodePos])
 
-  useEffect(() => { requestAnimationFrame(fitToScreen) }, [graph, groupByNs])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fitRafRef.current = requestAnimationFrame(fitToScreen); return () => cancelAnimationFrame(fitRafRef.current) }, [graph, groupByNs])  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (fitTrigger > 0) fitToScreen() }, [fitTrigger, fitToScreen])
 
   // Auto-pan to search matches
@@ -967,7 +969,7 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
     const { width: svgW, height: svgH } = svgRef.current.getBoundingClientRect()
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
     setPan({ x: svgW / 2 - cx * scale, y: svgH / 2 - cy * scale })
-  }, [matchedIds])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [matchedIds, scale])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Namespace bounding boxes
   const nsBounds = useMemo(() => {
@@ -1212,11 +1214,25 @@ const WORKLOAD_KIND_TO_SECTION: Record<string, ResourceKind> = {
 }
 
 export default function NetworkPanel(): JSX.Element {
-  const { selectedContext, loadingNamespaces, namespaces, theme, setSection } = useAppStore()
-  const providers = useAppStore(s => s.providers)
+  const { selectedContext, loadingNamespaces, namespaces, theme, setSection, selectedNamespace, providers } =
+    useAppStore(useShallow(s => ({
+      selectedContext: s.selectedContext,
+      loadingNamespaces: s.loadingNamespaces,
+      namespaces: s.namespaces,
+      theme: s.theme,
+      setSection: s.setSection,
+      selectedNamespace: s.selectedNamespace,
+      providers: s.providers,
+    })))
   const dark = theme === 'dark'
 
-  const [panelNs, setPanelNs] = useState<string>('default')
+  // Seed from the store's active namespace; treat '_all' as '' (no filter — sidecar returns all).
+  const [panelNs, setPanelNs] = useState<string>(() =>
+    selectedNamespace === '_all' ? '' : selectedNamespace ?? ''
+  )
+  useEffect(() => {
+    setPanelNs(selectedNamespace === '_all' ? '' : selectedNamespace ?? '')
+  }, [selectedContext, selectedNamespace])
   const [loading, setLoading] = useState(false)
   const [rawGraph, setRawGraph] = useState<Graph>({ nodes: [], edges: [], namespaces: [] })
 
@@ -1247,7 +1263,7 @@ export default function NetworkPanel(): JSX.Element {
         if (controller.signal.aborted) return
         // Only update state when the graph actually changed to prevent the
         // force-directed layout from jumping on stable data during polling.
-        const fp = data.nodes.map(n => n.id).sort().join(',') + '|' + data.edges.map(e => e.id).sort().join(',')
+        const fp = data.nodes.map(n => n.id).sort().join(',') + '|' + data.edges.map(e => `${e.id}:${e.label ?? ''}`).sort().join(',')
         if (fp !== graphFingerprintRef.current) {
           graphFingerprintRef.current = fp
           setRawGraph(data)
@@ -1342,6 +1358,8 @@ export default function NetworkPanel(): JSX.Element {
     setSection(KIND_TO_SECTION[node.kind])
   }, [setSection])
 
+  const hubbleFlowCount = (rawGraph?.edges ?? []).filter(e => e.kind === 'hubble-flow').length
+
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0 bg-white dark:bg-[hsl(var(--bg-dark))] transition-colors duration-200">
       <PageHeader
@@ -1423,7 +1441,7 @@ export default function NetworkPanel(): JSX.Element {
               <KindPill
                 color='#2dd4bf'
                 label='Hubble Flows'
-                count={(rawGraph?.edges || []).filter(e => e.kind === 'hubble-flow').length}
+                count={hubbleFlowCount}
                 active={visibleFilters.has('hubble-flow')}
                 onToggle={() => toggleFilter('hubble-flow')}
               />
@@ -1514,7 +1532,7 @@ export default function NetworkPanel(): JSX.Element {
         {/* Hubble zero-flows notice — shown when the filter is active but no flows
             were observed in the lookback window (covers both "no traffic" and TLS). */}
         {!loading && providers.hubbleRelay && visibleFilters.has('hubble-flow') &&
-          graph.nodes.length > 0 && (rawGraph?.edges || []).filter(e => e.kind === 'hubble-flow').length === 0 && (
+          graph.nodes.length > 0 && hubbleFlowCount === 0 && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none
                           flex items-center gap-2 px-4 py-2 rounded-lg shadow-sm text-xs
                           bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-700

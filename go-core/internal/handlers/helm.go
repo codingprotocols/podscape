@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"strconv"
@@ -24,8 +23,12 @@ func HandleHelmList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(releases)
+	if releases == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+		return
+	}
+	writeJSON(w, releases)
 }
 
 func HandleHelmStatus(w http.ResponseWriter, r *http.Request) {
@@ -82,8 +85,12 @@ func HandleHelmHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(history)
+	if history == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+		return
+	}
+	writeJSON(w, history)
 }
 
 func HandleHelmRollback(w http.ResponseWriter, r *http.Request) {
@@ -138,8 +145,13 @@ func HandleHelmRepoList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(repos)
+
+	if repos == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+		return
+	}
+	writeJSON(w, repos)
 }
 
 func HandleHelmRepoAdd(w http.ResponseWriter, r *http.Request) {
@@ -158,8 +170,7 @@ func HandleHelmRepoAdd(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	writeJSON(w, map[string]bool{"ok": true})
 }
 
 func HandleHelmRepoSearch(w http.ResponseWriter, r *http.Request) {
@@ -178,8 +189,7 @@ func HandleHelmRepoSearch(w http.ResponseWriter, r *http.Request) {
 
 	mgr := helm.GetRepoManager()
 	result := mgr.Search(query, limit, offset)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	writeJSON(w, result)
 }
 
 func HandleHelmRepoVersions(w http.ResponseWriter, r *http.Request) {
@@ -196,8 +206,10 @@ func HandleHelmRepoVersions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(versions)
+	if versions == nil {
+		versions = make([]helm.ChartEntry, 0)
+	}
+	writeJSON(w, versions)
 }
 
 func HandleHelmRepoValues(w http.ResponseWriter, r *http.Request) {
@@ -233,13 +245,13 @@ func HandleHelmRepoRefresh(w http.ResponseWriter, r *http.Request) {
 
 	mgr := helm.GetRepoManager()
 	err := mgr.Refresh(func(msg string) {
-		sseEvent(w, flusher, "progress", msg)
+		_ = sseEvent(w, flusher, "progress", msg)
 	})
 	if err != nil {
-		sseEvent(w, flusher, "error", err.Error())
+		_ = sseEvent(w, flusher, "error", err.Error())
 		return
 	}
-	sseEvent(w, flusher, "result", "ok")
+	_ = sseEvent(w, flusher, "result", "ok")
 }
 
 // HandleHelmRepoLatest returns the globally latest version of a chart across
@@ -266,8 +278,7 @@ func HandleHelmRepoLatest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	writeJSON(w, map[string]string{
 		"version":   version,
 		"chartName": fullName,
 	})
@@ -300,11 +311,11 @@ func HandleHelmInstall(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 
 	err = helm.InstallFromJSON(body, func(msg string) {
-		sseEvent(w, flusher, "progress", msg)
+		_ = sseEvent(w, flusher, "progress", msg)
 	})
 	if err != nil {
-		sseEvent(w, flusher, "error", err.Error())
+		_ = sseEvent(w, flusher, "error", err.Error())
 		return
 	}
-	sseEvent(w, flusher, "result", "ok")
+	_ = sseEvent(w, flusher, "result", "ok")
 }

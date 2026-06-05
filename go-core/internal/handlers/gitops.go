@@ -71,6 +71,18 @@ var gitopsKindGVR = map[string]schema.GroupVersionResource{
 	"AppProject":     {Group: "argoproj.io", Version: "v1alpha1", Resource: "appprojects"},
 }
 
+// gvrResourceToKind is the reverse of gitopsKindGVR: maps the GVR plural resource name
+// to its Kind string. Used because the k8s API server does not populate TypeMeta on
+// individual items in a dynamic list response — item.GetKind() always returns "".
+var gvrResourceToKind = map[string]string{
+	"kustomizations":  "Kustomization",
+	"helmreleases":    "HelmRelease",
+	"gitrepositories": "GitRepository",
+	"helmrepositories": "HelmRepository",
+	"applications":    "Application",
+	"appprojects":     "AppProject",
+}
+
 func HandleGitOps(w http.ResponseWriter, r *http.Request) {
 	_, cfg := store.Store.ActiveClientset()
 	if cfg == nil {
@@ -130,7 +142,7 @@ func HandleGitOps(w http.ResponseWriter, r *http.Request) {
 
 		for _, item := range list.Items {
 			gr := GitOpsResource{
-				Kind:      item.GetKind(),
+				Kind:      gvrResourceToKind[gvr.Resource],
 				Name:      item.GetName(),
 				Namespace: item.GetNamespace(),
 				Labels:    item.GetLabels(),
@@ -200,8 +212,7 @@ func HandleGitOps(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	writeJSON(w, resp)
 }
 
 // HandleGitOpsReconcile triggers an immediate reconcile for a Flux or Argo CD resource.
@@ -225,6 +236,10 @@ func HandleGitOpsReconcile(w http.ResponseWriter, r *http.Request) {
 	gvr, ok := gitopsKindGVR[kind]
 	if !ok {
 		http.Error(w, "unsupported kind: "+kind, http.StatusBadRequest)
+		return
+	}
+	if ns == "" && !clusterScopedGitOpsResources[gvr.Resource] {
+		http.Error(w, "namespace is required for namespace-scoped resources", http.StatusBadRequest)
 		return
 	}
 	_, cfg := store.Store.ActiveClientset()
@@ -297,6 +312,10 @@ func HandleGitOpsSuspend(w http.ResponseWriter, r *http.Request) {
 	gvr, ok := gitopsKindGVR[kind]
 	if !ok {
 		http.Error(w, "unsupported kind: "+kind, http.StatusBadRequest)
+		return
+	}
+	if ns == "" && !clusterScopedGitOpsResources[gvr.Resource] {
+		http.Error(w, "namespace is required for namespace-scoped resources", http.StatusBadRequest)
 		return
 	}
 	_, cfg := store.Store.ActiveClientset()

@@ -16,7 +16,7 @@ interface Props {
 }
 
 export default function HelmInstallDialog({ chartName, repoName, onClose }: Props): JSX.Element {
-  const { selectedContext } = useAppStore()
+  const selectedContext = useAppStore(s => s.selectedContext)
   const shortName = chartName.includes('/') ? chartName.split('/').slice(1).join('/') : chartName
 
   const [versions, setVersions] = useState<ChartVersion[]>([])
@@ -67,16 +67,17 @@ export default function HelmInstallDialog({ chartName, repoName, onClose }: Prop
     setProgress([])
     setError(null)
 
+    let unsubProgress: (() => void) | undefined
     try {
-      const unsubProgress = window.helm.onInstallProgress((msg: string) => {
+      unsubProgress = window.helm.onInstallProgress((msg: string) => {
         setProgress(prev => [...prev.slice(-49), msg])
       })
       await window.helm.install(chartName, selectedVersion, releaseName, namespace, values, selectedContext ?? '')
-      unsubProgress()
       setDone(true)
     } catch (err) {
       setError((err as Error).message)
     } finally {
+      unsubProgress?.()
       setInstalling(false)
     }
   }

@@ -1,9 +1,13 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '../../store'
 
 export default function KubeConfigOnboarding(): JSX.Element {
-    const { init } = useAppStore()
+    const init = useAppStore(s => s.init)
     const [loading, setLoading] = useState(false)
+    const mountedRef = useRef(true)
+    useEffect(() => {
+        return () => { mountedRef.current = false }
+    }, [])
 
     const checkTools = async () => {
         setLoading(true)
@@ -18,7 +22,7 @@ export default function KubeConfigOnboarding(): JSX.Element {
         } catch (e) {
             console.error('[checkTools] Failed:', e)
         } finally {
-            setLoading(false)
+            if (mountedRef.current) setLoading(false)
         }
     }
 

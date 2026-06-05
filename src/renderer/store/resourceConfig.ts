@@ -366,6 +366,7 @@ export const SECTION_CONFIG: Partial<Record<ResourceKind, SectionConfig>> = {
 export const sectionClearState: Record<string, any> = {
     ...Object.fromEntries(Object.values(SECTION_CONFIG).map(c => [c!.stateKey, []])),
     sectionLoadedAt: {},
+    apps: [],
 }
 
 export const kindToSection: Record<string, ResourceKind> = {

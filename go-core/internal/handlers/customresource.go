@@ -155,6 +155,10 @@ func serverGroups(cs kubernetes.Interface, ctxName string) ([]metav1.APIGroup, e
 		return nil, err
 	}
 	gvCacheMu.Lock()
+	if e, ok := groupListMap[ctxName]; ok && time.Now().Before(e.expiry) {
+		gvCacheMu.Unlock()
+		return e.groups, nil
+	}
 	groupListMap[ctxName] = groupListEntry{groups: result.Groups, expiry: time.Now().Add(groupListTTL)}
 	gvCacheMu.Unlock()
 	return result.Groups, nil
@@ -193,6 +197,10 @@ func preferredGroupVersion(cs kubernetes.Interface, group string) (string, error
 			}
 			if version != "" {
 				gvCacheMu.Lock()
+				if e, ok := gvCacheMap[cacheKey]; ok && time.Now().Before(e.expiry) {
+					gvCacheMu.Unlock()
+					return e.version, nil
+				}
 				gvCacheMap[cacheKey] = groupVersionEntry{version: version, expiry: time.Now().Add(gvTTL)}
 				gvCacheMu.Unlock()
 				return version, nil

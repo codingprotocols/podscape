@@ -5,10 +5,10 @@ package hubble
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"net/url"
 	"sync"
@@ -16,6 +16,7 @@ import (
 
 	flowpb "github.com/cilium/cilium/api/v1/flow"
 	observerpb "github.com/cilium/cilium/api/v1/observer"
+	"github.com/podscape/go-core/internal/providers"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -28,11 +29,17 @@ import (
 )
 
 const (
-	hubbleRelayNamespace = "kube-system"
-	hubbleRelayPort      = 4245
-	tunnelReadyTimeout   = 15 * time.Second
-	dialFailedTTL        = 2 * time.Minute
+	hubbleRelayPort    = 4245
+	tunnelReadyTimeout = 15 * time.Second
+	dialFailedTTL      = 2 * time.Minute
 )
+
+// errHubbleAbsent is returned by findHubbleRelayPod when the k8s API is
+// reachable but no hubble-relay pods exist under any known label selector.
+// This is the only case where we cache the failure: Hubble is genuinely absent.
+// Transient errors (API unavailable, pods starting up) must NOT use this sentinel
+// so the negative cache is never set and the next topology request retries immediately.
+var errHubbleAbsent = errors.New("hubble-relay not installed: no pods found")
 
 // Flow captures the essential routing metadata for a single observed network flow.
 type Flow struct {
@@ -64,6 +71,12 @@ type Manager struct {
 	// dialFailedTTL controls how long a cached dial failure suppresses retries.
 	// Defaults to dialFailedTTL constant; injectable via SetDialFailedTTL for tests.
 	dialFailedTTL time.Duration
+
+	// dialingCh is non-nil while a dial is in progress; closed when the dial
+	// finishes (success or failure). Concurrent GetFlows callers that arrive
+	// while a dial is in flight wait on this channel instead of launching
+	// independent tunnels.
+	dialingCh chan struct{}
 
 	// active tunnel state
 	stopCh    chan struct{}
@@ -106,7 +119,7 @@ func (m *Manager) WarmUp() {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), tunnelReadyTimeout+5*time.Second)
 		defer cancel()
-		_, _ = m.GetFlows(ctx, "", 1*time.Second)
+		_, _ = m.GetFlows(ctx, "", 0)
 	}()
 }
 
@@ -165,56 +178,54 @@ func (m *Manager) GetFlows(ctx context.Context, namespace string, window time.Du
 		m.dialFailed = false
 	}
 
-	// Slow path: establish port-forward + gRPC connection outside the lock so
-	// concurrent Reset() calls (e.g. context switch) are not blocked for up to
-	// tunnelReadyTimeout.
+	// Slow path: establish port-forward + gRPC connection outside the lock.
+	// Singleflight: if another goroutine is already dialing, wait for it to
+	// finish and retry rather than launching a second parallel tunnel.
+	if m.dialingCh != nil {
+		waitCh := m.dialingCh
+		m.mu.Unlock()
+		select {
+		case <-waitCh:
+		case <-ctx.Done():
+			return nil, nil
+		}
+		return m.GetFlows(ctx, namespace, window)
+	}
+	dialCh := make(chan struct{})
+	m.dialingCh = dialCh
+
 	cs := m.clientset
 	cfg := m.restConfig
 	gen := m.generation
 	m.mu.Unlock()
 
 	conn, stopCh, localPort, cacheable, err := dial(ctx, cs, cfg)
+
+	// Re-acquire lock to commit dial result and unblock waiters atomically.
+	m.mu.Lock()
+	m.dialingCh = nil
+	close(dialCh) // wake concurrent waiters after state is committed
+
 	if err != nil {
 		log.Printf("[hubble] dial failed: %v", err)
-		if cacheable {
-			m.mu.Lock()
-			if m.generation == gen {
-				m.dialFailed = true
-				m.dialFailedGen = gen
-				m.dialFailedAt = time.Now()
-			}
-			m.mu.Unlock()
+		if cacheable && m.generation == gen {
+			m.dialFailed = true
+			m.dialFailedGen = gen
+			m.dialFailedAt = time.Now()
 		}
+		m.mu.Unlock()
 		return nil, nil
 	}
 
-	// Store the connection under lock. Two outcomes require cleanup:
-	//   1. Reset() fired while we were dialing (generation changed).
-	//   2. Another goroutine won the concurrent-dial race (grpcConn now set).
-	// In both cases close what we just created and use what's already there.
-	m.mu.Lock()
 	if m.generation != gen {
 		m.mu.Unlock()
 		close(stopCh)
 		_ = conn.Close()
 		return nil, nil
 	}
-	if m.grpcConn != nil {
-		// Another goroutine beat us. Discard ours and use the winner's.
-		// m.generation == gen is already confirmed above, so gen is correct.
-		winner := m.grpcConn
-		m.mu.Unlock()
-		close(stopCh)
-		_ = conn.Close()
-		return m.fetchFlows(ctx, winner, namespace, window, gen)
-	}
 	m.grpcConn = conn
 	m.stopCh = stopCh
 	m.localPort = localPort
-	// Clear any stale negative-cache flag. A concurrent loser may have set
-	// dialFailed=true for this generation after we succeeded; that would
-	// permanently disable Hubble once teardown fires. A stored connection
-	// contradicts a cached failure — clear it.
 	m.dialFailed = false
 	m.dialFailedGen = 0
 	m.mu.Unlock()
@@ -312,15 +323,15 @@ func (m *Manager) fetchFlows(ctx context.Context, conn *grpc.ClientConn, namespa
 func dial(ctx context.Context, cs kubernetes.Interface, cfg *rest.Config) (conn *grpc.ClientConn, stopCh chan struct{}, localPort int, cacheable bool, err error) {
 	podName, podErr := findHubbleRelayPod(ctx, cs)
 	if podErr != nil {
-		return nil, nil, 0, true, fmt.Errorf("hubble-relay pod not found: %w", podErr)
+		// Cache only when Hubble is definitively absent (errHubbleAbsent): API
+		// reachable, no pods found under any selector. All other failures are
+		// transient (pods starting up, API error, context cancellation) and must
+		// not be cached so the next topology request retries immediately.
+		cacheable = errors.Is(podErr, errHubbleAbsent)
+		return nil, nil, 0, cacheable, fmt.Errorf("hubble-relay pod not found: %w", podErr)
 	}
 
-	localPort, err = freeLocalPort()
-	if err != nil {
-		return nil, nil, 0, false, fmt.Errorf("no free local port: %w", err)
-	}
-
-	stopCh, err = startPortForward(ctx, cfg, podName, localPort)
+	stopCh, localPort, err = startPortForward(ctx, cfg, podName)
 	if err != nil {
 		return nil, nil, 0, false, fmt.Errorf("port-forward failed: %w", err)
 	}
@@ -336,22 +347,24 @@ func dial(ctx context.Context, cs kubernetes.Interface, cfg *rest.Config) (conn 
 }
 
 // startPortForward creates a SPDY port-forward tunnel to the given pod
-// and waits up to tunnelReadyTimeout for it to be ready.
-func startPortForward(ctx context.Context, cfg *rest.Config, podName string, localPort int) (chan struct{}, error) {
+// and waits up to tunnelReadyTimeout for it to be ready. It uses port 0 so the
+// OS picks a free ephemeral port, eliminating the TOCTOU window that exists
+// when a port is probed and then passed to portforward.New.
+func startPortForward(ctx context.Context, cfg *rest.Config, podName string) (chan struct{}, int, error) {
 	rawURL := fmt.Sprintf("%s/api/v1/namespaces/%s/pods/%s/portforward",
-		cfg.Host, hubbleRelayNamespace, podName)
+		cfg.Host, providers.HubbleRelayNamespace, podName)
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	transport, upgrader, err := spdy.RoundTripperFor(cfg)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	dialer := spdy.NewDialer(upgrader, &http.Client{Transport: transport, Timeout: tunnelReadyTimeout + 5*time.Second}, http.MethodPost, u)
-	ports := []string{fmt.Sprintf("%d:%d", localPort, hubbleRelayPort)}
+	ports := []string{fmt.Sprintf("0:%d", hubbleRelayPort)}
 
 	stopCh := make(chan struct{})
 	readyCh := make(chan struct{})
@@ -360,7 +373,7 @@ func startPortForward(ctx context.Context, cfg *rest.Config, podName string, loc
 	pf, err := portforward.New(dialer, ports, stopCh, readyCh, io.Discard, io.Discard)
 	if err != nil {
 		close(stopCh)
-		return nil, err
+		return nil, 0, err
 	}
 
 	go func() {
@@ -377,28 +390,50 @@ func startPortForward(ctx context.Context, cfg *rest.Config, podName string, loc
 		}
 	}()
 
+	timer := time.NewTimer(tunnelReadyTimeout)
+	defer timer.Stop()
+
 	select {
 	case <-readyCh:
-		return stopCh, nil
 	case err := <-errCh:
 		close(stopCh)
-		return nil, err
-	case <-time.After(tunnelReadyTimeout):
+		return nil, 0, err
+	case <-timer.C:
 		close(stopCh)
-		return nil, fmt.Errorf("hubble port-forward did not become ready within %s", tunnelReadyTimeout)
+		return nil, 0, fmt.Errorf("hubble port-forward did not become ready within %s", tunnelReadyTimeout)
 	case <-ctx.Done():
 		close(stopCh)
-		return nil, ctx.Err()
+		return nil, 0, ctx.Err()
 	}
+
+	// Retrieve the actual OS-assigned local port after the tunnel is ready.
+	fwPorts, err := pf.GetPorts()
+	if err != nil {
+		close(stopCh)
+		return nil, 0, fmt.Errorf("failed to get bound port: %w", err)
+	}
+	if len(fwPorts) == 0 {
+		close(stopCh)
+		return nil, 0, fmt.Errorf("port-forward ready but GetPorts returned no entries")
+	}
+	return stopCh, int(fwPorts[0].Local), nil
 }
 
 // findHubbleRelayPod returns the name of a Running hubble-relay pod in kube-system.
-// It tries the label selector "k8s-app=hubble-relay" first, falling back to
-// "app=hubble-relay".
+// It tries "k8s-app=<service>" first, then "app=<service>".
+//
+// Error semantics (used by dial() to set the cacheable flag):
+//   - errHubbleAbsent: API reachable, zero pods matched — Hubble not installed (cacheable).
+//   - plain fmt.Errorf (no %w): pods exist but none Running yet (startup) — not cacheable.
+//   - error wrapping lastErr: k8s API call failed — not cacheable.
 func findHubbleRelayPod(ctx context.Context, cs kubernetes.Interface) (string, error) {
 	var lastErr error
-	for _, selector := range []string{"k8s-app=hubble-relay", "app=hubble-relay"} {
-		pods, err := cs.CoreV1().Pods(hubbleRelayNamespace).List(ctx, metav1.ListOptions{
+	foundAny := false
+	for _, selector := range []string{
+		"k8s-app=" + providers.HubbleRelayService,
+		"app=" + providers.HubbleRelayService,
+	} {
+		pods, err := cs.CoreV1().Pods(providers.HubbleRelayNamespace).List(ctx, metav1.ListOptions{
 			LabelSelector: selector,
 		})
 		if err != nil {
@@ -409,12 +444,20 @@ func findHubbleRelayPod(ctx context.Context, cs kubernetes.Interface) (string, e
 			if pods.Items[i].Status.Phase == corev1.PodRunning {
 				return pods.Items[i].Name, nil
 			}
+			foundAny = true
 		}
 	}
 	if lastErr != nil {
-		return "", fmt.Errorf("no running hubble-relay pod found in %s: %w", hubbleRelayNamespace, lastErr)
+		// k8s API error — transient, do not cache.
+		return "", fmt.Errorf("no running hubble-relay pod found in %s: %w", providers.HubbleRelayNamespace, lastErr)
 	}
-	return "", fmt.Errorf("no running hubble-relay pod found in %s", hubbleRelayNamespace)
+	if foundAny {
+		// Pods exist but none Running yet (ContainerCreating / CrashLoopBackOff).
+		// Hubble is being started — do not cache so the next request retries.
+		return "", fmt.Errorf("hubble-relay pods found in %s but none are Running", providers.HubbleRelayNamespace)
+	}
+	// No pods found and no API error: Hubble is genuinely not installed.
+	return "", errHubbleAbsent
 }
 
 // teardownLocked closes the gRPC connection and stops the port-forward.
@@ -429,17 +472,12 @@ func (m *Manager) teardownLocked() {
 		m.stopCh = nil
 	}
 	m.localPort = 0
-}
-
-// freeLocalPort picks an available port on localhost by briefly listening on :0.
-func freeLocalPort() (int, error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	port := ln.Addr().(*net.TCPAddr).Port
-	_ = ln.Close()
-	return port, nil
+	// Clear the negative-cache flag so the next GetFlows call attempts a fresh
+	// dial. Without this, a stale dialFailed=true (set by a concurrent-dial loser
+	// after the winner already cleared it) survives teardown and causes a 2-minute
+	// blackout even though Hubble is fully operational.
+	m.dialFailed = false
+	m.dialFailedGen = 0
 }
 
 // verdictString converts a Cilium flow Verdict to its canonical string name.

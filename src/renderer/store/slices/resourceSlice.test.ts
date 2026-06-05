@@ -24,6 +24,8 @@ describe('resourceSlice', () => {
             services: [], configmaps: [], hpas: [],
             // Section TTL cache
             sectionLoadedAt: {},
+            // RBAC denied sections (used by loadSection to clear stale denials)
+            deniedSections: new Set<string>(),
         }
         set = vi.fn((update: any) => {
             if (typeof update === 'function') {
@@ -206,7 +208,7 @@ describe('resourceSlice', () => {
         // sectionClearState must not have extra keys beyond SECTION_CONFIG stateKeys,
         // except for known additional store-state fields that are intentionally reset
         // on context switch (e.g. sectionLoadedAt — the per-section TTL cache).
-        const ALLOWED_EXTRA_KEYS = ['sectionLoadedAt']
+        const ALLOWED_EXTRA_KEYS = ['sectionLoadedAt', 'apps']
         const stateKeys = configKeys.map(k => SECTION_CONFIG[k as keyof typeof SECTION_CONFIG]!.stateKey)
         for (const key of clearKeys) {
             if (!stateKeys.includes(key) && !ALLOWED_EXTRA_KEYS.includes(key)) {

@@ -38,10 +38,18 @@ export async function sidecarFetch(path: string, options?: RequestInit) {
         errCode === 'ECONNREFUSED' ||
         errMsg.includes('ECONNREFUSED')
 
+      // Non-idempotent requests (POST/PUT/PATCH) must not be retried on a
+      // socket reset: the server may have already processed the request and
+      // closed the keep-alive connection after sending its response.
+      const isNonIdempotent = ['POST', 'PUT', 'PATCH'].includes(
+        (options?.method ?? 'GET').toUpperCase()
+      )
       const isSocketReset =
-        errCode === 'UND_ERR_SOCKET' ||
-        errMsg.includes('other side closed') ||
-        errMsg.includes('socket hang up')
+        !isNonIdempotent && (
+          errCode === 'UND_ERR_SOCKET' ||
+          errMsg.includes('other side closed') ||
+          errMsg.includes('socket hang up')
+        )
 
       if (!isStartupError && !isSocketReset) {
         console.error(`[API] Non-retriable error for ${url}:`, err)

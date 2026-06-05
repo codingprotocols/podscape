@@ -1,18 +1,21 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/gorilla/websocket"
 	"github.com/podscape/go-core/internal/graph"
@@ -54,16 +57,81 @@ func HandleLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stream, err := logs.StreamLogs(cs, r.Context(), namespace, pod, container, tail, true, false)
+	// After the WebSocket upgrade gorilla hijacks the TCP connection, removing it
+	// from net/http's tracking. r.Context() is therefore never cancelled when the
+	// client disconnects, so we derive our own cancellable context and cancel it
+	// from a read-pump goroutine that detects the WebSocket close frame.
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	previous := r.URL.Query().Get("previous") == "true"
+	rawStream, err := logs.StreamLogs(cs, ctx, namespace, pod, container, tail, true, previous)
 	if err != nil {
 		log.Printf("[HandleLogs] Failed to start log stream for %s/%s: %v", namespace, pod, err)
 		conn.WriteMessage(websocket.TextMessage, []byte("Error: "+err.Error()))
 		return
 	}
+	// Wrap in a once-closer so the read-pump and CopyStream's defer can both
+	// call Close safely; only the first call closes the underlying stream.
+	stream := logs.NewOnceCloser(rawStream)
+
+	// writeMu serialises all conn.WriteMessage calls: gorilla/websocket requires
+	// that at most one goroutine calls write methods concurrently.
+	var writeMu sync.Mutex
+
+	// Start read-pump after the stream is open so it can force-close the stream
+	// on client disconnect. cancel() alone isn't sufficient: bufio.Reader.ReadBytes
+	// does not poll ctx.Done(), so if the k8s HTTP transport is slow to abort the
+	// chunked-transfer connection, CopyStream blocks until the OS TCP timeout.
+	// stream.Close() guarantees ReadBytes unblocks immediately.
+	//
+	// The client (Node.js ws) sends no data frames back, so we drive keepalive
+	// from the server: a ping is sent every 45 s and the pong handler resets a
+	// 60 s read deadline. Only truly dead connections (no pong for 60 s) cancel
+	// the stream; a silent-but-alive pod no longer causes a spurious termination.
+	pingDone := make(chan struct{})
+	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	})
+	go func() {
+		ticker := time.NewTicker(45 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				// WriteControl has its own internal lock and is safe for concurrent
+			// use with WriteMessage — no need to hold writeMu here. Doing so
+			// would block log writes for up to the 10-second deadline on dying
+			// connections.
+			werr := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(10*time.Second))
+				if werr != nil {
+					cancel()
+					stream.Close()
+					return
+				}
+			case <-pingDone:
+				return
+			}
+		}
+	}()
+	go func() {
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				cancel()
+				stream.Close()
+				return
+			}
+		}
+	}()
 
 	err = logs.CopyStream(stream, func(line []byte) error {
+		writeMu.Lock()
+		defer writeMu.Unlock()
 		return conn.WriteMessage(websocket.TextMessage, line)
 	})
+	close(pingDone)
+	conn.Close()
 
 	if err != nil {
 		log.Printf("[HandleLogs] Log streaming ended with error for %s/%s: %v", namespace, pod, err)
@@ -227,7 +295,8 @@ func HandlePortForwardAlive(w http.ResponseWriter, r *http.Request) {
 type snapshotCache struct {
 	pods            map[string]interface{}
 	services        map[string]interface{}
-	workloads       map[string]interface{} // merged: Deployments > ReplicaSets > DaemonSets > StatefulSets > Jobs > CronJobs
+	workloads       map[string]interface{} // merged by name: Deployments > ReplicaSets > DaemonSets > StatefulSets > Jobs > CronJobs
+	workloadsByUID  map[string]interface{} // indexed by UID — no name collision; used by OwnerDiscoverer
 	ingresses       map[string]interface{}
 	pvcs            map[string]interface{}
 	nodes           map[string]interface{}
@@ -262,6 +331,11 @@ func (s *snapshotCache) GetRawObject(kind graph.NodeKind, namespace, name string
 	return nil, false
 }
 
+func (s *snapshotCache) GetRawObjectByUID(uid string) (interface{}, bool) {
+	v, ok := s.workloadsByUID[uid]
+	return v, ok
+}
+
 func HandleTopology(w http.ResponseWriter, r *http.Request) {
 	ns := r.URL.Query().Get("namespace")
 
@@ -278,15 +352,47 @@ func HandleTopology(w http.ResponseWriter, r *http.Request) {
 	// Each nodeSource pairs a cache map with a builder that casts, filters by
 	// namespace, and returns the graph.Node. To add a new resource to the topology
 	// add one entry here — no other code needs to change.
+	// Copy all resource maps under a short-held read-lock, then release it.
+	// All topology construction (node building, snap assembly) happens after
+	// the unlock so informer write-callbacks (which need ac.Lock()) are never
+	// starved by map iteration on large clusters.
 	ac.RLock()
+	allowedResources := ac.AllowedResources
+	cpMap := func(src map[string]interface{}) map[string]interface{} {
+		dst := make(map[string]interface{}, len(src))
+		for k, v := range src {
+			dst[k] = v
+		}
+		return dst
+	}
+	localPods         := cpMap(ac.Pods)
+	localServices     := cpMap(ac.Services)
+	localDeployments  := cpMap(ac.Deployments)
+	localReplicaSets  := cpMap(ac.ReplicaSets)
+	localDaemonSets   := cpMap(ac.DaemonSets)
+	localStatefulSets := cpMap(ac.StatefulSets)
+	localJobs         := cpMap(ac.Jobs)
+	localCronJobs     := cpMap(ac.CronJobs)
+	localIngresses    := cpMap(ac.Ingresses)
+	localPVCs         := cpMap(ac.PVCs)
+	localNodes        := cpMap(ac.Nodes)
+	localNPs          := cpMap(ac.NetworkPolicies)
+	ac.RUnlock()
 
+	// 1. Convert cache entries to initial graph nodes via a type registry.
+	// Each nodeSource pairs a cache map with a builder that casts, filters by
+	// namespace, and returns the graph.Node. To add a new resource to the topology
+	// add one entry here — no other code needs to change.
 	type nodeSource struct {
-		cacheMap map[string]interface{}
-		build    func(obj interface{}) (graph.Node, bool)
+		// resourceName is the k8s plural name used as the AllowedResources key.
+		// An empty string means cluster-scoped or always-included (e.g. nodes).
+		resourceName string
+		cacheMap     map[string]interface{}
+		build        func(obj interface{}) (graph.Node, bool)
 	}
 
 	sources := []nodeSource{
-		{ac.Pods, func(obj interface{}) (graph.Node, bool) {
+		{"pods", localPods, func(obj interface{}) (graph.Node, bool) {
 			p := obj.(*corev1.Pod)
 			if ns != "" && p.Namespace != ns {
 				return graph.Node{}, false
@@ -304,7 +410,7 @@ func HandleTopology(w http.ResponseWriter, r *http.Request) {
 				UID: string(p.UID), Phase: string(p.Status.Phase), OwnerUID: ownerUID,
 			}, true
 		}},
-		{ac.Services, func(obj interface{}) (graph.Node, bool) {
+		{"services", localServices, func(obj interface{}) (graph.Node, bool) {
 			s := obj.(*corev1.Service)
 			if ns != "" && s.Namespace != ns {
 				return graph.Node{}, false
@@ -320,7 +426,7 @@ func HandleTopology(w http.ResponseWriter, r *http.Request) {
 			n.ID = n.ComputeID()
 			return n, true
 		}},
-		{ac.Deployments, func(obj interface{}) (graph.Node, bool) {
+		{"deployments", localDeployments, func(obj interface{}) (graph.Node, bool) {
 			d := obj.(*appsv1.Deployment)
 			if ns != "" && d.Namespace != ns {
 				return graph.Node{}, false
@@ -332,7 +438,7 @@ func HandleTopology(w http.ResponseWriter, r *http.Request) {
 			n.ID = n.ComputeID()
 			return n, true
 		}},
-		{ac.ReplicaSets, func(obj interface{}) (graph.Node, bool) {
+		{"replicasets", localReplicaSets, func(obj interface{}) (graph.Node, bool) {
 			rs := obj.(*appsv1.ReplicaSet)
 			if ns != "" && rs.Namespace != ns {
 				return graph.Node{}, false
@@ -351,7 +457,7 @@ func HandleTopology(w http.ResponseWriter, r *http.Request) {
 			n.ID = n.ComputeID()
 			return n, true
 		}},
-		{ac.DaemonSets, func(obj interface{}) (graph.Node, bool) {
+		{"daemonsets", localDaemonSets, func(obj interface{}) (graph.Node, bool) {
 			ds := obj.(*appsv1.DaemonSet)
 			if ns != "" && ds.Namespace != ns {
 				return graph.Node{}, false
@@ -363,7 +469,7 @@ func HandleTopology(w http.ResponseWriter, r *http.Request) {
 			n.ID = n.ComputeID()
 			return n, true
 		}},
-		{ac.StatefulSets, func(obj interface{}) (graph.Node, bool) {
+		{"statefulsets", localStatefulSets, func(obj interface{}) (graph.Node, bool) {
 			ss := obj.(*appsv1.StatefulSet)
 			if ns != "" && ss.Namespace != ns {
 				return graph.Node{}, false
@@ -375,7 +481,7 @@ func HandleTopology(w http.ResponseWriter, r *http.Request) {
 			n.ID = n.ComputeID()
 			return n, true
 		}},
-		{ac.Jobs, func(obj interface{}) (graph.Node, bool) {
+		{"jobs", localJobs, func(obj interface{}) (graph.Node, bool) {
 			j := obj.(*batchv1.Job)
 			if ns != "" && j.Namespace != ns {
 				return graph.Node{}, false
@@ -387,7 +493,7 @@ func HandleTopology(w http.ResponseWriter, r *http.Request) {
 			n.ID = n.ComputeID()
 			return n, true
 		}},
-		{ac.CronJobs, func(obj interface{}) (graph.Node, bool) {
+		{"cronjobs", localCronJobs, func(obj interface{}) (graph.Node, bool) {
 			cj := obj.(*batchv1.CronJob)
 			if ns != "" && cj.Namespace != ns {
 				return graph.Node{}, false
@@ -399,7 +505,7 @@ func HandleTopology(w http.ResponseWriter, r *http.Request) {
 			n.ID = n.ComputeID()
 			return n, true
 		}},
-		{ac.Ingresses, func(obj interface{}) (graph.Node, bool) {
+		{"ingresses", localIngresses, func(obj interface{}) (graph.Node, bool) {
 			ing := obj.(*networkingv1.Ingress)
 			if ns != "" && ing.Namespace != ns {
 				return graph.Node{}, false
@@ -409,7 +515,7 @@ func HandleTopology(w http.ResponseWriter, r *http.Request) {
 				Kind: graph.KindIngress, Name: ing.Name, Namespace: ing.Namespace,
 			}, true
 		}},
-		{ac.PVCs, func(obj interface{}) (graph.Node, bool) {
+		{"persistentvolumeclaims", localPVCs, func(obj interface{}) (graph.Node, bool) {
 			pvc := obj.(*corev1.PersistentVolumeClaim)
 			if ns != "" && pvc.Namespace != ns {
 				return graph.Node{}, false
@@ -421,7 +527,7 @@ func HandleTopology(w http.ResponseWriter, r *http.Request) {
 			n.ID = n.ComputeID()
 			return n, true
 		}},
-		{ac.Nodes, func(obj interface{}) (graph.Node, bool) {
+		{"nodes", localNodes, func(obj interface{}) (graph.Node, bool) {
 			// Cluster-scoped: always included regardless of ns filter.
 			node := obj.(*corev1.Node)
 			n := graph.Node{
@@ -430,7 +536,7 @@ func HandleTopology(w http.ResponseWriter, r *http.Request) {
 			n.ID = n.ComputeID()
 			return n, true
 		}},
-		{ac.NetworkPolicies, func(obj interface{}) (graph.Node, bool) {
+		{"networkpolicies", localNPs, func(obj interface{}) (graph.Node, bool) {
 			np := obj.(*networkingv1.NetworkPolicy)
 			if ns != "" && np.Namespace != ns {
 				return graph.Node{}, false
@@ -446,12 +552,17 @@ func HandleTopology(w http.ResponseWriter, r *http.Request) {
 
 	// Pre-size to avoid repeated slice growth; actual count may be less after
 	// namespace filtering, but the upper bound eliminates all reallocs.
-	totalCapacity := len(ac.Pods) + len(ac.Services) + len(ac.Deployments) +
-		len(ac.ReplicaSets) + len(ac.DaemonSets) + len(ac.StatefulSets) +
-		len(ac.Jobs) + len(ac.CronJobs) + len(ac.Ingresses) +
-		len(ac.PVCs) + len(ac.Nodes) + len(ac.NetworkPolicies)
+	totalCapacity := len(localPods) + len(localServices) + len(localDeployments) +
+		len(localReplicaSets) + len(localDaemonSets) + len(localStatefulSets) +
+		len(localJobs) + len(localCronJobs) + len(localIngresses) +
+		len(localPVCs) + len(localNodes) + len(localNPs)
 	initialNodes := make([]graph.Node, 0, totalCapacity)
 	for _, src := range sources {
+		// Skip resource kinds the RBAC probe determined are denied. When
+		// allowedResources is nil the probe has not run yet — stay permissive.
+		if allowedResources != nil && src.resourceName != "" && !allowedResources[src.resourceName] {
+			continue
+		}
 		for _, obj := range src.cacheMap {
 			if n, ok := src.build(obj); ok {
 				initialNodes = append(initialNodes, n)
@@ -459,32 +570,37 @@ func HandleTopology(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Snapshot all maps the discoverers need while the read-lock is still held.
+	// Assemble the snapshot cache for discoverers from the already-copied local maps.
 	// Workloads are merged in ascending priority order so higher-priority types
 	// (Deployments) overwrite lower-priority ones on key collision.
 	snap := &snapshotCache{
-		pods:            make(map[string]interface{}, len(ac.Pods)),
-		services:        make(map[string]interface{}, len(ac.Services)),
-		workloads:       make(map[string]interface{}, len(ac.Deployments)+len(ac.ReplicaSets)+len(ac.DaemonSets)+len(ac.StatefulSets)+len(ac.Jobs)+len(ac.CronJobs)),
-		ingresses:       make(map[string]interface{}, len(ac.Ingresses)),
-		pvcs:            make(map[string]interface{}, len(ac.PVCs)),
-		nodes:           make(map[string]interface{}, len(ac.Nodes)),
-		networkPolicies: make(map[string]interface{}, len(ac.NetworkPolicies)),
+		pods:            localPods,
+		services:        localServices,
+		workloads:       make(map[string]interface{}, len(localDeployments)+len(localReplicaSets)+len(localDaemonSets)+len(localStatefulSets)+len(localJobs)+len(localCronJobs)),
+		ingresses:       localIngresses,
+		pvcs:            localPVCs,
+		nodes:           localNodes,
+		networkPolicies: localNPs,
 	}
-	for k, v := range ac.Pods { snap.pods[k] = v }
-	for k, v := range ac.Services { snap.services[k] = v }
-	for k, v := range ac.CronJobs { snap.workloads[k] = v }
-	for k, v := range ac.Jobs { snap.workloads[k] = v }
-	for k, v := range ac.StatefulSets { snap.workloads[k] = v }
-	for k, v := range ac.DaemonSets { snap.workloads[k] = v }
-	for k, v := range ac.ReplicaSets { snap.workloads[k] = v }
-	for k, v := range ac.Deployments { snap.workloads[k] = v }
-	for k, v := range ac.Ingresses { snap.ingresses[k] = v }
-	for k, v := range ac.PVCs { snap.pvcs[k] = v }
-	for k, v := range ac.Nodes { snap.nodes[k] = v }
-	for k, v := range ac.NetworkPolicies { snap.networkPolicies[k] = v }
+	for k, v := range localCronJobs     { snap.workloads[k] = v }
+	for k, v := range localJobs         { snap.workloads[k] = v }
+	for k, v := range localStatefulSets { snap.workloads[k] = v }
+	for k, v := range localDaemonSets   { snap.workloads[k] = v }
+	for k, v := range localReplicaSets  { snap.workloads[k] = v }
+	for k, v := range localDeployments  { snap.workloads[k] = v }
 
-	ac.RUnlock()
+	// Build a UID-indexed workload map so OwnerDiscoverer can look up the exact
+	// object for a given node even when two workload types share a namespace/name.
+	snap.workloadsByUID = make(map[string]interface{}, len(snap.workloads))
+	for _, m := range []map[string]interface{}{
+		localCronJobs, localJobs, localStatefulSets, localDaemonSets, localReplicaSets, localDeployments,
+	} {
+		for _, obj := range m {
+			if meta, ok := obj.(metav1.Object); ok {
+				snap.workloadsByUID[string(meta.GetUID())] = obj
+			}
+		}
+	}
 
 	// Sort by ID so map-iteration non-determinism doesn't reorder nodes between
 	// requests. A stable order prevents the force-directed layout from jumping
@@ -504,15 +620,24 @@ func HandleTopology(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	builder := graph.NewGraphBuilder(snap)
-	builder.AddDiscoverer(hubble.NewDiscoverer(hubble.DefaultManager, time.Duration(flowWindowSecs)*time.Second))
-	g := builder.Build(initialNodes)
+	builder.AddDiscoverer(hubble.NewDiscoverer(hubble.DefaultManager, time.Duration(flowWindowSecs)*time.Second, ns))
+	g := builder.Build(r.Context(), initialNodes)
 
+	buf, err := json.Marshal(g)
+	if err != nil {
+		http.Error(w, "failed to serialize topology: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(g)
+	w.Write(buf)
 }
 
 // sseEvent writes a single SSE event and flushes.
-func sseEvent(w http.ResponseWriter, f http.Flusher, eventType, data string) {
-	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, data)
+func sseEvent(w http.ResponseWriter, f http.Flusher, eventType, data string) error {
+	_, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, data)
+	if err != nil {
+		return err
+	}
 	f.Flush()
+	return nil
 }

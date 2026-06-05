@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sort"
@@ -37,14 +38,14 @@ func (b *GraphBuilder) AddDiscoverer(d Discoverer) {
 }
 
 // Build constructs the full graph from the provided set of starting nodes.
-func (b *GraphBuilder) Build(initialNodes []Node) *Graph {
+func (b *GraphBuilder) Build(ctx context.Context, initialNodes []Node) *Graph {
 	b.mu.Lock()
 	discoverers := make([]Discoverer, len(b.discoverers))
 	copy(discoverers, b.discoverers)
 	b.mu.Unlock()
 
 	graph := &Graph{
-		Nodes:      initialNodes,
+		Nodes:      append(make([]Node, 0), initialNodes...),
 		Edges:      []Edge{},
 		Namespaces: []string{},
 	}
@@ -63,7 +64,7 @@ func (b *GraphBuilder) Build(initialNodes []Node) *Graph {
 	// Run all registered discoverers
 	for _, d := range discoverers {
 		log.Printf("[GraphBuilder] Running %s...", d.Name())
-		newEdges := d.Discover(graph.Nodes, b.cache)
+		newEdges := d.Discover(ctx, graph.Nodes, b.cache)
 		
 		for _, e := range newEdges {
 			if !edgeMap[e.ID] {
@@ -81,8 +82,8 @@ func (b *GraphBuilder) Build(initialNodes []Node) *Graph {
 func (b *GraphBuilder) collapseResources(graph *Graph) {
 	groups := make(map[string][]int) // key -> indices in graph.Nodes
 	for i, n := range graph.Nodes {
-		if (n.Kind == KindPod || n.WorkloadKind == "ReplicaSet") && n.OwnerUID != "" {
-			key := fmt.Sprintf("%s:%s:%s", n.Kind, n.Namespace, n.OwnerUID)
+		if n.Kind == KindPod && n.OwnerUID != "" {
+			key := fmt.Sprintf("pod:%s:%s", n.Namespace, n.OwnerUID)
 			groups[key] = append(groups[key], i)
 		}
 	}
@@ -113,7 +114,7 @@ func (b *GraphBuilder) collapseResources(graph *Graph) {
 
 		// Create collapsed node
 		base := graph.Nodes[indices[0]]
-		collapsedID := fmt.Sprintf("collapsed:%s:%s", base.Kind, base.OwnerUID)
+		collapsedID := fmt.Sprintf("collapsed:%s:%s:%s", base.Kind, base.Namespace, base.OwnerUID)
 		
 		names := make([]string, 0, len(indices))
 		for _, idx := range indices {
@@ -169,12 +170,12 @@ func (b *GraphBuilder) collapseResources(graph *Graph) {
 }
 
 // BuildFiltered constructs a graph focused on a specific namespace.
-func (b *GraphBuilder) BuildFiltered(nodes []Node, ns string) *Graph {
+func (b *GraphBuilder) BuildFiltered(ctx context.Context, nodes []Node, ns string) *Graph {
 	filteredNodes := make([]Node, 0)
 	for _, n := range nodes {
 		if ns == "" || n.Namespace == ns || n.Namespace == "" {
 			filteredNodes = append(filteredNodes, n)
 		}
 	}
-	return b.Build(filteredNodes)
+	return b.Build(ctx, filteredNodes)
 }

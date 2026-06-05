@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, WebContents } from 'electron'
 import WebSocket from 'ws'
 import { activeSidecarPort } from '../sidecar/runtime'
 import { sidecarToken } from '../sidecar/auth'
@@ -6,8 +6,11 @@ import { SIDECAR_HOST } from '../../common/constants'
 
 const activeStreams = new Map<string, any>()
 
-export function cancelAllExecStreams(): void {
+export function cancelAllExecStreams(sender?: WebContents): void {
   for (const [id, ws] of activeStreams) {
+    // Notify the renderer before removing listeners so the "Session ended"
+    // banner appears instead of the terminal going silently dark.
+    if (sender && !sender.isDestroyed()) sender.send('exec:exit', id)
     ws.removeAllListeners()
     activeStreams.delete(id)
     try { ws.close() } catch {}

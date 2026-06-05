@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import type { HelmRelease } from '../../types'
 import { formatAge } from '../../types'
 import HelmRepoBrowser from './HelmRepoBrowser'
@@ -13,7 +14,11 @@ import HelmReleaseDetail from '../resource-details/cluster/HelmReleaseDetail'
 // ─── Main HelmPanel ───────────────────────────────────────────────────────────
 
 export default function HelmPanel(): JSX.Element {
-  const { selectedContext, helmInstallHint, setHelmInstallHint } = useAppStore()
+  const { selectedContext, helmInstallHint, setHelmInstallHint } = useAppStore(useShallow(s => ({
+    selectedContext: s.selectedContext,
+    helmInstallHint: s.helmInstallHint,
+    setHelmInstallHint: s.setHelmInstallHint,
+  })))
   const [activeTab, setActiveTab] = useState<'releases' | 'browser'>('releases')
   const [releases, setReleases] = useState<HelmRelease[]>([])
   const [loading, setLoading] = useState(false)
@@ -22,6 +27,7 @@ export default function HelmPanel(): JSX.Element {
   const [filter, setFilter] = useState('')
   const [uninstallTarget, setUninstallTarget] = useState<HelmRelease | null>(null)
   const [uninstalling, setUninstalling] = useState(false)
+  const loadIdRef = useRef(0)
   const { width: detailWidth, onMouseDown: handleResizeMouseDown } = useDragResize(
     Math.round(window.innerWidth / 2),
     300,
@@ -44,15 +50,19 @@ export default function HelmPanel(): JSX.Element {
 
   const load = useCallback(async () => {
     if (!selectedContext) return
+    const ctx = selectedContext
+    const myId = ++loadIdRef.current
     setLoading(true)
     setError(null)
     try {
-      const raw = await window.helm.list(selectedContext)
+      const raw = await window.helm.list(ctx)
+      if (myId !== loadIdRef.current || useAppStore.getState().selectedContext !== ctx) return
       setReleases(raw as HelmRelease[])
     } catch (e) {
+      if (myId !== loadIdRef.current || useAppStore.getState().selectedContext !== ctx) return
       setError(e instanceof Error ? e.message : 'Failed to list Helm releases')
     } finally {
-      setLoading(false)
+      if (myId === loadIdRef.current) setLoading(false)
     }
   }, [selectedContext])
 
@@ -67,17 +77,20 @@ export default function HelmPanel(): JSX.Element {
         setSelected(found)
       }
     }
-  }, [releases])
+  }, [releases, selected])
 
   const handleUninstall = async (r: HelmRelease) => {
     if (!r || !selectedContext) return
+    const snapshotCtx = selectedContext
     setUninstalling(true)
     try {
-      await window.helm.uninstall(selectedContext, r.namespace, r.name)
+      await window.helm.uninstall(snapshotCtx, r.namespace, r.name)
+      if (useAppStore.getState().selectedContext !== snapshotCtx) return
       if (selected?.name === r.name) setSelected(null)
       setUninstallTarget(null)
       await load()
     } catch (e) {
+      if (useAppStore.getState().selectedContext !== snapshotCtx) return
       setError(e instanceof Error ? e.message : 'Uninstall failed')
       setUninstallTarget(null)
     } finally {

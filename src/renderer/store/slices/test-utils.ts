@@ -94,6 +94,9 @@ export const setupMocks = () => {
             streamLogs: vi.fn().mockResolvedValue('stream-1'),
             stopLogs: vi.fn().mockResolvedValue(undefined),
         },
+        exec: {
+            kill: vi.fn().mockResolvedValue(undefined),
+        },
         settings: {
             get: vi.fn().mockResolvedValue({ shellPath: '', theme: 'dark', kubeconfigPath: '', prodContexts: [], prometheusUrls: {} }),
             set: vi.fn().mockResolvedValue(undefined),

@@ -21,23 +21,28 @@ export function useResourceEvents(
 ): { events: KubeEvent[]; loading: boolean } {
   const [events, setEvents] = useState<KubeEvent[]>([])
   const [loading, setLoading] = useState(true)
-  const isMounted = useRef(true)
 
-  const kindSet = Array.isArray(kinds) ? kinds : [kinds]
+  const kindsKey = Array.isArray(kinds) ? kinds.join(',') : kinds
 
   useEffect(() => {
-    isMounted.current = true
+    const kindSet = kindsKey.split(',')
     if (!ctx || !name) {
       setLoading(false)
       return
     }
+    // Local variable — each effect run gets its own `mounted`. Cleanup sets
+    // it to false only for this run's closure, so in-flight promises from a
+    // previous run cannot write stale data after deps change.
+    let mounted = true
+
+    const isFirstFetch = { current: true }
 
     const fetchEvents = () => {
-      setLoading(true)
+      if (isFirstFetch.current) setLoading(true)
       window.kubectl
         .getEvents(ctx, namespace ?? null)
         .then((all: KubeEvent[]) => {
-          if (!isMounted.current) return
+          if (!mounted) return
           const filtered = all
             .filter(e => e.involvedObject.name === name && kindSet.includes(e.involvedObject.kind))
             .sort((a, b) => {
@@ -48,20 +53,23 @@ export function useResourceEvents(
             .slice(0, 15)
           setEvents(filtered)
         })
-        .catch(() => { if (isMounted.current) setEvents([]) })
-        .finally(() => { if (isMounted.current) setLoading(false) })
+        .catch(() => { if (mounted) setEvents([]) })
+        .finally(() => {
+          isFirstFetch.current = false
+          if (mounted) setLoading(false)
+        })
     }
 
     fetchEvents()
 
-    if (!pollInterval) return () => { isMounted.current = false }
+    if (!pollInterval) return () => { mounted = false }
 
     const interval = setInterval(fetchEvents, pollInterval)
     return () => {
-      isMounted.current = false
+      mounted = false
       clearInterval(interval)
     }
-  }, [ctx, name, namespace, pollInterval])
+  }, [ctx, name, namespace, pollInterval, kindsKey])
 
   return { events, loading }
 }

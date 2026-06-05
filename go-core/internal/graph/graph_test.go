@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -18,6 +19,12 @@ type mockCache struct {
 
 func (m *mockCache) GetRawObject(kind NodeKind, namespace, name string) (interface{}, bool) {
 	key := fmt.Sprintf("%s:%s:%s", kind, namespace, name)
+	obj, ok := m.objects[key]
+	return obj, ok
+}
+
+func (m *mockCache) GetRawObjectByUID(uid string) (interface{}, bool) {
+	key := fmt.Sprintf("uid:%s", uid)
 	obj, ok := m.objects[key]
 	return obj, ok
 }
@@ -74,7 +81,7 @@ func TestGraphDiscovery(t *testing.T) {
 
 	// 3. Build Graph
 	builder := NewGraphBuilder(cache)
-	graph := builder.Build(nodes)
+	graph := builder.Build(context.Background(), nodes)
 
 	// 4. Verify Edges
 	foundSelector := false
@@ -124,9 +131,13 @@ func TestDeepOwnerChain(t *testing.T) {
 
 	cache := &mockCache{
 		objects: map[string]interface{}{
+			// Name-based lookups (other discoverers)
 			"workload:prod:web-deploy": deploy,
 			"workload:prod:web-rs":     rs,
 			"pod:prod:web-pod":         pod,
+			// UID-based lookups (OwnerDiscoverer uses these for workload nodes)
+			"uid:deploy-1": deploy,
+			"uid:rs-1":     rs,
 		},
 	}
 
@@ -139,7 +150,7 @@ func TestDeepOwnerChain(t *testing.T) {
 
 	// 3. Build Graph
 	builder := NewGraphBuilder(cache)
-	graph := builder.Build(nodes)
+	graph := builder.Build(context.Background(), nodes)
 
 	// 4. Verify Edges
 	foundDeployRS := false
@@ -210,7 +221,7 @@ func TestConnectivityDiscovery(t *testing.T) {
 	}
 
 	builder := NewGraphBuilder(mock)
-	g := builder.Build(nodes)
+	g := builder.Build(context.Background(), nodes)
 
 	// Check Pod -> Node (must use UID-based node ID)
 	foundNodeEdge := false
@@ -269,7 +280,7 @@ func TestVolumeDiscoverer_EdgeUsesUID(t *testing.T) {
 	}
 
 	builder := &GraphBuilder{cache: mock, discoverers: []Discoverer{&VolumeDiscoverer{}}}
-	g := builder.Build(nodes)
+	g := builder.Build(context.Background(), nodes)
 
 	found := false
 	for _, e := range g.Edges {
@@ -303,7 +314,7 @@ func TestNodeDiscoverer_EdgeUsesUID(t *testing.T) {
 	}
 
 	builder := &GraphBuilder{cache: mock, discoverers: []Discoverer{&NodeDiscoverer{}}}
-	g := builder.Build(nodes)
+	g := builder.Build(context.Background(), nodes)
 
 	found := false
 	for _, e := range g.Edges {
@@ -366,7 +377,7 @@ func TestResourceCollapsing(t *testing.T) {
 	}
 	cache.objects[fmt.Sprintf("%s:%s:%s", KindService, "default", "web-svc")] = svc
 
-	graph := builder.Build(initialNodes)
+	graph := builder.Build(context.Background(), initialNodes)
 
 	// Expected: 1 Service Node + 1 Collapsed Pod Node = 2 Nodes
 	if len(graph.Nodes) != 2 {
@@ -434,7 +445,7 @@ func TestNetworkPolicy(t *testing.T) {
 	}
 
 	// 2. Build Graph
-	graph := builder.Build(nodes)
+	graph := builder.Build(context.Background(), nodes)
 
 	// 3. Verify Edge
 	found := false

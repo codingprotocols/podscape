@@ -179,11 +179,17 @@ const kubectl = {
     pod: string,
     container: string | undefined,
     onChunk: (chunk: string) => void,
-    onEnd: () => void
+    onEnd: () => void,
+    onError?: (msg: string) => void
   ): Promise<string> => {
     // resolvedId is set once the IPC invoke returns the streamId so that
     // chunk and end events from other streams are filtered out.
     let resolvedId: string | null = null
+    const cleanup = (): void => {
+      ipcRenderer.off('kubectl:logChunk', chunkHandler)
+      ipcRenderer.off('kubectl:logEnd', endHandler)
+      ipcRenderer.off('kubectl:logError', errorHandler)
+    }
     const chunkHandler = (
       _e: Electron.IpcRendererEvent, id: string, chunk: string
     ): void => {
@@ -193,17 +199,23 @@ const kubectl = {
       _e: Electron.IpcRendererEvent, id: string
     ): void => {
       if (resolvedId === null || id !== resolvedId) return
-      ipcRenderer.off('kubectl:logChunk', chunkHandler)
-      ipcRenderer.off('kubectl:logEnd', endHandler)
+      cleanup()
       onEnd()
+    }
+    const errorHandler = (
+      _e: Electron.IpcRendererEvent, id: string, msg: string
+    ): void => {
+      if (resolvedId === null || id !== resolvedId) return
+      cleanup()
+      onError?.(msg)
     }
     ipcRenderer.on('kubectl:logChunk', chunkHandler)
     ipcRenderer.on('kubectl:logEnd', endHandler)
+    ipcRenderer.on('kubectl:logError', errorHandler)
     const p = ipcRenderer.invoke('kubectl:streamLogs', context, namespace, pod, container) as Promise<string>
     void p.then((id) => { resolvedId = id }).catch(() => {
       // IPC invoke failed — remove listeners so they don't accumulate.
-      ipcRenderer.off('kubectl:logChunk', chunkHandler)
-      ipcRenderer.off('kubectl:logEnd', endHandler)
+      cleanup()
     })
     return p
   },

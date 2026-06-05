@@ -23,12 +23,12 @@ func TestHubbleDiscoverer_EmitsEdgeForObservedFlow(t *testing.T) {
 	stub := &stubGetter{flows: []hubble.Flow{
 		{SrcNamespace: "default", SrcPod: "frontend-abc", DstNamespace: "default", DstPod: "backend-xyz", Verdict: "FORWARDED"},
 	}}
-	d := hubble.NewDiscoverer(stub, hubble.FlowWindow)
+	d := hubble.NewDiscoverer(stub, hubble.FlowWindow, "")
 	nodes := []graph.Node{
 		{ID: "pod:uid-frontend", Kind: graph.KindPod, Name: "frontend-abc", Namespace: "default"},
 		{ID: "pod:uid-backend", Kind: graph.KindPod, Name: "backend-xyz", Namespace: "default"},
 	}
-	edges := d.Discover(nodes, nil)
+	edges := d.Discover(context.Background(), nodes, nil)
 	require.Len(t, edges, 1)
 	assert.Equal(t, graph.EdgeHubbleFlow, edges[0].Kind)
 	assert.Equal(t, "pod:uid-frontend", edges[0].Source)
@@ -39,11 +39,11 @@ func TestHubbleDiscoverer_SkipsFlowsForUnknownNodes(t *testing.T) {
 	stub := &stubGetter{flows: []hubble.Flow{
 		{SrcNamespace: "default", SrcPod: "ghost-pod", DstNamespace: "default", DstPod: "backend-xyz", Verdict: "FORWARDED"},
 	}}
-	d := hubble.NewDiscoverer(stub, hubble.FlowWindow)
+	d := hubble.NewDiscoverer(stub, hubble.FlowWindow, "")
 	nodes := []graph.Node{
 		{ID: "pod:uid-backend", Kind: graph.KindPod, Name: "backend-xyz", Namespace: "default"},
 	}
-	edges := d.Discover(nodes, nil)
+	edges := d.Discover(context.Background(), nodes, nil)
 	assert.Empty(t, edges)
 }
 
@@ -53,12 +53,12 @@ func TestHubbleDiscoverer_DeduplicatesParallelFlows(t *testing.T) {
 		{SrcNamespace: "default", SrcPod: "frontend-abc", DstNamespace: "default", DstPod: "backend-xyz", Verdict: "FORWARDED"},
 		{SrcNamespace: "default", SrcPod: "frontend-abc", DstNamespace: "default", DstPod: "backend-xyz", Verdict: "FORWARDED"},
 	}}
-	d := hubble.NewDiscoverer(stub, hubble.FlowWindow)
+	d := hubble.NewDiscoverer(stub, hubble.FlowWindow, "")
 	nodes := []graph.Node{
 		{ID: "pod:uid-frontend", Kind: graph.KindPod, Name: "frontend-abc", Namespace: "default"},
 		{ID: "pod:uid-backend", Kind: graph.KindPod, Name: "backend-xyz", Namespace: "default"},
 	}
-	edges := d.Discover(nodes, nil)
+	edges := d.Discover(context.Background(), nodes, nil)
 	assert.Len(t, edges, 1)
 }
 
@@ -66,12 +66,12 @@ func TestHubbleDiscoverer_DroppedFlowGetsDroppedLabel(t *testing.T) {
 	stub := &stubGetter{flows: []hubble.Flow{
 		{SrcNamespace: "default", SrcPod: "frontend-abc", DstNamespace: "default", DstPod: "backend-xyz", Verdict: "DROPPED"},
 	}}
-	d := hubble.NewDiscoverer(stub, hubble.FlowWindow)
+	d := hubble.NewDiscoverer(stub, hubble.FlowWindow, "")
 	nodes := []graph.Node{
 		{ID: "pod:uid-frontend", Kind: graph.KindPod, Name: "frontend-abc", Namespace: "default"},
 		{ID: "pod:uid-backend", Kind: graph.KindPod, Name: "backend-xyz", Namespace: "default"},
 	}
-	edges := d.Discover(nodes, nil)
+	edges := d.Discover(context.Background(), nodes, nil)
 	require.Len(t, edges, 1)
 	assert.Equal(t, "dropped", edges[0].Label)
 }
@@ -80,12 +80,12 @@ func TestHubbleDiscoverer_ErrorFlowGetsDroppedLabel(t *testing.T) {
 	stub := &stubGetter{flows: []hubble.Flow{
 		{SrcNamespace: "default", SrcPod: "frontend-abc", DstNamespace: "default", DstPod: "backend-xyz", Verdict: "ERROR"},
 	}}
-	d := hubble.NewDiscoverer(stub, hubble.FlowWindow)
+	d := hubble.NewDiscoverer(stub, hubble.FlowWindow, "")
 	nodes := []graph.Node{
 		{ID: "pod:uid-frontend", Kind: graph.KindPod, Name: "frontend-abc", Namespace: "default"},
 		{ID: "pod:uid-backend", Kind: graph.KindPod, Name: "backend-xyz", Namespace: "default"},
 	}
-	edges := d.Discover(nodes, nil)
+	edges := d.Discover(context.Background(), nodes, nil)
 	require.Len(t, edges, 1)
 	assert.Equal(t, "dropped", edges[0].Label)
 }

@@ -6,6 +6,7 @@ import { RefreshButton } from '../../common'
 import YAMLViewer from '../../common/YAMLViewer'
 import { useYAMLEditor } from '../../../hooks/useYAMLEditor'
 import { useAppStore } from '../../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { canVerb } from '../../../store/slices/clusterSlice'
 
 interface Props { cronJob: KubeCronJob }
@@ -34,8 +35,11 @@ function jobDuration(job: KubeJob): string {
 
 export default function CronJobDetail({ cronJob: cj }: Props): JSX.Element {
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
-  const { selectedContext, selectedNamespace } = useAppStore()
-  const allowedVerbs = useAppStore(s => s.allowedVerbs)
+  const { selectedContext, selectedNamespace, allowedVerbs } = useAppStore(useShallow(s => ({
+    selectedContext: s.selectedContext,
+    selectedNamespace: s.selectedNamespace,
+    allowedVerbs: s.allowedVerbs,
+  })))
 
   const [recentJobs, setRecentJobs] = useState<KubeJob[]>([])
   const [jobsLoading, setJobsLoading] = useState(false)
@@ -43,17 +47,33 @@ export default function CronJobDetail({ cronJob: cj }: Props): JSX.Element {
   const [triggerState, setTriggerState] = useState<TriggerState>('idle')
   const [triggerMsg, setTriggerMsg] = useState('')
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fetchJobsIdRef = useRef(0)
 
   useEffect(() => () => {
     if (refreshTimerRef.current !== null) clearTimeout(refreshTimerRef.current)
   }, [])
 
+  // Clear any pending post-trigger refresh when context changes so the stale
+  // closure (capturing the old selectedContext) never fires against the new cluster.
+  useEffect(() => () => {
+    if (refreshTimerRef.current !== null) {
+      clearTimeout(refreshTimerRef.current)
+      refreshTimerRef.current = null
+    }
+  }, [selectedContext])
+
   const fetchRecentJobs = async () => {
     if (!selectedContext) return
+    const snapshotCtx = selectedContext
+    const snapshotNs = selectedNamespace
+    const myId = ++fetchJobsIdRef.current
     setJobsLoading(true)
     try {
-      const ns = cj.metadata.namespace ?? (selectedNamespace === '_all' ? null : selectedNamespace)
-      const all = await window.kubectl.getJobs(selectedContext, ns) as KubeJob[]
+      const ns = cj.metadata.namespace ?? (snapshotNs === '_all' ? null : snapshotNs)
+      const all = await window.kubectl.getJobs(snapshotCtx, ns) as KubeJob[]
+      if (myId !== fetchJobsIdRef.current) return
+      const { selectedContext: liveCtx, selectedNamespace: liveNs } = useAppStore.getState()
+      if (liveCtx !== snapshotCtx || liveNs !== snapshotNs) return
       const owned = all.filter(j =>
         j.metadata.ownerReferences?.some(ref => ref.kind === 'CronJob' && ref.name === cj.metadata.name)
       )
@@ -67,7 +87,7 @@ export default function CronJobDetail({ cronJob: cj }: Props): JSX.Element {
     } catch {
       // non-critical — silently fail
     } finally {
-      setJobsLoading(false)
+      if (myId === fetchJobsIdRef.current) setJobsLoading(false)
     }
   }
 
@@ -77,17 +97,20 @@ export default function CronJobDetail({ cronJob: cj }: Props): JSX.Element {
 
   const handleTrigger = async () => {
     if (!selectedContext) return
+    const ctx = selectedContext
     setTriggerState('running')
     setTriggerMsg('')
     try {
       const ns = cj.metadata.namespace ?? (selectedNamespace === '_all' ? '' : selectedNamespace) ?? ''
-      const jobName = await window.kubectl.triggerCronJob(selectedContext, ns, cj.metadata.name)
+      const jobName = await window.kubectl.triggerCronJob(ctx, ns, cj.metadata.name)
+      if (useAppStore.getState().selectedContext !== ctx) return
       setTriggerState('done')
       setTriggerMsg(`Created job: ${jobName}`)
       // Refresh recent jobs after a short delay so the new job appears
       if (refreshTimerRef.current !== null) clearTimeout(refreshTimerRef.current)
       refreshTimerRef.current = setTimeout(fetchRecentJobs, 1000)
     } catch (err) {
+      if (useAppStore.getState().selectedContext !== ctx) return
       setTriggerState('error')
       setTriggerMsg((err as Error).message)
     }

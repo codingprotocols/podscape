@@ -178,6 +178,7 @@ export interface ExecTarget {
 export interface ExecSession {
     id: string
     target: ExecTarget
+    ptyId: string | null
 }
 
 export interface AppStore extends AnalysisSlice, OperationSlice, ProvidersSlice, NavigationSlice, KrewSlice {

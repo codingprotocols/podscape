@@ -21,15 +21,16 @@ type FlowGetter interface {
 type HubbleDiscoverer struct {
 	getter     FlowGetter
 	flowWindow time.Duration
+	namespace  string // empty string fetches flows across all namespaces
 }
 
-func NewDiscoverer(getter FlowGetter, flowWindow time.Duration) *HubbleDiscoverer {
-	return &HubbleDiscoverer{getter: getter, flowWindow: flowWindow}
+func NewDiscoverer(getter FlowGetter, flowWindow time.Duration, namespace string) *HubbleDiscoverer {
+	return &HubbleDiscoverer{getter: getter, flowWindow: flowWindow, namespace: namespace}
 }
 
 func (d *HubbleDiscoverer) Name() string { return "HubbleDiscoverer" }
 
-func (d *HubbleDiscoverer) Discover(nodes []graph.Node, _ graph.ResourceCache) []graph.Edge {
+func (d *HubbleDiscoverer) Discover(_ context.Context, nodes []graph.Node, _ graph.ResourceCache) []graph.Edge {
 	if d.getter == nil {
 		return nil
 	}
@@ -45,10 +46,13 @@ func (d *HubbleDiscoverer) Discover(nodes []graph.Node, _ graph.ResourceCache) [
 		return nil
 	}
 
+	// Use context.Background() rather than parent (the HTTP request context) so
+	// that a client disconnect or navigation-away does not cancel the in-flight
+	// flow fetch and incorrectly trigger the 2-minute negative cache.
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	flows, err := d.getter.GetFlows(ctx, "", d.flowWindow)
+	flows, err := d.getter.GetFlows(ctx, d.namespace, d.flowWindow)
 	if err != nil || len(flows) == 0 {
 		return nil
 	}

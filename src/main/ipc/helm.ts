@@ -24,7 +24,10 @@ export function transformRelease(r: any) {
   }
 }
 
+let helmHandlersRegistered = false
 export function registerHelmHandlers(): void {
+  if (helmHandlersRegistered) return
+  helmHandlersRegistered = true
 
   // List all releases across namespaces
   ipcMain.handle('helm:list', async (_event, context: string) => {
@@ -119,7 +122,17 @@ export function registerHelmHandlers(): void {
           headers: { 'X-Podscape-Token': sidecarToken },
         },
         (res) => {
+          // Non-SSE error response (e.g. 500 with a plain text body): surface it
+          // rather than letting res.on('end') silently resolve as success.
+          if (res.statusCode && res.statusCode >= 400) {
+            let errBody = ''
+            res.on('data', (c: Buffer) => { errBody += c.toString() })
+            res.on('end', () => reject(new Error(`Sidecar returned ${res.statusCode}: ${errBody.trim()}`)))
+            return
+          }
           let buf = ''
+          let settled = false
+          const settle = (fn: () => void) => { if (!settled) { settled = true; fn() } }
           res.on('data', (chunk: Buffer) => {
             buf += chunk.toString()
             const parts = buf.split('\n\n')
@@ -133,18 +146,19 @@ export function registerHelmHandlers(): void {
               if (evtType === 'progress') {
                 if (!event.sender.isDestroyed()) event.sender.send('helm:refreshProgress', data)
               } else if (evtType === 'result') {
-                resolve()
+                settle(resolve)
               } else if (evtType === 'error') {
-                reject(new Error(data))
+                settle(() => reject(new Error(data)))
               }
             }
           })
-          res.on('end', () => resolve())
-          res.on('error', reject)
+          res.on('end', () => settle(resolve))
+          res.on('error', (err) => settle(() => reject(err)))
         }
       )
       req.on('error', reject)
       req.end()
+      event.sender.once('destroyed', () => req.destroy())
     })
   })
 
@@ -165,7 +179,16 @@ export function registerHelmHandlers(): void {
           },
         },
         (res) => {
+          // Non-SSE error response: surface it rather than silently resolving.
+          if (res.statusCode && res.statusCode >= 400) {
+            let errBody = ''
+            res.on('data', (c: Buffer) => { errBody += c.toString() })
+            res.on('end', () => reject(new Error(`Sidecar returned ${res.statusCode}: ${errBody.trim()}`)))
+            return
+          }
           let buf = ''
+          let settled = false
+          const settle = (fn: () => void) => { if (!settled) { settled = true; fn() } }
           res.on('data', (chunk: Buffer) => {
             buf += chunk.toString()
             const parts = buf.split('\n\n')
@@ -179,19 +202,20 @@ export function registerHelmHandlers(): void {
               if (evtType === 'progress') {
                 if (!event.sender.isDestroyed()) event.sender.send('helm:installProgress', data)
               } else if (evtType === 'result') {
-                resolve()
+                settle(resolve)
               } else if (evtType === 'error') {
-                reject(new Error(data))
+                settle(() => reject(new Error(data)))
               }
             }
           })
-          res.on('end', () => resolve())
-          res.on('error', reject)
+          res.on('end', () => settle(resolve))
+          res.on('error', (err) => settle(() => reject(err)))
         }
       )
       req.on('error', reject)
       req.write(body)
       req.end()
+      event.sender.once('destroyed', () => req.destroy())
     })
   })
 }

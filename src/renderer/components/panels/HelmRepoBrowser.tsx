@@ -78,7 +78,7 @@ export default function HelmRepoBrowser({ installHint, onHintConsumed }: Props):
     setQuery(installHint.chart)
     search(installHint.chart, 0)
     onHintConsumed?.()
-  }, [installHint])
+  }, [installHint, search, onHintConsumed])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -89,17 +89,18 @@ export default function HelmRepoBrowser({ installHint, onHintConsumed }: Props):
     if (!window.helm.repoRefresh) return
     setRefreshing(true)
     setRefreshLog([])
+    let unsubProgress: (() => void) | undefined
     try {
-      const unsubProgress = window.helm.onRefreshProgress((msg: string) => {
+      unsubProgress = window.helm.onRefreshProgress((msg: string) => {
         setRefreshLog(prev => [...prev.slice(-19), msg])
       })
       await window.helm.repoRefresh()
-      unsubProgress()
       await loadRepos()
       await search(query, 0)
     } catch (err) {
       setError((err as Error).message)
     } finally {
+      unsubProgress?.()
       setRefreshing(false)
     }
   }

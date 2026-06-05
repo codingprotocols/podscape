@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import {
   AlertTriangle, CheckCircle, Clock, X, Lock, Info, Search
 } from 'lucide-react'
@@ -310,7 +311,10 @@ function CertRow({ cert, selected, onClick }: { cert: TLSCertInfo; selected: boo
 // ── main ──────────────────────────────────────────────────────────────────────
 
 export default function TLSCertDashboard() {
-  const { selectedContext, selectedNamespace } = useAppStore()
+  const { selectedContext, selectedNamespace } = useAppStore(useShallow(s => ({
+    selectedContext: s.selectedContext,
+    selectedNamespace: s.selectedNamespace,
+  })))
   const [certs, setCerts]       = useState<TLSCertInfo[]>([])
   const [loading, setLoading]   = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -322,9 +326,13 @@ export default function TLSCertDashboard() {
     if (!selectedContext) return
     setLoading(true)
     setLoadError(null)
+    const snapshotCtx = selectedContext
+    const snapshotNs  = selectedNamespace
     try {
-      const ns = selectedNamespace === '_all' ? undefined : selectedNamespace ?? undefined
+      const ns = snapshotNs === '_all' ? undefined : snapshotNs ?? undefined
       const data = await window.kubectl.getTLSCerts(ns)
+      const { selectedContext: liveCtx, selectedNamespace: liveNs } = useAppStore.getState()
+      if (liveCtx !== snapshotCtx || liveNs !== snapshotNs) return
       setCerts([...data].sort((a, b) => {
         if (a.isExpired && !b.isExpired) return -1
         if (!a.isExpired && b.isExpired) return 1
@@ -333,10 +341,13 @@ export default function TLSCertDashboard() {
         return a.daysLeft - b.daysLeft
       }))
     } catch (err) {
+      const { selectedContext: liveCtx, selectedNamespace: liveNs } = useAppStore.getState()
+      if (liveCtx !== snapshotCtx || liveNs !== snapshotNs) return
       setCerts([])
       setLoadError((err as Error)?.message ?? 'Failed to load TLS certificates')
     } finally {
-      setLoading(false)
+      const { selectedContext: liveCtx, selectedNamespace: liveNs } = useAppStore.getState()
+      if (liveCtx === snapshotCtx && liveNs === snapshotNs) setLoading(false)
     }
   }, [selectedContext, selectedNamespace])
 

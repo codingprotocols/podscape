@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../../store'
 import type { OwnerRef } from '../../types'
 
@@ -197,26 +197,30 @@ function LoadingSkeleton() {
 // ─── main component ───────────────────────────────────────────────────────────
 
 export default function OwnerChain({ uid, kind, name, namespace }: Props): JSX.Element | null {
-  const { ownerChains, navigateToResource } = useAppStore()
+  const chain = useAppStore(s => s.ownerChains[uid])
+  const navigateToResource = useAppStore(s => s.navigateToResource)
   const [loading, setLoading]   = useState(false)
   const [collapsed, setCollapsed] = useState(false)
-  const chain = ownerChains[uid]
+  const fetchIdRef = useRef(0)
 
   useEffect(() => {
-    if (chain !== undefined || loading) return
+    if (chain !== undefined) return
     if (!window.kubectl?.getOwnerChain) return
+    const myId = ++fetchIdRef.current
     setLoading(true)
     window.kubectl.getOwnerChain(kind, name, namespace)
       .then((result: any) => {
+        if (myId !== fetchIdRef.current) return
         useAppStore.setState(s => ({ ownerChains: { ...s.ownerChains, [uid]: result } }))
       })
       .catch(() => {
+        if (myId !== fetchIdRef.current) return
         useAppStore.setState(s => ({
           ownerChains: { ...s.ownerChains, [uid]: { ancestors: [], descendants: {} } },
         }))
       })
-      .finally(() => setLoading(false))
-  }, [uid, kind, name, namespace, chain, loading])
+      .finally(() => { if (myId === fetchIdRef.current) setLoading(false) })
+  }, [uid, kind, name, namespace, chain])
 
   if (loading) return <LoadingSkeleton />
   if (!chain)  return null

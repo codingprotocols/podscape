@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { isMac } from '../../utils/platform'
 import Editor from '@monaco-editor/react'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { Save, CheckCircle, Monitor, Terminal, FileCode, Activity, Shield, RefreshCw, AlertCircle, Cpu, Copy } from 'lucide-react'
 
 interface SettingsForm {
@@ -29,7 +30,18 @@ const CloudClusterGuideBox = ({ title, description }: CloudClusterGuideBoxProps)
 )
 
 export default function SettingsPanel(): JSX.Element {
-  const { theme, setTheme, init, prodContexts, probePrometheus, prometheusAvailable, selectedContext, setPluginsEnabled, setGitopsEnabled, setNetworkEnabled } = useAppStore()
+  const { theme, setTheme, init, prodContexts, probePrometheus, prometheusAvailable, selectedContext, setPluginsEnabled, setGitopsEnabled, setNetworkEnabled } = useAppStore(useShallow(s => ({
+    theme: s.theme,
+    setTheme: s.setTheme,
+    init: s.init,
+    prodContexts: s.prodContexts,
+    probePrometheus: s.probePrometheus,
+    prometheusAvailable: s.prometheusAvailable,
+    selectedContext: s.selectedContext,
+    setPluginsEnabled: s.setPluginsEnabled,
+    setGitopsEnabled: s.setGitopsEnabled,
+    setNetworkEnabled: s.setNetworkEnabled,
+  })))
   const [form, setForm] = useState<SettingsForm>({ shellPath: '', theme, kubeconfigPath: '', prodContexts: [], prometheusUrls: {}, tourCompleted: false, pluginsEnabled: true, gitopsEnabled: true, networkEnabled: true })
   const [probing, setProbing] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -45,6 +57,14 @@ export default function SettingsPanel(): JSX.Element {
   const [mcpAssetName, setMcpAssetName] = useState<string>('')
   const [mcpActiveTab, setMcpActiveTab] = useState<'claude-desktop' | 'claude-code' | 'cursor'>('claude-desktop')
   const [mcpCopied, setMcpCopied] = useState(false)
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const kubeconfigSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const mcpCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (savedTimerRef.current !== null) clearTimeout(savedTimerRef.current)
+    if (kubeconfigSavedTimerRef.current !== null) clearTimeout(kubeconfigSavedTimerRef.current)
+    if (mcpCopyTimerRef.current !== null) clearTimeout(mcpCopyTimerRef.current)
+  }, [])
 
   // ── Kubeconfig editor state ────────────────────────────────────────────────
   const [kubeconfigPath, setKubeconfigPath] = useState('')
@@ -129,7 +149,8 @@ export default function SettingsPanel(): JSX.Element {
       setGitopsEnabled(form.gitopsEnabled)
       setNetworkEnabled(form.networkEnabled)
       setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
+      if (savedTimerRef.current !== null) clearTimeout(savedTimerRef.current)
+      savedTimerRef.current = setTimeout(() => setSaved(false), 2500)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save')
     }
@@ -142,10 +163,11 @@ export default function SettingsPanel(): JSX.Element {
     try {
       await window.kubeconfig.set(kubeconfigContent)
       setKubeconfigOriginal(kubeconfigContent)
-      setKubeconfigSaved(true)
-      setTimeout(() => setKubeconfigSaved(false), 2500)
       // Reload contexts so changes take effect immediately
       await init()
+      setKubeconfigSaved(true)
+      if (kubeconfigSavedTimerRef.current !== null) clearTimeout(kubeconfigSavedTimerRef.current)
+      kubeconfigSavedTimerRef.current = setTimeout(() => setKubeconfigSaved(false), 2500)
     } catch (e) {
       setKubeconfigError(e instanceof Error ? e.message : 'Failed to save kubeconfig')
     } finally {
@@ -555,7 +577,8 @@ export default function SettingsPanel(): JSX.Element {
                           const snippet = getMcpSnippet(mcpActiveTab, mcpBinaryPath)
                           navigator.clipboard.writeText(snippet).then(() => {
                             setMcpCopied(true)
-                            setTimeout(() => setMcpCopied(false), 2000)
+                            if (mcpCopyTimerRef.current !== null) clearTimeout(mcpCopyTimerRef.current)
+                            mcpCopyTimerRef.current = setTimeout(() => setMcpCopied(false), 2000)
                           })
                         }}
                         className="flex items-center gap-1.5 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-blue-400 transition-colors"

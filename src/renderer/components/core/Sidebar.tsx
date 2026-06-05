@@ -81,14 +81,21 @@ const NavGroup = React.memo(function NavGroup({ title, children }: { title: stri
 
 // ─── Nav item ─────────────────────────────────────────────────────────────────
 
+interface NavItemProps {
+  label: string
+  section: ResourceKind
+  icon?: string
+  badge?: number
+  dot?: boolean
+  active: ResourceKind | null
+  setSection: (s: ResourceKind) => void
+  deniedSections: Set<string>
+}
+
 const NavItem = React.memo(function NavItem({
-  label, section, icon, badge, dot
-}: { label: string; section: ResourceKind; icon?: string; badge?: number; dot?: boolean }) {
-  const { active, setSection, isDenied } = useAppStore(useShallow(s => ({
-    active: s.section,
-    setSection: s.setSection,
-    isDenied: s.deniedSections.has(section),
-  })))
+  label, section, icon, badge, dot, active, setSection, deniedSections
+}: NavItemProps) {
+  const isDenied = deniedSections.has(section)
   const isActive = active === section
 
   return (
@@ -188,6 +195,7 @@ export default function Sidebar(): JSX.Element {
     pluginsEnabled,
     gitopsEnabled,
     networkEnabled,
+    deniedSections,
   } = useAppStore(useShallow(s => ({
     contexts: s.contexts,
     selectedContext: s.selectedContext,
@@ -213,7 +221,10 @@ export default function Sidebar(): JSX.Element {
     pluginsEnabled: s.pluginsEnabled,
     gitopsEnabled: s.gitopsEnabled,
     networkEnabled: s.networkEnabled,
+    deniedSections: s.deniedSections,
   })))
+
+  const navProps = { active: section, setSection, deniedSections }
 
   const [isResizing, setIsResizing] = useState(false)
 
@@ -399,120 +410,120 @@ export default function Sidebar(): JSX.Element {
         >
           {/* Dashboard */}
           <div className="mb-1 px-1">
-            <NavItem label="Dashboard" section="dashboard" icon={ICONS.dashboard} />
+            <NavItem label="Dashboard" section="dashboard" icon={ICONS.dashboard} {...navProps} />
           </div>
 
 
 
           <NavGroup title="Cluster">
-            <NavItem label="Nodes" section="nodes" icon={ICONS.node} />
-            <NavItem label="Namespaces" section="namespaces" icon={ICONS.namespace} />
-            <NavItem label="CRDs" section="crds" icon={ICONS.crd} />
+            <NavItem label="Nodes" section="nodes" icon={ICONS.node} {...navProps} />
+            <NavItem label="Namespaces" section="namespaces" icon={ICONS.namespace} {...navProps} />
+            <NavItem label="CRDs" section="crds" icon={ICONS.crd} {...navProps} />
           </NavGroup>
 
           <NavGroup title="Workloads">
-            <NavItem label="Pods" section="pods" icon={ICONS.pod} badge={podCount || undefined} />
-            <NavItem label="Deployments" section="deployments" icon={ICONS.deploy} badge={deploymentCount || undefined} />
-            <NavItem label="DaemonSets" section="daemonsets" icon={ICONS.daemonset} />
-            <NavItem label="StatefulSets" section="statefulsets" icon={ICONS.sts} />
-            <NavItem label="ReplicaSets" section="replicasets" icon={ICONS.rs} />
-            <NavItem label="Jobs" section="jobs" icon={ICONS.job} />
-            <NavItem label="CronJobs" section="cronjobs" icon={ICONS.cron} />
+            <NavItem label="Pods" section="pods" icon={ICONS.pod} badge={podCount || undefined} {...navProps} />
+            <NavItem label="Deployments" section="deployments" icon={ICONS.deploy} badge={deploymentCount || undefined} {...navProps} />
+            <NavItem label="DaemonSets" section="daemonsets" icon={ICONS.daemonset} {...navProps} />
+            <NavItem label="StatefulSets" section="statefulsets" icon={ICONS.sts} {...navProps} />
+            <NavItem label="ReplicaSets" section="replicasets" icon={ICONS.rs} {...navProps} />
+            <NavItem label="Jobs" section="jobs" icon={ICONS.job} {...navProps} />
+            <NavItem label="CronJobs" section="cronjobs" icon={ICONS.cron} {...navProps} />
           </NavGroup>
 
           <NavGroup title="Autoscaling">
-            <NavItem label="HPA" section="hpas" icon={ICONS.hpa} />
-            <NavItem label="Pod Disruption Budgets" section="pdbs" icon={ICONS.pdb} />
-            <NavItem label="Resource Quotas" section="resourcequotas" icon={ICONS.configmap} />
-            <NavItem label="Limit Ranges" section="limitranges" icon={ICONS.configmap} />
+            <NavItem label="HPA" section="hpas" icon={ICONS.hpa} {...navProps} />
+            <NavItem label="Pod Disruption Budgets" section="pdbs" icon={ICONS.pdb} {...navProps} />
+            <NavItem label="Resource Quotas" section="resourcequotas" icon={ICONS.configmap} {...navProps} />
+            <NavItem label="Limit Ranges" section="limitranges" icon={ICONS.configmap} {...navProps} />
           </NavGroup>
 
           <NavGroup title="Network">
-            <NavItem label="Services" section="services" icon={ICONS.service} />
-            <NavItem label="Ingresses" section="ingresses" icon={ICONS.ingress} />
-            <NavItem label="Ingress Classes" section="ingressclasses" icon={ICONS.ingressclass} />
-            <NavItem label="Network Policies" section="networkpolicies" icon={ICONS.netpol} />
-            <NavItem label="Endpoints" section="endpoints" icon={ICONS.endpoints} />
-            <NavItem label="Port Forwards" section="portforwards" icon={ICONS.portforward} />
-            {networkEnabled && <NavItem label="Network Map" section="network" icon={ICONS.network} />}
-            {networkEnabled && <NavItem label="Connectivity" section="connectivity" icon={ICONS.connectivity} />}
-            <NavItem label="Debug Pods" section="debugpod" icon={ICONS.debugpod} />
+            <NavItem label="Services" section="services" icon={ICONS.service} {...navProps} />
+            <NavItem label="Ingresses" section="ingresses" icon={ICONS.ingress} {...navProps} />
+            <NavItem label="Ingress Classes" section="ingressclasses" icon={ICONS.ingressclass} {...navProps} />
+            <NavItem label="Network Policies" section="networkpolicies" icon={ICONS.netpol} {...navProps} />
+            <NavItem label="Endpoints" section="endpoints" icon={ICONS.endpoints} {...navProps} />
+            <NavItem label="Port Forwards" section="portforwards" icon={ICONS.portforward} {...navProps} />
+            {networkEnabled && <NavItem label="Network Map" section="network" icon={ICONS.network} {...navProps} />}
+            {networkEnabled && <NavItem label="Connectivity" section="connectivity" icon={ICONS.connectivity} {...navProps} />}
+            <NavItem label="Debug Pods" section="debugpod" icon={ICONS.debugpod} {...navProps} />
           </NavGroup>
 
           <NavGroup title="Config">
-            <NavItem label="ConfigMaps" section="configmaps" icon={ICONS.configmap} />
-            <NavItem label="Secrets" section="secrets" icon={ICONS.secret} />
+            <NavItem label="ConfigMaps" section="configmaps" icon={ICONS.configmap} {...navProps} />
+            <NavItem label="Secrets" section="secrets" icon={ICONS.secret} {...navProps} />
           </NavGroup>
 
           <NavGroup title="Storage">
-            <NavItem label="PVCs" section="pvcs" icon={ICONS.pvc} />
-            <NavItem label="PVs" section="pvs" icon={ICONS.pv} />
-            <NavItem label="Storage Classes" section="storageclasses" icon={ICONS.storageclass} />
+            <NavItem label="PVCs" section="pvcs" icon={ICONS.pvc} {...navProps} />
+            <NavItem label="PVs" section="pvs" icon={ICONS.pv} {...navProps} />
+            <NavItem label="Storage Classes" section="storageclasses" icon={ICONS.storageclass} {...navProps} />
           </NavGroup>
 
           <NavGroup title="RBAC">
-            <NavItem label="Service Accounts" section="serviceaccounts" icon={ICONS.sa} />
-            <NavItem label="Roles" section="roles" icon={ICONS.role} />
-            <NavItem label="Cluster Roles" section="clusterroles" icon={ICONS.clusterrole} />
-            <NavItem label="Role Bindings" section="rolebindings" icon={ICONS.rolebinding} />
-            <NavItem label="Cluster Role Bindings" section="clusterrolebindings" icon={ICONS.rolebinding} />
+            <NavItem label="Service Accounts" section="serviceaccounts" icon={ICONS.sa} {...navProps} />
+            <NavItem label="Roles" section="roles" icon={ICONS.role} {...navProps} />
+            <NavItem label="Cluster Roles" section="clusterroles" icon={ICONS.clusterrole} {...navProps} />
+            <NavItem label="Role Bindings" section="rolebindings" icon={ICONS.rolebinding} {...navProps} />
+            <NavItem label="Cluster Role Bindings" section="clusterrolebindings" icon={ICONS.rolebinding} {...navProps} />
           </NavGroup>
 
           <NavGroup title="Observe">
-            <NavItem label="Events" section="events" icon={ICONS.event} badge={warningEventCount || undefined} />
-            <NavItem label="Metrics" section="metrics" icon={ICONS.metrics} />
-            <NavItem label="Unified Logs" section="unifiedlogs" icon={ICONS.terminal} />
-            <NavItem label="Security Hub" section="security" icon={ICONS.secret} />
-            <NavItem label="TLS Certificates" section="tls" icon={ICONS.secret} />
+            <NavItem label="Events" section="events" icon={ICONS.event} badge={warningEventCount || undefined} {...navProps} />
+            <NavItem label="Metrics" section="metrics" icon={ICONS.metrics} {...navProps} />
+            <NavItem label="Unified Logs" section="unifiedlogs" icon={ICONS.terminal} {...navProps} />
+            <NavItem label="Security Hub" section="security" icon={ICONS.secret} {...navProps} />
+            <NavItem label="TLS Certificates" section="tls" icon={ICONS.secret} {...navProps} />
           </NavGroup>
 
           <NavGroup title="Tools">
-            <NavItem label="Helm Charts" section="helm" icon={ICONS.helm} />
-            {gitopsEnabled && <NavItem label="GitOps" section="gitops" icon={ICONS.deploy} />}
-            {pluginsEnabled && <NavItem label="Plugins" section="krew" icon={ICONS.crd} />}
+            <NavItem label="Helm Charts" section="helm" icon={ICONS.helm} {...navProps} />
+            {gitopsEnabled && <NavItem label="GitOps" section="gitops" icon={ICONS.deploy} {...navProps} />}
+            {pluginsEnabled && <NavItem label="Plugins" section="krew" icon={ICONS.crd} {...navProps} />}
           </NavGroup>
 
           {providers.istio && (
             <NavGroup title="Service Mesh">
-              <NavItem label="Virtual Services" section="istio-virtualservices" icon={ICONS.route} />
-              <NavItem label="Destination Rules" section="istio-destinationrules" icon={ICONS.netpol} />
-              <NavItem label="Gateways" section="istio-gateways" icon={ICONS.ingress} />
-              <NavItem label="Service Entries" section="istio-serviceentries" icon={ICONS.endpoints} />
-              <NavItem label="Peer Auth" section="istio-peerauth" icon={ICONS.pdb} />
-              <NavItem label="Authorization Policies" section="istio-authpolicies" icon={ICONS.role} />
-              <NavItem label="Request Auth" section="istio-requestauth" icon={ICONS.secret} />
+              <NavItem label="Virtual Services" section="istio-virtualservices" icon={ICONS.route} {...navProps} />
+              <NavItem label="Destination Rules" section="istio-destinationrules" icon={ICONS.netpol} {...navProps} />
+              <NavItem label="Gateways" section="istio-gateways" icon={ICONS.ingress} {...navProps} />
+              <NavItem label="Service Entries" section="istio-serviceentries" icon={ICONS.endpoints} {...navProps} />
+              <NavItem label="Peer Auth" section="istio-peerauth" icon={ICONS.pdb} {...navProps} />
+              <NavItem label="Authorization Policies" section="istio-authpolicies" icon={ICONS.role} {...navProps} />
+              <NavItem label="Request Auth" section="istio-requestauth" icon={ICONS.secret} {...navProps} />
             </NavGroup>
           )}
 
           {providers.traefik && (
             <NavGroup title="Traefik">
-              <NavItem label="Ingress Routes" section="traefik-ingressroutes" icon={ICONS.ingress} />
-              <NavItem label="Ingress Routes TCP" section="traefik-ingressroutestcp" icon={ICONS.portforward} />
-              <NavItem label="Ingress Routes UDP" section="traefik-ingressroutesudp" icon={ICONS.portforward} />
-              <NavItem label="Middlewares" section="traefik-middlewares" icon={ICONS.middleware} />
-              <NavItem label="Middlewares TCP" section="traefik-middlewaretcps" icon={ICONS.middleware} />
-              <NavItem label="Traefik Services" section="traefik-services" icon={ICONS.service} />
-              <NavItem label="TLS Options" section="traefik-tlsoptions" icon={ICONS.secret} />
-              <NavItem label="TLS Stores" section="traefik-tlsstores" icon={ICONS.secret} />
-              <NavItem label="Servers Transports TCP" section="traefik-serverstransporttcps" icon={ICONS.portforward} />
+              <NavItem label="Ingress Routes" section="traefik-ingressroutes" icon={ICONS.ingress} {...navProps} />
+              <NavItem label="Ingress Routes TCP" section="traefik-ingressroutestcp" icon={ICONS.portforward} {...navProps} />
+              <NavItem label="Ingress Routes UDP" section="traefik-ingressroutesudp" icon={ICONS.portforward} {...navProps} />
+              <NavItem label="Middlewares" section="traefik-middlewares" icon={ICONS.middleware} {...navProps} />
+              <NavItem label="Middlewares TCP" section="traefik-middlewaretcps" icon={ICONS.middleware} {...navProps} />
+              <NavItem label="Traefik Services" section="traefik-services" icon={ICONS.service} {...navProps} />
+              <NavItem label="TLS Options" section="traefik-tlsoptions" icon={ICONS.secret} {...navProps} />
+              <NavItem label="TLS Stores" section="traefik-tlsstores" icon={ICONS.secret} {...navProps} />
+              <NavItem label="Servers Transports TCP" section="traefik-serverstransporttcps" icon={ICONS.portforward} {...navProps} />
             </NavGroup>
           )}
 
           {providers.nginxInc && (
             <NavGroup title="NGINX">
-              <NavItem label="Virtual Servers" section="nginx-virtualservers" icon={ICONS.ingress} />
-              <NavItem label="Virtual Server Routes" section="nginx-virtualserverroutes" icon={ICONS.route} />
-              <NavItem label="Policies" section="nginx-policies" icon={ICONS.netpol} />
-              <NavItem label="Transport Servers" section="nginx-transportservers" icon={ICONS.portforward} />
+              <NavItem label="Virtual Servers" section="nginx-virtualservers" icon={ICONS.ingress} {...navProps} />
+              <NavItem label="Virtual Server Routes" section="nginx-virtualserverroutes" icon={ICONS.route} {...navProps} />
+              <NavItem label="Policies" section="nginx-policies" icon={ICONS.netpol} {...navProps} />
+              <NavItem label="Transport Servers" section="nginx-transportservers" icon={ICONS.portforward} {...navProps} />
             </NavGroup>
           )}
 
           {providers.keda && (
             <NavGroup title="KEDA">
-              <NavItem label="Scaled Objects"                  section="keda-scaledobjects"                icon={ICONS.hpa} />
-              <NavItem label="Scaled Jobs"                     section="keda-scaledjobs"                   icon={ICONS.job} />
-              <NavItem label="Trigger Authentications"         section="keda-triggerauthentications"        icon={ICONS.secret} />
-              <NavItem label="Cluster Trigger Authentications" section="keda-clustertriggerauthentications" icon={ICONS.secret} />
+              <NavItem label="Scaled Objects"                  section="keda-scaledobjects"                icon={ICONS.hpa} {...navProps} />
+              <NavItem label="Scaled Jobs"                     section="keda-scaledjobs"                   icon={ICONS.job} {...navProps} />
+              <NavItem label="Trigger Authentications"         section="keda-triggerauthentications"        icon={ICONS.secret} {...navProps} />
+              <NavItem label="Cluster Trigger Authentications" section="keda-clustertriggerauthentications" icon={ICONS.secret} {...navProps} />
             </NavGroup>
           )}
 
@@ -645,5 +656,4 @@ function ClusterAvatar({
     </div>
   )
 }
-
 

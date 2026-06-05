@@ -7,6 +7,13 @@ import (
 	"k8s.io/client-go/discovery"
 )
 
+const (
+	// HubbleRelayNamespace is the namespace where the hubble-relay Service lives.
+	HubbleRelayNamespace = "kube-system"
+	// HubbleRelayService is the Service name used to detect Hubble Relay presence.
+	HubbleRelayService = "hubble-relay"
+)
+
 // ProviderSet describes which ingress controllers and service mesh providers
 // are installed in the current cluster. All fields default to false.
 type ProviderSet struct {

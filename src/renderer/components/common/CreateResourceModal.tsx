@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Editor } from '@monaco-editor/react'
 import { useAppStore } from '../../store'
 import { useShallow } from 'zustand/react/shallow'
@@ -44,20 +44,31 @@ export default function CreateResourceModal({ kind, onClose }: Props): JSX.Eleme
     const [applying, setApplying] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState(false)
+    const createGenRef = useRef(0)
+    const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    useEffect(() => {
+        return () => { if (closeTimerRef.current !== null) clearTimeout(closeTimerRef.current) }
+    }, [])
 
     const handleCreate = async () => {
         if (!generatedYaml || !selectedContext) return
+        const myId = ++createGenRef.current
         setApplying(true)
         setError(null)
         try {
             await applyYAML(generatedYaml)
+            if (myId !== createGenRef.current) return
             setSuccess(true)
             await loadSection(section)
-            setTimeout(onClose, 800)
+            if (myId !== createGenRef.current) return
+            if (closeTimerRef.current !== null) clearTimeout(closeTimerRef.current)
+            closeTimerRef.current = setTimeout(onClose, 800)
         } catch (err) {
+            if (myId !== createGenRef.current) return
             setError((err as Error).message)
         } finally {
-            setApplying(false)
+            if (myId === createGenRef.current) setApplying(false)
         }
     }
 

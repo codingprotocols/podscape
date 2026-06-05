@@ -32,12 +32,8 @@ func HandleProviders(w http.ResponseWriter, r *http.Request) {
 		icList = icl.Items
 	}
 
-	const (
-		hubbleNamespace   = "kube-system"
-		hubbleServiceName = "hubble-relay"
-	)
 	hubbleRelayPresent := false
-	_, hubbleErr := cs.CoreV1().Services(hubbleNamespace).Get(r.Context(), hubbleServiceName, metav1.GetOptions{})
+	_, hubbleErr := cs.CoreV1().Services(providers.HubbleRelayNamespace).Get(r.Context(), providers.HubbleRelayService, metav1.GetOptions{})
 	if hubbleErr == nil {
 		hubbleRelayPresent = true
 	} else if !k8serrors.IsNotFound(hubbleErr) {

@@ -130,8 +130,6 @@ func lookupResource(c *store.ContextCache, kind, namespace, name string) []byte 
 	}
 
 	c.RLock()
-	defer c.RUnlock()
-
 	var v interface{}
 	var ok bool
 	switch kind {
@@ -150,8 +148,10 @@ func lookupResource(c *store.ContextCache, kind, namespace, name string) []byte 
 	case "CronJob":
 		v, ok = c.CronJobs[key]
 	default:
+		c.RUnlock()
 		return nil
 	}
+	c.RUnlock()
 	if !ok {
 		return nil
 	}
