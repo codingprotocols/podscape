@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import PageHeader from '../core/PageHeader'
 import type { KubePod, KubeService, KubeNetworkPolicy, KubeEndpoints, NetworkPolicyIngressRule, NetworkPolicyEgressRule } from '../../types'
 import { isMac } from '../../utils/platform'
@@ -586,7 +587,10 @@ function ManualRunCard({ run }: { run: ManualRun }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function ConnectivityTester() {
-    const { selectedContext, selectedNamespace } = useAppStore()
+    const { selectedContext, selectedNamespace } = useAppStore(useShallow(s => ({
+        selectedContext: s.selectedContext,
+        selectedNamespace: s.selectedNamespace,
+    })))
 
     // Data
     const [pods, setPods] = useState<KubePod[]>([])
@@ -621,6 +625,8 @@ export default function ConnectivityTester() {
     // Fetch pods + services on context/namespace change
     useEffect(() => {
         if (!selectedContext) return
+        cancelledRef.current = true
+        setRunning(false)
         let cancelled = false
         const nsArg = selectedNamespace === '_all' ? null : selectedNamespace
         setFetchError(null)
@@ -732,17 +738,22 @@ export default function ConnectivityTester() {
             selectedContext!, ns, podName, selectedContainer, cmd
         )
 
-        const finishedSteps = await runSteps(
-            steps, execFn,
-            updatedSteps => setActiveDiag({ ...run, steps: updatedSteps }),
-            cancelledRef,
-            !isIPAddress
-        )
+        try {
+            const finishedSteps = await runSteps(
+                steps, execFn,
+                updatedSteps => setActiveDiag({ ...run, steps: updatedSteps }),
+                cancelledRef,
+                !isIPAddress
+            )
 
-        const finished: DiagRun = { ...run, steps: finishedSteps, done: true }
-        setActiveDiag(null)
-        setDiagHistory(prev => [finished, ...prev].slice(0, 20))
-        setRunning(false)
+            const finished: DiagRun = { ...run, steps: finishedSteps, done: true }
+            setActiveDiag(null)
+            if (!cancelledRef.current) {
+              setDiagHistory(prev => [finished, ...prev].slice(0, 20))
+            }
+        } finally {
+            setRunning(false)
+        }
     }, [canRun, targetHost, targetPort, targetPath, isIPAddress, selectedPod, selectedContainer, selectedContext, fromLabel, toLabel]) // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── Run manual ────────────────────────────────────────────────────────────

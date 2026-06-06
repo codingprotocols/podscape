@@ -29,7 +29,11 @@ func Exec(ctx context.Context, clientset kubernetes.Interface, config *rest.Conf
 
 	req.VersionedParams(option, scheme.ParameterCodec)
 
-	executor, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
+	// Shallow-copy the config so NewSPDYExecutor's in-place write to
+	// ContentConfig.NegotiatedSerializer doesn't race with concurrent exec calls
+	// sharing the same *rest.Config from store.ActiveClientset().
+	cfgCopy := *config
+	executor, err := remotecommand.NewSPDYExecutor(&cfgCopy, "POST", req.URL())
 	if err != nil {
 		return err
 	}

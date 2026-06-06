@@ -58,7 +58,7 @@ export default function MetricsView(): JSX.Element {
     })
   }, [])
 
-  useEffect(() => { loadSection('metrics') }, [selectedNamespace])
+  useEffect(() => { loadSection('metrics') }, [selectedNamespace, loadSection])
 
   // Cluster-wide aggregates
   const clusterTotals = useMemo(() => {
@@ -189,8 +189,8 @@ export default function MetricsView(): JSX.Element {
                     const memPct = memCapMiB > 0 ? (memUsedMiB / memCapMiB) * 100 : 0
 
                     const overcommittedCpu = pods.reduce((total, p) => {
-                      if (p.spec.nodeName !== nm.metadata.name) return total
-                      return total + p.spec.containers.reduce((ct, c) => ct + (c.resources?.limits?.cpu ? parseCpuMillicores(c.resources.limits.cpu) : 0), 0)
+                      if (!p.spec || p.spec.nodeName !== nm.metadata.name) return total
+                      return total + (p.spec.containers ?? []).reduce((ct, c) => ct + (c.resources?.limits?.cpu ? parseCpuMillicores(c.resources.limits.cpu) : 0), 0)
                     }, 0)
 
                     return (

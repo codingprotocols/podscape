@@ -105,3 +105,29 @@ Every row in the Security Hub has a `↗` icon button (visible on hover) that ca
 3. Selects and opens the matched resource's detail panel.
 
 This is the same navigation action used by the Ownership Chain tree visualization.
+
+---
+
+## Application & System Hardening
+
+To ensure the security and stability of the application and the cluster it manages, Podscape implements several system-level security controls:
+
+### 1. Ephemeral Port Forwarding (TOCTOU Prevention)
+Programmatic port forwarding previously searched for a free local port using `freeLocalPort()` and then bound it. This left a Time-of-Check to Time-of-Use (TOCTOU) window where another process could grab the port. 
+
+To eliminate this vulnerability:
+- The Go sidecar binds port `0` (e.g., `127.0.0.1:0`), instructing the operating system to allocate a free ephemeral port atomically.
+- Once the tunnel is successfully established, the sidecar retrieves the allocated port via `pf.GetPorts()` and returns it to the client.
+
+### 2. Helm Downloader Resource Limits & Timeouts
+To protect the sidecar from memory exhaustion (Denial of Service) and hanging network calls when downloading Helm repository assets (such as massive `index.yaml` files or chart values):
+- **Body Limit:** A strict limit of **64MB** is enforced on all HTTP response bodies read when downloading Helm repository indexes or configuration files.
+- **Network Timeouts:** A strict timeout of **60 seconds** is applied to all outgoing HTTP connection and read phases during Helm downloads.
+
+### 3. Namespace Fallback Check in RBAC Probes
+In multi-tenant clusters or restricted environments where a user does not have cluster-wide resource access (such as cluster-scoped `SelfSubjectAccessReview` permissions), checking permissions at the root (namespace `""`) returns denied for namespace-scoped resources.
+
+To address this, Podscape's RBAC probe performs a fallback check:
+- If a namespace-scoped resource query at the cluster level (namespace `""`) is denied, the probe retries the SAR check specifically inside the `"default"` namespace.
+- An access verb is marked allowed if **either** the cluster-wide or the `"default"` namespace check succeeds (OR-logic).
+- Cluster-scoped resources (e.g., `Nodes`, `Namespaces`, `PersistentVolumes`) are skipped during the `"default"` namespace check to prevent redundant, incorrect probes.

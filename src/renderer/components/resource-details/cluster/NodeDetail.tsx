@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useRef } from 'react'
 import type { KubeNode } from '../../../types'
 import { formatAge, getNodeReady, parseMemoryMiB, parseCpuMillicores } from '../../../types'
 import { useAppStore } from '../../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { canVerb } from '../../../store/slices/clusterSlice'
 import YAMLViewer from '../../common/YAMLViewer'
 import TimeSeriesChart, { PrometheusTimeRangeBar } from '../../advanced/TimeSeriesChart'
@@ -10,13 +11,22 @@ import { nodeCpuQuery, nodeMemoryQuery } from '../../../utils/prometheusQueries'
 interface Props { node: KubeNode }
 
 export default function NodeDetail({ node }: Props): JSX.Element {
-  const { getYAML, applyYAML, pods, nodeMetrics, selectResource, prometheusAvailable, selectedContext } = useAppStore()
-  const allowedVerbs = useAppStore(s => s.allowedVerbs)
+  const { getYAML, applyYAML, pods, nodeMetrics, selectResource, prometheusAvailable, selectedContext, allowedVerbs } = useAppStore(useShallow(s => ({
+    getYAML: s.getYAML,
+    applyYAML: s.applyYAML,
+    pods: s.pods,
+    nodeMetrics: s.nodeMetrics,
+    selectResource: s.selectResource,
+    prometheusAvailable: s.prometheusAvailable,
+    selectedContext: s.selectedContext,
+    allowedVerbs: s.allowedVerbs,
+  })))
   const [yaml, setYaml] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
   const [yamlError, setYamlError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<'cordon' | 'uncordon' | 'drain' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const yamlFetchIdRef = useRef(0)
 
   const nodeName = node.metadata.name
   const promCpuQueries    = useMemo(() => [nodeCpuQuery(nodeName)],    [nodeName])
@@ -43,45 +53,57 @@ export default function NodeDetail({ node }: Props): JSX.Element {
   const memAllocMiB = parseMemoryMiB(node.status.allocatable?.memory ?? '0Ki')
 
   const handleViewYAML = async () => {
+    const myId = ++yamlFetchIdRef.current
     setYaml(null); setYamlError(null); setYamlLoading(true)
     try {
       const content = await getYAML('node', node.metadata.name, true)
+      if (myId !== yamlFetchIdRef.current) return
       setYaml(content)
     } catch (err) {
+      if (myId !== yamlFetchIdRef.current) return
       setYamlError((err as Error).message ?? 'Failed to fetch YAML')
     } finally {
-      setYamlLoading(false)
+      if (myId === yamlFetchIdRef.current) setYamlLoading(false)
     }
   }
 
   const handleApplyYAML = async (updated: string) => {
+    const myId = ++yamlFetchIdRef.current
     await applyYAML(updated)
+    if (myId !== yamlFetchIdRef.current) return
     const refreshed = await getYAML('node', node.metadata.name, true)
+    if (myId !== yamlFetchIdRef.current) return
     setYaml(refreshed)
   }
 
   const isCordonned = !!node.spec.unschedulable
 
   const handleCordon = async () => {
+    const ctx = selectedContext!
     const action = isCordonned ? 'uncordon' : 'cordon'
     setActionLoading(action); setActionError(null)
     try {
-      await window.kubectl.cordonNode(selectedContext!, node.metadata.name, !isCordonned)
+      await window.kubectl.cordonNode(ctx, node.metadata.name, !isCordonned)
+      if (useAppStore.getState().selectedContext !== ctx) return
     } catch (err) {
+      if (useAppStore.getState().selectedContext !== ctx) return
       setActionError((err as Error).message)
     } finally {
-      setActionLoading(null)
+      if (useAppStore.getState().selectedContext === ctx) setActionLoading(null)
     }
   }
 
   const handleDrain = async () => {
+    const ctx = selectedContext!
     setActionLoading('drain'); setActionError(null)
     try {
-      await window.kubectl.drainNode(selectedContext!, node.metadata.name)
+      await window.kubectl.drainNode(ctx, node.metadata.name)
+      if (useAppStore.getState().selectedContext !== ctx) return
     } catch (err) {
+      if (useAppStore.getState().selectedContext !== ctx) return
       setActionError((err as Error).message)
     } finally {
-      setActionLoading(null)
+      if (useAppStore.getState().selectedContext === ctx) setActionLoading(null)
     }
   }
 
@@ -325,7 +347,7 @@ export default function NodeDetail({ node }: Props): JSX.Element {
           <div className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 dark:border-white/10 bg-white/5 backdrop-blur-xl shrink-0">
               <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">{yamlLoading ? 'Loading YAML…' : `YAML — ${node.metadata.name}`}</h3>
-              <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 transition-colors">✕</button>
+              <button onClick={() => { ++yamlFetchIdRef.current; setYaml(null); setYamlError(null); setYamlLoading(false) }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 transition-colors">✕</button>
             </div>
             <div className="flex-1 min-h-0">
               {yamlError ? (

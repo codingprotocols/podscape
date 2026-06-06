@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import type { ExecSession } from '../../store'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { getTerminalTheme, TERM_FONT } from '../../utils/terminalTheme'
 import { isMac } from '../../utils/platform'
 import { Upload, Download, X, CheckCircle2, AlertCircle, Loader2, Terminal as TerminalIcon } from 'lucide-react'
@@ -51,7 +52,11 @@ function ExecTab({ session, active, theme, onSessionEnd }: ExecTabProps): JSX.El
   const [startError, setStartError] = useState<string | null>(null)
   const [sessionEnded, setSessionEnded] = useState(false)
 
-  const { selectedContext, closeExecTab } = useAppStore()
+  const { selectedContext, closeExecTab, setPtyId } = useAppStore(useShallow(s => ({
+    selectedContext: s.selectedContext,
+    closeExecTab: s.closeExecTab,
+    setPtyId: s.setPtyId,
+  })))
 
   // Mount xterm once
   useEffect(() => {
@@ -85,9 +90,14 @@ function ExecTab({ session, active, theme, onSessionEnd }: ExecTabProps): JSX.El
       return true
     })
 
+    let cancelled = false
     window.exec.start(selectedContext, session.target.namespace, session.target.pod, session.target.container)
       .then(ptyId => {
         ptyIdRef.current = ptyId
+        // If the component unmounted before exec.start() resolved, kill the
+        // PTY immediately — the cleanup already ran with ptyIdRef still null.
+        if (cancelled) { window.exec.kill(ptyId).catch(() => {}); return }
+        setPtyId(session.id, ptyId)
         offDataRef.current = window.exec.onData(ptyId, data => term.write(data))
         offExitRef.current = window.exec.onExit(ptyId, () => {
           term.write('\r\n\x1b[38;5;244m[Process exited]\x1b[0m\r\n')
@@ -107,10 +117,14 @@ function ExecTab({ session, active, theme, onSessionEnd }: ExecTabProps): JSX.El
     ro.observe(container)
 
     return () => {
+      cancelled = true
       ro.disconnect()
       offDataRef.current?.()
       offExitRef.current?.()
-      if (ptyIdRef.current) window.exec.kill(ptyIdRef.current).catch(() => { })
+      // Null the ref before kill so a second cleanup (e.g. from closeExecTab
+      // causing unmount) cannot issue a redundant IPC round-trip.
+      const id = ptyIdRef.current; ptyIdRef.current = null
+      if (id) window.exec.kill(id).catch(() => {})
       term.dispose()
     }
   }, [selectedContext, session.target, closeExecTab]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -118,12 +132,13 @@ function ExecTab({ session, active, theme, onSessionEnd }: ExecTabProps): JSX.El
   // Re-fit when tab becomes active
   useEffect(() => {
     if (active && fitRef.current && xtermRef.current) {
-      requestAnimationFrame(() => {
+      const rafId = requestAnimationFrame(() => {
         fitRef.current?.fit()
         if (ptyIdRef.current) {
           window.exec.resize(ptyIdRef.current, xtermRef.current!.cols, xtermRef.current!.rows)
         }
       })
+      return () => cancelAnimationFrame(rafId)
     }
   }, [active])
 
@@ -186,11 +201,13 @@ interface ExecPanelProps {
 
 export function ExecPanel({ embedded, session: propSession }: ExecPanelProps): JSX.Element | null {
 
-  const {
-    execSessions, activeExecId,
-    closeExec,
-    theme, selectedContext
-  } = useAppStore()
+  const { execSessions, activeExecId, closeExec, theme, selectedContext } = useAppStore(useShallow(s => ({
+    execSessions: s.execSessions,
+    activeExecId: s.activeExecId,
+    closeExec: s.closeExec,
+    theme: s.theme,
+    selectedContext: s.selectedContext,
+  })))
 
   const activeSession = propSession ?? (execSessions.find(s => s.id === activeExecId) ?? execSessions[0])
 

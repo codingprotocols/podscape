@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"net/http"
 
@@ -81,8 +80,7 @@ func HandleEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(filtered)
+	writeJSON(w, filtered)
 }
 
 // HandleCRDs serves CRDs from the informer cache, falling back to a direct
@@ -126,15 +124,13 @@ func HandleCRDs(w http.ResponseWriter, r *http.Request) {
 	if len(snapshot) == 0 && apiextClient != nil {
 		list, err := apiextClient.ApiextensionsV1().CustomResourceDefinitions().List(r.Context(), metav1.ListOptions{})
 		if err == nil {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(listToIface(list.Items))
+			writeJSON(w, listToIface(list.Items))
 			return
 		}
 		log.Printf("[Handler] CRD direct fallback failed, serving cache: %v", err)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(snapshot)
+	writeJSON(w, snapshot)
 }
 
 func HandleGetPodMetrics(w http.ResponseWriter, r *http.Request) {

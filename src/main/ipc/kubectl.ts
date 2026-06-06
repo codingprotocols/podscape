@@ -282,8 +282,10 @@ export class KubectlProvider {
   }
 }
 
-async function getTopology(ns: string): Promise<any> {
-  const url = `/topology?namespace=${encodeURIComponent(ns)}`
+async function getTopology(ns: string, flowWindow?: number): Promise<unknown> {
+  const params = new URLSearchParams({ namespace: ns })
+  if (flowWindow !== undefined && flowWindow !== 60) params.set('flowWindow', String(flowWindow))
+  const url = `/topology?${params.toString()}`
   const res = await checkedSidecarFetch(url)
   return await res.json()
 }
@@ -301,6 +303,9 @@ export function cancelAllLogStreams(): void {
 // Module-level so cancelAllPortForwardTimers() can access it from index.ts
 // during app quit, same pattern as activeStreams above.
 const forwardAliveTimers = new Map<string, NodeJS.Timeout>()
+// Tracks IDs for which stopPortForward was called before the portForward
+// response arrived. Prevents orphaned alive-poll timers when stop races start.
+const pendingStops = new Set<string>()
 
 export function cancelAllPortForwardTimers(): void {
   for (const [id, timer] of forwardAliveTimers) {
@@ -334,6 +339,7 @@ function handleScanResponse(
   }
 
   let buffer = ''
+  let settled = false
   res.on('data', (chunk: Buffer) => {
     buffer += chunk.toString()
     const blocks = buffer.split('\n\n')
@@ -349,20 +355,25 @@ function handleScanResponse(
         if (!sender.isDestroyed()) sender.send('security:progress', data)
       } else if (eventType === 'result') {
         res.destroy()
+        settled = true
         try { resolve(JSON.parse(data)) } catch (e) { reject(e) }
         return
       } else if (eventType === 'error') {
         res.destroy()
+        settled = true
         reject(new Error(`trivy scan failed: ${data}`))
         return
       }
     }
   })
-  res.on('end', () => resolve(null))
+  res.on('end', () => { if (!settled) reject(new Error('scan stream closed unexpectedly')) })
   res.on('error', reject)
 }
 
+let kubectlHandlersRegistered = false
 export function registerKubectlHandlers(): void {
+  if (kubectlHandlersRegistered) return
+  kubectlHandlersRegistered = true
   const provider = new KubectlProvider()
 
   ipcMain.handle('kubectl:getContexts', () => provider.getContexts())
@@ -438,6 +449,11 @@ export function registerKubectlHandlers(): void {
     activeStreams.set(streamId, ws)
     const sender = event.sender
 
+    const cleanupStream = () => {
+      ws.removeAllListeners()
+      activeStreams.delete(streamId)
+    }
+
     ws.on('message', (data: Buffer) => {
       if (!sender.isDestroyed()) sender.send('kubectl:logChunk', streamId, data.toString())
     })
@@ -449,9 +465,14 @@ export function registerKubectlHandlers(): void {
 
     ws.on('close', (code: number, reason: string) => {
       console.log(`[Logs] WS closed for stream ${streamId}. Code: ${code}, Reason: ${reason || 'no reason'}`)
-      ws.removeAllListeners()
-      activeStreams.delete(streamId)
+      sender.off('destroyed', cleanupStream)
+      cleanupStream()
       if (!sender.isDestroyed()) sender.send('kubectl:logEnd', streamId)
+    })
+
+    sender.once('destroyed', () => {
+      try { ws.close() } catch {}
+      cleanupStream()
     })
 
     return streamId
@@ -469,12 +490,12 @@ export function registerKubectlHandlers(): void {
     }
   })
 
-  ipcMain.handle('kubectl:cancelAllStreams', () => {
+  ipcMain.handle('kubectl:cancelAllStreams', (e) => {
     cancelAllLogStreams()
-    cancelAllExecStreams()
+    cancelAllExecStreams(e.sender)
   })
 
-  ipcMain.handle('kubectl:getTopology', (_e, ns) => getTopology(ns))
+  ipcMain.handle('kubectl:getTopology', (_e, ns, flowWindow) => getTopology(ns, flowWindow))
 
   // Track alive-poll timers keyed by forward id so we can clear them on
   // stopPortForward or when the tunnel exits on its own.
@@ -491,8 +512,6 @@ export function registerKubectlHandlers(): void {
       const url = `/portforward?id=${encodeURIComponent(id)}&namespace=${encodeURIComponent(ns)}&type=${encodeURIComponent(type ?? 'pod')}&name=${encodeURIComponent(name)}&localPort=${localPort}&remotePort=${remotePort}`
       const res = await sidecarFetch(url)
       if (res.ok) {
-        if (!event.sender.isDestroyed()) event.sender.send('portforward:ready', id, 'Forwarding started')
-
         // Poll /portforward/alive every 5 s. When the sidecar reports the
         // forward is gone (pod died, network error, context switch, etc.),
         // emit portforward:exit so the UI removes the stale row.
@@ -509,9 +528,21 @@ export function registerKubectlHandlers(): void {
             if (!event.sender.isDestroyed()) event.sender.send('portforward:exit', id)
           }
         }, 5_000)
-        forwardAliveTimers.set(id, timer)
+        // Stop may have arrived while sidecarFetch was in flight — discard the
+        // timer and skip the ready event so the renderer never sees an 'active'
+        // entry that has no alive-poll timer to clean it up.
+        if (pendingStops.has(id)) {
+          clearInterval(timer)
+          pendingStops.delete(id)
+        } else {
+          forwardAliveTimers.set(id, timer)
+          event.sender.once('destroyed', () => clearForwardAliveTimer(id))
+          if (!event.sender.isDestroyed()) event.sender.send('portforward:ready', id, 'Forwarding started')
+        }
       } else {
-        if (!event.sender.isDestroyed()) event.sender.send('portforward:error', id, `Sidecar error: ${res.status}`)
+        const detail = await res.text().catch(() => '')
+        const msg = detail.trim() || `Sidecar error: ${res.status}`
+        if (!event.sender.isDestroyed()) event.sender.send('portforward:error', id, msg)
       }
     } catch (err: any) {
        if (!event.sender.isDestroyed()) event.sender.send('portforward:error', id, err.message)
@@ -519,7 +550,13 @@ export function registerKubectlHandlers(): void {
   })
 
   ipcMain.handle('kubectl:stopPortForward', async (_e, id) => {
+    pendingStops.add(id)
     clearForwardAliveTimer(id)
+    // TTL eviction: if the portForward sidecar call never returns (or already
+    // completed before stopPortForward was called), clean up the set entry so
+    // it doesn't grow unboundedly. The portForward handler is the primary
+    // consumer of pendingStops and deletes the entry when it checks it.
+    setTimeout(() => pendingStops.delete(id), 60_000)
     try {
       await sidecarFetch(`/stopPortForward?id=${id}`)
     } catch (err) {
@@ -549,6 +586,7 @@ export function registerKubectlHandlers(): void {
         (res) => handleScanResponse(res, '/security/scan', event.sender, resolve, reject)
       )
       req.on('error', reject)
+      event.sender.once('destroyed', () => req.destroy())
     })
   })
   ipcMain.handle('kubectl:scanTrivyImages', (event, workloads) => {
@@ -567,6 +605,7 @@ export function registerKubectlHandlers(): void {
         (res) => handleScanResponse(res, '/security/trivy/images', event.sender, resolve, reject)
       )
       req.on('error', reject)
+      event.sender.once('destroyed', () => req.destroy())
       req.write(reqBody)
       req.end()
     })

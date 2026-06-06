@@ -1,4 +1,7 @@
-import { describe, it, expect } from 'vitest'
+import { vi, describe, it, expect } from 'vitest'
+
+vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
+
 import { transformRelease } from './helm'
 
 describe('transformRelease', () => {

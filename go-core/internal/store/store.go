@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"sync"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -18,10 +19,18 @@ type ContextCache struct {
 	ApiextensionsClientset apiextensionsclientset.Interface
 	Config                *rest.Config
 	StopCh     chan struct{}
+	CacheCtx    context.Context
+	cacheCancel context.CancelFunc
 	CacheReady bool // true once critical informers have synced at least once for this cache
 	HasData    bool // set true after first successful background sync; never reset to false
 	//   false = never fully synced → use direct-API fallback
 	//   true  = stale data ok → serve cache, restart informers in background
+
+	// ProbeRunning is true while an RBAC probe goroutine is active for this cache.
+	// It prevents a second concurrent probe (e.g. startup probe racing with a
+	// user-triggered context switch) from hammering the API server simultaneously.
+	// Guarded by the cache's own RWMutex.
+	ProbeRunning bool
 
 	// AllowedResources is the result of the SelfSubjectAccessReview probe run
 	// before informers start. Three states:
@@ -68,10 +77,13 @@ type ContextCache struct {
 }
 
 func NewContextCache(clientset kubernetes.Interface, config *rest.Config) *ContextCache {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &ContextCache{
-		Clientset: clientset,
-		Config:    config,
-		StopCh:    make(chan struct{}),
+		Clientset:   clientset,
+		Config:      config,
+		StopCh:      make(chan struct{}),
+		CacheCtx:    ctx,
+		cacheCancel: cancel,
 
 		Nodes:               make(map[string]interface{}),
 		Pods:                make(map[string]interface{}),
@@ -159,14 +171,28 @@ func (c *ContextCache) GetEvent(namespace, name string) (*corev1.Event, bool) {
 }
 
 // StopInformers closes StopCh under the write-lock and nils it, signalling all
-// watching informers to shut down. Safe to call concurrently: the lock+nil
-// pattern ensures the channel is closed at most once even if two goroutines race.
+// watching informers to shut down. Also cancels CacheCtx so any in-flight RBAC
+// probe is interrupted. Safe to call concurrently.
 func (c *ContextCache) StopInformers() {
 	c.Lock()
 	if c.StopCh != nil {
 		close(c.StopCh)
 		c.StopCh = nil
 	}
+	c.Unlock()
+	if c.cacheCancel != nil {
+		c.cacheCancel()
+	}
+}
+
+// ResetCacheCtx creates a fresh cancellable context pair, replacing the one
+// permanently cancelled by StopInformers. Must be called before starting new
+// informers or RBAC probes on a reused cache.
+func (c *ContextCache) ResetCacheCtx() {
+	ctx, cancel := context.WithCancel(context.Background())
+	c.Lock()
+	c.CacheCtx = ctx
+	c.cacheCancel = cancel
 	c.Unlock()
 }
 

@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/podscape/go-core/internal/store"
 	appsv1 "k8s.io/api/apps/v1"
@@ -133,5 +134,66 @@ func TestClusterStore_ActiveClientset_NilCache(t *testing.T) {
 	cs, cfg := s.ActiveClientset()
 	if cs != nil || cfg != nil {
 		t.Errorf("ActiveClientset with no active cache: got (%v, %v), want (nil, nil)", cs, cfg)
+	}
+}
+
+// ── StopInformers / ResetCacheCtx ─────────────────────────────────────────────
+
+func TestContextCache_StopInformers_CancelsCacheCtx(t *testing.T) {
+	c := newCache()
+	// CacheCtx must be live before StopInformers.
+	select {
+	case <-c.CacheCtx.Done():
+		t.Fatal("CacheCtx should be live before StopInformers")
+	default:
+	}
+
+	c.StopInformers()
+
+	select {
+	case <-c.CacheCtx.Done():
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("CacheCtx should be cancelled after StopInformers")
+	}
+}
+
+func TestContextCache_ResetCacheCtx_RestoresLiveCtx(t *testing.T) {
+	c := newCache()
+	c.StopInformers()
+
+	// Context is now permanently cancelled; ResetCacheCtx should replace it.
+	c.ResetCacheCtx()
+
+	select {
+	case <-c.CacheCtx.Done():
+		t.Fatal("CacheCtx should be live after ResetCacheCtx")
+	default:
+	}
+}
+
+func TestContextCache_ResetCacheCtx_NewCtxCancelledBySubsequentStop(t *testing.T) {
+	c := newCache()
+	c.StopInformers()
+	c.ResetCacheCtx()
+
+	// The context produced by ResetCacheCtx should be cancellable by another
+	// StopInformers call (its cancel func must be registered, not lost).
+	c.StopInformers()
+
+	select {
+	case <-c.CacheCtx.Done():
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("context from ResetCacheCtx should be cancelled by subsequent StopInformers")
+	}
+}
+
+func TestContextCache_ResetCacheCtx_ProducesDistinctContext(t *testing.T) {
+	c := newCache()
+	first := c.CacheCtx
+	c.StopInformers()
+	c.ResetCacheCtx()
+
+	if c.CacheCtx == first {
+		t.Error("ResetCacheCtx should produce a new context, not reuse the old one")
 	}
 }

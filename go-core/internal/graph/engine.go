@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sort"
@@ -37,14 +38,14 @@ func (b *GraphBuilder) AddDiscoverer(d Discoverer) {
 }
 
 // Build constructs the full graph from the provided set of starting nodes.
-func (b *GraphBuilder) Build(initialNodes []Node) *Graph {
+func (b *GraphBuilder) Build(ctx context.Context, initialNodes []Node) *Graph {
 	b.mu.Lock()
 	discoverers := make([]Discoverer, len(b.discoverers))
 	copy(discoverers, b.discoverers)
 	b.mu.Unlock()
 
 	graph := &Graph{
-		Nodes:      initialNodes,
+		Nodes:      append(make([]Node, 0), initialNodes...),
 		Edges:      []Edge{},
 		Namespaces: []string{},
 	}
@@ -63,7 +64,7 @@ func (b *GraphBuilder) Build(initialNodes []Node) *Graph {
 	// Run all registered discoverers
 	for _, d := range discoverers {
 		log.Printf("[GraphBuilder] Running %s...", d.Name())
-		newEdges := d.Discover(graph.Nodes, b.cache)
+		newEdges := d.Discover(ctx, graph.Nodes, b.cache)
 		
 		for _, e := range newEdges {
 			if !edgeMap[e.ID] {
@@ -81,8 +82,8 @@ func (b *GraphBuilder) Build(initialNodes []Node) *Graph {
 func (b *GraphBuilder) collapseResources(graph *Graph) {
 	groups := make(map[string][]int) // key -> indices in graph.Nodes
 	for i, n := range graph.Nodes {
-		if (n.Kind == KindPod || n.Kind == KindReplicaSet) && n.OwnerUID != "" {
-			key := fmt.Sprintf("%s:%s:%s", n.Kind, n.Namespace, n.OwnerUID)
+		if n.Kind == KindPod && n.OwnerUID != "" {
+			key := fmt.Sprintf("pod:%s:%s", n.Namespace, n.OwnerUID)
 			groups[key] = append(groups[key], i)
 		}
 	}
@@ -113,7 +114,7 @@ func (b *GraphBuilder) collapseResources(graph *Graph) {
 
 		// Create collapsed node
 		base := graph.Nodes[indices[0]]
-		collapsedID := fmt.Sprintf("collapsed:%s:%s", base.Kind, base.OwnerUID)
+		collapsedID := fmt.Sprintf("collapsed:%s:%s:%s", base.Kind, base.Namespace, base.OwnerUID)
 		
 		names := make([]string, 0, len(indices))
 		for _, idx := range indices {
@@ -127,10 +128,6 @@ func (b *GraphBuilder) collapseResources(graph *Graph) {
 		collapsedNode.ID = collapsedID
 		collapsedNode.ReplicaCount = len(indices)
 		collapsedNode.ReplicaNames = names
-		// Shorten name if it ends with a hash/suffix, usually owners share a prefix
-		if len(collapsedNode.Name) > 10 {
-			collapsedNode.Name = collapsedNode.Name[:len(collapsedNode.Name)-6] + ".."
-		}
 
 		newNodes = append(newNodes, collapsedNode)
 	}
@@ -143,10 +140,14 @@ func (b *GraphBuilder) collapseResources(graph *Graph) {
 	}
 	graph.Nodes = newNodes
 
-	// Update edges
+	// Update edges: remap endpoints, re-ID, and merge duplicate labels.
+	// edgeSeen maps new edge ID → index in newEdges so that when multiple
+	// pre-collapse edges land on the same post-collapse endpoint pair we can
+	// merge their labels rather than silently discarding one. "dropped" always
+	// wins, matching the same priority rule used by HubbleDiscoverer.
 	if len(idMap) > 0 {
 		newEdges := make([]Edge, 0, len(graph.Edges))
-		edgeSeen := make(map[string]bool)
+		edgeSeen := make(map[string]int)
 		for _, e := range graph.Edges {
 			if newSrc, ok := idMap[e.Source]; ok {
 				e.Source = newSrc
@@ -154,11 +155,14 @@ func (b *GraphBuilder) collapseResources(graph *Graph) {
 			if newTarget, ok := idMap[e.Target]; ok {
 				e.Target = newTarget
 			}
-			// Update edge ID to reflect new endpoints
 			e.ID = fmt.Sprintf("edge:%s:%s:%s", e.Source, e.Target, e.Kind)
-			if !edgeSeen[e.ID] {
+			if idx, seen := edgeSeen[e.ID]; seen {
+				if e.Label == "dropped" && newEdges[idx].Label != "dropped" {
+					newEdges[idx].Label = "dropped"
+				}
+			} else {
+				edgeSeen[e.ID] = len(newEdges)
 				newEdges = append(newEdges, e)
-				edgeSeen[e.ID] = true
 			}
 		}
 		graph.Edges = newEdges
@@ -166,12 +170,12 @@ func (b *GraphBuilder) collapseResources(graph *Graph) {
 }
 
 // BuildFiltered constructs a graph focused on a specific namespace.
-func (b *GraphBuilder) BuildFiltered(nodes []Node, ns string) *Graph {
+func (b *GraphBuilder) BuildFiltered(ctx context.Context, nodes []Node, ns string) *Graph {
 	filteredNodes := make([]Node, 0)
 	for _, n := range nodes {
 		if ns == "" || n.Namespace == ns || n.Namespace == "" {
 			filteredNodes = append(filteredNodes, n)
 		}
 	}
-	return b.Build(filteredNodes)
+	return b.Build(ctx, filteredNodes)
 }

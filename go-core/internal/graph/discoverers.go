@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"context"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -13,10 +14,19 @@ type OwnerDiscoverer struct{}
 
 func (d *OwnerDiscoverer) Name() string { return "OwnerDiscoverer" }
 
-func (d *OwnerDiscoverer) Discover(nodes []Node, cache ResourceCache) []Edge {
+func (d *OwnerDiscoverer) Discover(_ context.Context, nodes []Node, cache ResourceCache) []Edge {
 	var edges []Edge
 	for _, node := range nodes {
-		obj, ok := cache.GetRawObject(node.Kind, node.Namespace, node.Name)
+		var obj interface{}
+		var ok bool
+		// For workload nodes use UID-based lookup to avoid false matches when two
+		// different workload types (e.g. a Job and a Deployment) share the same
+		// namespace/name. All other kinds use the name-based lookup.
+		if node.Kind == KindWorkload && node.UID != "" {
+			obj, ok = cache.GetRawObjectByUID(node.UID)
+		} else {
+			obj, ok = cache.GetRawObject(node.Kind, node.Namespace, node.Name)
+		}
 		if !ok {
 			continue
 		}
@@ -56,7 +66,7 @@ type SelectorDiscoverer struct{}
 
 func (d *SelectorDiscoverer) Name() string { return "SelectorDiscoverer" }
 
-func (d *SelectorDiscoverer) Discover(nodes []Node, cache ResourceCache) []Edge {
+func (d *SelectorDiscoverer) Discover(_ context.Context, nodes []Node, cache ResourceCache) []Edge {
 	var edges []Edge
 	
 	// Index pods by namespace for faster matching
@@ -102,7 +112,7 @@ type VolumeDiscoverer struct{}
 
 func (d *VolumeDiscoverer) Name() string { return "VolumeDiscoverer" }
 
-func (d *VolumeDiscoverer) Discover(nodes []Node, cache ResourceCache) []Edge {
+func (d *VolumeDiscoverer) Discover(_ context.Context, nodes []Node, cache ResourceCache) []Edge {
 	var edges []Edge
 	for _, node := range nodes {
 		if node.Kind != KindPod {
@@ -121,7 +131,13 @@ func (d *VolumeDiscoverer) Discover(nodes []Node, cache ResourceCache) []Edge {
 
 		for _, vol := range pod.Spec.Volumes {
 			if vol.PersistentVolumeClaim != nil {
-				pvcID := fmt.Sprintf("%s:%s:%s", KindPVC, node.Namespace, vol.PersistentVolumeClaim.ClaimName)
+				claimName := vol.PersistentVolumeClaim.ClaimName
+				pvcID := fmt.Sprintf("%s:%s:%s", KindPVC, node.Namespace, claimName)
+				if pvcObj, ok := cache.GetRawObject(KindPVC, node.Namespace, claimName); ok {
+					if pvc, ok := pvcObj.(*corev1.PersistentVolumeClaim); ok && pvc.UID != "" {
+						pvcID = fmt.Sprintf("%s:%s", KindPVC, pvc.UID)
+					}
+				}
 				edges = append(edges, Edge{
 					ID:     fmt.Sprintf("volume:%s->%s", node.ID, pvcID),
 					Source: node.ID,
@@ -140,7 +156,7 @@ type NodeDiscoverer struct{}
 
 func (d *NodeDiscoverer) Name() string { return "NodeDiscoverer" }
 
-func (d *NodeDiscoverer) Discover(nodes []Node, cache ResourceCache) []Edge {
+func (d *NodeDiscoverer) Discover(_ context.Context, nodes []Node, cache ResourceCache) []Edge {
 	var edges []Edge
 	for _, node := range nodes {
 		if node.Kind != KindPod {
@@ -155,7 +171,13 @@ func (d *NodeDiscoverer) Discover(nodes []Node, cache ResourceCache) []Edge {
 			continue
 		}
 
-		nodeID := fmt.Sprintf("node:%s", pod.Spec.NodeName)
+		nodeName := pod.Spec.NodeName
+		nodeID := fmt.Sprintf("node:%s", nodeName)
+		if kubeNodeObj, ok := cache.GetRawObject(KindNode, "", nodeName); ok {
+			if kubeNode, ok := kubeNodeObj.(*corev1.Node); ok && kubeNode.UID != "" {
+				nodeID = fmt.Sprintf("node:%s", kubeNode.UID)
+			}
+		}
 		edges = append(edges, Edge{
 			ID:     fmt.Sprintf("node:%s->%s", node.ID, nodeID),
 			Source: node.ID,
@@ -171,7 +193,7 @@ type ConnectionDiscoverer struct{}
 
 func (d *ConnectionDiscoverer) Name() string { return "ConnectionDiscoverer" }
 
-func (d *ConnectionDiscoverer) Discover(nodes []Node, cache ResourceCache) []Edge {
+func (d *ConnectionDiscoverer) Discover(_ context.Context, nodes []Node, cache ResourceCache) []Edge {
 	var edges []Edge
 	for _, node := range nodes {
 		if node.Kind != KindIngress {
@@ -236,7 +258,7 @@ type NetworkPolicyDiscoverer struct{}
 
 func (d *NetworkPolicyDiscoverer) Name() string { return "NetworkPolicyDiscoverer" }
 
-func (d *NetworkPolicyDiscoverer) Discover(nodes []Node, cache ResourceCache) []Edge {
+func (d *NetworkPolicyDiscoverer) Discover(_ context.Context, nodes []Node, cache ResourceCache) []Edge {
 	var edges []Edge
 
 	podsByNS := make(map[string][]Node)

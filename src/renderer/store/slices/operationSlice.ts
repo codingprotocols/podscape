@@ -20,6 +20,7 @@ export interface OperationSlice {
     execSessions: ExecSession[]
     activeExecId: string | null
     openExec: (target: ExecTarget) => void
+    setPtyId: (sessionId: string, ptyId: string) => void
     setActiveExecId: (id: string) => void
     closeExecTab: (id: string) => void
     closeExec: () => void
@@ -36,27 +37,37 @@ export const createOperationSlice: StoreSlice<OperationSlice> = (set, get) => ({
     closeCreate: () => set(() => ({ createKind: null })),
     openExec: (target) => {
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-        const session: ExecSession = { id, target }
+        const session: ExecSession = { id, target, ptyId: null }
         set(s => ({ execSessions: [...s.execSessions, session], activeExecId: id }))
     },
-    closeExecTab: (id) => set(s => {
-        const remaining = s.execSessions.filter(sess => sess.id !== id)
-        let nextActive = s.activeExecId
-        if (s.activeExecId === id) {
-            const idx = s.execSessions.findIndex(sess => sess.id === id)
-            const next = s.execSessions[idx + 1] ?? s.execSessions[idx - 1]
-            nextActive = next?.id ?? null
-        }
-        return { execSessions: remaining, activeExecId: nextActive }
-    }),
+    setPtyId: (sessionId, ptyId) =>
+        set(s => ({ execSessions: s.execSessions.map(sess => sess.id === sessionId ? { ...sess, ptyId } : sess) })),
+    closeExecTab: (id) => {
+        const session = get().execSessions.find(s => s.id === id)
+        if (session?.ptyId) window.exec.kill(session.ptyId).catch(() => {})
+        set(s => {
+            const remaining = s.execSessions.filter(sess => sess.id !== id)
+            let nextActive = s.activeExecId
+            if (s.activeExecId === id) {
+                const idx = s.execSessions.findIndex(sess => sess.id === id)
+                const next = s.execSessions[idx + 1] ?? s.execSessions[idx - 1]
+                nextActive = next?.id ?? null
+            }
+            return { execSessions: remaining, activeExecId: nextActive }
+        })
+    },
     setActiveExecId: (id) => set({ activeExecId: id }),
-    closeExec: () => set({ execSessions: [], activeExecId: null }),
+    closeExec: () => {
+        get().execSessions.forEach(s => { if (s.ptyId) window.exec.kill(s.ptyId).catch(() => {}) })
+        set({ execSessions: [], activeExecId: null })
+    },
     scaleDeployment: async (name, replicas, namespace) => {
         const { selectedContext: ctx, selectedNamespace: ns, selectedResource } = get()
         if (!ctx) return
         const actualNs = namespace ?? (ns === '_all' ? (selectedResource?.metadata.namespace ?? null) : ns)
         if (!actualNs) return
         await window.kubectl.scale(ctx, actualNs, name, replicas)
+        if (get().selectedContext !== ctx) return
         await get().loadSection('deployments')
     },
     scaleStatefulSet: async (name, replicas, namespace) => {
@@ -65,6 +76,7 @@ export const createOperationSlice: StoreSlice<OperationSlice> = (set, get) => ({
         const actualNs = namespace ?? (ns === '_all' ? (selectedResource?.metadata.namespace ?? null) : ns)
         if (!actualNs) return
         await window.kubectl.scaleResource(ctx, actualNs, 'statefulset', name, replicas)
+        if (get().selectedContext !== ctx) return
         await get().loadSection('statefulsets')
     },
     rolloutRestart: async (kind, name, namespace) => {
@@ -73,14 +85,16 @@ export const createOperationSlice: StoreSlice<OperationSlice> = (set, get) => ({
         const actualNs = namespace ?? (ns === '_all' ? (selectedResource?.metadata.namespace ?? null) : ns)
         if (!actualNs) return
         await window.kubectl.rolloutRestart(ctx, actualNs, kind, name)
+        if (get().selectedContext !== ctx) return
     },
     deleteResource: async (kind, name, clusterScoped = false, namespace?: string) => {
-        const { selectedContext: ctx, selectedNamespace: ns, selectedResource } = get()
+        const { selectedContext: ctx, selectedNamespace: ns, selectedResource, section } = get()
         if (!ctx) return
         const actualNs = clusterScoped ? null : (namespace ?? (ns === '_all' ? (selectedResource?.metadata.namespace ?? null) : ns))
         await window.kubectl.deleteResource(ctx, actualNs, kind, name)
+        if (get().selectedContext !== ctx) return
         set({ selectedResource: null })
-        await get().loadSection(get().section)
+        await get().loadSection(section)
     },
     getYAML: async (kind, name, clusterScoped = false, namespace?: string) => {
         const { selectedContext: ctx, selectedNamespace: ns, selectedResource } = get()
@@ -96,31 +110,42 @@ export const createOperationSlice: StoreSlice<OperationSlice> = (set, get) => ({
         return window.kubectl.getSecretValue(ctx, actualNs, name, key)
     },
     applyYAML: async (yaml) => {
-        const { selectedContext: ctx } = get()
+        const { selectedContext: ctx, section } = get()
         if (!ctx) return ''
         const result = await window.kubectl.applyYAML(ctx, yaml)
-        await get().loadSection(get().section)
+        if (get().selectedContext !== ctx) return result
+        await get().loadSection(section)
         return result
     },
     startPortForward: (entry) => {
         set(s => ({ portForwards: [...s.portForwards, entry] }))
         const ctx = get().selectedContext!
 
-        const unsubReady = window.kubectl.onPortForwardReady(entry.id, () =>
+        // Pre-populate with no-ops so callbacks fired before all three unsub
+        // functions are returned can still find and clean up the map entry.
+        // Without this, an error delivered synchronously between listener
+        // registration and pfUnsubs.set() would find undefined and leak all
+        // three ipcRenderer.on handlers permanently.
+        const unsubs: [() => void, () => void, () => void] = [() => {}, () => {}, () => {}]
+        pfUnsubs.set(entry.id, unsubs)
+
+        unsubs[0] = window.kubectl.onPortForwardReady(entry.id, () =>
             set(s => ({ portForwards: s.portForwards.map(f => f.id === entry.id ? { ...f, status: 'active' } : f) }))
         )
-        const unsubError = window.kubectl.onPortForwardError(entry.id, (msg) =>
+        unsubs[1] = window.kubectl.onPortForwardError(entry.id, (msg) => {
+            // Clean up all three listeners — an error means the forward will not
+            // transition to active or receive an exit event, so they would leak.
+            const fns = pfUnsubs.get(entry.id)
+            if (fns) { fns.forEach(fn => fn()); pfUnsubs.delete(entry.id) }
             set(s => ({ portForwards: s.portForwards.map(f => f.id === entry.id ? { ...f, status: 'error', error: msg } : f) }))
-        )
-        const unsubExit = window.kubectl.onPortForwardExit(entry.id, () => {
+        })
+        unsubs[2] = window.kubectl.onPortForwardExit(entry.id, () => {
             // Call all three unsub functions to remove the IPC listeners before
             // deleting the entry — otherwise ready/error/exit listeners leak.
             const fns = pfUnsubs.get(entry.id)
             if (fns) { fns.forEach(fn => fn()); pfUnsubs.delete(entry.id) }
             set(s => ({ portForwards: s.portForwards.filter(f => f.id !== entry.id) }))
         })
-
-        pfUnsubs.set(entry.id, [unsubReady, unsubError, unsubExit])
 
         // Register listeners before invoking IPC so no events are missed.
         // If the IPC layer itself throws (before the sidecar is reached),

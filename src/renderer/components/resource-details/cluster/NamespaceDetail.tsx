@@ -12,7 +12,7 @@ interface Props {
 }
 
 export default function NamespaceDetail({ namespace: ns }: Props): JSX.Element {
-  const { selectedContext } = useAppStore()
+  const selectedContext = useAppStore(s => s.selectedContext)
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const [events, setEvents] = useState<KubeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
@@ -28,11 +28,13 @@ export default function NamespaceDetail({ namespace: ns }: Props): JSX.Element {
   useEffect(() => {
     const uid = ns.metadata.uid
     if (!selectedContext || tab !== 'events' || !uid) return
+    let cancelled = false
     setEventsLoading(true)
     window.kubectl.getResourceEvents(selectedContext, ns.metadata.name, uid)
-      .then(setEvents)
-      .catch(() => setEvents([]))
-      .finally(() => setEventsLoading(false))
+      .then(evts => { if (!cancelled) setEvents(evts) })
+      .catch(() => { if (!cancelled) setEvents([]) })
+      .finally(() => { if (!cancelled) setEventsLoading(false) })
+    return () => { cancelled = true }
   }, [tab, ns.metadata.uid, selectedContext])
 
   return (

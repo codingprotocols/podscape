@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 interface UseLogBufferOptions {
   maxItems?: number
@@ -59,6 +59,15 @@ export function useLogBuffer<T>({
     if (flushTimer.current !== null) {
       clearTimeout(flushTimer.current)
       flushTimer.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (flushTimer.current !== null) {
+        clearTimeout(flushTimer.current)
+        flushTimer.current = null
+      }
     }
   }, [])
 

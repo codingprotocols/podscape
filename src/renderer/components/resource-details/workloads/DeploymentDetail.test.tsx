@@ -9,20 +9,20 @@ import DeploymentDetail from './DeploymentDetail'
 import type { KubeDeployment } from '../../../types'
 
 // ── store mock ─────────────────────────────────────────────────────────────────
-vi.mock('../../../store', () => ({
-  useAppStore: (sel?: (s: any) => any) => {
-    const state = {
-      rolloutRestart: vi.fn().mockResolvedValue('ok'),
-      selectedContext: 'test-ctx',
-      selectedNamespace: 'default',
-      scanResource: vi.fn(),
-      scanResults: {},
-      isScanning: false,
-      prometheusAvailable: false,
-    }
-    return sel ? sel(state) : state
-  },
-}))
+vi.mock('../../../store', () => {
+  const state = {
+    rolloutRestart: vi.fn().mockResolvedValue('ok'),
+    selectedContext: 'test-ctx',
+    selectedNamespace: 'default',
+    scanResource: vi.fn(),
+    scanResults: {},
+    isScanning: false,
+    prometheusAvailable: false,
+  }
+  const useAppStore = (sel?: (s: any) => any) => sel ? sel(state) : state
+  useAppStore.getState = () => state
+  return { useAppStore }
+})
 
 // ── heavy sub-component stubs ──────────────────────────────────────────────────
 vi.mock('../../advanced/OwnerChain', () => ({ default: () => null }))

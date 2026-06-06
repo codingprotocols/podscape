@@ -136,6 +136,17 @@ func HandleSecurityScan(w http.ResponseWriter, r *http.Request) {
 	stderrWg.Wait()
 	waitErr := cmd.Wait()
 
+	// Compact JSON before sending as SSE data — trivy outputs pretty-printed
+	// JSON with newlines, which breaks SSE field parsing (newline = field separator).
+	// Attempt compaction before checking the exit code: trivy exits non-zero
+	// (exit status 1) when it finds vulnerabilities, so valid JSON output
+	// takes priority over a non-zero exit code.
+	var compacted bytes.Buffer
+	if jsonErr := json.Compact(&compacted, output); jsonErr == nil {
+		sseEvent(w, flusher, "result", compacted.String())
+		return
+	}
+
 	if readErr != nil || waitErr != nil {
 		msg := "trivy scan failed"
 		if waitErr != nil {
@@ -145,15 +156,8 @@ func HandleSecurityScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Compact JSON before sending as SSE data — trivy outputs pretty-printed
-	// JSON with newlines, which breaks SSE field parsing (newline = field separator).
-	var compacted bytes.Buffer
-	if err := json.Compact(&compacted, output); err != nil {
-		// Not valid JSON (e.g. empty output); send as-is and let the client handle it.
-		sseEvent(w, flusher, "result", string(output))
-		return
-	}
-	sseEvent(w, flusher, "result", compacted.String())
+	// No JSON and no error: send raw output.
+	sseEvent(w, flusher, "result", string(output))
 }
 
 func HandleKubesec(w http.ResponseWriter, r *http.Request) {
@@ -393,7 +397,10 @@ func HandleTrivyImages(w http.ResponseWriter, r *http.Request) {
 
 			cmd := osexec.CommandContext(ctx, "trivy", "image", "--format", "json", "--timeout", "10m0s", "--quiet", img)
 			output, err := cmd.Output()
-			if err != nil {
+			// cmd.Output() returns stdout even on non-zero exit; trivy exits 1 when
+			// vulnerabilities are found but still emits valid JSON. Only skip the
+			// image if there is no output to parse.
+			if err != nil && len(output) == 0 {
 				sendSSE("progress", fmt.Sprintf("Skipping %s: %s", img, err.Error()))
 				return
 			}

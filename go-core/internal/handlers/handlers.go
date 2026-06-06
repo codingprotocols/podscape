@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/podscape/go-core/internal/helm"
+	"github.com/podscape/go-core/internal/hubble"
 	"github.com/podscape/go-core/internal/informers"
 	"github.com/podscape/go-core/internal/portforward"
 	"github.com/podscape/go-core/internal/prometheus"
@@ -96,8 +99,10 @@ func MakeHandler(
 			if !hasData && cs != nil {
 				items, err := fallback(r.Context(), cs, ns)
 				if err == nil {
-					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(items)
+					if items == nil {
+						items = []interface{}{}
+					}
+					writeJSON(w, items)
 					return
 				}
 				log.Printf("[Handler] direct fallback failed, serving cache: %v", err)
@@ -119,7 +124,7 @@ func MakeHandler(
 		// namespace and pass through regardless of the ns filter.
 		items := snapshot
 		if ns != "" {
-			items = snapshot[:0]
+			items = make([]interface{}, 0, len(snapshot))
 			for _, v := range snapshot {
 				if obj, ok := v.(metav1.Object); ok {
 					if obj.GetNamespace() != "" && obj.GetNamespace() != ns {
@@ -130,8 +135,7 @@ func MakeHandler(
 			}
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(items)
+		writeJSON(w, items)
 	}
 }
 
@@ -167,15 +171,14 @@ func HandleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleGetContexts(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	config, err := clientcmd.LoadFromFile(store.Store.Kubeconfig)
 	if err != nil {
 		// Kubeconfig missing or unreadable — return empty list so the renderer
 		// shows KubeConfigOnboarding rather than an unhandled error.
-		json.NewEncoder(w).Encode(map[string]interface{}{})
+		writeJSON(w, map[string]interface{}{})
 		return
 	}
-	json.NewEncoder(w).Encode(config.Contexts)
+	writeJSON(w, config.Contexts)
 }
 
 func HandleGetCurrentContext(w http.ResponseWriter, r *http.Request) {
@@ -196,16 +199,46 @@ func HandleGetCurrentContext(w http.ResponseWriter, r *http.Request) {
 }
 
 // RunRBACProbe probes access permissions for the given context and stores the
-// result in the cache. It runs under a 10-second deadline so a slow API server
-// cannot delay informer startup by more than that. On failure, AllowedResources
-// is left nil (permissive: all informers start).
-func RunRBACProbe(cache *store.ContextCache, ctxName string, cs kubernetes.Interface) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+// result in the cache. It runs under a 20-second deadline so a slow API server
+// cannot delay informer startup indefinitely. On failure, AllowedResources
+// is left nil (permissive: all informers start). parent is cancelled when the
+// cache shuts down, which cuts the probe short on context switch or app exit.
+//
+// If another probe goroutine is already running for this cache (e.g. the startup
+// probe racing with a user-triggered context switch), RunRBACProbe returns
+// immediately without starting a second burst of SAR requests.
+func RunRBACProbe(parent context.Context, cache *store.ContextCache, ctxName string, cs kubernetes.Interface) {
+	cache.Lock()
+	if cache.ProbeRunning {
+		cache.Unlock()
+		log.Printf("[SwitchContext] RBAC probe for %q skipped — another probe is already in progress", ctxName)
+		return
+	}
+	cache.ProbeRunning = true
+	cache.Unlock()
+	defer func() {
+		cache.Lock()
+		cache.ProbeRunning = false
+		cache.Unlock()
+	}()
+
+	ctx, cancel := context.WithTimeout(parent, 45*time.Second)
 	defer cancel()
 
 	verbMap, err := rbacVerbCheckFunc(ctx, cs)
 	if err != nil {
-		log.Printf("[SwitchContext] RBAC probe failed for %q, proceeding without restriction: %v", ctxName, err)
+		switch {
+		case errors.Is(ctx.Err(), context.Canceled):
+			// Parent context was cancelled (context switch or app exit) — leave
+			// AllowedResources unchanged rather than overwriting with nil.
+			log.Printf("[SwitchContext] RBAC probe cancelled for %q: %v", ctxName, err)
+		case errors.Is(ctx.Err(), context.DeadlineExceeded):
+			// The 45-second probe deadline expired — API server is unusually slow.
+			// Proceed without restriction (AllowedResources stays nil = permissive).
+			log.Printf("[SwitchContext] RBAC probe timed out for %q after 45s, proceeding without restriction: %v", ctxName, err)
+		default:
+			log.Printf("[SwitchContext] RBAC probe failed for %q, proceeding without restriction: %v", ctxName, err)
+		}
 		return
 	}
 
@@ -234,7 +267,7 @@ func RunRBACProbe(cache *store.ContextCache, ctxName string, cs kubernetes.Inter
 // RBAC, aborts if a newer switch has superseded this one, then calls
 // startInformers to warm or refresh the cache and marks it ready.
 func runContextSwitch(cache *store.ContextCache, ctxName string, cs kubernetes.Interface, myGen int64, logMsg string, startInformers func()) {
-	RunRBACProbe(cache, ctxName, cs)
+	RunRBACProbe(cache.CacheCtx, cache, ctxName, cs)
 	store.Store.SwitchMu.Lock()
 	superseded := store.Store.SwitchGen != myGen
 	store.Store.SwitchMu.Unlock()
@@ -339,6 +372,8 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 	// the Prometheus probe to return "Connected" for the wrong cluster.
 	portforward.Manager.StopAll()
 	portforward.Manager.UpdateClients(clientset, restConfig)
+	hubble.DefaultManager.Reset(clientset, restConfig)
+	hubble.DefaultManager.WarmUp()
 	// Clear the Prometheus query cache so cluster A results are never served
 	// to cluster B even if the PromQL strings and time range happen to match.
 	prometheus.ClearCache()
@@ -351,6 +386,13 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 		})
 	} else {
 		// 6b. New context or cache has no data yet: warm informers in background.
+		// Stop any informers that may be running on this cache (e.g. a previous
+		// switch to this same context that left goroutines alive on the old StopCh).
+		newCache.StopInformers()
+		// Restore a live context pair after StopInformers permanently cancelled the
+		// previous one. Without this, RunRBACProbe inherits a pre-cancelled parent
+		// and its 45 s deadline fires instantly on the very first API call.
+		newCache.ResetCacheCtx()
 		newStopCh := make(chan struct{})
 		newCache.Lock()
 		newCache.StopCh = newStopCh
@@ -365,9 +407,12 @@ func HandleSwitchContext(w http.ResponseWriter, r *http.Request) {
 }
 
 // wsStream wraps a WebSocket connection to implement io.ReadWriter.
+// mu serialises Write calls: gorilla/websocket requires exclusive concurrent
+// access, and exec.Exec drives stdout and stderr from separate goroutines.
 type wsStream struct {
 	conn *websocket.Conn
 	buf  bytes.Buffer
+	mu   sync.Mutex
 }
 
 func (s *wsStream) Read(p []byte) (n int, err error) {
@@ -382,6 +427,8 @@ func (s *wsStream) Read(p []byte) (n int, err error) {
 }
 
 func (s *wsStream) Write(p []byte) (n int, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	err = s.conn.WriteMessage(websocket.TextMessage, p)
 	if err != nil {
 		return 0, err
@@ -423,5 +470,18 @@ func HandleGetAllowedVerbs(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("{}"))
 		return
 	}
-	json.NewEncoder(w).Encode(verbs)
+	writeJSON(w, verbs)
+}
+
+// writeJSON marshals v to JSON and writes it with the correct Content-Type header.
+// Unlike json.NewEncoder(w).Encode, it checks the marshal error before committing
+// the response, so a 500 can still be sent if serialization fails.
+func writeJSON(w http.ResponseWriter, v any) {
+	buf, err := json.Marshal(v)
+	if err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(buf)
 }

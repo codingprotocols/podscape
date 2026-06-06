@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import type { PortForwardEntry, KubePod, KubeService } from '../../types'
 import { Plus, Search } from 'lucide-react'
 import PageHeader from '../core/PageHeader'
@@ -91,7 +92,11 @@ function NewForwardDialog({
   onClose: () => void
   onStart: (entry: Omit<PortForwardEntry, 'id' | 'status'>) => void
 }) {
-  const { namespaces, selectedNamespace, selectedContext } = useAppStore()
+  const { namespaces, selectedNamespace, selectedContext } = useAppStore(useShallow(s => ({
+    namespaces: s.namespaces,
+    selectedNamespace: s.selectedNamespace,
+    selectedContext: s.selectedContext,
+  })))
   const [type, setType] = useState<'pod' | 'service'>('pod')
   const [ns, setNs] = useState(selectedNamespace === '_all' ? (namespaces[0]?.metadata.name ?? '') : (selectedNamespace ?? ''))
   const [name, setName] = useState('')
@@ -109,6 +114,7 @@ function NewForwardDialog({
   // Fetch resources (with ports) when type or namespace changes
   useEffect(() => {
     if (!selectedContext || !ns) { setResourceNames([]); setPortMap({}); return }
+    let cancelled = false
     setLoadingNames(true)
     setName('')
     setRemotePort('')
@@ -117,6 +123,7 @@ function NewForwardDialog({
       ? window.kubectl.getPods(selectedContext, ns)
       : window.kubectl.getServices(selectedContext, ns)
     req.then(items => {
+      if (cancelled) return
       const map: Record<string, PortOption[]> = {}
       for (const item of items) {
         map[item.metadata.name] = type === 'pod'
@@ -126,13 +133,14 @@ function NewForwardDialog({
       setPortMap(map)
       setResourceNames(Object.keys(map).sort())
     })
-      .catch(() => { setPortMap({}); setResourceNames([]) })
-      .finally(() => setLoadingNames(false))
+      .catch(() => { if (!cancelled) { setPortMap({}); setResourceNames([]) } })
+      .finally(() => { if (!cancelled) setLoadingNames(false) })
+    return () => { cancelled = true }
   }, [type, ns, selectedContext])
 
-  // Auto-fill ports when a resource is selected
+  // Auto-fill ports when a resource is selected or when portMap updates (namespace fetch completes)
   useEffect(() => {
-    if (!name) { setDetectedPort(''); return }
+    if (!name) return
     const ports = portMap[name] ?? []
     if (ports.length >= 1) {
       setRemotePort(String(ports[0].port))
@@ -141,15 +149,13 @@ function NewForwardDialog({
       setRemotePort('')
       setLocalPort('')
     }
-  }, [name])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [name, portMap])
 
   // When remote port dropdown changes, sync local port
   const handleRemotePortSelect = (val: string) => {
     setRemotePort(val)
     setLocalPort(val)
   }
-
-  const [, setDetectedPort] = useState('')   // dummy setter just to satisfy exhaustive-deps lint
 
   const canStart = !!name && !!ns && !!remotePort && !!localPort
 
@@ -312,12 +318,23 @@ function openInBrowser(url: string) {
 
 function UrlCell({ url }: { url: string }) {
   const [copied, setCopied] = useState(false)
+  const mountedRef = React.useRef(true)
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  React.useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      if (timerRef.current !== null) clearTimeout(timerRef.current)
+    }
+  }, [])
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation()
     navigator.clipboard.writeText(url).then(() => {
+      if (!mountedRef.current) return
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      if (timerRef.current !== null) clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => setCopied(false), 1500)
     })
   }
 
@@ -360,7 +377,12 @@ function UrlCell({ url }: { url: string }) {
 type SortKey = 'name' | 'namespace' | 'localPort'
 
 export default function PortForwardPanel() {
-  const { portForwards, stopPortForward, startPortForward, selectedContext } = useAppStore()
+  const { portForwards, stopPortForward, startPortForward, selectedContext } = useAppStore(useShallow(s => ({
+    portForwards: s.portForwards,
+    stopPortForward: s.stopPortForward,
+    startPortForward: s.startPortForward,
+    selectedContext: s.selectedContext,
+  })))
   const [showDialog, setShowDialog] = useState(false)
   const [filter, setFilter] = useState('')
   const [sortBy, setSortBy] = useState<SortKey>('name')

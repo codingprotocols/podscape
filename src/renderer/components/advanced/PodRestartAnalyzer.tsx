@@ -28,6 +28,7 @@ export default function PodRestartAnalyzer({ pod }: Props): JSX.Element {
                 if (mounted) setEvents(podEvents)
             } catch (err) {
                 console.error('[PodRestartAnalyzer] Failed to fetch events:', err)
+                if (mounted) setEvents([])
             } finally {
                 if (mounted) setLoading(false)
             }

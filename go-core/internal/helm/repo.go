@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	semver "github.com/Masterminds/semver/v3"
 	"helm.sh/helm/v3/pkg/action"
@@ -106,25 +107,33 @@ func (m *HelmRepoManager) getIndex(repoName string) (*repo.IndexFile, error) {
 		return idx, nil
 	}
 
-	// Load from disk
+	// Double-check under write lock before doing disk I/O.
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	// Double check
 	if idx, ok := m.indices[repoName]; ok {
+		m.mu.Unlock()
 		return idx, nil
 	}
+	m.mu.Unlock()
 
+	// Load from disk outside any lock so concurrent Helm operations are not blocked.
 	indexPath := filepath.Join(m.settings.RepositoryCache, helmCacheFileName(repoName))
 	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("index not found for repo %s: try refreshing", repoName)
 	}
-
 	idx, err := repo.LoadIndexFile(indexPath)
 	if err != nil {
 		return nil, err
 	}
+
+	// Re-acquire write lock to store result; check once more in case another
+	// goroutine loaded the same index concurrently while we were on disk.
+	m.mu.Lock()
+	if existing, ok := m.indices[repoName]; ok {
+		m.mu.Unlock()
+		return existing, nil
+	}
 	m.indices[repoName] = idx
+	m.mu.Unlock()
 	return idx, nil
 }
 
@@ -426,12 +435,13 @@ func (m *HelmRepoManager) GetValues(repoName, chartName, version string) (string
 	if data, err := os.ReadFile(cachePath); err == nil {
 		chartData = data
 	} else {
-		resp, err := http.Get(chartURL) //nolint:noctx
+		httpClient := &http.Client{Timeout: 60 * time.Second}
+		resp, err := httpClient.Get(chartURL)
 		if err != nil {
 			return "", fmt.Errorf("downloading chart: %w", err)
 		}
 		defer resp.Body.Close()
-		chartData, err = io.ReadAll(resp.Body)
+		chartData, err = io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 		if err != nil {
 			return "", err
 		}

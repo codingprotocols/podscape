@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { useDragResize } from '../../hooks/useDragResize'
 import { GenericCRDDetail } from '../common/GenericCRDDetail'
 import { ResourceKind, formatAge } from '../../types'
@@ -193,7 +194,11 @@ function itemSummary(section: ResourceKind, item: Record<string, unknown>): stri
 }
 
 export default function ProviderResourcePanel({ section }: { section: ResourceKind }) {
-    const { selectedContext, selectedNamespace, providers } = useAppStore()
+    const { selectedContext, selectedNamespace, providers } = useAppStore(useShallow(s => ({
+        selectedContext: s.selectedContext,
+        selectedNamespace: s.selectedNamespace,
+        providers: s.providers,
+    })))
     const [items, setItems] = useState<any[]>([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -215,18 +220,29 @@ export default function ProviderResourcePanel({ section }: { section: ResourceKi
 
     const load = useCallback(async () => {
         if (!selectedContext || !resolvedCrdName) return
+        const snapshotCtx = selectedContext
+        const snapshotNs = selectedNamespace
         setLoading(true)
         setError(null)
         try {
             const ns = CLUSTER_SCOPED_PROVIDER_SECTIONS.has(section)
                 ? null
                 : selectedNamespace === '_all' ? null : selectedNamespace
-            const data = await window.kubectl.getCustomResource(selectedContext, ns, resolvedCrdName)
+            const data = await window.kubectl.getCustomResource(snapshotCtx, ns, resolvedCrdName)
+            // Read live store state — closure variables always equal snapshotCtx so
+            // they cannot detect a context switch that happened during the await.
+            const current = useAppStore.getState()
+            if (current.selectedContext !== snapshotCtx || current.selectedNamespace !== snapshotNs) return
             setItems(Array.isArray(data) ? data : [])
         } catch (err) {
+            const current = useAppStore.getState()
+            if (current.selectedContext !== snapshotCtx || current.selectedNamespace !== snapshotNs) return
             setError((err as Error).message)
         } finally {
-            setLoading(false)
+            const current = useAppStore.getState()
+            if (current.selectedContext === snapshotCtx && current.selectedNamespace === snapshotNs) {
+                setLoading(false)
+            }
         }
     }, [selectedContext, selectedNamespace, resolvedCrdName])
 

@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import type { KubeSecret } from '../../../types'
 import { formatAge } from '../../../types'
 import { useAppStore } from '../../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { canVerb } from '../../../store/slices/clusterSlice'
 import { Eye, EyeOff, Key, Copy, Check, FileCode, X, Activity } from 'lucide-react'
 import YAMLViewer from '../../common/YAMLViewer'
@@ -10,13 +11,23 @@ import { useYAMLEditor } from '../../../hooks/useYAMLEditor'
 interface Props { secret: KubeSecret }
 
 export default function SecretDetail({ secret }: Props): JSX.Element {
-  const { getSecretValue } = useAppStore()
-  const allowedVerbs = useAppStore(s => s.allowedVerbs)
+  const { getSecretValue, allowedVerbs } = useAppStore(useShallow(s => ({ getSecretValue: s.getSecretValue, allowedVerbs: s.allowedVerbs })))
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const entries = Object.entries(secret.data ?? {})
   const [revealed, setRevealed] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState<Record<string, boolean>>({})
   const [copied, setCopied] = useState<string | null>(null)
+
+  // Track which secret is currently mounted so in-flight reveals don't write
+  // to the wrong secret when the parent swaps the prop without unmounting.
+  const secretNameRef = useRef(secret.metadata.name)
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    secretNameRef.current = secret.metadata.name
+    setRevealed({})
+    setLoading({})
+  }, [secret.metadata.name])
+  useEffect(() => () => { if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current) }, [])
 
   const handleReveal = async (key: string) => {
     if (revealed[key]) {
@@ -24,21 +35,26 @@ export default function SecretDetail({ secret }: Props): JSX.Element {
       return
     }
 
+    const capturedName = secretNameRef.current
     setLoading(prev => ({ ...prev, [key]: true }))
     try {
-      const value = await getSecretValue(secret.metadata.name, key, secret.metadata.namespace ?? 'default')
+      const value = await getSecretValue(capturedName, key, secret.metadata.namespace ?? 'default')
+      if (secretNameRef.current !== capturedName) return
       setRevealed(prev => ({ ...prev, [key]: value }))
     } catch (err) {
       console.error('Failed to reveal secret:', err)
     } finally {
-      setLoading(prev => ({ ...prev, [key]: false }))
+      if (secretNameRef.current === capturedName) {
+        setLoading(prev => ({ ...prev, [key]: false }))
+      }
     }
   }
 
   const handleCopy = (value: string, key: string) => {
     navigator.clipboard.writeText(value)
+    if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current)
     setCopied(key)
-    setTimeout(() => setCopied(null), 2000)
+    copyTimerRef.current = setTimeout(() => setCopied(null), 2000)
   }
 
   return (

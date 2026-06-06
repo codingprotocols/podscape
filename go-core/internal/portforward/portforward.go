@@ -31,6 +31,10 @@ type PortForwardManager struct {
 	Forwards  map[string]*ForwardRequest
 	Clientset kubernetes.Interface
 	Config    *rest.Config
+	// stopped is set true by StopAll and cleared by UpdateClients. While true,
+	// StartForward rejects new requests so that a forward started in the window
+	// between StopAll and UpdateClients cannot use stale context credentials.
+	stopped bool
 	// runForwardFn replaces the real runForward implementation when set.
 	// Used in tests to simulate tunnel behaviour without a real Kubernetes server.
 	runForwardFn func(req *ForwardRequest, errCh chan<- error) error
@@ -50,6 +54,14 @@ var ReadyTimeout = 30 * time.Second
 
 func (m *PortForwardManager) StartForward(id, namespace, podName string, localPort, remotePort int) error {
 	m.Lock()
+	if m.stopped {
+		m.Unlock()
+		return fmt.Errorf("context switch in progress — retry after switch completes")
+	}
+	if m.Config == nil {
+		m.Unlock()
+		return fmt.Errorf("no active Kubernetes context")
+	}
 	if _, ok := m.Forwards[id]; ok {
 		m.Unlock()
 		return fmt.Errorf("forward %s already exists", id)
@@ -69,23 +81,29 @@ func (m *PortForwardManager) StartForward(id, namespace, podName string, localPo
 		restConfig: m.Config, // snapshot current context's config at creation time
 	}
 	m.Forwards[id] = req
-	m.Unlock()
-
 	runFn := m.runForward
 	if m.runForwardFn != nil {
 		runFn = m.runForwardFn
 	}
+	m.Unlock()
+
 	go func() {
 		if err := runFn(req, errCh); err != nil {
 			fmt.Printf("Port forward error for %s: %v\n", id, err)
 		}
 		m.Lock()
-		delete(m.Forwards, id)
+		// Only delete our own entry — a new StartForward with the same id may
+		// have already inserted a fresh request after the error path deleted ours.
+		if m.Forwards[id] == req {
+			delete(m.Forwards, id)
+		}
 		m.Unlock()
 	}()
 
 	// Block until the tunnel is ready, fails, or times out.
 	// This ensures the HTTP caller only sees 200 when the tunnel is actually up.
+	readyTimer := time.NewTimer(ReadyTimeout)
+	defer readyTimer.Stop()
 	select {
 	case <-readyCh:
 		return nil
@@ -94,7 +112,7 @@ func (m *PortForwardManager) StartForward(id, namespace, podName string, localPo
 		delete(m.Forwards, id)
 		m.Unlock()
 		return err
-	case <-time.After(ReadyTimeout):
+	case <-readyTimer.C:
 		m.Lock()
 		if r, ok := m.Forwards[id]; ok {
 			close(r.StopCh)
@@ -118,6 +136,7 @@ func (m *PortForwardManager) StopForward(id string) {
 }
 
 // StopAll terminates every active port-forward. Call this before switching contexts.
+// Sets stopped=true so that StartForward rejects new requests until UpdateClients resets it.
 func (m *PortForwardManager) StopAll() {
 	if m == nil {
 		return
@@ -127,6 +146,7 @@ func (m *PortForwardManager) StopAll() {
 	if m.Forwards == nil {
 		return
 	}
+	m.stopped = true
 	for id, req := range m.Forwards {
 		close(req.StopCh)
 		delete(m.Forwards, id)
@@ -135,6 +155,7 @@ func (m *PortForwardManager) StopAll() {
 
 // UpdateClients swaps the clientset and REST config used for new port-forwards.
 // Existing forwards have already been stopped via StopAll before this is called.
+// Resets stopped so StartForward accepts requests for the new context.
 func (m *PortForwardManager) UpdateClients(clientset kubernetes.Interface, config *rest.Config) {
 	if m == nil {
 		return
@@ -143,6 +164,7 @@ func (m *PortForwardManager) UpdateClients(clientset kubernetes.Interface, confi
 	defer m.Unlock()
 	m.Clientset = clientset
 	m.Config = config
+	m.stopped = false
 }
 
 func (m *PortForwardManager) runForward(req *ForwardRequest, errCh chan<- error) error {

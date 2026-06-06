@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -40,6 +41,10 @@ import (
 )
 
 func HandleScale(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	namespace := r.URL.Query().Get("namespace")
 	kind := r.URL.Query().Get("kind") // deployment, statefulset
 	name := r.URL.Query().Get("name")
@@ -131,6 +136,10 @@ func dynGet(ctx context.Context, client dynamic.Interface, kind, namespace, name
 }
 
 func HandleDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	namespace := r.URL.Query().Get("namespace")
 	kind := r.URL.Query().Get("kind")
 	name := r.URL.Query().Get("name")
@@ -173,6 +182,10 @@ func HandleDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleRolloutRestart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	namespace := r.URL.Query().Get("namespace")
 	kind := r.URL.Query().Get("kind")
 	name := r.URL.Query().Get("name")
@@ -300,7 +313,9 @@ func HandleGetYAML(w http.ResponseWriter, r *http.Request) {
 // splitYAMLDocs splits a YAML byte slice on document separators ("---") and
 // returns only non-empty documents.
 func splitYAMLDocs(data []byte) [][]byte {
-	var docs [][]byte
+	// Normalize Windows CRLF so "\r\n---" document separators are recognized.
+	data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
+	docs := make([][]byte, 0)
 	for _, part := range strings.Split(string(data), "\n---") {
 		trimmed := strings.TrimSpace(part)
 		if trimmed != "" && trimmed != "---" {
@@ -454,6 +469,7 @@ func HandleGetSecretValue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Write(val)
 }
 
@@ -488,8 +504,7 @@ func HandleExecOneShot(w http.ResponseWriter, r *http.Request) {
 		resp["error"] = err.Error()
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	writeJSON(w, resp)
 }
 
 func HandleExec(w http.ResponseWriter, r *http.Request) {
@@ -521,11 +536,37 @@ func HandleExec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// gorilla hijacks the TCP connection on Upgrade, so r.Context() is never
+	// cancelled when the client disconnects. Derive a cancellable context and
+	// cancel it from the read-pump goroutine when the connection closes.
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	// Single-reader goroutine owns all conn.ReadMessage() calls. gorilla/websocket
+	// forbids concurrent reads, so the read-pump and wsStream.Read cannot both call
+	// ReadMessage simultaneously. Route stdin through an io.Pipe instead.
+	stdinR, stdinW := io.Pipe()
+	go func() {
+		defer stdinW.Close()
+		for {
+			_, msg, err := conn.ReadMessage()
+			if err != nil {
+				cancel()
+				return
+			}
+			if _, err := stdinW.Write(msg); err != nil {
+				cancel()
+				return
+			}
+		}
+	}()
+
 	stream := &wsStream{conn: conn}
-	err = exec.Exec(r.Context(), cs, cfg, namespace, pod, container, command, stream, stream, stream, true)
+	err = exec.Exec(ctx, cs, cfg, namespace, pod, container, command, stdinR, stream, stream, true)
+	stdinR.Close() // unblock any stdinW.Write blocked in the read-pump goroutine
 	if err != nil {
 		log.Printf("[HandleExec] Session ended with error for %s/%s: %v", namespace, pod, err)
-		conn.WriteMessage(websocket.TextMessage, []byte("\r\nExec failed: "+err.Error()))
+		_, _ = stream.Write([]byte("\r\nExec failed: " + err.Error()))
 	} else {
 		log.Printf("[HandleExec] Session ended normally for %s/%s", namespace, pod)
 	}
@@ -668,6 +709,10 @@ func sanitizeCPToLocalPath(localPath string) (string, error) {
 }
 
 func HandleCreateDebugPod(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	ns := r.URL.Query().Get("namespace")
 	image := r.URL.Query().Get("image")
 	name := r.URL.Query().Get("name")
@@ -733,8 +778,7 @@ func HandleRolloutHistory(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(revisions)
+		writeJSON(w, revisions)
 	default:
 		http.Error(w, fmt.Sprintf("unsupported kind for rollout history: %s", kind), http.StatusBadRequest)
 	}
@@ -771,7 +815,7 @@ func deploymentRevisions(ctx context.Context, cs kubernetes.Interface, namespace
 		return nil, fmt.Errorf("failed to list replicasets: %w", err)
 	}
 
-	var entries []revisionEntry
+	entries := make([]revisionEntry, 0)
 	for _, rs := range rsList.Items {
 		// Only include ReplicaSets owned by this specific Deployment.
 		// Label selectors alone are insufficient — overlapping labels
@@ -818,6 +862,10 @@ func deploymentRevisions(ctx context.Context, cs kubernetes.Interface, namespace
 }
 
 func HandleRolloutUndo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	namespace := r.URL.Query().Get("namespace")
 	kind := r.URL.Query().Get("kind")
 	name := r.URL.Query().Get("name")
@@ -952,6 +1000,10 @@ func undoDeploymentRollout(ctx context.Context, namespace, name string, targetRe
 // HandleCordonNode cordons (unschedulable=true) or uncordons (unschedulable=false) a node.
 // Query params: name (required), unschedulable (true|false, default true)
 func HandleCordonNode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	name := r.URL.Query().Get("name")
 	if name == "" {
 		http.Error(w, "missing name", http.StatusBadRequest)
@@ -975,6 +1027,10 @@ func HandleCordonNode(w http.ResponseWriter, r *http.Request) {
 
 // HandleDrainNode cordons the node then deletes all evictable pods (skips DaemonSet-owned and mirror pods).
 func HandleDrainNode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	name := r.URL.Query().Get("name")
 	if name == "" {
 		http.Error(w, "missing name", http.StatusBadRequest)
@@ -1035,6 +1091,10 @@ func HandleDrainNode(w http.ResponseWriter, r *http.Request) {
 // (equivalent to `kubectl create job --from=cronjob/<name>`).
 // Query params: namespace (required), name (required).
 func HandleTriggerCronJob(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	namespace := r.URL.Query().Get("namespace")
 	name := r.URL.Query().Get("name")
 	if namespace == "" || name == "" {
@@ -1091,6 +1151,5 @@ func HandleTriggerCronJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"name": created.Name})
+	writeJSON(w, map[string]string{"name": created.Name})
 }

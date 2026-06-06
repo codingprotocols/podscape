@@ -33,7 +33,8 @@ var (
 
 func init() {
 	go func() {
-		for range time.Tick(configCacheTTL) {
+		ticker := time.NewTicker(configCacheTTL)
+		for range ticker.C {
 			now := time.Now()
 			configCacheMu.Lock()
 			for k, e := range configCache {
@@ -104,22 +105,33 @@ func newActionConfig(kubeconfig, context, namespace string) (*action.Configurati
 // parse + k8s discovery overhead on every Helm request.
 func getActionConfig(kubeconfig, context, namespace string) (*action.Configuration, error) {
 	key := kubeconfig + "\x00" + context + "\x00" + namespace
+
+	// Fast path: check cache under lock.
 	configCacheMu.Lock()
-	defer configCacheMu.Unlock()
-	
 	now := time.Now()
 	if e, ok := configCache[key]; ok && now.Before(e.expiry) {
 		// Sliding expiration: reset TTL on use so active sessions stay cached.
 		e.expiry = now.Add(configCacheTTL)
 		configCache[key] = e
+		configCacheMu.Unlock()
 		return e.cfg, nil
 	}
+	configCacheMu.Unlock()
 
+	// Slow path: build config outside the lock to avoid blocking concurrent Helm ops.
 	cfg, err := newActionConfig(kubeconfig, context, namespace)
 	if err != nil {
 		return nil, err
 	}
-	configCache[key] = configCacheEntry{cfg: cfg, expiry: now.Add(configCacheTTL)}
+
+	// Re-acquire to write; another goroutine may have populated the entry meanwhile.
+	configCacheMu.Lock()
+	if e, ok := configCache[key]; ok && time.Now().Before(e.expiry) {
+		configCacheMu.Unlock()
+		return e.cfg, nil
+	}
+	configCache[key] = configCacheEntry{cfg: cfg, expiry: time.Now().Add(configCacheTTL)}
+	configCacheMu.Unlock()
 	return cfg, nil
 }
 

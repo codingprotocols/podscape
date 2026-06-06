@@ -6,6 +6,7 @@ import (
 
 	authv1 "k8s.io/api/authorization/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 )
@@ -250,6 +251,57 @@ func TestCheckVerbAccess_CancelledContext(t *testing.T) {
 	}
 	if got != nil {
 		t.Errorf("expected nil map on cancelled context, got %v", got)
+	}
+}
+
+// TestCheckAccess_DelegatesViaCheckVerbAccessFunc verifies that CheckAccess uses
+// the injectable CheckVerbAccessFunc rather than its own goroutine fan-out, so
+// tests can stub the probe without a live cluster.
+func TestCheckAccess_DelegatesViaCheckVerbAccessFunc(t *testing.T) {
+	original := CheckVerbAccessFunc
+	defer func() { CheckVerbAccessFunc = original }()
+
+	// Inject a stub that returns only pods (list+watch allowed) and secrets
+	// (list denied). All other resources are absent from the map.
+	CheckVerbAccessFunc = func(_ context.Context, _ kubernetes.Interface) (map[string]map[string]bool, error) {
+		return map[string]map[string]bool{
+			"pods":    {"list": true, "watch": true},
+			"secrets": {"list": false, "watch": true},
+		}, nil
+	}
+
+	got, err := CheckAccess(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !got["pods"] {
+		t.Error("expected pods to be allowed (list=true && watch=true)")
+	}
+	if got["secrets"] {
+		t.Error("expected secrets to be denied (list=false)")
+	}
+	// Resources absent from the stub map: list=false, watch=false → denied.
+	if got["deployments"] {
+		t.Error("expected deployments to be denied (absent from stub map)")
+	}
+}
+
+// TestCheckAccess_PropagatesVerbAccessError verifies CheckAccess returns (nil, err)
+// when CheckVerbAccessFunc returns an error (SAR API unavailable).
+func TestCheckAccess_PropagatesVerbAccessError(t *testing.T) {
+	original := CheckVerbAccessFunc
+	defer func() { CheckVerbAccessFunc = original }()
+
+	CheckVerbAccessFunc = func(_ context.Context, _ kubernetes.Interface) (map[string]map[string]bool, error) {
+		return nil, context.DeadlineExceeded
+	}
+
+	got, err := CheckAccess(context.Background(), nil)
+	if err == nil {
+		t.Fatal("expected error to propagate from CheckVerbAccessFunc")
+	}
+	if got != nil {
+		t.Errorf("expected nil map on error, got %v", got)
 	}
 }
 

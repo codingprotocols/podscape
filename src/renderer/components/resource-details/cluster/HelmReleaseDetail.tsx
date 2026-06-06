@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useAppStore } from '../../../store'
 import { FileCode, X, Activity, HardDrive, History, Trash2, Shield, RefreshCw } from 'lucide-react'
 import { RefreshButton } from '../../common'
 import type { HelmRelease, HelmHistoryEntry } from '../../../types'
@@ -19,6 +20,7 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onRef
   const [values, setValues] = useState<string | null>(null)
   const [loadingValues, setLoadingValues] = useState(false)
   const [valuesError, setValuesError] = useState<string | null>(null)
+  const valuesFetchIdRef = useRef(0)
   const [history, setHistory] = useState<HelmHistoryEntry[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null)
@@ -37,6 +39,7 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onRef
   const [refreshingRepos, setRefreshingRepos] = useState(false)
   const [onlineVersion, setOnlineVersion] = useState<string | null>(null)
   const [onlineRepo, setOnlineRepo] = useState<string | null>(null)
+  const updateCheckSeqRef = useRef(0)
 
   useEffect(() => {
     if (activeTab === 'history' && history.length === 0) {
@@ -50,6 +53,7 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onRef
 
   const checkForUpdates = async () => {
     if (!window.helm.repoLatest) return
+    const seq = ++updateCheckSeqRef.current
     const currentVersion = release.chart_version || release.chart.split('-').pop() || ''
     setCheckingUpdate(true)
     setIsCustomChart(false)
@@ -60,33 +64,35 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onRef
         return i === -1 ? '' : s.substring(0, i)
       })()
       if (!chartName) {
-        setIsCustomChart(true)
+        if (updateCheckSeqRef.current === seq) setIsCustomChart(true)
         return
       }
       // 2. Search for the chart in repos
-      const res = await window.helm.repoSearch(chartName, 10, 0) as { 
-        charts: Array<{ 
-          name: string; 
+      const res = await window.helm.repoSearch(chartName, 10, 0) as {
+        charts: Array<{
+          name: string;
           version: string;
           description?: string;
           home?: string;
           sources?: string[];
           keywords?: string[];
-        }> 
+        }>
       }
+      if (updateCheckSeqRef.current !== seq) return
       if (res && res.charts && res.charts.length > 0) {
         // Look for exact match (e.g. searching "nginx" might return "bitnami/nginx")
-        
+
         // Prioritize a chart that matches our current version (likely the repo we used)
         let match = res.charts.find(c => (c.name.endsWith('/' + chartName) || c.name === chartName) && c.version === currentVersion)
-        
+
         // Fallback to first name match if no version match found
         if (!match) {
           match = res.charts.find(c => c.name.endsWith('/' + chartName) || c.name === chartName)
         }
 
         if (match) {
-          setLatestVersion(match.version)
+          const resolvedLatestVersion = match.version
+          setLatestVersion(resolvedLatestVersion)
           setLatestChartName(match.name)
           setChartDetails({
             description: match.description,
@@ -94,48 +100,63 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onRef
             sources: match.sources,
             keywords: match.keywords
           })
+
+          // 3. Artifact Hub Background Check — uses local var, not stale closure
+          try {
+            const url = `https://artifacthub.io/api/v1/packages/search?ts_query_web=${chartName}&kind=0&limit=5`
+            const ahRes = await fetch(url)
+            if (updateCheckSeqRef.current !== seq) return
+            if (ahRes.ok) {
+              const data = await ahRes.json()
+              const ahMatch = data.packages?.find((p: any) => p.name === chartName || p.normalized_name === chartName)
+              if (ahMatch) {
+                const currentMajor = currentVersion.split('.')[0]
+                const ahMajor = ahMatch.version.split('.')[0]
+
+                if (ahMatch.version !== resolvedLatestVersion) {
+                  setOnlineVersion(ahMatch.version)
+                  setOnlineRepo(ahMatch.repository.name)
+
+                  const localMajor = resolvedLatestVersion?.split('.')[0]
+                  if (ahMajor === currentMajor && localMajor !== currentMajor) {
+                    setLatestVersion(null)
+                    setLatestChartName(null)
+                  }
+                }
+              }
+            }
+          } catch (ahErr) {
+            console.warn('Artifact Hub check failed', ahErr)
+          }
         } else {
           setIsCustomChart(true)
+
+          // 3. Artifact Hub Background Check — no local repo match, try AH directly
+          try {
+            const url = `https://artifacthub.io/api/v1/packages/search?ts_query_web=${chartName}&kind=0&limit=5`
+            const ahRes = await fetch(url)
+            if (updateCheckSeqRef.current !== seq) return
+            if (ahRes.ok) {
+              const data = await ahRes.json()
+              const ahMatch = data.packages?.find((p: any) => p.name === chartName || p.normalized_name === chartName)
+              if (ahMatch) {
+                setOnlineVersion(ahMatch.version)
+                setOnlineRepo(ahMatch.repository.name)
+              }
+            }
+          } catch (ahErr) {
+            console.warn('Artifact Hub check failed', ahErr)
+          }
         }
       } else {
         setIsCustomChart(true)
       }
-
-      // 3. Artifact Hub Background Check
-      try {
-        const url = `https://artifacthub.io/api/v1/packages/search?ts_query_web=${chartName}&kind=0&limit=5`
-        const ahRes = await fetch(url)
-        if (ahRes.ok) {
-          const data = await ahRes.json()
-          const ahMatch = data.packages?.find((p: any) => p.name === chartName || p.normalized_name === chartName)
-          if (ahMatch) {
-            const currentMajor = currentVersion.split('.')[0]
-            const ahMajor = ahMatch.version.split('.')[0]
-            
-            // If AH version matches our major version scheme but local repo doesn't,
-            // or if AH version is a more plausible next step, prioritize it.
-            if (ahMatch.version !== latestVersion) {
-              setOnlineVersion(ahMatch.version)
-              setOnlineRepo(ahMatch.repository.name)
-              
-              const localMajor = latestVersion?.split('.')[0]
-              if (ahMajor === currentMajor && localMajor !== currentMajor) {
-                // Local repo (e.g. Bitnami) is using a different versioning scheme.
-                // Reset local latestVersion to avoid showing confusing update
-                setLatestVersion(null)
-                setLatestChartName(null)
-              }
-            }
-          }
-        }
-      } catch (ahErr) {
-        console.warn('Artifact Hub check failed', ahErr)
-      }
     } catch (err) {
+      if (updateCheckSeqRef.current !== seq) return
       console.warn('Failed to check for chart updates', err)
       setIsCustomChart(true)
     } finally {
-      setCheckingUpdate(false)
+      if (updateCheckSeqRef.current === seq) setCheckingUpdate(false)
     }
   }
 
@@ -156,44 +177,59 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onRef
   const isUpdateAvailable = latestVersion && latestVersion !== currentChartVersion
 
   const loadHistory = async () => {
+    const ctx = context
     setLoadingHistory(true)
+    let stale = false
     try {
       const raw = await window.helm.history(context, release.namespace, release.name)
+      if (useAppStore.getState().selectedContext !== ctx) { stale = true; return }
       setHistory(raw as HelmHistoryEntry[])
     } catch (err) {
+      if (useAppStore.getState().selectedContext !== ctx) { stale = true; return }
       console.error('Failed to load release history', err)
     } finally {
-      setLoadingHistory(false)
+      if (!stale) setLoadingHistory(false)
     }
   }
 
   const handleViewValues = async () => {
+    const myId = ++valuesFetchIdRef.current
+    const ctx = context
     setValues(null)
     setValuesError(null)
     setLoadingValues(true)
+    let stale = false
     try {
       const out = await window.helm.values(context, release.namespace, release.name)
+      if (myId !== valuesFetchIdRef.current) return
+      if (useAppStore.getState().selectedContext !== ctx) { stale = true; return }
       setValues(out)
     } catch (err) {
+      if (myId !== valuesFetchIdRef.current) return
+      if (useAppStore.getState().selectedContext !== ctx) { stale = true; return }
       setValuesError((err as Error).message ?? 'Failed to fetch values')
     } finally {
-      setLoadingValues(false)
+      if (!stale && myId === valuesFetchIdRef.current) setLoadingValues(false)
     }
   }
 
 
   const handleRollback = async () => {
     if (rollbackTarget === null) return
+    const ctx = context
     setRollingBack(true)
     setRbError(null)
+    let stale = false
     try {
       await window.helm.rollback(context, release.namespace, release.name, rollbackTarget)
+      if (useAppStore.getState().selectedContext !== ctx) { stale = true; return }
       setRollbackTarget(null)
       await loadHistory()
     } catch (e) {
+      if (useAppStore.getState().selectedContext !== ctx) { stale = true; return }
       setRbError(e instanceof Error ? e.message : 'Rollback failed')
     } finally {
-      setRollingBack(false)
+      if (!stale) setRollingBack(false)
     }
   }
 
@@ -510,7 +546,7 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onRef
               </div>
               <button
                 type="button"
-                onClick={() => { setValues(null); setValuesError(null); setLoadingValues(false); }}
+                onClick={() => { ++valuesFetchIdRef.current; setValues(null); setValuesError(null); setLoadingValues(false); }}
                 className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors focus:outline-none"
               >
                 <X size={20} strokeWidth={2.5} />

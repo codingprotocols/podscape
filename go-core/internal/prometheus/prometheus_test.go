@@ -1,6 +1,7 @@
 package prometheus
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -67,7 +68,7 @@ func TestProbePrometheus_ManualURL_Found(t *testing.T) {
 	SetManualURL(srv.URL)
 	defer SetManualURL("")
 
-	result := ProbePrometheus()
+	result := ProbePrometheus(context.Background())
 	if !result.Available {
 		t.Errorf("expected Available=true for reachable server, got error: %s", result.Error)
 	}
@@ -77,7 +78,7 @@ func TestProbePrometheus_ManualURL_Unreachable(t *testing.T) {
 	SetManualURL("http://127.0.0.1:19999") // nothing listens here
 	defer SetManualURL("")
 
-	result := ProbePrometheus()
+	result := ProbePrometheus(context.Background())
 	if result.Available {
 		t.Error("expected Available=false for unreachable server")
 	}
@@ -93,7 +94,7 @@ func TestQueryRangeBatch_DefaultsStartEnd(t *testing.T) {
 		Queries: []QueryRequest{{Query: "up", Label: "test"}},
 		// StartTime and EndTime intentionally left zero
 	}
-	results := QueryRangeBatch(req)
+	results := QueryRangeBatch(context.Background(), req)
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -262,8 +263,8 @@ func TestQueryCache_HitAvoidsFetch(t *testing.T) {
 	start := time.Now().Unix() - 3600
 	end := time.Now().Unix()
 
-	_, _ = queryRangeSingle("test_cache_query_"+t.Name(), start, end, 15)
-	_, _ = queryRangeSingle("test_cache_query_"+t.Name(), start, end, 15)
+	_, _ = queryRangeSingle(context.Background(), "test_cache_query_"+t.Name(), start, end, 15)
+	_, _ = queryRangeSingle(context.Background(), "test_cache_query_"+t.Name(), start, end, 15)
 
 	if fetchCount != 1 {
 		t.Errorf("expected 1 fetch (cache hit on second call), got %d", fetchCount)

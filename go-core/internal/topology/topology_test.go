@@ -121,6 +121,10 @@ func TestBuildTopology_IngressToServiceEdge(t *testing.T) {
 			}},
 		},
 	}
+	// The dangling-edge filter requires both endpoints to be present as nodes.
+	c.Services["default/svc"] = &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: "default"},
+	}
 
 	topo := topology.BuildTopology("", c)
 	if !hasEdge(topo.Edges, "ing:default:ing", "svc:default:svc", topology.EdgeIngSvc) {
@@ -139,6 +143,10 @@ func TestBuildTopology_PodToPVCEdge(t *testing.T) {
 				},
 			}},
 		},
+	}
+	// The dangling-edge filter requires both endpoints to be present as nodes.
+	c.PVCs["default/data"] = &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "data", Namespace: "default"},
 	}
 
 	topo := topology.BuildTopology("", c)

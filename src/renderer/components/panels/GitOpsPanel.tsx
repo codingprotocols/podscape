@@ -1,6 +1,7 @@
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import {
   Activity, GitBranch, Box, Layers, ExternalLink, RefreshCw, Search, X, Info, Shield, AlertTriangle, CheckCircle, Clock, LayoutGrid, ListFilter, PauseCircle, PlayCircle, RotateCw, GitPullRequest, FileCode
 } from 'lucide-react'
@@ -577,7 +578,10 @@ function TableRow({ r, selected, onClick, onReconcile }: {
 // ── main ──────────────────────────────────────────────────────────────────────
 
 export default function GitOpsPanel() {
-  const { selectedContext, selectedNamespace } = useAppStore()
+  const { selectedContext, selectedNamespace } = useAppStore(useShallow(s => ({
+    selectedContext: s.selectedContext,
+    selectedNamespace: s.selectedNamespace,
+  })))
   const [data, setData] = useState<GitOpsResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -587,77 +591,104 @@ export default function GitOpsPanel() {
   const [actionPending, setActionPending] = useState<string | null>(null) // "<kind>/<ns>/<name>"
   const [actionFeedback, setActionFeedback] = useState<{ key: string; msg: string; ok: boolean } | null>(null)
   const [yamlTarget, setYamlTarget] = useState<GitOpsResource | null>(null)
+  const [yamlContext, setYamlContext] = useState<string | null>(null)
   const [yamlContent, setYamlContent] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
   const [yamlError, setYamlError] = useState<string | null>(null)
+  const yamlFetchIdRef = useRef(0)
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const actionGenRef = useRef(0)
+  useEffect(() => () => { if (reloadTimerRef.current !== null) clearTimeout(reloadTimerRef.current) }, [])
 
   const load = useCallback(async () => {
     if (!selectedContext) return
+    const snapshotCtx = selectedContext
+    const snapshotNs = selectedNamespace
     setLoading(true)
     setLoadError(null)
     try {
-      const ns = selectedNamespace === '_all' ? undefined : selectedNamespace ?? undefined
-      setData(await window.kubectl.getGitOps(ns))
+      const ns = snapshotNs === '_all' ? undefined : snapshotNs ?? undefined
+      const result = await window.kubectl.getGitOps(ns)
+      const live = useAppStore.getState()
+      if (live.selectedContext !== snapshotCtx || live.selectedNamespace !== snapshotNs) return
+      setData(result)
     } catch (err) {
+      if (useAppStore.getState().selectedContext !== snapshotCtx || useAppStore.getState().selectedNamespace !== snapshotNs) return
       setData(null)
       setLoadError((err as Error)?.message ?? 'Failed to load GitOps resources')
     } finally {
-      setLoading(false)
+      const live = useAppStore.getState()
+      if (live.selectedContext === snapshotCtx && live.selectedNamespace === snapshotNs) setLoading(false)
     }
   }, [selectedContext, selectedNamespace])
 
   const handleReconcile = useCallback(async (r: GitOpsResource, e?: React.MouseEvent) => {
     e?.stopPropagation()
     const key = resourceKey(r)
+    const snapshotCtx = selectedContext
+    const myGen = ++actionGenRef.current
     setActionPending(key)
     setActionFeedback(null)
     try {
       await window.kubectl.reconcileGitOps(r.kind, r.name, r.namespace)
+      if (useAppStore.getState().selectedContext !== snapshotCtx) return
       setActionFeedback({ key, msg: 'Reconcile triggered', ok: true })
-      setTimeout(() => load(), 1500)
+      if (reloadTimerRef.current !== null) clearTimeout(reloadTimerRef.current)
+      reloadTimerRef.current = setTimeout(() => load(), 1500)
     } catch (err) {
+      if (useAppStore.getState().selectedContext !== snapshotCtx) return
       setActionFeedback({ key, msg: (err as Error).message, ok: false })
     } finally {
-      setActionPending(null)
+      if (myGen === actionGenRef.current) setActionPending(null)
     }
-  }, [load])
+  }, [load, selectedContext])
 
   const handleSuspend = useCallback(async (r: GitOpsResource, suspend: boolean) => {
     const key = resourceKey(r)
+    const snapshotCtx = selectedContext
+    const myGen = ++actionGenRef.current
     setActionPending(key)
     setActionFeedback(null)
     try {
       await window.kubectl.suspendGitOps(r.kind, r.name, r.namespace, suspend)
+      if (useAppStore.getState().selectedContext !== snapshotCtx) return
       setActionFeedback({ key, msg: suspend ? 'Suspended' : 'Resumed', ok: true })
       // Optimistically update the selected resource and reload
       if (selected && resourceKey(selected) === key) setSelected({ ...selected, suspended: suspend })
-      setTimeout(() => load(), 1500)
+      if (reloadTimerRef.current !== null) clearTimeout(reloadTimerRef.current)
+      reloadTimerRef.current = setTimeout(() => load(), 1500)
     } catch (err) {
+      if (useAppStore.getState().selectedContext !== snapshotCtx) return
       setActionFeedback({ key, msg: (err as Error).message, ok: false })
     } finally {
-      setActionPending(null)
+      if (myGen === actionGenRef.current) setActionPending(null)
     }
-  }, [load, selected])
+  }, [load, selected, selectedContext])
 
   const handleEditYAML = useCallback(async (r: GitOpsResource) => {
     const crd = KIND_TO_CRD[r.kind]
     if (!crd || !selectedContext) return
+    const myId = ++yamlFetchIdRef.current
     setYamlTarget(r)
+    setYamlContext(selectedContext)
     setYamlContent(null)
     setYamlError(null)
     setYamlLoading(true)
     try {
       const yaml = await window.kubectl.getYAML(selectedContext, r.namespace || null, crd, r.name)
+      if (myId !== yamlFetchIdRef.current) return
       setYamlContent(yaml)
     } catch (err) {
+      if (myId !== yamlFetchIdRef.current) return
       setYamlError((err as Error).message ?? 'Failed to load YAML')
     } finally {
-      setYamlLoading(false)
+      if (myId === yamlFetchIdRef.current) setYamlLoading(false)
     }
   }, [selectedContext])
 
   const closeYaml = useCallback(() => {
     setYamlTarget(null)
+    setYamlContext(null)
     setYamlContent(null)
     setYamlError(null)
     setYamlLoading(false)
@@ -665,10 +696,12 @@ export default function GitOpsPanel() {
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
+    setLoading(false)
     setSelected(null)
     setActionPending(null)
     setActionFeedback(null)
     setYamlTarget(null)
+    setYamlContext(null)
     setYamlContent(null)
     setYamlError(null)
     setYamlLoading(false)
@@ -908,7 +941,9 @@ export default function GitOpsPanel() {
                   content={yamlContent}
                   editable
                   onSave={async (updated) => {
-                    await window.kubectl.applyYAML(selectedContext!, updated)
+                    const myId = ++yamlFetchIdRef.current
+                    await window.kubectl.applyYAML(yamlContext!, updated)
+                    if (myId !== yamlFetchIdRef.current) return
                     closeYaml()
                     load()
                   }}

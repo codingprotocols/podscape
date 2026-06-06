@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useAppStore } from '../../../store'
+import { useShallow } from 'zustand/react/shallow'
 import type { KubeReplicaSet, KubeEvent } from '../../../types'
 import { formatAge } from '../../../types'
 import { FileCode, X, Activity, Layers, Info, History } from 'lucide-react'
@@ -11,7 +12,9 @@ interface Props {
 }
 
 export default function ReplicaSetDetail({ replicaSet: rs }: Props): JSX.Element {
-  const { selectedContext } = useAppStore()
+  const { selectedContext } = useAppStore(useShallow(s => ({
+    selectedContext: s.selectedContext,
+  })))
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const [events, setEvents] = useState<KubeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
@@ -28,11 +31,13 @@ export default function ReplicaSetDetail({ replicaSet: rs }: Props): JSX.Element
   useEffect(() => {
     const uid = rs.metadata.uid
     if (!selectedContext || tab !== 'events' || !uid) return
+    let cancelled = false
     setEventsLoading(true)
     window.kubectl.getResourceEvents(selectedContext, rs.metadata.namespace ?? 'default', uid)
-      .then(setEvents)
-      .catch(() => setEvents([]))
-      .finally(() => setEventsLoading(false))
+      .then(evts => { if (!cancelled) setEvents(evts) })
+      .catch(() => { if (!cancelled) setEvents([]) })
+      .finally(() => { if (!cancelled) setEventsLoading(false) })
+    return () => { cancelled = true }
   }, [tab, rs.metadata.uid, selectedContext])
 
   return (

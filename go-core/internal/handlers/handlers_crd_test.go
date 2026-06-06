@@ -319,7 +319,7 @@ func TestHandleSwitchContext_RBACProbeStored(t *testing.T) {
 	t.Cleanup(func() { rbacVerbCheckFunc = orig })
 
 	ac := store.NewContextCache(fake.NewSimpleClientset(), &rest.Config{})
-	RunRBACProbe(ac, "test-ctx", fake.NewSimpleClientset())
+	RunRBACProbe(context.Background(), ac, "test-ctx", fake.NewSimpleClientset())
 
 	ac.RLock()
 	allowed := ac.AllowedResources
@@ -365,7 +365,7 @@ func TestHandleSwitchContext_RBACProbeFailed_NilAllowed(t *testing.T) {
 	t.Cleanup(func() { rbacVerbCheckFunc = orig })
 
 	ac := store.NewContextCache(fake.NewSimpleClientset(), &rest.Config{})
-	RunRBACProbe(ac, "test-ctx", fake.NewSimpleClientset())
+	RunRBACProbe(context.Background(), ac, "test-ctx", fake.NewSimpleClientset())
 
 	ac.RLock()
 	allowed := ac.AllowedResources

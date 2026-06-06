@@ -40,6 +40,7 @@ export function GenericCRDDetail({ item, context, namespace, crdName, onAfterSav
   const ns = String(meta.namespace ?? namespace ?? '')
   const metaNamespace = meta.namespace as string | undefined
 
+  const saveGenRef = useRef(0)
   // Reset YAML state when the selected item changes so stale YAML is never shown
   const yamlFetchedRef = useRef(false)
   useEffect(() => {
@@ -180,13 +181,16 @@ export function GenericCRDDetail({ item, context, namespace, crdName, onAfterSav
                 editable
                 content={yaml}
                 onSave={async (newYaml) => {
+                  const myId = ++saveGenRef.current
                   try {
                     await applyYAML(newYaml)
+                    if (myId !== saveGenRef.current) return
                     setYaml(newYaml)
                     setTab('metadata')
                     yamlFetchedRef.current = false
                     onAfterSave?.()
                   } catch (err) {
+                    if (myId !== saveGenRef.current) return
                     setYamlError((err as Error).message || 'Failed to apply YAML')
                   }
                 }}

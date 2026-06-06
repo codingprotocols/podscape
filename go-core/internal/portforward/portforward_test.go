@@ -6,13 +6,17 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"k8s.io/client-go/rest"
 )
 
 // newTestManager returns a PortForwardManager with a custom runForwardFn so
-// tests don't need a real Kubernetes server.
+// tests don't need a real Kubernetes server. A sentinel Config is set so
+// StartForward's nil-client guard does not reject requests.
 func newTestManager(fn func(req *ForwardRequest, errCh chan<- error) error) *PortForwardManager {
 	return &PortForwardManager{
 		Forwards:     make(map[string]*ForwardRequest),
+		Config:       &rest.Config{Host: "http://fake-host"},
 		runForwardFn: fn,
 	}
 }

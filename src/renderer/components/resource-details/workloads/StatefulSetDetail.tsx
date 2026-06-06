@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import type { KubeStatefulSet, KubeEvent } from '../../../types'
 import { formatAge } from '../../../types'
 import { useAppStore } from '../../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { canVerb } from '../../../store/slices/clusterSlice'
 import { FileCode, X, Activity, RefreshCw, Zap, Server } from 'lucide-react'
 import YAMLViewer from '../../common/YAMLViewer'
@@ -14,8 +15,15 @@ interface Props { statefulSet: KubeStatefulSet }
 type Tab = 'overview' | 'events' | 'analysis'
 
 export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Element {
-  const { rolloutRestart, selectedContext, selectedNamespace, scanResource, scanResults, isScanning } = useAppStore()
-  const allowedVerbs = useAppStore(s => s.allowedVerbs)
+  const { rolloutRestart, selectedContext, selectedNamespace, scanResource, scanResults, isScanning, allowedVerbs } = useAppStore(useShallow(s => ({
+    rolloutRestart: s.rolloutRestart,
+    selectedContext: s.selectedContext,
+    selectedNamespace: s.selectedNamespace,
+    scanResource: s.scanResource,
+    scanResults: s.scanResults,
+    isScanning: s.isScanning,
+    allowedVerbs: s.allowedVerbs,
+  })))
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const [tab, setTab] = useState<Tab>('overview')
   const [showScale, setShowScale] = useState(false)
@@ -26,6 +34,14 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
 
   const [events, setEvents] = useState<KubeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
+  const loadEventsIdRef = useRef(0)
+  const scaleMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const restartMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (scaleMsgTimerRef.current !== null) clearTimeout(scaleMsgTimerRef.current)
+    if (restartMsgTimerRef.current !== null) clearTimeout(restartMsgTimerRef.current)
+  }, [])
 
   const desired = s.spec.replicas ?? 0
   const ready = s.status.readyReplicas ?? 0
@@ -38,48 +54,65 @@ export default function StatefulSetDetail({ statefulSet: s }: Props): JSX.Elemen
 
   const handleScale = async () => {
     if (!selectedContext) return
+    const ctx = selectedContext
     const reps = parseInt(scaleVal)
     if (isNaN(reps) || reps < 0) return
     setScaleLoading(true)
     try {
-      await window.kubectl.scaleResource(selectedContext, ns, 'statefulset', s.metadata.name, reps)
+      await window.kubectl.scaleResource(ctx, ns, 'statefulset', s.metadata.name, reps)
+      if (useAppStore.getState().selectedContext !== ctx) return
       setScaleMsg(`Scaled to ${reps} replicas`)
-      setTimeout(() => setScaleMsg(''), 5000)
+      if (scaleMsgTimerRef.current !== null) clearTimeout(scaleMsgTimerRef.current)
+      scaleMsgTimerRef.current = setTimeout(() => setScaleMsg(''), 5000)
       setShowScale(false)
     } catch (err) {
+      if (useAppStore.getState().selectedContext !== ctx) return
+      if (scaleMsgTimerRef.current !== null) clearTimeout(scaleMsgTimerRef.current)
+      scaleMsgTimerRef.current = setTimeout(() => setScaleMsg(''), 5000)
       setScaleMsg(`Error: ${(err as Error).message}`)
     } finally {
-      setScaleLoading(false)
+      if (useAppStore.getState().selectedContext === ctx) setScaleLoading(false)
     }
   }
 
   const handleRestart = async () => {
-    await rolloutRestart('statefulset', s.metadata.name, s.metadata.namespace)
-    setRestartMsg('Restart triggered')
-    setTimeout(() => setRestartMsg(''), 5000)
+    try {
+      await rolloutRestart('statefulset', s.metadata.name, s.metadata.namespace)
+      setRestartMsg('Restart triggered')
+      if (restartMsgTimerRef.current !== null) clearTimeout(restartMsgTimerRef.current)
+      restartMsgTimerRef.current = setTimeout(() => setRestartMsg(''), 5000)
+    } catch (err) {
+      setRestartMsg((err as Error).message || 'Restart failed')
+      if (restartMsgTimerRef.current !== null) clearTimeout(restartMsgTimerRef.current)
+      restartMsgTimerRef.current = setTimeout(() => setRestartMsg(''), 5000)
+    }
   }
 
   const loadEvents = async () => {
     const uid = s.metadata.uid
     if (!selectedContext || !uid) return
+    const ctx = selectedContext
+    const myId = ++loadEventsIdRef.current
     setEventsLoading(true)
     try {
-      const evts = await window.kubectl.getResourceEvents(selectedContext, ns, uid)
+      const evts = await window.kubectl.getResourceEvents(ctx, ns, uid)
+      if (myId !== loadEventsIdRef.current || useAppStore.getState().selectedContext !== ctx) return
       setEvents(evts)
     } catch {
+      if (myId !== loadEventsIdRef.current || useAppStore.getState().selectedContext !== ctx) return
       setEvents([])
     } finally {
-      setEventsLoading(false)
+      if (myId === loadEventsIdRef.current) setEventsLoading(false)
     }
   }
 
   useEffect(() => {
     scanResource(s as any)
-  }, [s.metadata.uid])
+  }, [s.metadata.uid, s.metadata.resourceVersion, scanResource])
 
   useEffect(() => {
     if (tab === 'events') loadEvents()
-  }, [tab, s.metadata.uid])
+  }, [tab, s.metadata.uid, selectedContext, ns])
 
   return (
     <div className="flex flex-col w-full h-full relative">

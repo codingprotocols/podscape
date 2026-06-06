@@ -50,6 +50,8 @@ export default function UnifiedLogs(): JSX.Element {
     setUnifiedLogsSelectedPods: s.setUnifiedLogsSelectedPods,
   })))
   const [isStreaming, setIsStreaming] = useState(false)
+  const isStreamingRef = useRef(false)
+  useEffect(() => { isStreamingRef.current = isStreaming }, [isStreaming])
   const [searchTerm, setSearchTerm] = useState('')
   const [podSearchTerm, setPodSearchTerm] = useState('')
   const streamIds = useRef<Record<string, string>>({})
@@ -74,7 +76,7 @@ export default function UnifiedLogs(): JSX.Element {
   }, [availablePods, podSearchTerm])
 
   // Keep the pods list fresh so the "Add pods" search always has results
-  useEffect(() => { loadSection('pods') }, [selectedNamespace])
+  useEffect(() => { loadSection('pods') }, [selectedNamespace, loadSection])
 
   useEffect(() => {
     return () => {
@@ -114,7 +116,7 @@ export default function UnifiedLogs(): JSX.Element {
 
   // Clear selected pods and stop all streams when namespace changes
   useEffect(() => {
-    if (!isStreaming) {
+    if (!isStreamingRef.current) {
       setUnifiedLogsSelectedPods([])
       return
     }
@@ -130,7 +132,7 @@ export default function UnifiedLogs(): JSX.Element {
       cancelFlush()
     }
     stopAndReset().catch(err => console.error('[UnifiedLogs] namespace cleanup failed:', err))
-  }, [selectedNamespace])
+  }, [selectedNamespace, setUnifiedLogsSelectedPods, reset, cancelFlush])
 
   useEffect(() => {
     const syncPods = async () => {
@@ -186,6 +188,9 @@ export default function UnifiedLogs(): JSX.Element {
         const color = POD_COLORS[i % POD_COLORS.length]
 
         try {
+            // Snapshot the ref object so we can detect if stopAllStreams replaced
+            // it while we were awaiting (orphan-stream guard below).
+            const idsSnapshot = streamIds.current
             const sid = await window.kubectl.streamLogs(
                 selectedContext, namespace, podName, containerName,
                 (chunk) => {
@@ -213,9 +218,28 @@ export default function UnifiedLogs(): JSX.Element {
                     if (shouldResetStreaming(streamIds.current)) {
                       setIsStreaming(false)
                     }
+                },
+                (msg) => {
+                    if (streamIds.current[podName] !== sid) return
+                    delete streamIds.current[podName]
+                    append([{
+                        id: crypto.randomUUID(), podName, containerName,
+                        message: `[error] ${msg}`, timestamp: new Date(), color
+                    }])
+                    if (shouldResetStreaming(streamIds.current)) {
+                      setIsStreaming(false)
+                    }
                 }
             )
-            streamIds.current[podName] = sid
+            // Orphan-stream guard: stopAllStreams replaces streamIds.current with
+            // a new empty object. If the ref changed during the await, the stream
+            // we just opened was not included in stopAllStreams' cleanup pass —
+            // stop it now so it doesn't run indefinitely in the sidecar.
+            if (streamIds.current !== idsSnapshot) {
+                window.kubectl.stopLogs(sid).catch(() => {})
+            } else {
+                streamIds.current[podName] = sid
+            }
         } catch (err) {
             console.error(`Failed to stream logs for ${podName}:`, err)
         }

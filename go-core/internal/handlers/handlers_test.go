@@ -511,7 +511,7 @@ func TestHandleScale_InvalidReplicas(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet,
+			req := httptest.NewRequest(http.MethodPost,
 				"/scale?namespace=ns&kind=deployment&name=dep&replicas="+tc.replicas, nil)
 			rr := httptest.NewRecorder()
 			HandleScale(rr, req)
@@ -527,7 +527,7 @@ func TestHandleScale_ZeroReplicasAllowed(t *testing.T) {
 	cs := fake.NewSimpleClientset(deploy)
 	setActiveClientset(t, cs)
 
-	req := httptest.NewRequest(http.MethodGet, "/scale?namespace=ns&kind=deployment&name=dep&replicas=0", nil)
+	req := httptest.NewRequest(http.MethodPost, "/scale?namespace=ns&kind=deployment&name=dep&replicas=0", nil)
 	rr := httptest.NewRecorder()
 	HandleScale(rr, req)
 
@@ -867,7 +867,7 @@ func TestHandleScale_ReplicasExceedInt32Max_IsRejected(t *testing.T) {
 	cs := fake.NewSimpleClientset()
 	setActiveClientset(t, cs)
 
-	req := httptest.NewRequest(http.MethodGet,
+	req := httptest.NewRequest(http.MethodPost,
 		"/scale?namespace=ns&kind=deployment&name=dep&replicas=9999999999", nil)
 	rr := httptest.NewRecorder()
 	HandleScale(rr, req)
@@ -1125,7 +1125,7 @@ func TestRunRBACProbe_PopulatesCache(t *testing.T) {
 	}
 
 	cache := &store.ContextCache{}
-	RunRBACProbe(cache, "test-ctx", nil)
+	RunRBACProbe(context.Background(), cache, "test-ctx", nil)
 
 	cache.RLock()
 	defer cache.RUnlock()
@@ -1160,7 +1160,7 @@ func TestRunRBACProbe_ErrorLeavesNil(t *testing.T) {
 	}
 
 	cache := &store.ContextCache{}
-	RunRBACProbe(cache, "test-ctx", nil)
+	RunRBACProbe(context.Background(), cache, "test-ctx", nil)
 
 	cache.RLock()
 	defer cache.RUnlock()

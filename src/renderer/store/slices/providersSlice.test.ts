@@ -12,7 +12,7 @@ describe('providersSlice', () => {
     beforeEach(() => {
         state = {
             selectedContext: 'ctx-a',
-            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false },
+            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false, cilium: false, hubbleRelay: false },
             providersLoading: false,
         }
         set = vi.fn((update: any) => {
@@ -42,6 +42,9 @@ describe('providersSlice', () => {
             istio: false,
             nginxInc: false,
             nginxCommunity: false,
+            keda: false,
+            cilium: false,
+            hubbleRelay: false,
         }
         windowMock.kubectl.getProviders.mockResolvedValue(mockProviders)
 
@@ -64,7 +67,7 @@ describe('providersSlice', () => {
         expect(set).toHaveBeenCalledWith({ providersLoading: true })
         // Error path: reset to defaults
         expect(set).toHaveBeenCalledWith({
-            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false },
+            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false, cilium: false, hubbleRelay: false },
             providersLoading: false,
         })
     })
@@ -84,14 +87,15 @@ describe('providersSlice', () => {
         state.selectedContext = 'ctx-b'
 
         // Resolve the in-flight fetch.
-        resolveProviders({ traefik: true, istio: false, nginxInc: false, nginxCommunity: false })
+        resolveProviders({ traefik: true, istio: false, nginxInc: false, nginxCommunity: false, keda: false, cilium: false, hubbleRelay: false })
         await fetchPromise
 
-        // Only the initial { providersLoading: true } call should have happened.
-        // The result should have been discarded due to the stale-context guard.
-        expect(set).toHaveBeenCalledTimes(1)
+        // Two set calls: { providersLoading: true } then { providersLoading: false } from the
+        // stale-guard reset. providers must not have been written.
+        expect(set).toHaveBeenCalledTimes(2)
         expect(set).toHaveBeenCalledWith({ providersLoading: true })
+        expect(set).toHaveBeenCalledWith({ providersLoading: false })
         // providers state must not have been updated.
-        expect(state.providers).toEqual({ istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false })
+        expect(state.providers).toEqual({ istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false, cilium: false, hubbleRelay: false })
     })
 })

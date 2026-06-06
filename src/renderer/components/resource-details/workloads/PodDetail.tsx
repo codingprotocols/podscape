@@ -31,7 +31,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const {
     selectedContext, selectedNamespace, openExec,
     scanResults, scanResource, isScanning, prometheusAvailable,
-    pendingResourceAction, setPendingResourceAction
+    pendingResourceAction, setPendingResourceAction, allowedVerbs
   } = useAppStore(useShallow(s => ({
     selectedContext: s.selectedContext,
     selectedNamespace: s.selectedNamespace,
@@ -42,8 +42,8 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     prometheusAvailable: s.prometheusAvailable,
     pendingResourceAction: s.pendingResourceAction,
     setPendingResourceAction: s.setPendingResourceAction,
+    allowedVerbs: s.allowedVerbs,
   })))
-  const allowedVerbs = useAppStore(s => s.allowedVerbs)
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const [activeTab, setActiveTab] = useState<'logs' | 'metrics' | 'analysis' | 'lifecycle'>('logs')
   const [events, setEvents] = useState<KubeEvent[]>([])
@@ -56,6 +56,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const [logError, setLogError] = useState<string | null>(null)
   const [autoScroll, setAutoScroll] = useState(true)
   const [copyMsg, setCopyMsg] = useState('')
+  const copyMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isDebugPod = pod.metadata.name.startsWith(DEBUG_POD_PREFIX)
   const podName = pod.metadata.name
   const podNs = pod.metadata.namespace ?? ''
@@ -113,6 +114,7 @@ export default function PodDetail({ pod }: Props): JSX.Element {
       isMountedRef.current = false
       cancelFlush()
       reset()
+      if (copyMsgTimerRef.current !== null) clearTimeout(copyMsgTimerRef.current)
       // Stop any active stream on unmount
       if (activeStreamIdRef.current) {
         window.kubectl.stopLogs(activeStreamIdRef.current).catch(() => { })
@@ -163,9 +165,25 @@ export default function PodDetail({ pod }: Props): JSX.Element {
             activeStreamIdRef.current = null
             if (isMountedRef.current) setIsStreaming(false)
           }
+        },
+        (msg) => {
+          // WebSocket error — surface it to the user and clear streaming state.
+          if (activeStreamIdRef.current === streamId) {
+            activeStreamIdRef.current = null
+            if (isMountedRef.current) {
+              setLogError(msg)
+              setIsStreaming(false)
+            }
+          }
         }
       )
       activeStreamIdRef.current = streamId
+      // Guard: component unmounted or context switched while the stream was starting.
+      if (!isMountedRef.current || useAppStore.getState().selectedContext !== ctx) {
+        window.kubectl.stopLogs(streamId).catch(() => {})
+        activeStreamIdRef.current = null
+        return
+      }
     } catch (err) {
       if (isMountedRef.current) {
         setLogError(err instanceof Error ? err.message : String(err))
@@ -203,7 +221,9 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     }
     // Auto-restart stream for the new container if one was active
     if (wasStreaming) {
-      startStreamRef.current()
+      startStreamRef.current().catch((err: unknown) => {
+        setLogError(err instanceof Error ? err.message : 'Failed to restart stream')
+      })
     }
   }, [pod.metadata.uid, selectedContainer, selectedContext, scanCurrentPod, reset])
 
@@ -214,17 +234,23 @@ export default function PodDetail({ pod }: Props): JSX.Element {
     if (!uid) return
     eventsLoadedRef.current = true
     setEventsLoading(true)
+    let cancelled = false
     window.kubectl.getResourceEvents(
       selectedContext,
       pod.metadata.namespace ?? '',
       uid
     ).then(evs => {
-      setEvents(evs as KubeEvent[])
+      if (!cancelled) setEvents(evs as KubeEvent[])
     }).catch(err => {
-      console.error('[PodDetail] Failed to fetch events:', err)
+      if (!cancelled) {
+        console.error('[PodDetail] Failed to fetch events:', err)
+        eventsLoadedRef.current = false
+        setEvents([])
+      }
     }).finally(() => {
-      setEventsLoading(false)
+      if (!cancelled) setEventsLoading(false)
     })
+    return () => { cancelled = true }
   }, [activeTab, pod.metadata.uid, selectedContext])
 
   const phase = pod.metadata.deletionTimestamp ? 'Terminating' : (pod.status.phase ?? 'Unknown')
@@ -235,7 +261,8 @@ export default function PodDetail({ pod }: Props): JSX.Element {
   const copyLogs = () => {
     navigator.clipboard.writeText(filteredLogs.join('\n'))
     setCopyMsg('Copied!')
-    setTimeout(() => setCopyMsg(''), 2000)
+    if (copyMsgTimerRef.current !== null) clearTimeout(copyMsgTimerRef.current)
+    copyMsgTimerRef.current = setTimeout(() => setCopyMsg(''), 2000)
   }
 
   const downloadLogs = () => {

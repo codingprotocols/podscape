@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import type { RolloutRevision } from '../../../../common/constants'
 import type { KubeDeployment, KubeEvent } from '../../../types'
 import { formatAge } from '../../../types'
 import { useAppStore } from '../../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { canVerb } from '../../../store/slices/clusterSlice'
 import ScaleDialog from '../../common/ScaleDialog'
 import YAMLViewer from '../../common/YAMLViewer'
@@ -19,8 +20,16 @@ interface Props { deployment: KubeDeployment }
 type Tab = 'overview' | 'history' | 'events' | 'analysis'
 
 export default function DeploymentDetail({ deployment: d }: Props): JSX.Element {
-  const { rolloutRestart, selectedContext, selectedNamespace, scanResource, scanResults, isScanning, prometheusAvailable } = useAppStore()
-  const allowedVerbs = useAppStore(s => s.allowedVerbs)
+  const { rolloutRestart, selectedContext, selectedNamespace, scanResource, scanResults, isScanning, prometheusAvailable, allowedVerbs } = useAppStore(useShallow(s => ({
+    rolloutRestart: s.rolloutRestart,
+    selectedContext: s.selectedContext,
+    selectedNamespace: s.selectedNamespace,
+    scanResource: s.scanResource,
+    scanResults: s.scanResults,
+    isScanning: s.isScanning,
+    prometheusAvailable: s.prometheusAvailable,
+    allowedVerbs: s.allowedVerbs,
+  })))
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const [showScale, setShowScale] = useState(false)
   const [restartMsg, setRestartMsg] = useState('')
@@ -30,12 +39,22 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
   const [history, setHistory] = useState<RolloutRevision[] | null>(null)
   const [historyError, setHistoryError] = useState('')
   const [historyLoading, setHistoryLoading] = useState(false)
+  const loadHistoryIdRef = useRef(0)
   const [undoMsg, setUndoMsg] = useState('')
   const [undoLoading, setUndoLoading] = useState(false)
+
+  // Timer refs for transient message cleanup
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (restartTimerRef.current !== null) clearTimeout(restartTimerRef.current)
+    if (undoTimerRef.current !== null) clearTimeout(undoTimerRef.current)
+  }, [])
 
   // Events
   const [events, setEvents] = useState<KubeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
+  const loadEventsIdRef = useRef(0)
 
   const dName = d.metadata.name
   const dNs = d.metadata.namespace ?? ''
@@ -52,63 +71,83 @@ export default function DeploymentDetail({ deployment: d }: Props): JSX.Element 
     : (selectedNamespace ?? d.metadata.namespace ?? '')
 
   const handleRestart = async () => {
-    await rolloutRestart('deployment', d.metadata.name, d.metadata.namespace)
-    setRestartMsg('Restart triggered')
-    setTimeout(() => setRestartMsg(''), 5000)
+    try {
+      await rolloutRestart('deployment', d.metadata.name, d.metadata.namespace)
+      setRestartMsg('Restart triggered')
+      if (restartTimerRef.current !== null) clearTimeout(restartTimerRef.current)
+      restartTimerRef.current = setTimeout(() => setRestartMsg(''), 5000)
+    } catch (err) {
+      setRestartMsg((err as Error).message || 'Restart failed')
+      if (restartTimerRef.current !== null) clearTimeout(restartTimerRef.current)
+      restartTimerRef.current = setTimeout(() => setRestartMsg(''), 5000)
+    }
   }
 
   const loadHistory = async () => {
     if (!selectedContext) return
+    const ctx = selectedContext
+    const myId = ++loadHistoryIdRef.current
     setHistoryLoading(true)
     setHistoryError('')
     try {
-      const revisions = await window.kubectl.rolloutHistory(selectedContext, ns, 'deployment', d.metadata.name)
+      const revisions = await window.kubectl.rolloutHistory(ctx, ns, 'deployment', d.metadata.name)
+      if (myId !== loadHistoryIdRef.current || useAppStore.getState().selectedContext !== ctx) return
       setHistory(revisions)
     } catch (err) {
+      if (myId !== loadHistoryIdRef.current || useAppStore.getState().selectedContext !== ctx) return
       setHistoryError((err as Error).message)
     } finally {
-      setHistoryLoading(false)
+      if (myId === loadHistoryIdRef.current) setHistoryLoading(false)
     }
   }
 
   const handleUndo = async (revision?: number) => {
     if (!selectedContext) return
+    const ctx = selectedContext
     setUndoLoading(true)
     try {
-      await window.kubectl.rolloutUndo(selectedContext, ns, 'deployment', d.metadata.name, revision)
+      await window.kubectl.rolloutUndo(ctx, ns, 'deployment', d.metadata.name, revision)
+      if (useAppStore.getState().selectedContext !== ctx) return
       setUndoMsg(revision ? `Rolled back to revision ${revision}` : 'Rolled back to previous revision')
-      setTimeout(() => setUndoMsg(''), 5000)
+      if (undoTimerRef.current !== null) clearTimeout(undoTimerRef.current)
+      undoTimerRef.current = setTimeout(() => setUndoMsg(''), 5000)
       await loadHistory()
     } catch (err) {
+      if (useAppStore.getState().selectedContext !== ctx) return
       setUndoMsg(`Error: ${(err as Error).message}`)
-      setTimeout(() => setUndoMsg(''), 5000)
+      if (undoTimerRef.current !== null) clearTimeout(undoTimerRef.current)
+      undoTimerRef.current = setTimeout(() => setUndoMsg(''), 5000)
     } finally {
-      setUndoLoading(false)
+      if (useAppStore.getState().selectedContext === ctx) setUndoLoading(false)
     }
   }
 
   const loadEvents = async () => {
     const uid = d.metadata.uid
     if (!selectedContext || !uid) return
+    const ctx = selectedContext
+    const myId = ++loadEventsIdRef.current
     setEventsLoading(true)
     try {
-      const evts = await window.kubectl.getResourceEvents(selectedContext, ns, uid)
+      const evts = await window.kubectl.getResourceEvents(ctx, ns, uid)
+      if (myId !== loadEventsIdRef.current || useAppStore.getState().selectedContext !== ctx) return
       setEvents(evts)
     } catch {
+      if (myId !== loadEventsIdRef.current || useAppStore.getState().selectedContext !== ctx) return
       setEvents([])
     } finally {
-      setEventsLoading(false)
+      if (myId === loadEventsIdRef.current) setEventsLoading(false)
     }
   }
 
   useEffect(() => {
     scanResource(d as any)
-  }, [d.metadata.uid])
+  }, [d.metadata.uid, scanResource])
 
   useEffect(() => {
     if (tab === 'history') loadHistory()
     if (tab === 'events') loadEvents()
-  }, [tab, d.metadata.uid])
+  }, [tab, d.metadata.uid, selectedContext, ns])
 
   return (
     <div className="flex flex-col w-full h-full relative font-sans">

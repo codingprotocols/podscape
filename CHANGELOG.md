@@ -1,3 +1,165 @@
+## [4.0.1] — 2026-06-06
+
+### Bug fixes
+
+#### Go sidecar
+
+- **Trivy scan fails with "exit status 1" when vulnerabilities are found** (`go-core/internal/handlers/security.go`) — `trivy k8s` exits with code 1 when it finds vulnerabilities, which is its normal signal for "scan completed with findings." The `HandleSecurityScan` handler treated any non-zero exit as a fatal error and discarded the valid JSON output, surfacing a generic "trivy scan failed: exit status 1" to the frontend. Fixed by attempting JSON compaction before the exit-code check — valid output is sent as a `result` SSE event regardless of exit code, and the error path is only reached when there is genuinely no parseable output. The same regression was present in `HandleTrivyImages`: `cmd.Output()` returns stdout even on non-zero exit, but the handler discarded it when `err != nil`. Fixed by only skipping an image when both `err != nil` and `len(output) == 0`.
+
+#### Renderer
+
+- **Network Map panel crashes with "useShallow is not defined"** (`src/renderer/components/panels/NetworkPanel.tsx`) — `NetworkPanel.tsx` was missing `import { useShallow } from 'zustand/react/shallow'`, causing a `ReferenceError` whenever the Network Map section was loaded and displaying the generic "There was an error loading this section" fallback.
+
+#### Tests
+
+- **`helm.test.ts` crashes with "Electron failed to install correctly"** (`src/main/ipc/helm.test.ts`) — Importing `helm.ts` to test `transformRelease` triggered `import { ipcMain } from 'electron'` at module scope, causing Vitest to invoke `electron/index.js`'s `getElectronPath()` which requires the Electron binary to be present on disk. Added `vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))` before the import, matching the pattern already used in `kubectl.test.ts`.
+
+---
+
+## [4.0.0] — 2026-06-04
+
+### Bug fixes
+
+#### Go sidecar
+
+- **RBAC probe false-denials on namespace-scoped clusters** (`go-core/internal/rbac/rbac.go`) — `SelfSubjectAccessReview` requests for namespace-scoped resources (pods, deployments, configmaps, etc.) were issued without a `Namespace` field, which asks Kubernetes "can I access this cluster-wide?" rather than "can I access this in any namespace?". On EKS and other clusters where developers hold `RoleBinding`s rather than `ClusterRoleBinding`s, every namespace-scoped resource was marked denied and returned `X-Podscape-Denied: true` even though the actual API calls would have succeeded. Fixed by adding `Namespace: "default"` to all SAR requests for namespace-scoped resources and `ClusterScoped: bool` to `ResourceDescriptor` so cluster-scoped types (nodes, namespaces, PVs, etc.) continue to be checked without a namespace. Both `CheckAccess` and `CheckVerbAccess` are updated.
+
+- **Dynamic list TypeMeta kinds lost in GitOps panel** (`go-core/internal/handlers/gitops.go`) — `item.GetKind()` returns `""` for elements retrieved via `client-go` dynamic list calls because the API server does not populate TypeMeta in bulk lists. This caused GitOps resource cards in the UI to display blank Kinds. Resolved by adding a `gvrResourceToKind` lookup map to programmatically map plural resource names back to their correct singular Kind.
+
+- **Data corruption in namespace filter slice reuse** (`go-core/internal/handlers/handlers.go`) — The namespace filter in `MakeHandler` reused the active cache backing array via `snapshot[:0]`. Appending matching resources to this slice directly mutated and truncated the shared cache map elements in-place. Fixed by copying matching elements into a fresh slice.
+
+- **Gorilla WebSocket concurrent write panic** (`go-core/internal/handlers/handlers.go` & `operations.go`) — `gorilla/websocket` does not permit concurrent write operations (which were previously triggered when stdout and stderr goroutines wrote to the same WebSocket). Added a `sync.Mutex` inside the `wsStream.Write` helper to serialize all outgoing socket frames. In `HandleExec`, a single read-pump goroutine is established to read incoming frames and write them to an `io.Pipe`, solving both concurrent reads and goroutine safety.
+
+- **Stale query results when changing manual Prometheus URL** (`go-core/internal/prometheus/prometheus.go`) — The Prometheus query cache key was based on `gen|query|start|end|step` and did not contain the active Prometheus URL. This caused the cache to return stale query results from a previous Prometheus URL after connecting to a new cluster or changing the URL. Added the active URL string to the cache key signature.
+
+- **Dangling edges cause UI crash in topology graph** (`go-core/internal/topology/topology.go`) — Edges whose source or target nodes were not added to the topology (e.g. RBAC-denied services, or ingress backends in filtered-out namespaces) caused undefined reference crashes in the frontend layout. Fixed by adding a post-build filter to prune edges with missing endpoint nodes.
+
+- **Trivy subprocess write failure loops** (`go-core/internal/handlers/security.go`) — When `trivy` scans ran against a disconnected client, `sseEvent` failures were silently ignored, wasting server CPU. The `sendSSE` helper now detects write errors and returns a boolean, allowing worker threads to abort/exit early.
+
+- **DeletedFinalStateUnknown tombstones handling in informers** (`go-core/internal/informers/informers.go`) — Deletion logic occasionally failed when Kubernetes sent tombstone objects during re-list syncing. Added checks to unwrap `DeletedFinalStateUnknown` objects inside informer event handlers.
+
+#### Main process
+
+- **Orphaned poll timers on port-forward startup race** (`src/main/ipc/kubectl.ts`) — If `stopPortForward` resolved while the sidecar request for `portForward` was still in flight, the clearInterval found nothing to clear. When the in-flight promise eventually resolved, the poll interval timer was created and left running indefinitely. Fixed by adding `pendingStops: Set<string>` to track stop signals and cancel newly created timers on startup resolution.
+
+- **Atomic settings configuration writes** (`src/main/settings/settings_storage.ts`) — Writing to `settings.json` directly could result in corrupted or empty files during a sudden process crash or race. Implemented atomic writes by writing to a temporary file (`settings.json.tmp`) first and renaming it. Also added a promise queue `writeLock` to serialize concurrent save operations.
+
+- **Non-idempotent socket-reset retries** (`src/main/sidecar/api.ts`) — Non-idempotent requests (POST/PUT/PATCH) were retried on socket reset, risking duplicated operations. Retries on socket hang up are now restricted to idempotent methods (GET/DELETE).
+
+- **PTY close signaling on app exit** (`src/main/ipc/terminal.ts`) — Added explicit signaling of close/exit events to terminal panes when closing the app, ensuring proper shell session teardown and rendering of termination state.
+
+#### Renderer
+
+- **Context-switch race conditions** (`src/renderer/store/slices/`) — Rapid context switching (e.g. A → B → A) allowed slow background API requests from B to overwrite A's state once completed. Added monotonic sequence counters (`preloadSeq`, `dashboardFetchSeq`, `allowedVerbsSeq`) to discard stale results.
+
+- **Zombie PTY process leaks on exec tab close** (`src/renderer/components/panels/ExecPanel.tsx`) — Closing an exec tab deleted Zustand state but left the underlying shell PTY alive. Added `window.exec.kill(ptyId)` on tab close and unmount, and added a cancellation checker to kill PTYs spawned after a component unmounts.
+
+- **Node list render bottleneck** (`src/renderer/components/core/ResourceList.tsx`) — Each node row independently subscribed to node metrics, causing CPU spikes. Metrics are now mapped into a `Map` in the parent component and passed down, reducing redraws.
+
+- **Log buffer flush leaks** (`src/renderer/hooks/useLogBuffer.ts`) — The log streaming helper was missing a cleanup block to clear out active timers on component unmount. Added `clearTimeout` cleanup.
+
+- **Stale event fetches in `useResourceEvents` hook** (`src/renderer/hooks/useResourceEvents.ts`) — The events listener was utilizing a shared mutable `ref` for mount checking, causing race conditions between asynchronous loads. Replaced with local closure-scoped `mounted` variables. Also stringified `kinds` dependencies to avoid render loops.
+
+#### Tests
+
+- **Topology dangling-edge filter broke ingress→service and pod→PVC tests** (`go-core/internal/topology/topology_test.go`) — The dangling-edge filter added in 3.3.1 drops edges whose endpoint has no corresponding node. Two tests referenced services and PVCs that were never added to the cache, so their edges were silently removed. Both tests now populate the referenced nodes.
+
+- **Scale handler tests sent GET, handler requires POST** (`go-core/internal/handlers/handlers_test.go`) — Three scale tests used `http.MethodGet` after `HandleScale` was updated to guard against non-POST methods. Updated to `http.MethodPost`.
+
+- **Port-forward test manager had no Config set** (`go-core/internal/portforward/portforward_test.go`) — `newTestManager` did not set a `Config`, triggering the "no active Kubernetes context" guard before the injected `runForwardFn` could execute. Added a sentinel `&rest.Config{}`.
+
+- **resourceSlice mock missing `deniedSections`** (`src/renderer/store/slices/resourceSlice.test.ts`) — `loadSection` calls `s.deniedSections.has()` on the Zustand state; the test mock omitted the field. Added `deniedSections: new Set()`.
+
+- **`useAppStore.getState` undefined in component mocks** (`ProviderResourcePanel.test.tsx`, `DeploymentDetail.test.tsx`) — Both components call `useAppStore.getState()` directly inside async callbacks for stale-context guards. The `vi.doMock`/`vi.mock` factories only provided the hook function, not `getState`, so the `finally` block threw before calling `setLoading(false)` — tests timed out waiting for loading state to clear. Both mocks now expose `useAppStore.getState = () => state`.
+
+- **`navigationSlice` `setSection` assertion out of date** (`src/renderer/store/slices/navigationSlice.test.ts`) — `setSection` was updated to reset `searchQuery: ''` alongside `section` and `selectedResource`. Two tests asserted the exact prior payload without `searchQuery` and failed. Updated to match the current implementation.
+
+### Performance & Security
+
+- **Custom resource groups discovery cached** (`go-core/internal/handlers/customresource.go`) — Discovery calls `serverGroups` and `preferredGroupVersion` bypassed the TTL cache and ran queries on every CRD list request. Corrected to check the cache under lock first, drastically reducing cluster query load.
+
+- **Double-Checked Locking (DCL) on Helm Repo loading** (`go-core/internal/helm/repo.go` & `helm.go`) — Loading index files from disk and building action configurations were performed inside global write locks, blocking concurrent Helm lists and searches. Implemented double-checked locking to release the lock during disk I/O / config builds.
+
+- **TOCTOU Port-Forward Ephemeral Port Binding** (`go-core/internal/hubble/client.go`) — Port-forwarding to Hubble bound a manually searched free port, leaving a TOCTOU hijacking window. Resolved by binding port `0` and fetching the actual OS-assigned ephemeral port post-binding.
+
+- **Exec Client-go NegotiatedSerializer Data Race** (`go-core/internal/exec/exec.go`) — Concurrent shell connections raced on modifying the `NegotiatedSerializer` pointer in-place in the shared `rest.Config`. Fixed by shallow-copying the configuration before building the SPDY executor.
+
+- **Port-Forwarding Stale-Credential Request Guard** (`go-core/internal/portforward/portforward.go`) — Added a `stopped` flag blocking new port-forward starts during active context switches. This prevents requests from resolving using stale context credentials during transitions.
+
+- **Trivy Image Scan Memory Limit Protection** (`go-core/internal/helm/repo.go`) — Restrict index and values downloader calls to a 60-second timeout and a maximum 64MB read body limit, preventing sidecar memory exhaustion under oversized chart payloads.
+
+---
+
+## [3.3.1] — 2026-05-31
+
+### Bug fixes
+
+#### Go sidecar
+
+- **RBAC bypass in topology** (`go-core/internal/handlers/network.go`) — `HandleTopology` unconditionally added all cached resource kinds to `initialNodes` regardless of the RBAC probe result. On restricted clusters, denied types (e.g. `nodes`, `networkpolicies`) appeared in the network map even though they were absent from every other panel. Fixed by snapshotting `ac.AllowedResources` under the existing read lock and skipping any `nodeSource` whose plural resource name is denied. Behaviour is unchanged (permissive) when the probe has not yet run (`AllowedResources == nil`).
+
+- **Trivy subprocess read errors silently swallowed** (`go-core/internal/handlers/security.go`) — `io.ReadAll` errors from the trivy stdout reader were only checked after `cmd.Wait()`, but when `Wait` returned an error first the `readErr` branch was never reached. Both conditions are now checked independently; the first non-nil error is surfaced to the client as an SSE `error` event with the actual message.
+
+- **Malformed kubesec request body caused panic** (`go-core/internal/handlers/security.go`) — An empty or unparseable JSON body caused a nil-pointer panic inside the kubesec batch handler. The handler now decodes the body explicitly, returns HTTP 400 on a parse error, and returns an empty result set immediately when the workload list is empty.
+
+- **`http.Client` missing timeout in Hubble port-forward transport** (`go-core/internal/hubble/client.go`) — `spdy.NewDialer` was constructed with an `http.Client` that had no `Timeout`, so goroutines waiting on HTTP operations could block indefinitely when Hubble Relay stopped responding mid-session. The client now sets `Timeout: tunnelReadyTimeout + 5*time.Second`, matching the port-forward readiness deadline.
+
+#### Main process
+
+- **Port-forward zombie alive-poll timer** (`src/main/ipc/kubectl.ts`) — If `stopPortForward` arrived while the initial `sidecarFetch` for `portForward` was still in flight, `clearForwardAliveTimer` found nothing to clear; when the fetch completed the `setInterval` was created and left running forever. Fixed with a `pendingStops: Set<string>` — `stopPortForward` records the id before the sidecar call, and `portForward` discards the newly created timer immediately if the id is already pending.
+
+- **SSE scan stream close not detected** (`src/main/ipc/kubectl.ts`) — When the sidecar closed the SSE connection without emitting a `result` or `error` event (crash, network reset), the `end` listener called `resolve(null)`, making the scan appear to succeed with no findings. A `settled` flag now tracks whether a terminal frame was received; if `end` fires without `settled`, the promise rejects with an explicit error.
+
+#### Renderer
+
+- **PTY process leaked on exec tab close** (`src/renderer/store/slices/operationSlice.ts`) — `closeExecTab` removed the session from the Zustand store but never signalled the underlying PTY. The subprocess continued running until the window closed. `closeExecTab` now calls `window.exec.kill(id).catch(() => {})` before updating state.
+
+- **`providersSlice` A→B→A context-switch bypass** (`src/renderer/store/slices/providersSlice.ts`) — Rapidly switching A→B→A caused the stale B fetch to pass the `selectedContext !== ctx` guard when context returned to A, overwriting A's provider flags with B's stale values. A module-level `fetchSeq` monotonic counter is now checked alongside the string comparison so any result from a superseded fetch is unconditionally discarded.
+
+- **`providersLoading` stuck after rapid context switch** (`src/renderer/store/slices/providersSlice.ts`) — The stale-context guard returned without resetting `providersLoading`, leaving the spinner permanently active. All stale-guard exit paths now call `set({ providersLoading: false })`. The context-switch reset in `clusterSlice.ts` also defensively includes `providersLoading: false`.
+
+- **Overlapping security scan spinner** (`src/renderer/store/slices/analysisSlice.ts`) — Starting a new scan while a previous scan's `finally` block was still running caused the older scan to clear `securityScanning` after the newer scan had set it, permanently dismissing the spinner. A `scanSeq` counter ensures `finally` only clears the flag when no newer scan has started.
+
+- **`loadingResources` not reset on stale-context early exit** (`src/renderer/store/slices/resourceSlice.ts`) — Three stale-context guard returns in `loadSection` (metrics, network, security paths) returned without setting `loadingResources: false`, leaving the loading spinner active after the new context finished loading. All three paths now reset the flag before returning.
+
+- **Exec sessions not closed on context switch** (`src/renderer/store/slices/clusterSlice.ts`) — `selectContext` called `stopAllPortForwards()` but not `closeExec()`, so PTY exec sessions from the previous cluster remained open in the exec panel. `closeExec()` is now called alongside `stopAllPortForwards()` during every context switch.
+
+- **Provider state not restored on failed context switch** (`src/renderer/store/slices/clusterSlice.ts`) — When a context switch failed (cluster unreachable), the rollback restored namespace state but not `providers` or `providersLoading`, causing sidebar provider groups to vanish and the loading spinner to stick. The rollback now captures `previousProviders` before the reset and restores it together with `providersLoading: false`.
+
+---
+
+## [3.3.0] — 2026-05-30
+
+### New features
+
+#### Cilium Hubble network flows
+
+- **Live traffic edges in the network map** (`NetworkPanel.tsx`, `NetworkPanel.utils.ts`) — When Cilium with Hubble Relay is present in the cluster, the network map now overlays observed pod-to-pod traffic as teal `hubble-flow` edges. DROPPED and ERROR flows are labelled and visually distinct from forwarded traffic. Edges are opt-in via a **Hubble Flows** filter pill that only appears when `providers.hubbleRelay` is true, so the panel is unaffected on clusters without Hubble.
+
+- **Hubble Relay gRPC client** (`go-core/internal/hubble/client.go`) — Lazy-connecting `Manager` singleton that programmatically port-forwards to a `hubble-relay` pod in `kube-system` on first use, then streams flows via the Cilium Observer gRPC API. Key design properties:
+  - Connection setup runs outside the manager lock — concurrent context switches (`Reset`) are never blocked for up to the 15 s port-forward timeout.
+  - A generation counter on every `Reset` lets in-flight fetches detect a cluster switch and discard stale results.
+  - A per-generation negative cache (pod-not-found only) prevents repeated API calls on clusters without Hubble; transient port-forward and gRPC failures do not cache and retry on the next request.
+  - Concurrent dial race handled: if two goroutines both attempt to create a connection, the loser discards its tunnel and streams from the winner's connection.
+
+- **`HubbleDiscoverer`** (`go-core/internal/hubble/discoverer.go`) — Implements `graph.Discoverer`; queries all flows from the last 60 s, deduplicates by pod-pair (DROPPED/ERROR wins over FORWARDED), and emits `hubble-flow` edges into the topology graph. Always registered — returns zero edges silently when Hubble is unavailable.
+
+- **`EdgeHubbleFlow` edge kind** (`go-core/internal/graph/graph.go`) — New `EdgeKind = "hubble-flow"` constant; rendered in teal with a 1.2 s animated stroke.
+
+- **Provider detection extended** (`go-core/internal/providers/detect.go`, `go-core/internal/handlers/providers.go`) — `ProviderSet` gains `Cilium` (detected via `cilium.io` API group) and `HubbleRelay` (detected by the existence of the `hubble-relay` Service in `kube-system`). The renderer `ProviderSet` type and `providersSlice` default state updated to match. Context-switch reset in `clusterSlice` now includes both new fields.
+
+### Bug fixes
+
+#### Go sidecar
+
+- **`tools_diag.go` `detect_providers` silently swallowed hubble-relay probe errors** — Added `k8serrors.IsNotFound` check; unexpected API errors are now logged rather than silently treated as "not installed".
+
+#### Renderer
+
+- **Context-switch provider reset missing `cilium` and `hubbleRelay`** (`clusterSlice.ts`) — The inline reset object in `selectContext` did not include the two new provider fields, so stale Hubble values persisted across context switches until `fetchProviders` resolved. Both fields are now explicitly reset to `false`.
+
+---
+
 ## [3.2.2] — 2026-05-02
 
 ### New features

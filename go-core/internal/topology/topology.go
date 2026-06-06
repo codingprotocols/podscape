@@ -94,7 +94,10 @@ func BuildTopology(nsFilter string, c *store.ContextCache) *Topology {
 
 	// 1. Process Nodes (Cluster Level)
 	for _, nObj := range c.Nodes {
-		node := nObj.(*corev1.Node)
+		node, ok := nObj.(*corev1.Node)
+		if !ok {
+			continue
+		}
 		topo.Nodes = append(topo.Nodes, TopologyNode{
 			ID:   fmt.Sprintf("node:%s", node.Name),
 			Kind: KindNode,
@@ -104,7 +107,10 @@ func BuildTopology(nsFilter string, c *store.ContextCache) *Topology {
 
 	// 2. Process Ingresses
 	for _, iObj := range c.Ingresses {
-		ing := iObj.(*networkingv1.Ingress)
+		ing, ok := iObj.(*networkingv1.Ingress)
+		if !ok {
+			continue
+		}
 		if nsFilter != "" && ing.Namespace != nsFilter {
 			continue
 		}
@@ -138,7 +144,10 @@ func BuildTopology(nsFilter string, c *store.ContextCache) *Topology {
 
 	// 3. Process Services
 	for _, sObj := range c.Services {
-		svc := sObj.(*corev1.Service)
+		svc, ok := sObj.(*corev1.Service)
+		if !ok {
+			continue
+		}
 		if nsFilter != "" && svc.Namespace != nsFilter {
 			continue
 		}
@@ -162,7 +171,10 @@ func BuildTopology(nsFilter string, c *store.ContextCache) *Topology {
 
 	// 4. Process Pods
 	for _, pObj := range c.Pods {
-		pod := pObj.(*corev1.Pod)
+		pod, ok := pObj.(*corev1.Pod)
+		if !ok {
+			continue
+		}
 		if nsFilter != "" && pod.Namespace != nsFilter {
 			continue
 		}
@@ -199,7 +211,10 @@ func BuildTopology(nsFilter string, c *store.ContextCache) *Topology {
 
 		// Service -> Pod matching
 		for _, sObj := range c.Services {
-			svc := sObj.(*corev1.Service)
+			svc, ok := sObj.(*corev1.Service)
+			if !ok {
+				continue
+			}
 			if svc.Namespace != pod.Namespace {
 				continue
 			}
@@ -241,33 +256,54 @@ func BuildTopology(nsFilter string, c *store.ContextCache) *Topology {
 	}
 
 	for _, dObj := range c.Deployments {
-		d := dObj.(*appsv1.Deployment)
+		d, ok := dObj.(*appsv1.Deployment)
+		if !ok {
+			continue
+		}
 		processWorkload("Deployment", d.Name, d.Namespace, d.OwnerReferences)
 	}
 	for _, rsObj := range c.ReplicaSets {
-		rs := rsObj.(*appsv1.ReplicaSet)
+		rs, ok := rsObj.(*appsv1.ReplicaSet)
+		if !ok {
+			continue
+		}
 		processWorkload("ReplicaSet", rs.Name, rs.Namespace, rs.OwnerReferences)
 	}
 	for _, dsObj := range c.DaemonSets {
-		ds := dsObj.(*appsv1.DaemonSet)
+		ds, ok := dsObj.(*appsv1.DaemonSet)
+		if !ok {
+			continue
+		}
 		processWorkload("DaemonSet", ds.Name, ds.Namespace, ds.OwnerReferences)
 	}
 	for _, stsObj := range c.StatefulSets {
-		sts := stsObj.(*appsv1.StatefulSet)
+		sts, ok := stsObj.(*appsv1.StatefulSet)
+		if !ok {
+			continue
+		}
 		processWorkload("StatefulSet", sts.Name, sts.Namespace, sts.OwnerReferences)
 	}
 	for _, jObj := range c.Jobs {
-		j := jObj.(*batchv1.Job)
+		j, ok := jObj.(*batchv1.Job)
+		if !ok {
+			continue
+		}
 		processWorkload("Job", j.Name, j.Namespace, j.OwnerReferences)
 	}
 	for _, cjObj := range c.CronJobs {
-		cj := cjObj.(*batchv1.CronJob)
+		cj, ok := cjObj.(*batchv1.CronJob)
+		if !ok {
+			continue
+		}
 		processWorkload("CronJob", cj.Name, cj.Namespace, cj.OwnerReferences)
 	}
 
 	// 6. Process PVCs
 	for _, pvcObj := range c.PVCs {
-		pvc := pvcObj.(*corev1.PersistentVolumeClaim)
+		pvc, ok := pvcObj.(*corev1.PersistentVolumeClaim)
+		if !ok {
+			continue
+		}
 		if nsFilter != "" && pvc.Namespace != nsFilter {
 			continue
 		}
@@ -284,7 +320,10 @@ func BuildTopology(nsFilter string, c *store.ContextCache) *Topology {
 
 	// 7. Process Network Policies
 	for _, polObj := range c.NetworkPolicies {
-		pol := polObj.(*networkingv1.NetworkPolicy)
+		pol, ok := polObj.(*networkingv1.NetworkPolicy)
+		if !ok {
+			continue
+		}
 		if nsFilter != "" && pol.Namespace != nsFilter {
 			continue
 		}
@@ -299,18 +338,14 @@ func BuildTopology(nsFilter string, c *store.ContextCache) *Topology {
 
 		// Policy -> Pods (Target)
 		for _, pObj := range c.Pods {
-			pod := pObj.(*corev1.Pod)
+			pod, ok := pObj.(*corev1.Pod)
+			if !ok {
+				continue
+			}
 			if pod.Namespace != pol.Namespace {
 				continue
 			}
-			match := true
-			for k, v := range pol.Spec.PodSelector.MatchLabels {
-				if pod.Labels[k] != v {
-					match = false
-					break
-				}
-			}
-			if match {
+			if matchSelector(pol.Spec.PodSelector, pod.Labels) {
 				addEdge(polID, fmt.Sprintf("pod:%s", pod.UID), EdgePolicyPod, "")
 			}
 		}
@@ -320,5 +355,60 @@ func BuildTopology(nsFilter string, c *store.ContextCache) *Topology {
 		topo.Namespaces = append(topo.Namespaces, ns)
 	}
 
+	// Drop edges whose source or target node was never added (e.g. RBAC-denied
+	// services, or ingress backends in a filtered-out namespace). A dangling
+	// edge causes the frontend renderer to dereference an undefined node object.
+	nodeIDs := make(map[string]bool, len(topo.Nodes))
+	for _, n := range topo.Nodes {
+		nodeIDs[n.ID] = true
+	}
+	valid := make([]TopologyEdge, 0, len(topo.Edges))
+	for _, e := range topo.Edges {
+		if nodeIDs[e.Source] && nodeIDs[e.Target] {
+			valid = append(valid, e)
+		}
+	}
+	topo.Edges = valid
+
 	return topo
+}
+
+// matchSelector evaluates a metav1.LabelSelector (both MatchLabels and
+// MatchExpressions) against a pod's label set.
+func matchSelector(sel metav1.LabelSelector, podLabels map[string]string) bool {
+	for k, v := range sel.MatchLabels {
+		if podLabels[k] != v {
+			return false
+		}
+	}
+	for _, req := range sel.MatchExpressions {
+		switch req.Operator {
+		case metav1.LabelSelectorOpIn:
+			found := false
+			for _, v := range req.Values {
+				if podLabels[req.Key] == v {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false
+			}
+		case metav1.LabelSelectorOpNotIn:
+			for _, v := range req.Values {
+				if podLabels[req.Key] == v {
+					return false
+				}
+			}
+		case metav1.LabelSelectorOpExists:
+			if _, ok := podLabels[req.Key]; !ok {
+				return false
+			}
+		case metav1.LabelSelectorOpDoesNotExist:
+			if _, ok := podLabels[req.Key]; ok {
+				return false
+			}
+		}
+	}
+	return true
 }

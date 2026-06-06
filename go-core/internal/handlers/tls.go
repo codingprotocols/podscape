@@ -3,7 +3,6 @@ package handlers
 import (
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
 	"encoding/pem"
 	"net/http"
 	"time"
@@ -101,6 +100,9 @@ func HandleTLSCerts(w http.ResponseWriter, r *http.Request) {
 		daysLeft := int(time.Until(cert.NotAfter).Hours() / 24)
 		info.CommonName = cert.Subject.CommonName
 		info.DNSNames = cert.DNSNames
+		if info.DNSNames == nil {
+			info.DNSNames = []string{}
+		}
 		info.Issuer = cert.Issuer.CommonName
 		info.NotBefore = cert.NotBefore
 		info.NotAfter = cert.NotAfter
@@ -115,6 +117,5 @@ func HandleTLSCerts(w http.ResponseWriter, r *http.Request) {
 		certs = []TLSCertInfo{}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(certs)
+	writeJSON(w, certs)
 }

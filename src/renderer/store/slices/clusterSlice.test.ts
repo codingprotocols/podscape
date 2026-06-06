@@ -17,6 +17,9 @@ describe('clusterSlice', () => {
             fetchProviders: vi.fn(),
             fetchAllowedVerbs: vi.fn(),
             stopAllPortForwards: vi.fn(),
+            closeExec: vi.fn(),
+            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false, cilium: false, hubbleRelay: false },
+            providersLoading: false,
             hotbarContexts: [],
             prodContexts: [],
         }
@@ -192,6 +195,74 @@ describe('clusterSlice', () => {
 
         // prometheusAvailable must NOT have been updated — stale result discarded
         expect(state.prometheusAvailable).toBeNull()
+    })
+
+    // ── Concurrent same-target dedup ─────────────────────────────────────────
+
+    it('concurrent selectContext for same target: second call does not reset state', async () => {
+        // inflightSwitchTarget is set synchronously in the first call's sync chunk,
+        // so any second call for the same target must hit the dedup guard before
+        // ever calling set() with the state-reset payload.
+        let resolveSwitch!: () => void
+        windowMock.kubectl.switchContext.mockImplementationOnce(
+            () => new Promise<void>(r => { resolveSwitch = r })
+        )
+        windowMock.kubectl.getNamespaces.mockResolvedValue([{ name: 'ns1' }])
+        state.preloadSearchResources = vi.fn()
+
+        const slice = (createClusterSlice as any)(set, get)
+
+        // p1's sync chunk: dedup check (no), claim target, call set({...reset}).
+        const p1 = slice.selectContext('ctx-a')
+        const setCallsAfterP1SyncChunk = set.mock.calls.length
+
+        // p2 starts here. inflightSwitchTarget='ctx-a' is already set (no await yet).
+        // p2 must bail out at the dedup guard without calling set().
+        const p2 = slice.selectContext('ctx-a')
+
+        expect(set.mock.calls.length).toBe(setCallsAfterP1SyncChunk)
+
+        // Drain p1's cancelAllStreams microtask so switchContext is called and
+        // resolveSwitch is assigned before we try to call it.
+        await Promise.resolve()
+
+        resolveSwitch()
+        await p1
+        await p2
+
+        // Only one switchContext call — dedup prevented the duplicate HTTP request.
+        expect(windowMock.kubectl.switchContext).toHaveBeenCalledTimes(1)
+    })
+
+    it('concurrent selectContext for same target: second call awaits in-flight promise and returns', async () => {
+        // Verify that a latecomer that arrives AFTER inflightSwitchPromise is
+        // published awaits it silently and does not trigger a second namespace load.
+        let resolveSwitch!: () => void
+        windowMock.kubectl.switchContext.mockImplementationOnce(
+            () => new Promise<void>(r => { resolveSwitch = r })
+        )
+        windowMock.kubectl.getNamespaces.mockResolvedValue([{ name: 'ns1' }])
+        state.preloadSearchResources = vi.fn()
+
+        const slice = (createClusterSlice as any)(set, get)
+        const p1 = slice.selectContext('ctx-a')
+
+        // Drain the cancelAllStreams microtask so p1 publishes inflightSwitchPromise.
+        await Promise.resolve()
+
+        const setCallsBeforeP2 = set.mock.calls.length
+        const p2 = slice.selectContext('ctx-a')
+
+        // p2's sync chunk: dedup guard fires (inflightSwitchTarget='ctx-a'), no set().
+        expect(set.mock.calls.length).toBe(setCallsBeforeP2)
+
+        resolveSwitch()
+        await p1
+        await p2
+
+        // getNamespaces called only once — p2 did not proceed to the namespace load.
+        expect(windowMock.kubectl.getNamespaces).toHaveBeenCalledTimes(1)
+        expect(windowMock.kubectl.switchContext).toHaveBeenCalledTimes(1)
     })
 
     // ── Race condition test (Issue 11A) ────────────────────────────────────────
