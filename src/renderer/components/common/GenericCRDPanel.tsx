@@ -51,9 +51,24 @@ export function GenericCRDPanel({ crdName, context, namespace, onCountLoaded }: 
   }, [context, namespace, crdName, onCountLoaded])
 
   useEffect(() => {
+    let cancelled = false
     setSelected(null)
-    load()
-  }, [load])
+    setLoading(true)
+    setError(null)
+    window.kubectl.getCustomResource(context, namespace, crdName)
+      .then(result => {
+        if (cancelled) return
+        const loaded = Array.isArray(result) ? (result as CRDInstance[]) : []
+        setItems(loaded)
+        onCountLoaded?.(loaded.length)
+      })
+      .catch(e => {
+        if (cancelled) return
+        setError(e instanceof Error ? e.message : String(e))
+      })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [context, namespace, crdName, onCountLoaded])
 
   const showNamespaceCol = !namespace || namespace === '_all'
 

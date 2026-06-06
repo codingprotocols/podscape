@@ -85,11 +85,7 @@ export default function DebugPodLauncher() {
   const [launching, setLaunching] = useState(false)
   const [launchError, setLaunchError] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const isMountedRef = useRef(true)
-  React.useEffect(() => {
-    isMountedRef.current = true
-    return () => { isMountedRef.current = false }
-  }, [])
+  const launchIdRef = useRef(0)
 
   const effectiveNs = targetNs || (selectedNamespace === '_all' ? 'default' : (selectedNamespace ?? 'default'))
   const effectiveImage = useCustom ? customImage : selectedImage
@@ -97,6 +93,8 @@ export default function DebugPodLauncher() {
 
   const launch = async () => {
     if (!selectedContext || !effectiveImage.trim()) return
+    const ctx = selectedContext
+    const myId = ++launchIdRef.current
     setLaunching(true)
     setLaunchError(null)
     const name = generatePodName()
@@ -106,8 +104,8 @@ export default function DebugPodLauncher() {
     }
     addDebugPod(entry)
     try {
-      await window.kubectl.createDebugPod(selectedContext, effectiveNs, effectiveImage, name)
-      
+      await window.kubectl.createDebugPod(ctx, effectiveNs, effectiveImage, name)
+
       // Wait for pod to be running — exponential backoff, 250 ms → ×1.5 → 5 s cap
       let isReady = false
       let backoff = 250
@@ -117,10 +115,12 @@ export default function DebugPodLauncher() {
         await new Promise(r => setTimeout(r, backoff))
         backoff = Math.min(backoff * 1.5, maxBackoff)
 
-        if (!isMountedRef.current) break  // component unmounted — stop polling
+        if (myId !== launchIdRef.current) break  // superseded by newer launch
+        if (useAppStore.getState().selectedContext !== ctx) break
 
-        const pods = await window.kubectl.getPods(selectedContext, effectiveNs) as any[]
-        if (!isMountedRef.current) break
+        const pods = await window.kubectl.getPods(ctx, effectiveNs) as any[]
+        if (myId !== launchIdRef.current) break
+        if (useAppStore.getState().selectedContext !== ctx) break
         const p = pods.find(p => p.metadata?.name === name)
         if (p?.status?.phase === 'Running') {
           isReady = true
@@ -128,7 +128,8 @@ export default function DebugPodLauncher() {
         }
       }
 
-      if (!isMountedRef.current) return
+      if (myId !== launchIdRef.current) return
+      if (useAppStore.getState().selectedContext !== ctx) return
 
       if (!isReady) {
         throw new Error('Pod did not become ready in time')
@@ -138,11 +139,12 @@ export default function DebugPodLauncher() {
       // Auto-open exec into the newly ready pod
       openExec({ pod: name, container: 'debug', namespace: effectiveNs })
     } catch (err) {
-      if (!isMountedRef.current) return
+      if (myId !== launchIdRef.current) return
+      if (useAppStore.getState().selectedContext !== ctx) return
       updateDebugPod(name, { status: 'error', error: (err as Error).message })
       setLaunchError((err as Error).message)
     } finally {
-      if (isMountedRef.current) setLaunching(false)
+      if (myId === launchIdRef.current) setLaunching(false)
     }
   }
 

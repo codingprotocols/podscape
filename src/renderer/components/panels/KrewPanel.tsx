@@ -92,7 +92,9 @@ function usePluginModule(name: string | null): PluginModule | null {
         if (!name) { setMod(null); return }
         const loader = getPlugin(name)
         if (!loader) { setMod(null); return }
-        void loader().then(setMod)
+        let cancelled = false
+        loader().then(m => { if (!cancelled) setMod(m) })
+        return () => { cancelled = true }
     }, [name])
     return mod
 }
@@ -131,7 +133,7 @@ export default function KrewPanel(): JSX.Element {
     useEffect(() => {
         if (krewAvailable === true && pluginIndex.length === 0) loadPluginIndex()
         else if (krewAvailable === true) refreshIndexIfStale()
-    }, [krewAvailable])
+    }, [krewAvailable, pluginIndex, loadPluginIndex, refreshIndexIfStale])
 
     if (krewAvailable === null) {
         return (

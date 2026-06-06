@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import type { KubePV } from '../../../types'
 import { formatAge } from '../../../types'
 import { useAppStore } from '../../../store'
+import { useShallow } from 'zustand/react/shallow'
 import YAMLViewer from '../../common/YAMLViewer'
 import { HardDrive, Activity, Share2, FileCode, X } from 'lucide-react'
 
@@ -15,20 +16,24 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 export default function PVDetail({ pv }: { pv: KubePV }) {
-    const { getYAML, applyYAML, refresh } = useAppStore()
+    const { getYAML, applyYAML, refresh } = useAppStore(useShallow(s => ({ getYAML: s.getYAML, applyYAML: s.applyYAML, refresh: s.refresh })))
     const [yaml, setYaml] = useState<string | null>(null)
     const [yamlLoading, setYamlLoading] = useState(false)
     const [yamlError, setYamlError] = useState<string | null>(null)
+    const yamlFetchIdRef = useRef(0)
 
     const handleViewYAML = async () => {
+        const myId = ++yamlFetchIdRef.current
         setYaml(null); setYamlError(null); setYamlLoading(true)
         try {
             const content = await getYAML('persistentvolume', pv.metadata.name, true)
+            if (myId !== yamlFetchIdRef.current) return
             setYaml(content)
         } catch (err) {
+            if (myId !== yamlFetchIdRef.current) return
             setYamlError((err as Error).message ?? 'Failed to fetch YAML')
         } finally {
-            setYamlLoading(false)
+            if (myId === yamlFetchIdRef.current) setYamlLoading(false)
         }
     }
 
@@ -132,7 +137,7 @@ export default function PVDetail({ pv }: { pv: KubePV }) {
                             </div>
                             <button
                                 type="button"
-                                onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }}
+                                onClick={() => { ++yamlFetchIdRef.current; setYaml(null); setYamlError(null); setYamlLoading(false) }}
                                 className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors"
                                 aria-label="Close"
                             >
@@ -156,9 +161,12 @@ export default function PVDetail({ pv }: { pv: KubePV }) {
                                 <YAMLViewer editable
                                     content={yaml}
                                     onSave={async (updated) => {
+                                        const myId = ++yamlFetchIdRef.current
                                         await applyYAML(updated)
+                                        if (myId !== yamlFetchIdRef.current) return
                                         refresh()
                                         const next = await getYAML('persistentvolume', pv.metadata.name, true)
+                                        if (myId !== yamlFetchIdRef.current) return
                                         setYaml(next)
                                     }}
                                 />

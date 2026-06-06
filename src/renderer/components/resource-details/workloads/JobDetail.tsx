@@ -11,7 +11,7 @@ interface Props { job: KubeJob }
 
 export default function JobDetail({ job }: Props): JSX.Element {
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
-  const { selectedContext: ctx } = useAppStore()
+  const ctx = useAppStore(s => s.selectedContext)
   const { events } = useResourceEvents(ctx, job.metadata.name, 'Job', job.metadata.namespace)
 
   const conditions = job.status.conditions ?? []

@@ -1,5 +1,6 @@
 import React from 'react'
 import { useAppStore } from '../../../store'
+import { useShallow } from 'zustand/react/shallow'
 import type { KubeHPA } from '../../../types'
 import { formatAge } from '../../../types'
 import { FileCode, X, Activity, Cpu, Target, History, TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle, BarChart2, Zap } from 'lucide-react'
@@ -92,7 +93,9 @@ function parseMetrics(hpa: KubeHPA): ParsedMetric[] {
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 export default function HPADetail({ hpa }: Props): JSX.Element {
-  const { selectedContext: ctx } = useAppStore()
+  const { selectedContext: ctx } = useAppStore(useShallow(s => ({
+    selectedContext: s.selectedContext,
+  })))
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
 
   const { events, loading: eventsLoading } = useResourceEvents(
@@ -107,7 +110,7 @@ export default function HPADetail({ hpa }: Props): JSX.Element {
   const desired = hpa.status.desiredReplicas
   const max = hpa.spec.maxReplicas
   const min = hpa.spec.minReplicas ?? 1
-  const scalePct = max > min ? Math.round(((current - min) / (max - min)) * 100) : 0
+  const scalePct = Math.min(100, Math.max(0, max > min ? Math.round(((current - min) / (max - min)) * 100) : 0))
 
   const metrics = parseMetrics(hpa)
 

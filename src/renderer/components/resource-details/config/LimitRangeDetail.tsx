@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import type { KubeLimitRange, LimitRangeItem } from '../../../types'
 import { formatAge } from '../../../types'
 import { useAppStore } from '../../../store'
+import { useShallow } from 'zustand/react/shallow'
 import YAMLViewer from '../../common/YAMLViewer'
 import { Sliders, FileCode, X } from 'lucide-react'
 
@@ -44,20 +45,24 @@ function LimitItem({ item }: { item: LimitRangeItem }) {
 }
 
 export default function LimitRangeDetail({ lr }: { lr: KubeLimitRange }) {
-    const { getYAML, applyYAML, refresh } = useAppStore()
+    const { getYAML, applyYAML, refresh } = useAppStore(useShallow(s => ({ getYAML: s.getYAML, applyYAML: s.applyYAML, refresh: s.refresh })))
     const [yaml, setYaml] = useState<string | null>(null)
     const [yamlLoading, setYamlLoading] = useState(false)
     const [yamlError, setYamlError] = useState<string | null>(null)
+    const yamlFetchIdRef = useRef(0)
 
     const handleViewYAML = async () => {
+        const myId = ++yamlFetchIdRef.current
         setYaml(null); setYamlError(null); setYamlLoading(true)
         try {
             const content = await getYAML('limitrange', lr.metadata.name, false, lr.metadata.namespace)
+            if (myId !== yamlFetchIdRef.current) return
             setYaml(content)
         } catch (err) {
+            if (myId !== yamlFetchIdRef.current) return
             setYamlError((err as Error).message ?? 'Failed to fetch YAML')
         } finally {
-            setYamlLoading(false)
+            if (myId === yamlFetchIdRef.current) setYamlLoading(false)
         }
     }
 
@@ -129,7 +134,7 @@ export default function LimitRangeDetail({ lr }: { lr: KubeLimitRange }) {
                                     {yamlLoading ? 'Loading YAML…' : `YAML — ${lr.metadata.name}`}
                                 </h3>
                             </div>
-                            <button type="button" onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }}
+                            <button type="button" onClick={() => { ++yamlFetchIdRef.current; setYaml(null); setYamlError(null); setYamlLoading(false) }}
                                 className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors" aria-label="Close">
                                 <X className="w-4.5 h-4.5" />
                             </button>
@@ -147,10 +152,17 @@ export default function LimitRangeDetail({ lr }: { lr: KubeLimitRange }) {
                             ) : yaml !== null ? (
                                 <YAMLViewer editable content={yaml}
                                     onSave={async (updated) => {
-                                        await applyYAML(updated)
-                                        refresh()
-                                        const next = await getYAML('limitrange', lr.metadata.name, false, lr.metadata.namespace)
-                                        setYaml(next)
+                                        const myId = ++yamlFetchIdRef.current
+                                        try {
+                                            await applyYAML(updated)
+                                            if (myId !== yamlFetchIdRef.current) return
+                                            refresh()
+                                            const next = await getYAML('limitrange', lr.metadata.name, false, lr.metadata.namespace)
+                                            if (myId !== yamlFetchIdRef.current) return
+                                            setYaml(next)
+                                        } catch (err) {
+                                            console.error('Failed to apply YAML:', err)
+                                        }
                                     }}
                                 />
                             ) : null}

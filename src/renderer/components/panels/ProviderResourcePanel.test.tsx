@@ -37,17 +37,18 @@ vi.mock('../../types', () => ({
 const mockGetCustomResource = vi.fn()
 
 function mockStore(overrides: Record<string, any> = {}) {
-  vi.doMock('../../store', () => ({
-    useAppStore: (sel?: (s: any) => any) => {
-      const state = {
-        selectedContext: 'test-ctx',
-        selectedNamespace: 'default',
-        providers: { traefikVersion: 'v3' },
-        ...overrides,
-      }
-      return sel ? sel(state) : state
-    },
-  }))
+  vi.doMock('../../store', () => {
+    const state = {
+      selectedContext: 'test-ctx',
+      selectedNamespace: 'default',
+      providers: { traefikVersion: 'v3' },
+      ...overrides,
+    }
+    const useAppStore = (sel?: (s: any) => any) => sel ? sel(state) : state
+    // The component calls useAppStore.getState() directly for stale-context guards.
+    useAppStore.getState = () => state
+    return { useAppStore }
+  })
 }
 
 const mockItems = [

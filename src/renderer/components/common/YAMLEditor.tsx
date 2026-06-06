@@ -25,7 +25,7 @@ export default function YAMLEditor({
   wordWrap = 'on',
   onMount,
 }: Props): JSX.Element {
-  const { theme } = useAppStore()
+  const theme = useAppStore(s => s.theme)
 
   return (
     <div className="cursor-default" style={{ height }}>

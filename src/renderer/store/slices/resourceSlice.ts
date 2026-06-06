@@ -83,7 +83,14 @@ export interface ResourceSlice {
 // pass the check before either writes. clusterSlice calls clearInFlightSections()
 // on every context switch to prevent stale keys from blocking the new context.
 const inFlightSections = new Set<string>()
-export const clearInFlightSections = () => inFlightSections.clear()
+let dashboardFetchSeq = 0
+let preloadSeq = 0
+let preloadInFlight = false
+export const clearInFlightSections = () => {
+    inFlightSections.clear()
+    preloadInFlight = false
+    preloadSeq++
+}
 
 export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     pods: [],
@@ -191,7 +198,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     window.kubectl.getNodes(ctx),
                     window.kubectl.getHPAs(ctx, nsArg)
                 ])
-                if (get().selectedContext !== snapshotCtx) return
+                if (get().selectedContext !== snapshotCtx) { set({ loadingResources: false }); return }
                 set({
                     podMetrics: Array.isArray(pm) ? pm : [],
                     nodeMetrics: Array.isArray(nm) ? nm : [],
@@ -203,7 +210,8 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     sectionLoadedAt: { ...get().sectionLoadedAt, [cacheKey]: Date.now() },
                 })
             } catch (err) {
-                if (get().selectedContext === snapshotCtx) set({
+                if (get().selectedContext !== snapshotCtx) { set({ loadingResources: false }); return }
+                set({
                     loadingResources: false,
                     podMetrics: [],
                     nodeMetrics: [],
@@ -223,7 +231,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                 // nodeMetrics calls the Kubernetes Metrics API which can hang for several
                 // seconds when metrics-server is not installed (aggregation layer timeout).
                 const nds = await window.kubectl.getNodes(ctx)
-                if (get().selectedContext !== snapshotCtx) return
+                if (get().selectedContext !== snapshotCtx) { set({ loadingResources: false }); return }
                 const freshNodes = Array.isArray(nds) ? nds as KubeNode[] : []
                 const currentSelected = get().selectedResource
                 const update: Partial<AppStore> = {
@@ -236,7 +244,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                 }
                 set(update as Partial<AppStore>)
             } catch (err) {
-                if (get().selectedContext !== snapshotCtx) return
+                if (get().selectedContext !== snapshotCtx) { set({ loadingResources: false }); return }
                 set({ loadingResources: false, error: (err as Error).message })
             }
             // Fetch nodeMetrics in background — metrics bars update shortly after the
@@ -258,7 +266,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     window.kubectl.getNamespaces(ctx),
                     window.kubectl.getNetworkPolicies(ctx, nsArg)
                 ])
-                if (get().selectedContext !== snapshotCtx) return
+                if (get().selectedContext !== snapshotCtx) { set({ loadingResources: false }); return }
                 set({
                     services: svcs as KubeService[],
                     ingresses: ings as KubeIngress[],
@@ -286,7 +294,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
                     window.kubectl.getJobs(ctx, nsArg),
                     window.kubectl.getCronJobs(ctx, nsArg)
                 ])
-                if (get().selectedContext !== snapshotCtx) return
+                if (get().selectedContext !== snapshotCtx) { set({ loadingResources: false }); return }
                 set({
                     pods: pds as KubePod[],
                     deployments: depls as KubeDeployment[],
@@ -316,6 +324,15 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             return
         }
 
+        // Clear any prior RBAC denial so a retry can succeed (e.g. after an admin
+        // grants access mid-session without a context switch).
+        set(s => {
+            if (!s.deniedSections.has(section)) return s
+            const next = new Set(s.deniedSections)
+            next.delete(section)
+            return { deniedSections: next } as Partial<AppStore>
+        })
+
         // Show the loading spinner only on first load (no data yet).
         // On background auto-refresh there is already data visible — skip the
         // spinner and the selectedResource reset so the list stays stable.
@@ -329,7 +346,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         try {
             const data = await config.fetch(ctx, fetchNs)
             // Discard results if the context switched while we were fetching.
-            if (get().selectedContext !== snapshotCtx) return
+            if (get().selectedContext !== snapshotCtx) { set({ loadingResources: false }); return }
             const freshData: AnyKubeResource[] = Array.isArray(data) ? data as AnyKubeResource[] : []
             // If a resource is selected, find its fresh version in the new data
             // (reflects live status changes). Set to null if it was deleted.
@@ -349,7 +366,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             }
             set(update as Partial<AppStore>)
         } catch (err) {
-            if (get().selectedContext !== snapshotCtx) return
+            if (get().selectedContext !== snapshotCtx) { set({ loadingResources: false }); return }
             // Sidecar signals RBAC denial via RBACDeniedError (thrown by the main process IPC handler).
             // Mark the section as denied so the UI can show "Access denied" instead of an error.
             if (err instanceof Error && err.message.startsWith('RBAC_DENIED:')) {
@@ -374,6 +391,9 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         // Skip re-fetch if dashboard data is < 30s old (navigation back to dashboard).
         // refresh() resets lastDashboardLoadedAt to 0 before calling loadSection, bypassing this guard.
         if (Date.now() - lastDashboardLoadedAt < 30_000) return
+        // Monotonic counter guards against A→B→A context switch bypass where the
+        // context string comparison alone would pass (both A sessions share the same string).
+        const mySeq = ++dashboardFetchSeq
         // Snapshot context to detect mid-fetch context switches and discard stale results.
         const snapshotCtx = ctx
         set({ loadingResources: true, error: null })
@@ -406,67 +426,77 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
             { key: 'hpas',             fetch: () => window.kubectl.getHPAs(ctx, null),              retry: ns ? () => window.kubectl.getHPAs(ctx, ns)             : undefined, required: false },
         ]
 
-        const results = await Promise.allSettled(fetches.map(f => f.fetch()))
+        try {
+            const results = await Promise.allSettled(fetches.map(f => f.fetch()))
 
-        // For failed all-namespace fetches, retry with ns-scoped call; resolve to [] on second failure.
-        const finalValues = await Promise.all(
-            fetches.map((f, i) => {
-                const r = results[i]
-                if (r.status === 'fulfilled') return Promise.resolve(r.value)
-                if (f.retry) return f.retry().catch(() => [])
-                return Promise.resolve([])
+            // For failed all-namespace fetches, retry with ns-scoped call; resolve to [] on second failure.
+            const finalValues = await Promise.all(
+                fetches.map((f, i) => {
+                    const r = results[i]
+                    if (r.status === 'fulfilled') return Promise.resolve(r.value)
+                    if (f.retry) return f.retry().catch(() => [])
+                    return Promise.resolve([])
+                })
+            )
+
+            const updates: Record<string, any> = {}
+            let firstError: string | null = null
+            fetches.forEach((f, i) => {
+                updates[f.key] = finalValues[i]
+                if (results[i].status === 'rejected' && f.required) {
+                    const r = results[i] as PromiseRejectedResult
+                    const msg = r.reason instanceof Error ? r.reason.message : String(r.reason)
+                    if (!firstError) firstError = msg
+                }
             })
-        )
-
-        const updates: Record<string, any> = {}
-        let firstError: string | null = null
-        fetches.forEach((f, i) => {
-            updates[f.key] = finalValues[i]
-            if (results[i].status === 'rejected' && f.required) {
-                const r = results[i] as PromiseRejectedResult
-                const msg = r.reason instanceof Error ? r.reason.message : String(r.reason)
-                if (!firstError) firstError = msg
+            // Discard results if the context switched while fetches were in-flight.
+            // Both checks required: string comparison catches most switches; monotonic
+            // counter catches A→B→A where the string matches the original context again.
+            if (mySeq !== dashboardFetchSeq || get().selectedContext !== snapshotCtx) {
+                set({ loadingResources: false })
+                return
             }
-        })
-        // Discard results if the context switched while fetches were in-flight.
-        if (get().selectedContext !== snapshotCtx) return
 
-        set({ ...updates, ...(firstError ? { error: firstError } : {}) })
+            set({ ...updates, ...(firstError ? { error: firstError } : {}) })
 
-        // Group resources into Apps
-        const allResources: AnyKubeResource[] = [
-            ...(get().deployments),
-            ...(get().statefulsets),
-            ...(get().daemonsets),
-            ...(get().services),
-            ...(get().configmaps),
-            ...(get().hpas)
-        ]
+            // Group resources into Apps
+            const allResources: AnyKubeResource[] = [
+                ...(get().deployments ?? []),
+                ...(get().statefulsets ?? []),
+                ...(get().daemonsets ?? []),
+                ...(get().services ?? []),
+                ...(get().configmaps ?? []),
+                ...(get().hpas ?? [])
+            ]
 
-        const groups: Record<string, AppGroup> = {}
-        const APP_LABELS = ['app.kubernetes.io/name', 'app', 'run']
+            const groups: Record<string, AppGroup> = {}
+            const APP_LABELS = ['app.kubernetes.io/name', 'app', 'run']
 
-        allResources.forEach(r => {
-            const labels = r.metadata.labels || {}
-            let appName = ''
-            for (const key of APP_LABELS) {
-                if (labels[key]) {
-                    appName = labels[key]
-                    break
+            allResources.forEach(r => {
+                const labels = r.metadata.labels || {}
+                let appName = ''
+                for (const key of APP_LABELS) {
+                    if (labels[key]) {
+                        appName = labels[key]
+                        break
+                    }
                 }
-            }
 
-            if (appName) {
-                const ns = r.metadata.namespace || 'default'
-                const key = `${ns}:${appName}`
-                if (!groups[key]) {
-                    groups[key] = { name: appName, namespace: ns, resources: [] }
+                if (appName) {
+                    const ns = r.metadata.namespace || 'default'
+                    const key = `${ns}:${appName}`
+                    if (!groups[key]) {
+                        groups[key] = { name: appName, namespace: ns, resources: [] }
+                    }
+                    groups[key].resources.push(r)
                 }
-                groups[key].resources.push(r)
-            }
-        })
+            })
 
-        set({ apps: Object.values(groups).sort((a, b) => a.name.localeCompare(b.name)), loadingResources: false, lastDashboardLoadedAt: Date.now() })
+            set({ apps: Object.values(groups).sort((a, b) => a.name.localeCompare(b.name)), loadingResources: false, lastDashboardLoadedAt: Date.now() })
+        } catch (err) {
+            if (mySeq !== dashboardFetchSeq || get().selectedContext !== snapshotCtx) return
+            set({ loadingResources: false, error: (err as Error).message })
+        }
     },
 
     refresh: () => {
@@ -474,7 +504,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         const now = Date.now()
         if (now - get().lastRefreshedAt < 2_000) return Promise.resolve()
         // Clear all caches so the next load always fetches fresh data.
-        inFlightSections.clear()
+        clearInFlightSections()
         // Fire-and-forget: evict the Go sidecar's Prometheus cache so charts
         // fetch fresh data after a manual refresh. Safe to ignore errors.
         window.kubectl.prometheusFlushCache?.().catch(() => {})
@@ -487,7 +517,13 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         if (!ctx) return
         // Skip if data is fresh (< 60s old) to avoid redundant fetches on repeated search opens.
         if (Date.now() - lastPreloadedAt < 60_000) return
-        set({ lastPreloadedAt: Date.now() })
+        // In-flight guard: without this, two callers that both pass the TTL check
+        // before either stamps lastPreloadedAt would each launch 5 parallel fetches.
+        if (preloadInFlight) return
+        preloadInFlight = true
+        // Monotonic counter guards against A→B→A context-switch bypass where
+        // the context string comparison alone would pass (same string, stale data).
+        const mySeq = ++preloadSeq
 
         // Scope to the selected namespace when one is active. Fetching all-namespaces
         // on a scoped cluster wastes bandwidth proportional to namespace count.
@@ -497,24 +533,30 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         // Promise.allSettled so a permission-denied on one type (e.g. secrets in
         // restricted clusters) doesn't block the others from being cached.
         const keys = ['pods', 'deployments', 'services', 'configmaps', 'secrets'] as const
-        const results = await Promise.allSettled([
-            window.kubectl.getPods(ctx, ns),
-            window.kubectl.getDeployments(ctx, ns),
-            window.kubectl.getServices(ctx, ns),
-            window.kubectl.getConfigMaps(ctx, ns),
-            window.kubectl.getSecrets(ctx, ns),
-        ])
-        // Discard results if the context switched while fetches were in-flight.
-        if (get().selectedContext !== ctx) return
-        const updates: Record<string, any[]> = {}
-        results.forEach((r, i) => {
-            if (r.status === 'fulfilled') {
-                updates[keys[i]] = r.value as AnyKubeResource[]
-            } else {
-                console.warn(`[preload] ${keys[i]} failed:`, r.reason)
-            }
-        })
-        if (Object.keys(updates).length > 0) set(updates as Partial<AppStore>)
+        try {
+            const results = await Promise.allSettled([
+                window.kubectl.getPods(ctx, ns),
+                window.kubectl.getDeployments(ctx, ns),
+                window.kubectl.getServices(ctx, ns),
+                window.kubectl.getConfigMaps(ctx, ns),
+                window.kubectl.getSecrets(ctx, ns),
+            ])
+            // Discard results if the context switched while fetches were in-flight.
+            // Both checks required: string catches most switches; counter catches A→B→A.
+            if (mySeq !== preloadSeq || get().selectedContext !== ctx) return
+            const updates: Record<string, any[]> = {}
+            results.forEach((r, i) => {
+                if (r.status === 'fulfilled') {
+                    updates[keys[i]] = r.value as AnyKubeResource[]
+                } else {
+                    console.warn(`[preload] ${keys[i]} failed:`, r.reason)
+                }
+            })
+            // Stamp freshness only when at least one resource type was successfully written.
+            if (Object.keys(updates).length > 0) set({ ...updates, lastPreloadedAt: Date.now() } as Partial<AppStore>)
+        } finally {
+            preloadInFlight = false
+        }
     },
 
     navigateToResource: async (kind, name, namespace) => {

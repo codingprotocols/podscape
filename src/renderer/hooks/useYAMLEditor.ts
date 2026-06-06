@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { useAppStore } from '../store'
+import { useShallow } from 'zustand/react/shallow'
 
 export interface YAMLEditorState {
   yaml: string | null
@@ -81,7 +82,11 @@ export function _createYAMLEditorHandlers(
  *   <YAMLViewer content={yaml} editable onSave={apply} />
  */
 export function useYAMLEditor(): YAMLEditorState {
-  const { getYAML, applyYAML, refresh } = useAppStore()
+  const { getYAML, applyYAML, refresh } = useAppStore(useShallow(s => ({
+    getYAML: s.getYAML,
+    applyYAML: s.applyYAML,
+    refresh: s.refresh,
+  })))
   const [yaml, setYaml] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

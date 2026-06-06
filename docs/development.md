@@ -60,6 +60,70 @@ npm run dev          # Start Electron + Vite dev server with hot reload
 
 ---
 
+## Architecture patterns
+
+### Stale-context guard
+
+Every async action that touches the store must capture the active context at call time and discard results when the context has changed mid-flight:
+
+```ts
+const ctx = get().selectedContext
+// ... await something expensive ...
+if (get().selectedContext !== ctx) return   // discard stale result
+```
+
+A context-string comparison alone can be bypassed by rapid A→B→A switching (the result from B resolves when the context is back to A, so the guard passes). Monotonic sequence counters prevent this:
+
+```ts
+let mySeq = ++sliceSeq       // module-level counter
+// ... await something expensive ...
+if (mySeq !== sliceSeq || get().selectedContext !== ctx) return
+```
+
+Both checks are required. `providersSlice`, `analysisSlice`, and `clusterSlice` all use this pattern.
+
+### Port-forward race guard
+
+`portForward` and `stopPortForward` can race: stop may arrive while the initial sidecar HTTP request is still in flight. The `pendingStops: Set<string>` in `src/main/ipc/kubectl.ts` bridges the gap — `stopPortForward` records the id before calling the sidecar, and `portForward` discards the alive-poll timer immediately if the id is already pending. Without this, a timer is started and never cleared.
+
+### SSE stream resolution (`settled` flag)
+
+The `handleScanResponse` helper in `src/main/ipc/kubectl.ts` resolves or rejects the wrapping Promise via SSE `result` / `error` events. A `settled` boolean is set when either terminal event fires. The `end` listener rejects if `!settled` — this surfaces unexpected stream closes (sidecar crash, network reset) as real errors rather than silent `null` results.
+
+### Gorilla WebSocket Concurrency Safety
+
+Gorilla WebSocket (`github.com/gorilla/websocket`) does **not** allow concurrent write operations or concurrent read operations on the same connection.
+* **Writes:** outgoing frames (stdout/stderr goroutines writing concurrently) must be synchronized using a `sync.Mutex` inside the `wsStream.Write` helper.
+* **Reads (Stdin):** To avoid concurrent reads, a single read-pump goroutine is established to read incoming frames from the WebSocket and write them to an `io.Pipe`. The execution handler (`exec.Exec`) reads stdin from the other end of the pipe.
+
+### Double-Checked Locking (DCL) on Managers
+
+For operations involving slow I/O or network calls (such as loading Helm index files from disk or parsing Kubernetes client configurations), avoid holding a global manager lock. Instead, use Double-Checked Locking (DCL):
+1. Acquire the lock, check if the value is in the cache, and return immediately if found.
+2. Release the lock before performing the slow operation (so concurrent commands are not blocked).
+3. Perform the disk/network operation.
+4. Re-acquire the lock, verify that no other goroutine has populated the cache entry in the meantime, write the result, and unlock.
+
+### Atomic Settings Configuration Writes
+
+To prevent corrupted or empty settings files on sudden process termination or write races:
+* Write the configuration string to a temporary file (`settings.json.tmp`) first, then rename it atomically to `settings.json`.
+* Serialize concurrent saves in the main process using a promise queue (`writeLock = writeLock.then(...)`) to prevent interleaved read-modify-write sequences from clobbering each other.
+
+### Go rest.Config Shallow Copying
+
+The `NewSPDYExecutor` method in `client-go` (`k8s.io/client-go/tools/remotecommand`) modifies the passed `*rest.Config` pointer in-place to set the negotiated serializer. If multiple executions (terminals/logs) run concurrently, they will race on the shared config pointer. Always shallow-copy the configuration (`cfgCopy := *config`) before creating a new executor:
+```go
+cfgCopy := *config
+executor, err := remotecommand.NewSPDYExecutor(&cfgCopy, "POST", req.URL())
+```
+
+### Topology Dangling Edge Pruning
+
+When building topology maps, check that both `Source` and `Target` endpoints of an edge exist in the list of built nodes (`topo.Nodes`). Any dangling edge (which can occur due to namespace filtering or RBAC exclusions of resources like services/PVCs) will cause undefined pointer dereferences and crashes in the frontend layout. Prune these edges during the final assembly step.
+
+---
+
 ## Running Tests
 
 ```bash
@@ -70,6 +134,20 @@ npm run test:watch   # watch mode
 # Go sidecar (handlers, rbac, helm, portforward, prometheus, ownerchain)
 cd go-core && go test ./...
 ```
+
+### Slice test conventions
+
+Store slices are tested in isolation using `vi.fn()` `set`/`get` pairs — no Zustand store needed. Every slice test file must call `setupMocks()` from `src/renderer/store/slices/test-utils.ts` before any import that references `window`:
+
+```ts
+import { setupMocks } from './test-utils'
+const { windowMock } = setupMocks()
+import { createMySlice } from './mySlice'
+```
+
+`setupMocks()` wires `window.kubectl`, `window.exec`, `window.settings`, `localStorage`, and `document`. If a new `window.*` namespace is added to the preload, add it to the `windowMock` object in `test-utils.ts` so all existing slice tests continue to work without per-test boilerplate.
+
+The `window.exec.kill` mock is included (`vi.fn().mockResolvedValue(undefined)`). Any test for `closeExecTab` or `closeExec` will call it automatically — assert on `windowMock.exec.kill` if the test needs to verify the call.
 
 ---
 

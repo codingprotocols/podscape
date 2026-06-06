@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import type { KubeEvent } from '../../types'
 import { formatAge } from '../../types'
 import { Search, Filter, Activity } from 'lucide-react'
@@ -7,11 +8,16 @@ import { Search, Filter, Activity } from 'lucide-react'
 type EventFilter = 'all' | 'Warning' | 'Normal'
 
 export default function EventsView(): JSX.Element {
-  const { events, loadSection, loadingResources, selectedNamespace } = useAppStore()
+  const { events, loadSection, loadingResources, selectedNamespace } = useAppStore(useShallow(s => ({
+    events: s.events,
+    loadSection: s.loadSection,
+    loadingResources: s.loadingResources,
+    selectedNamespace: s.selectedNamespace,
+  })))
   const [filter, setFilter] = useState<EventFilter>('all')
   const [search, setSearch] = useState('')
 
-  useEffect(() => { loadSection('events') }, [selectedNamespace])
+  useEffect(() => { loadSection('events') }, [selectedNamespace, loadSection])
 
   const filtered = useMemo(() => events
     .filter(e => filter === 'all' || e.type === filter)

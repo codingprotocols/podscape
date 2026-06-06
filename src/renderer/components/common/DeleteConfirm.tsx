@@ -9,7 +9,7 @@ interface Props {
 }
 
 export default function DeleteConfirm({ name, kind, onConfirm, onCancel }: Props): JSX.Element {
-  const { isProduction } = useAppStore()
+  const isProduction = useAppStore(s => s.isProduction)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const [typed, setTyped] = useState('')

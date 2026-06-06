@@ -579,6 +579,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [scale, setScale] = useState(1)
   const panRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
+  const fitRafRef = useRef(0)
   const [tooltip, setTooltip] = useState<{ node: GraphNode; x: number; y: number } | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
 
@@ -607,7 +608,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
   const fitToScreen = useCallback(() => {
     if (!svgRef.current || !finalPositions.size) return
     const { width: svgW, height: svgH } = svgRef.current.getBoundingClientRect()
-    if (svgW === 0 || svgH === 0) { requestAnimationFrame(fitToScreen); return }
+    if (svgW === 0 || svgH === 0) { fitRafRef.current = requestAnimationFrame(fitToScreen); return }
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
     for (const p of finalPositions.values()) {
       minX = Math.min(minX, p.x - NODE_W / 2); maxX = Math.max(maxX, p.x + NODE_W / 2)
@@ -624,7 +625,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
     setScale(newScale)
   }, [finalPositions, lanes])
 
-  useEffect(() => { requestAnimationFrame(fitToScreen) }, [graph, groupByNs])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fitRafRef.current = requestAnimationFrame(fitToScreen); return () => cancelAnimationFrame(fitRafRef.current) }, [graph, groupByNs])  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (fitTrigger > 0) fitToScreen() }, [fitTrigger, fitToScreen])
 
   // Auto-pan to search matches
@@ -641,7 +642,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
     const { width: svgW, height: svgH } = svgRef.current.getBoundingClientRect()
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
     setPan({ x: svgW / 2 - cx * scale, y: svgH / 2 - cy * scale })
-  }, [matchedIds])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [matchedIds, scale])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const onWheel = (e: React.WheelEvent<SVGSVGElement>) => {
     e.preventDefault()
@@ -867,6 +868,7 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
 
   const panRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
   const dragRef = useRef<{ id: string; mx: number; my: number; nx: number; ny: number } | null>(null)
+  const fitRafRef = useRef(0)
 
   // Run simulation asynchronously with rAF — shows ring layout immediately, animates into place
   useEffect(() => {
@@ -937,7 +939,7 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
   const fitToScreen = useCallback(() => {
     if (!svgRef.current || !nodePos.size) return
     const { width: svgW, height: svgH } = svgRef.current.getBoundingClientRect()
-    if (svgW === 0 || svgH === 0) { requestAnimationFrame(fitToScreen); return }
+    if (svgW === 0 || svgH === 0) { fitRafRef.current = requestAnimationFrame(fitToScreen); return }
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
     for (const p of nodePos.values()) {
       minX = Math.min(minX, p.x - NODE_R); maxX = Math.max(maxX, p.x + NODE_R)
@@ -950,7 +952,7 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
     setScale(newScale)
   }, [nodePos])
 
-  useEffect(() => { requestAnimationFrame(fitToScreen) }, [graph, groupByNs])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fitRafRef.current = requestAnimationFrame(fitToScreen); return () => cancelAnimationFrame(fitRafRef.current) }, [graph, groupByNs])  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (fitTrigger > 0) fitToScreen() }, [fitTrigger, fitToScreen])
 
   // Auto-pan to search matches
@@ -967,7 +969,7 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
     const { width: svgW, height: svgH } = svgRef.current.getBoundingClientRect()
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
     setPan({ x: svgW / 2 - cx * scale, y: svgH / 2 - cy * scale })
-  }, [matchedIds])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [matchedIds, scale])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Namespace bounding boxes
   const nsBounds = useMemo(() => {
@@ -1212,10 +1214,25 @@ const WORKLOAD_KIND_TO_SECTION: Record<string, ResourceKind> = {
 }
 
 export default function NetworkPanel(): JSX.Element {
-  const { selectedContext, loadingNamespaces, namespaces, theme, setSection } = useAppStore()
+  const { selectedContext, loadingNamespaces, namespaces, theme, setSection, selectedNamespace, providers } =
+    useAppStore(useShallow(s => ({
+      selectedContext: s.selectedContext,
+      loadingNamespaces: s.loadingNamespaces,
+      namespaces: s.namespaces,
+      theme: s.theme,
+      setSection: s.setSection,
+      selectedNamespace: s.selectedNamespace,
+      providers: s.providers,
+    })))
   const dark = theme === 'dark'
 
-  const [panelNs, setPanelNs] = useState<string>('default')
+  // Seed from the store's active namespace; treat '_all' as '' (no filter — sidecar returns all).
+  const [panelNs, setPanelNs] = useState<string>(() =>
+    selectedNamespace === '_all' ? '' : selectedNamespace ?? ''
+  )
+  useEffect(() => {
+    setPanelNs(selectedNamespace === '_all' ? '' : selectedNamespace ?? '')
+  }, [selectedContext, selectedNamespace])
   const [loading, setLoading] = useState(false)
   const [rawGraph, setRawGraph] = useState<Graph>({ nodes: [], edges: [], namespaces: [] })
 
@@ -1226,39 +1243,90 @@ export default function NetworkPanel(): JSX.Element {
   const [fitTrigger, setFitTrigger] = useState(0)
   const [visibleFilters, setVisibleFilters] = useState<Set<string>>(() => new Set(KIND_DEFS.map(d => d.filterKey)))
   const [searchQuery, setSearchQuery] = useState('')
+  const [flowWindowSecs, setFlowWindowSecs] = useState(60)
+  const graphFingerprintRef = useRef('')
+  const loadingRef = useRef(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   const load = useCallback((ns: string) => {
     if (!selectedContext || loadingNamespaces) return
+    // Cancel any in-flight request so stale responses never overwrite fresh ones.
+    abortControllerRef.current?.abort()
+    const controller = new AbortController()
+    abortControllerRef.current = controller
     setLoading(true)
+    loadingRef.current = true
     const nsArg = ns === '_all' ? '' : ns
     // @ts-ignore
-    window.kubectl.getTopology(nsArg)
+    window.kubectl.getTopology(nsArg, flowWindowSecs)
       .then((data: Graph) => {
-        setRawGraph(data)
+        if (controller.signal.aborted) return
+        // Only update state when the graph actually changed to prevent the
+        // force-directed layout from jumping on stable data during polling.
+        const fp = data.nodes.map(n => n.id).sort().join(',') + '|' + data.edges.map(e => `${e.id}:${e.label ?? ''}`).sort().join(',')
+        if (fp !== graphFingerprintRef.current) {
+          graphFingerprintRef.current = fp
+          setRawGraph(data)
+        }
         setLoading(false)
+        loadingRef.current = false
       })
       .catch((err) => {
+        if (controller.signal.aborted) return
         console.error('Failed to load topology:', err)
         setLoading(false)
+        loadingRef.current = false
       })
-  }, [selectedContext, loadingNamespaces])
+  }, [selectedContext, loadingNamespaces, flowWindowSecs])
 
-  useEffect(() => { load(panelNs) }, [panelNs, load])
+  // Clear fingerprint on namespace/param change so fresh data always renders.
+  // Polling loads skip this — they go through the interval, not this effect.
+  useEffect(() => {
+    graphFingerprintRef.current = ''
+    load(panelNs)
+    return () => {
+      abortControllerRef.current?.abort()
+      setLoading(false)
+      loadingRef.current = false
+    }
+  }, [panelNs, load])
+
+  // Auto-refresh topology every 30 s when Hubble Relay is available so flow
+  // edges stay current without requiring manual navigation away and back.
+  // `loading` is intentionally excluded from deps — accessed via loadingRef so
+  // the 30 s timer is not reset on every fetch start/finish.
+  useEffect(() => {
+    if (!providers.hubbleRelay) return
+    const id = setInterval(() => { if (!loadingRef.current) load(panelNs) }, 30_000)
+    return () => { clearInterval(id); abortControllerRef.current?.abort() }
+  }, [providers.hubbleRelay, panelNs, load])
 
   const graph = useMemo(() => {
     const rNodes = rawGraph?.nodes || []
     const rEdges = rawGraph?.edges || []
     const rNss = rawGraph?.namespaces || []
 
-    if (visibleFilters.size === KIND_DEFS.length) {
+    const showHubbleFlows = visibleFilters.has('hubble-flow')
+    const allNodeFiltersActive = KIND_DEFS.every(d => visibleFilters.has(d.filterKey))
+
+    if (allNodeFiltersActive && showHubbleFlows) {
       return { nodes: rNodes, edges: rEdges, namespaces: rNss }
+    }
+
+    if (allNodeFiltersActive && !showHubbleFlows) {
+      // All node filters active but hubble-flow edges hidden
+      const edges = rEdges.filter(e => e.kind !== 'hubble-flow')
+      return { nodes: rNodes, edges, namespaces: rNss }
     }
 
     const nodes = rNodes.filter(n =>
       n.kind === 'workload' ? visibleFilters.has(n.workloadKind ?? '') : visibleFilters.has(n.kind)
     )
     const nodeIds = new Set(nodes.map(n => n.id))
-    const edges = rEdges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target))
+    const edges = rEdges.filter(e =>
+      nodeIds.has(e.source) && nodeIds.has(e.target) &&
+      (e.kind !== 'hubble-flow' || showHubbleFlows)
+    )
     const nss = [...new Set(nodes.map(n => n.namespace))].sort()
     return { nodes, edges, namespaces: nss }
   }, [rawGraph, visibleFilters])
@@ -1289,6 +1357,8 @@ export default function NetworkPanel(): JSX.Element {
     }
     setSection(KIND_TO_SECTION[node.kind])
   }, [setSection])
+
+  const hubbleFlowCount = (rawGraph?.edges ?? []).filter(e => e.kind === 'hubble-flow').length
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0 bg-white dark:bg-[hsl(var(--bg-dark))] transition-colors duration-200">
@@ -1366,6 +1436,29 @@ export default function NetworkPanel(): JSX.Element {
               onToggle={() => toggleFilter(filterKey)}
             />
           ))}
+          {providers.hubbleRelay && (
+            <>
+              <KindPill
+                color='#2dd4bf'
+                label='Hubble Flows'
+                count={hubbleFlowCount}
+                active={visibleFilters.has('hubble-flow')}
+                onToggle={() => toggleFilter('hubble-flow')}
+              />
+              <select
+                value={flowWindowSecs}
+                onChange={e => setFlowWindowSecs(Number(e.target.value))}
+                title="Hubble flow lookback window"
+                className="text-[11px] font-mono rounded-md border
+                           bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700
+                           text-slate-600 dark:text-slate-300 px-1.5 py-0.5 h-[26px] cursor-pointer"
+              >
+                <option value={15}>15 s</option>
+                <option value={60}>1 min</option>
+                <option value={300}>5 min</option>
+              </select>
+            </>
+          )}
         </div>
       </div>
 
@@ -1435,6 +1528,20 @@ export default function NetworkPanel(): JSX.Element {
         ) : (
           <MapView graph={graph} groupByNs={groupByNs} animate={animate} fitTrigger={fitTrigger} dark={dark}
             searchQuery={searchQuery} onNodeClick={handleNodeClick} />
+        )}
+        {/* Hubble zero-flows notice — shown when the filter is active but no flows
+            were observed in the lookback window (covers both "no traffic" and TLS). */}
+        {!loading && providers.hubbleRelay && visibleFilters.has('hubble-flow') &&
+          graph.nodes.length > 0 && hubbleFlowCount === 0 && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none
+                          flex items-center gap-2 px-4 py-2 rounded-lg shadow-sm text-xs
+                          bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-700
+                          text-teal-700 dark:text-teal-300">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
+            </svg>
+            No flows observed in the last {flowWindowSecs < 60 ? `${flowWindowSecs} s` : `${flowWindowSecs / 60} min`} — no traffic occurred, or Hubble Relay may require TLS
+          </div>
         )}
 
         {/* Legend overlay */}

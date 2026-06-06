@@ -8,7 +8,7 @@ interface Props {
 }
 
 export default function ScaleDialog({ deployment: d, onClose }: Props): JSX.Element {
-  const { scaleDeployment } = useAppStore()
+  const scaleDeployment = useAppStore(s => s.scaleDeployment)
   const current = d.spec.replicas ?? 0
   const [replicas, setReplicas] = useState(String(current))
   const [pending, setPending] = useState(false)

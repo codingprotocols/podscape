@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import type { KubeDaemonSet } from '../../../types'
 import { formatAge } from '../../../types'
 import { useAppStore } from '../../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { canVerb } from '../../../store/slices/clusterSlice'
 import { FileCode, X, Activity, Layers, Settings, Box, Info, AlertTriangle, CheckCircle } from 'lucide-react'
 import YAMLViewer from '../../common/YAMLViewer'
@@ -15,8 +16,13 @@ interface Props { daemonSet: KubeDaemonSet }
 type Tab = 'overview' | 'events' | 'analysis'
 
 export default function DaemonSetDetail({ daemonSet: ds }: Props): JSX.Element {
-  const { scanResource, scanResults, isScanning, selectedContext: ctx } = useAppStore()
-  const allowedVerbs = useAppStore(s => s.allowedVerbs)
+  const { scanResource, scanResults, isScanning, selectedContext: ctx, allowedVerbs } = useAppStore(useShallow(s => ({
+    scanResource: s.scanResource,
+    scanResults: s.scanResults,
+    isScanning: s.isScanning,
+    selectedContext: s.selectedContext,
+    allowedVerbs: s.allowedVerbs,
+  })))
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const [tab, setTab] = useState<Tab>('overview')
   const { events } = useResourceEvents(ctx, ds.metadata.name, 'DaemonSet', ds.metadata.namespace)
@@ -25,7 +31,7 @@ export default function DaemonSetDetail({ daemonSet: ds }: Props): JSX.Element {
 
   useEffect(() => {
     scanResource(ds as any)
-  }, [ds.metadata.uid])
+  }, [ds.metadata.uid, scanResource])
 
   return (
     <div className="flex flex-col w-full h-full relative">

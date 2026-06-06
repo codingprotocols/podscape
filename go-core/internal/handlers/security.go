@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	osexec "os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,7 +30,10 @@ var (
 
 func getKubesecLogger() *zap.SugaredLogger {
 	kubesecSugarOnce.Do(func() {
-		l, _ := zap.NewProduction()
+		l, err := zap.NewProduction()
+		if err != nil {
+			l = zap.NewNop()
+		}
 		kubesecSugar = l.Sugar()
 	})
 	return kubesecSugar
@@ -62,10 +67,12 @@ func HandleSecurityScan(w http.ResponseWriter, r *http.Request) {
 	if _, err := osexec.LookPath("trivy"); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{
+		if encErr := json.NewEncoder(w).Encode(map[string]string{
 			"error":   "trivy_not_found",
 			"message": "trivy binary not found in PATH. Install trivy to enable image vulnerability scanning.",
-		})
+		}); encErr != nil {
+			log.Printf("[HandleSecurityScan] failed to write trivy_not_found response: %v", encErr)
+		}
 		return
 	}
 
@@ -105,18 +112,37 @@ func HandleSecurityScan(w http.ResponseWriter, r *http.Request) {
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
-		sseEvent(w, flusher, "error", "failed to create stdout pipe: "+err.Error())
+		_ = sseEvent(w, flusher, "error", "failed to create stdout pipe: "+err.Error())
 		return
 	}
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {
-		sseEvent(w, flusher, "error", "failed to create stderr pipe: "+err.Error())
+		_ = sseEvent(w, flusher, "error", "failed to create stderr pipe: "+err.Error())
 		return
 	}
 
 	if err := cmd.Start(); err != nil {
-		sseEvent(w, flusher, "error", "failed to start trivy: "+err.Error())
+		_ = sseEvent(w, flusher, "error", "failed to start trivy: "+err.Error())
 		return
+	}
+
+	// Serialize all SSE writes: the stderr goroutine and the main goroutine
+	// both write to w concurrently, matching the pattern used in HandleTrivyImages.
+	// Returns false when the first write fails (client disconnected) so callers
+	// can exit early instead of continuing to scan a dead connection.
+	var writeErr bool
+	var sseMu sync.Mutex
+	sendSSE := func(eventType, data string) bool {
+		sseMu.Lock()
+		defer sseMu.Unlock()
+		if writeErr {
+			return false
+		}
+		if err := sseEvent(w, flusher, eventType, data); err != nil {
+			writeErr = true
+			return false
+		}
+		return true
 	}
 
 	// Stream stderr as progress events concurrently with stdout reading.
@@ -126,8 +152,9 @@ func HandleSecurityScan(w http.ResponseWriter, r *http.Request) {
 		defer stderrWg.Done()
 		scanner := bufio.NewScanner(stderrPipe)
 		for scanner.Scan() {
-			if line := scanner.Text(); line != "" {
-				sseEvent(w, flusher, "progress", line)
+			line := strings.ReplaceAll(scanner.Text(), "\n", " ")
+			if line != "" {
+				sendSSE("progress", line)
 			}
 		}
 	}()
@@ -140,8 +167,10 @@ func HandleSecurityScan(w http.ResponseWriter, r *http.Request) {
 		msg := "trivy scan failed"
 		if waitErr != nil {
 			msg = waitErr.Error()
+		} else if readErr != nil {
+			msg = readErr.Error()
 		}
-		sseEvent(w, flusher, "error", msg)
+		sendSSE("error", msg)
 		return
 	}
 
@@ -150,10 +179,10 @@ func HandleSecurityScan(w http.ResponseWriter, r *http.Request) {
 	var compacted bytes.Buffer
 	if err := json.Compact(&compacted, output); err != nil {
 		// Not valid JSON (e.g. empty output); send as-is and let the client handle it.
-		sseEvent(w, flusher, "result", string(output))
+		sendSSE("result", string(output))
 		return
 	}
-	sseEvent(w, flusher, "result", compacted.String())
+	sendSSE("result", compacted.String())
 }
 
 func HandleKubesec(w http.ResponseWriter, r *http.Request) {
@@ -180,8 +209,10 @@ func HandleKubesec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(reports)
+	if reports == nil {
+		reports = []ruler.Report{}
+	}
+	writeJSON(w, reports)
 }
 
 // HandleKubesecBatch accepts a JSON array of Kubernetes resource objects,
@@ -242,7 +273,7 @@ func HandleKubesecBatch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var wg sync.WaitGroup
-	for w := 0; w < numWorkers; w++ {
+	for workerIdx := 0; workerIdx < numWorkers; workerIdx++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -250,14 +281,14 @@ func HandleKubesecBatch(w http.ResponseWriter, r *http.Request) {
 			for i := range work {
 				select {
 				case <-ctx.Done():
-					results[i] = KubesecBatchItem{Error: "timeout"}
+					results[i] = KubesecBatchItem{Error: "timeout", Issues: make([]KubesecIssue, 0)}
 					continue
 				default:
 				}
 
 				yamlBytes, err := yaml.JSONToYAML(resources[i])
 				if err != nil {
-					results[i] = KubesecBatchItem{Error: "json→yaml: " + err.Error()}
+					results[i] = KubesecBatchItem{Error: "json→yaml: " + err.Error(), Issues: make([]KubesecIssue, 0)}
 					continue
 				}
 
@@ -267,12 +298,12 @@ func HandleKubesecBatch(w http.ResponseWriter, r *http.Request) {
 					if err != nil {
 						msg = err.Error()
 					}
-					results[i] = KubesecBatchItem{Error: msg}
+					results[i] = KubesecBatchItem{Error: msg, Issues: make([]KubesecIssue, 0)}
 					continue
 				}
 
 				rep := reports[0]
-				item := KubesecBatchItem{Score: rep.Score}
+				item := KubesecBatchItem{Score: rep.Score, Issues: make([]KubesecIssue, 0)}
 				for _, a := range rep.Scoring.Advise {
 					item.Issues = append(item.Issues, KubesecIssue{
 						ID:       a.ID,
@@ -287,8 +318,7 @@ func HandleKubesecBatch(w http.ResponseWriter, r *http.Request) {
 	}
 	wg.Wait()
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(results)
+	writeJSON(w, results)
 }
 
 func HandleTrivyImages(w http.ResponseWriter, r *http.Request) {
@@ -305,19 +335,24 @@ func HandleTrivyImages(w http.ResponseWriter, r *http.Request) {
 			Kind      string `json:"kind"`
 		} `json:"workloads"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Workloads) == 0 {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"Resources": []interface{}{}})
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if len(req.Workloads) == 0 {
+		writeJSON(w, map[string]interface{}{"Resources": []interface{}{}})
 		return
 	}
 
 	if _, err := osexec.LookPath("trivy"); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{
+		if encErr := json.NewEncoder(w).Encode(map[string]string{
 			"error":   "trivy_not_found",
 			"message": "trivy binary not found in PATH. Install with: brew install trivy",
-		})
+		}); encErr != nil {
+			log.Printf("[HandleTrivyImages] failed to write trivy_not_found response: %v", encErr)
+		}
 		return
 	}
 
@@ -368,12 +403,22 @@ func HandleTrivyImages(w http.ResponseWriter, r *http.Request) {
 	// a slice indexed by imageOrder position so the final output is deterministic.
 	// SSE events (progress/error) require serialization because http.ResponseWriter
 	// is not safe for concurrent use.
+	// Returns false when the first write fails (client disconnected) so worker
+	// goroutines can exit early instead of continuing to scan a dead connection.
 	perImageResults := make([][]resourceEntry, len(imageOrder))
+	var imgWriteErr bool
 	var sseMu sync.Mutex
-	sendSSE := func(eventType, data string) {
+	sendSSE := func(eventType, data string) bool {
 		sseMu.Lock()
-		sseEvent(w, flusher, eventType, data)
-		sseMu.Unlock()
+		defer sseMu.Unlock()
+		if imgWriteErr {
+			return false
+		}
+		if err := sseEvent(w, flusher, eventType, data); err != nil {
+			imgWriteErr = true
+			return false
+		}
+		return true
 	}
 
 	sem := make(chan struct{}, trivyImageWorkers)
@@ -384,27 +429,34 @@ func HandleTrivyImages(w http.ResponseWriter, r *http.Request) {
 			defer wg.Done()
 			select {
 			case <-ctx.Done():
+				sendSSE("progress", fmt.Sprintf("Skipping %s: scan timed out", img))
+				perImageResults[idx] = []resourceEntry{}
 				return
 			case sem <- struct{}{}:
 			}
 			defer func() { <-sem }()
 
-			sendSSE("progress", fmt.Sprintf("[%d/%d] Scanning %s", idx+1, len(imageOrder), img))
+			if !sendSSE("progress", fmt.Sprintf("[%d/%d] Scanning %s", idx+1, len(imageOrder), img)) {
+				perImageResults[idx] = []resourceEntry{}
+				return
+			}
 
 			cmd := osexec.CommandContext(ctx, "trivy", "image", "--format", "json", "--timeout", "10m0s", "--quiet", img)
 			output, err := cmd.Output()
 			if err != nil {
 				sendSSE("progress", fmt.Sprintf("Skipping %s: %s", img, err.Error()))
+				perImageResults[idx] = []resourceEntry{}
 				return
 			}
 
 			var trivyOut map[string]interface{}
 			if jsonErr := json.Unmarshal(output, &trivyOut); jsonErr != nil {
 				sendSSE("progress", fmt.Sprintf("Skipping %s: failed to parse result", img))
+				perImageResults[idx] = []resourceEntry{}
 				return
 			}
 
-			var imageResults []interface{}
+			imageResults := make([]interface{}, 0)
 			if results, ok := trivyOut["Results"].([]interface{}); ok {
 				imageResults = results
 			}
@@ -424,7 +476,7 @@ func HandleTrivyImages(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 
 	// Flatten per-image results in imageOrder order so output is stable.
-	var resources []resourceEntry
+	resources := make([]resourceEntry, 0)
 	for _, entries := range perImageResults {
 		resources = append(resources, entries...)
 	}

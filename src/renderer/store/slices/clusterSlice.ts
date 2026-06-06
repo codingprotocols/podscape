@@ -33,13 +33,6 @@ export interface ClusterSlice {
     fetchAllowedVerbs: () => Promise<void>
 }
 
-let contextSwitchSeq = 0
-// Name of the context whose switchContext HTTP request is currently in-flight.
-// Used to deduplicate concurrent calls to selectContext for the same target
-// (e.g. app-init and a sidebar click firing simultaneously). Without this,
-// both calls reach the sidecar and each launch a background goroutine, causing
-// duplicate RBAC probes and informer restarts that leave the cache inconsistent.
-let inflightSwitchTarget: string | null = null
 
 const safeGetItem = (key: string): string | null => {
     try { return localStorage.getItem(key) } catch { return null }
@@ -64,7 +57,16 @@ export function canVerb(
     return resourceVerbs[verb] === true
 }
 
-export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
+export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => {
+    let contextSwitchSeq = 0
+    let prometheusProbeSeq = 0
+    // inflightSwitchTarget / inflightSwitchPromise deduplicate concurrent calls
+    // to selectContext for the same target. Kept in closure (not module) scope so
+    // multiple store instances (e.g. in tests) are fully isolated.
+    let inflightSwitchTarget: string | null = null
+    let inflightSwitchPromise: Promise<void> | null = null
+    let allowedVerbsSeq = 0
+    return ({
     contexts: [],
     selectedContext: null,
     starredContext: safeGetItem('podscape:starred'),
@@ -109,6 +111,9 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
     setPrometheusTimeRange: (range, preset) => set({ prometheusTimeRange: range, ...(preset ? { prometheusActivePreset: preset } : {}) }),
     probePrometheus: async () => {
         if (!window.kubectl.prometheusStatus) return
+        // Sequence counter deduplicates concurrent probe calls — if two probes race,
+        // only the last-started one commits its result (same pattern as contextSwitchSeq).
+        const mySeq = ++prometheusProbeSeq
         // Snapshot the context at call time — discard result if user switched away.
         const probeCtx = get().selectedContext
         try {
@@ -118,40 +123,64 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
                 prometheusUrl = s.prometheusUrls?.[probeCtx ?? ''] || undefined
             } catch { /* ignore — fall back to auto-discovery */ }
             const data = await window.kubectl.prometheusStatus(prometheusUrl)
-            if (get().selectedContext !== probeCtx) return // switched away, discard
+            if (mySeq !== prometheusProbeSeq || get().selectedContext !== probeCtx) return
             const d = data as { available?: boolean; error?: string }
             set({
                 prometheusAvailable: !!d.available,
                 prometheusProbeError: d.error || null,
             })
         } catch {
-            if (get().selectedContext !== probeCtx) return
+            if (mySeq !== prometheusProbeSeq || get().selectedContext !== probeCtx) return
             set({ prometheusAvailable: false, prometheusProbeError: null })
         }
     },
     disconnectPrometheus: () => {
         set({ prometheusAvailable: null, prometheusProbeError: null })
         // Also clear the saved URL for this context so next probe starts fresh.
+        // ctx is captured synchronously so we always clear the correct context's URL
+        // even if the user switches away before the async settings write completes.
+        // The read-then-write is an inherent race with other concurrent settings
+        // updates; the window is minimised by reading fresh settings immediately
+        // before the write in the same microtask continuation.
         const ctx = get().selectedContext
-        if (ctx) {
-            window.settings.get().then(s => {
+        if (!ctx) return
+        void (async () => {
+            try {
+                const s = await window.settings.get()
                 const urls = { ...(s.prometheusUrls ?? {}) }
                 delete urls[ctx]
-                return window.settings.set({ ...s, prometheusUrls: urls })
-            }).catch(err => {
+                await window.settings.set({ ...s, prometheusUrls: urls })
+            } catch (err) {
                 console.error('[disconnectPrometheus] Failed to clear Prometheus URL from settings:', err)
-            })
-        }
+            }
+        })()
     },
     ownerChains: {},
     allowedVerbs: {},
 
     selectContext: async (name) => {
+        // Dedup before any state mutation: if this exact context is already being
+        // switched to, wait for the in-flight HTTP call and return — the first
+        // caller owns the state transition and namespace load entirely.
+        // inflightSwitchTarget is set synchronously below (before the first await),
+        // so any concurrent call that starts on the next microtask sees it here.
+        if (inflightSwitchTarget === name) {
+            if (inflightSwitchPromise !== null) {
+                try { await inflightSwitchPromise } catch { /* first caller handles rollback */ }
+            }
+            return
+        }
+        // Claim this switch slot synchronously so concurrent calls for the same
+        // target see the guard above and don't reset state unnecessarily.
+        inflightSwitchTarget = name
+
         const mySeq = ++contextSwitchSeq
         const previousContext = get().selectedContext
         // Snapshot namespace state so we can restore it if the connection attempt fails.
         const previousNamespaces = get().namespaces
         const previousSelectedNamespace = get().selectedNamespace
+        // Snapshot provider state so it can be restored if the connection attempt fails.
+        const previousProviders = get().providers
         const isProd = get().prodContexts.includes(name)
         // Unblock any section fetches that were in-flight for the previous context.
         // Without this, loadSection for the new context can see a stale in-flight key
@@ -174,18 +203,27 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             selectedContext: name, isProduction: isProd, loadingNamespaces: true, loadingResources: true,
             namespaces: [], selectedNamespace: null, selectedResource: null, error: null,
             // Reset security scan state so stale results from the previous context are not shown.
-            securityScanResults: null, kubesecBatchResults: null, trivyAvailable: null,
+            securityScanResults: null, kubesecBatchResults: null, trivyAvailable: null, securityScanProgressLines: [],
+            // Reset scanning flags so the new context's scan button is not stuck disabled
+            // if a background scan was in-flight when the context switched.
+            securityScanning: false, scanInBackground: false, isScanning: false,
+            // Reset provider loading flag so it doesn't get stuck if the previous fetch
+            // was in-flight and the stale-guard fires without resetting it.
+            providersLoading: false,
             // Reset freshness timestamps so next dashboard/preload fetch always runs.
             lastPreloadedAt: 0, lastDashboardLoadedAt: 0,
             // Clear owner chains cached from previous context.
             ownerChains: {},
             helmReleases: [],
+            podMetrics: [],
+            nodeMetrics: [],
+            debugPods: [],
             prometheusAvailable: null,
             prometheusProbeError: null,
             metricsError: null,
             // Reset provider detection so stale flags from the old cluster don't
             // briefly show sidebar groups that don't exist in the new cluster.
-            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false },
+            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false, cilium: false, hubbleRelay: false },
             // Navigate away from provider-specific sections so ProviderResourcePanel
             // doesn't attempt a fetch against a cluster that may lack those CRDs.
             ...(isProviderSection ? { section: 'dashboard' as const } : {}),
@@ -204,21 +242,20 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             try { await window.kubectl.cancelAllStreams() } catch {}
             // Stop all active port forwards — they belong to the previous context.
             get().stopAllPortForwards()
+            // Close any open exec sessions — their PTY connections belong to the previous context.
+            get().closeExec()
             // Tell the sidecar to switch its clientset + informer cache to the new
             // context BEFORE fetching any data. Without this the sidecar keeps
             // serving the previous context's cache.
-            //
-            // Dedup: if another call is already switching to the same context,
-            // skip the HTTP request and wait for it to finish instead. The Go
-            // sidecar also has a generation guard, but preventing the extra HTTP
-            // call avoids the redundant 10s RBAC probe entirely.
-            if (inflightSwitchTarget !== name) {
-                inflightSwitchTarget = name
-                try {
-                    await Promise.race([window.kubectl.switchContext(name), timeout])
-                } finally {
-                    if (inflightSwitchTarget === name) inflightSwitchTarget = null
-                }
+            // inflightSwitchTarget is already set to name (before state reset).
+            // Publish the promise so concurrent latecomers can await it.
+            const switchP = Promise.race([window.kubectl.switchContext(name), timeout]).then(() => undefined)
+            inflightSwitchPromise = switchP
+            try {
+                await switchP
+            } finally {
+                if (inflightSwitchTarget === name) inflightSwitchTarget = null
+                inflightSwitchPromise = null
             }
             if (mySeq !== contextSwitchSeq) return
 
@@ -240,6 +277,9 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
                         // Restore namespace list so the user is not left with an empty sidebar.
                         namespaces: previousNamespaces,
                         selectedNamespace: previousSelectedNamespace,
+                        // Restore provider state so sidebar groups are not wiped on a failed switch.
+                        providers: previousProviders,
+                        providersLoading: false,
                     })
                 }
                 const msg = (connectErr as Error).message
@@ -254,6 +294,7 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
             set({ namespaces: nsList, selectedNamespace: chosen, contextSwitchStatus: 'Loading resources…' })
             if (chosen) {
                 await get().loadSection(get().section)
+                if (mySeq !== contextSwitchSeq) return
                 get().preloadSearchResources() // background, fire-and-forget
                 get().fetchProviders()          // background, fire-and-forget
                 get().fetchAllowedVerbs()       // background, fire-and-forget
@@ -269,19 +310,24 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => ({
     },
 
     selectNamespace: (name) => {
-        set({ selectedNamespace: name, selectedResource: null, metricsError: null })
+        // Reset lastPreloadedAt so the next search-palette open fetches results
+        // scoped to the new namespace rather than serving 60s-stale data.
+        set({ selectedNamespace: name, selectedResource: null, metricsError: null, lastPreloadedAt: 0 })
         get().loadSection(get().section)
     },
 
     fetchAllowedVerbs: async () => {
         const ctx = get().selectedContext
         if (!ctx) return
+        const mySeq = ++allowedVerbsSeq
         try {
             const verbs = await window.kubectl.getAllowedVerbs(ctx)
-            if (get().selectedContext !== ctx) return // stale — context switched mid-flight
+            if (mySeq !== allowedVerbsSeq || get().selectedContext !== ctx) return
             set({ allowedVerbs: verbs ?? {} })
         } catch {
+            if (mySeq !== allowedVerbsSeq || get().selectedContext !== ctx) return
             // probe failed — stay permissive (empty map = all buttons visible)
         }
     },
-})
+    })
+}

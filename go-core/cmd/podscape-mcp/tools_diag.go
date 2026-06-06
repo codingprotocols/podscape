@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/podscape/go-core/internal/providers"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -544,6 +546,15 @@ func handleDetectProviders(ctx context.Context, req mcp.CallToolRequest) (*mcp.C
 	if icList != nil {
 		items = icList.Items
 	}
-	ps := providers.Detect(b.Clientset.Discovery(), items)
+
+	hubbleRelayPresent := false
+	_, hubbleErr := b.Clientset.CoreV1().Services(providers.HubbleRelayNamespace).Get(apiCtx, providers.HubbleRelayService, metav1.GetOptions{})
+	if hubbleErr == nil {
+		hubbleRelayPresent = true
+	} else if !k8serrors.IsNotFound(hubbleErr) {
+		log.Printf("[providers] unexpected error checking hubble-relay service: %v", hubbleErr)
+	}
+
+	ps := providers.Detect(b.Clientset.Discovery(), items, hubbleRelayPresent)
 	return jsonResult(ps)
 }

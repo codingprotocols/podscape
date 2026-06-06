@@ -163,6 +163,7 @@ func SetManualURL(u string) error {
 	defer manualURLMu.Unlock()
 	if u == "" {
 		manualURL = ""
+		atomic.AddUint64(&cacheGeneration, 1)
 		return nil
 	}
 	normalized, err := normalizeURL(u)
@@ -171,6 +172,9 @@ func SetManualURL(u string) error {
 		return err
 	}
 	manualURL = normalized
+	// Bump the generation so cached results from the previous URL are never
+	// served to requests targeting the new URL.
+	atomic.AddUint64(&cacheGeneration, 1)
 	return nil
 }
 
@@ -191,7 +195,7 @@ type ProbeResult struct {
 // Tries a manual URL first (if configured), then k8s service proxy candidates.
 // If the manual URL is a k8s in-cluster DNS name (*.svc.cluster.local), the k8s
 // API service proxy is used automatically — no port-forwarding needed.
-func ProbePrometheus() ProbeResult {
+func ProbePrometheus(ctx context.Context) ProbeResult {
 	if mu := getManualURL(); mu != "" {
 		// In-cluster DNS? Route through k8s API proxy transparently.
 		if ref := parseKubeSvcURL(mu); ref != nil {
@@ -199,10 +203,10 @@ func ProbePrometheus() ProbeResult {
 			if cs == nil {
 				return ProbeResult{Error: "no active Kubernetes context"}
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+			tctx, cancel := context.WithTimeout(ctx, 12*time.Second)
 			raw, err := cs.CoreV1().Services(ref.namespace).ProxyGet(
 				"http", ref.service, ref.port, "/api/v1/query", map[string]string{"query": "up"},
-			).DoRaw(ctx)
+			).DoRaw(tctx)
 			cancel()
 			if err != nil {
 				msg := err.Error()
@@ -247,9 +251,9 @@ func ProbePrometheus() ProbeResult {
 			Path:     strings.TrimSuffix(parsedMu.Path, "/") + "/api/v1/query",
 			RawQuery: "query=up",
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		tctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 		defer cancel()
-		req, err := http.NewRequestWithContext(ctx, "GET", probeURL.String(), nil)
+		req, err := http.NewRequestWithContext(tctx, "GET", probeURL.String(), nil)
 		if err != nil {
 			return ProbeResult{Error: fmt.Sprintf("invalid URL: %v", err)}
 		}
@@ -277,11 +281,11 @@ func ProbePrometheus() ProbeResult {
 	}
 
 	for _, c := range defaultCandidates {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		loopCtx, loopCancel := context.WithTimeout(ctx, 3*time.Second)
 		raw, err := cs.CoreV1().Services(c.ns).ProxyGet(
 			"http", c.svc, c.port, "/api/v1/query", map[string]string{"query": "up"},
-		).DoRaw(ctx)
-		cancel()
+		).DoRaw(loopCtx)
+		loopCancel()
 		if err != nil {
 			continue
 		}
@@ -297,7 +301,7 @@ func ProbePrometheus() ProbeResult {
 	// This handles cloud clusters (EKS/GKE/AKS) where the k8s API proxy cannot
 	// reach pod IPs — the user just needs to create a port-forward in the app.
 	for _, port := range []int{9090, 9091, 8080} {
-		if probeLocalPort(port) {
+		if probeLocalPort(ctx, port) {
 			return ProbeResult{Available: true}
 		}
 	}
@@ -307,11 +311,11 @@ func ProbePrometheus() ProbeResult {
 // probeLocalPort checks whether a Prometheus instance is listening on 127.0.0.1:port.
 // Verifies the response body is a valid Prometheus API success response, not just any
 // HTTP 200 (which would cause false positives from dev servers, metrics endpoints, etc.).
-func probeLocalPort(port int) bool {
+func probeLocalPort(ctx context.Context, port int) bool {
 	u := fmt.Sprintf("http://127.0.0.1:%d/api/v1/query?query=up", port)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	tctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	req, err := http.NewRequestWithContext(tctx, "GET", u, nil)
 	if err != nil {
 		return false
 	}
@@ -331,7 +335,7 @@ func probeLocalPort(port int) bool {
 }
 
 // QueryRangeBatch executes multiple Prometheus query_range calls in parallel.
-func QueryRangeBatch(req BatchQueryRequest) []QueryResult {
+func QueryRangeBatch(ctx context.Context, req BatchQueryRequest) []QueryResult {
 	if req.EndTime == 0 {
 		req.EndTime = time.Now().Unix()
 	}
@@ -350,7 +354,7 @@ func QueryRangeBatch(req BatchQueryRequest) []QueryResult {
 		wg.Add(1)
 		go func(idx int, qr QueryRequest) {
 			defer wg.Done()
-			points, err := queryRangeSingle(qr.Query, req.StartTime, req.EndTime, step)
+			points, err := queryRangeSingle(ctx, qr.Query, req.StartTime, req.EndTime, step)
 			if err != nil {
 				results[idx] = QueryResult{Label: qr.Label, Points: []DataPoint{}, Error: err.Error()}
 			} else {
@@ -365,11 +369,12 @@ func QueryRangeBatch(req BatchQueryRequest) []QueryResult {
 	return results
 }
 
-func queryRangeSingle(query string, start, end, step int64) ([]DataPoint, error) {
+func queryRangeSingle(ctx context.Context, query string, start, end, step int64) ([]DataPoint, error) {
 	// Include the current generation in the key so that entries written by
 	// pre-ClearCache in-flight goroutines are never served to post-clear readers.
 	gen := atomic.LoadUint64(&cacheGeneration)
-	key := fmt.Sprintf("%d|%s|%d|%d|%d", gen, query, start, end, step)
+	url := getManualURL()
+	key := fmt.Sprintf("%d|%s|%s|%d|%d|%d", gen, url, query, start, end, step)
 
 	// Serve from cache when the entry is still fresh.
 	if entry, ok := queryCache.Load(key); ok {
@@ -382,7 +387,7 @@ func queryRangeSingle(query string, start, end, step int64) ([]DataPoint, error)
 	// Deduplicate concurrent callers for the same key: only one goroutine fires
 	// the real HTTP request; all others wait and share the result.
 	v, fetchErr, _ := fetchGroup.Do(key, func() (interface{}, error) {
-		return fetchQueryRange(query, start, end, step)
+		return fetchQueryRange(ctx, query, start, end, step)
 	})
 
 	var points []DataPoint
@@ -406,7 +411,7 @@ func queryRangeSingle(query string, start, end, step int64) ([]DataPoint, error)
 	return points, fetchErr
 }
 
-func fetchQueryRange(query string, start, end, step int64) ([]byte, error) {
+func fetchQueryRange(ctx context.Context, query string, start, end, step int64) ([]byte, error) {
 	stepStr := strconv.FormatInt(step, 10) + "s"
 	startStr := strconv.FormatInt(start, 10)
 	endStr := strconv.FormatInt(end, 10)
@@ -425,10 +430,10 @@ func fetchQueryRange(query string, start, end, step int64) ([]byte, error) {
 			if cs == nil {
 				return nil, fmt.Errorf("no active kubernetes clientset")
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			tctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			raw, err := cs.CoreV1().Services(ref.namespace).ProxyGet(
 				"http", ref.service, ref.port, "/api/v1/query_range", kvParams,
-			).DoRaw(ctx)
+			).DoRaw(tctx)
 			cancel()
 			return raw, err
 		}
@@ -453,9 +458,9 @@ func fetchQueryRange(query string, start, end, step int64) ([]byte, error) {
 				"step":  {stepStr},
 			}.Encode(),
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		tctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
-		req, err := http.NewRequestWithContext(ctx, "GET", rangeURL.String(), nil)
+		req, err := http.NewRequestWithContext(tctx, "GET", rangeURL.String(), nil)
 		if err != nil {
 			return nil, err
 		}
@@ -479,11 +484,11 @@ func fetchQueryRange(query string, start, end, step int64) ([]byte, error) {
 		"step":  stepStr,
 	}
 	for _, c := range defaultCandidates {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		loopCtx, loopCancel := context.WithTimeout(ctx, 10*time.Second)
 		raw, err := cs.CoreV1().Services(c.ns).ProxyGet(
 			"http", c.svc, c.port, "/api/v1/query_range", params,
-		).DoRaw(ctx)
-		cancel()
+		).DoRaw(loopCtx)
+		loopCancel()
 		if err == nil {
 			return raw, nil
 		}
@@ -493,20 +498,20 @@ func fetchQueryRange(query string, start, end, step int64) ([]byte, error) {
 	qv := url.Values{"query": {query}, "start": {startStr}, "end": {endStr}, "step": {stepStr}}
 	for _, port := range []int{9090, 9091, 8080} {
 		u := fmt.Sprintf("http://127.0.0.1:%d/api/v1/query_range?%s", port, qv.Encode())
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+		loopCtx, loopCancel := context.WithTimeout(ctx, 10*time.Second)
+		req, err := http.NewRequestWithContext(loopCtx, "GET", u, nil)
 		if err != nil {
-			cancel()
+			loopCancel()
 			continue
 		}
 		resp, err := prometheusClient.Do(req)
 		if err != nil {
-			cancel()
+			loopCancel()
 			continue
 		}
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		cancel()
+		loopCancel()
 		if resp.StatusCode == 200 {
 			return body, nil
 		}

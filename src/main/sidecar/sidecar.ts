@@ -31,7 +31,6 @@ async function findFreePort(preferred: number): Promise<number> {
 }
 
 export async function startSidecar(): Promise<void> {
-  shuttingDown = false
   if (sidecarProcess) {
     await stopSidecar()
   }
@@ -56,6 +55,10 @@ export async function startSidecar(): Promise<void> {
       console.warn(`[Sidecar] Failed to set executable permissions: ${err}`)
     }
   }
+
+  // Reset only right before spawning so a concurrent stopSidecar() that fired
+  // while we were doing pre-spawn setup doesn't get its shuttingDown=true overwritten.
+  shuttingDown = false
 
   console.log(`[Sidecar] Starting from: ${binaryPath}`)
 
@@ -119,15 +122,18 @@ export async function startSidecar(): Promise<void> {
     let attempts = 0
     const maxAttempts = 180  // 180 × 500 ms = 90 s — covers large cluster cache sync
     const interval = 500
+    let checkTimer: ReturnType<typeof setTimeout> | null = null
 
     const sidecarDetail = () =>
       stderrLines.length > 0 ? `\n\nSidecar output:\n${stderrLines.join('\n')}` : ''
 
     const errorHandler = (err: Error) => {
+      if (checkTimer !== null) clearTimeout(checkTimer)
       reject(new Error(`Sidecar failed to start: ${err.message}${sidecarDetail()}`))
     }
 
     const exitHandler = (code: number | null, signal: string | null) => {
+      if (checkTimer !== null) clearTimeout(checkTimer)
       if (shuttingDown) {
         // Intentional shutdown — resolve silently so the caller's catch block
         // doesn't surface a spurious "failed to start" error dialog.
@@ -145,9 +151,9 @@ export async function startSidecar(): Promise<void> {
         const response = await fetch(`http://${SIDECAR_HOST}:${activeSidecarPort}/health`)
         if (response.ok) {
           console.log('[Sidecar] Sidecar is ready')
+          startupComplete = true
           child.removeListener('error', errorHandler)
           child.removeListener('exit', exitHandler)
-          startupComplete = true
           resolve()
           return
         }
@@ -168,7 +174,7 @@ export async function startSidecar(): Promise<void> {
         return
       }
 
-      setTimeout(checkReady, interval)
+      checkTimer = setTimeout(checkReady, interval)
     }
 
     checkReady()

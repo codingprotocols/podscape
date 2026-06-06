@@ -46,15 +46,15 @@ const ls = (key: string, fallback: string): string => {
 export const createNavigationSlice: StoreSlice<NavigationSlice> = (set, get) => ({
     section: 'dashboard' as ResourceKind,
     setSection: (section) => {
-        set({ section, selectedResource: null })
+        set({ section, selectedResource: null, searchQuery: '' })
         get().loadSection(section)
     },
-    navWidth: parseInt(ls('podscape:navWidth', '210')),
+    navWidth: (() => { const v = parseInt(ls('podscape:navWidth', '210')); return isNaN(v) ? 210 : v })(),
     setNavWidth: (navWidth) => {
         set({ navWidth })
         localStorage.setItem('podscape:navWidth', navWidth.toString())
     },
-    detailWidth: parseInt(ls('podscape:detailWidth', '560')),
+    detailWidth: (() => { const v = parseInt(ls('podscape:detailWidth', '560')); return isNaN(v) ? 560 : v })(),
     setDetailWidth: (detailWidth) => {
         set({ detailWidth })
         localStorage.setItem('podscape:detailWidth', detailWidth.toString())

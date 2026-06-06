@@ -21,7 +21,7 @@ Renderer (React / TypeScript)
 ### Renderer (`src/renderer/`)
 
 - Built with **Vite + React + TypeScript + Tailwind CSS**.
-- State managed by a single **Zustand** store (`useAppStore`) split into seven specialized slices:
+- State managed by a single **Zustand** store (`useAppStore`) split into seven specialized slices. To prevent race conditions from rapid context switches (e.g., A → B → A), asynchronous state updates verify a monotonic sequence counter (`mySeq === currentSeq`) before committing results.
 
 
 | Slice | Responsibility |
@@ -276,7 +276,34 @@ The bulk `/secrets` endpoint returns only key names — values are replaced serv
 
 The sidecar runs `SelfSubjectAccessReview` against all 28 tracked resource types at startup and on every context switch. Resources the current user cannot `list` or `watch` return `200 []` with `X-Podscape-Denied: true` — the renderer shows an "Access denied" banner rather than an error. No data from denied resources ever reaches the renderer.
 
+**Namespace-Scoped Fallback (OR-logic):**
+For users on multi-tenant clusters scoped with `RoleBindings` rather than cluster-wide `ClusterRoleBindings`, a cluster-scoped SAR check (namespace `""`) is rejected. To prevent false negatives:
+- When a namespace-scoped resource fails the cluster-scoped check, the RBAC probe retries the SAR check specifically in the `"default"` namespace.
+- Access is granted if **either** check passes (OR-logic).
+- Cluster-scoped resources (like `Nodes`, `Namespaces`, `PersistentVolumes`) bypass the `"default"` namespace check.
+
+### Ephemeral Port Forwarding (TOCTOU Prevention)
+
+Programmatic port forwarding previously searched for a free local port using `freeLocalPort()` and then bound it. This left a Time-of-Check to Time-of-Use (TOCTOU) window where another process could grab the port. 
+
+To eliminate this vulnerability:
+- The Go sidecar binds port `0` (e.g., `127.0.0.1:0`), instructing the operating system to allocate a free ephemeral port atomically.
+- Once the tunnel is successfully established, the sidecar retrieves the allocated port via `pf.GetPorts()` and returns it to the client.
+
+### Helm Downloader Protections
+
+To protect the sidecar from memory exhaustion (Denial of Service) and hanging network calls when downloading Helm repository assets (such as massive `index.yaml` files or chart values):
+- **Body Limit:** A strict limit of **64MB** is enforced on all HTTP response bodies read when downloading Helm repository indexes or configuration files.
+- **Network Timeouts:** A strict timeout of **60 seconds** is applied to all outgoing HTTP connection and read phases during Helm downloads.
+
+### WebSocket Thread Safety
+
+Gorilla WebSocket (`github.com/gorilla/websocket`) does **not** allow concurrent write operations or concurrent read operations on the same connection.
+- **Writes:** Outgoing WebSocket frames are serialized using a `sync.Mutex` inside the `wsStream.Write` helper.
+- **Reads:** A single read-pump goroutine is established to read incoming frames from the WebSocket and write them to an `io.Pipe`. The execution handler (`exec.Exec`) reads stdin from the other end of the pipe, preventing concurrent read conflicts.
+
 ---
+
 
 ## Key Constants
 

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { Copy, Check } from 'lucide-react'
 
 interface Props {
@@ -9,13 +9,19 @@ interface Props {
 
 export default function CopyButton({ value, size = 13, className = '' }: Props): JSX.Element {
   const [copied, setCopied] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => { if (timerRef.current !== null) clearTimeout(timerRef.current) }
+  }, [])
 
   const handleClick = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation()
     try {
       await navigator.clipboard.writeText(value)
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      if (timerRef.current !== null) clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => setCopied(false), 1500)
     } catch (err) {
       console.error('Failed to copy text: ', err)
     }

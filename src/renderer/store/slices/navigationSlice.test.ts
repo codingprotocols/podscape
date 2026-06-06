@@ -31,7 +31,7 @@ describe('navigationSlice', () => {
     it('setSection updates state and calls loadSection', () => {
         const slice = (createNavigationSlice as any)(set, get)
         slice.setSection('pods')
-        expect(set).toHaveBeenCalledWith({ section: 'pods', selectedResource: null })
+        expect(set).toHaveBeenCalledWith({ section: 'pods', selectedResource: null, searchQuery: '' })
         expect(get().loadSection).toHaveBeenCalledWith('pods')
     })
 
@@ -81,7 +81,7 @@ describe('navigationSlice', () => {
             const slice = (createNavigationSlice as any)(set, get)
             slice.setSection('pods')
             // setSection should only set section + selectedResource, not touch unifiedLogsSelectedPods
-            expect(set).toHaveBeenCalledWith({ section: 'pods', selectedResource: null })
+            expect(set).toHaveBeenCalledWith({ section: 'pods', selectedResource: null, searchQuery: '' })
             const callArgs = (set as any).mock.calls.flat()
             for (const arg of callArgs) {
                 expect(arg).not.toHaveProperty('unifiedLogsSelectedPods')

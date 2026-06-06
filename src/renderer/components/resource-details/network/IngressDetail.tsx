@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import type { KubeIngress, KubeEvent } from '../../../types'
 import { formatAge } from '../../../types'
 import { useAppStore } from '../../../store'
+import { useShallow } from 'zustand/react/shallow'
 import YAMLViewer from '../../common/YAMLViewer'
 
 interface Props { ingress: KubeIngress }
@@ -131,13 +132,21 @@ function NginxAnnotationsView({ annotations }: { annotations: Record<string, str
 type Tab = 'rules' | 'events' | 'nginx'
 
 export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
-  const { getYAML, applyYAML, selectedContext, selectedNamespace, providers } = useAppStore()
+  const { getYAML, applyYAML, selectedContext, selectedNamespace, providers } = useAppStore(useShallow(s => ({
+    getYAML: s.getYAML,
+    applyYAML: s.applyYAML,
+    selectedContext: s.selectedContext,
+    selectedNamespace: s.selectedNamespace,
+    providers: s.providers,
+  })))
   const [tab, setTab] = useState<Tab>('rules')
   const [yaml, setYaml] = useState<string | null>(null)
   const [yamlLoading, setYamlLoading] = useState(false)
   const [yamlError, setYamlError] = useState<string | null>(null)
   const [events, setEvents] = useState<KubeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
+  const loadEventsIdRef = useRef(0)
+  const yamlFetchIdRef = useRef(0)
 
   const ns = selectedNamespace === '_all'
     ? (ing.metadata.namespace ?? '')
@@ -149,40 +158,55 @@ export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
     .filter(Boolean)
 
   const handleViewYAML = async () => {
+    const myId = ++yamlFetchIdRef.current
     setYaml(null); setYamlError(null); setYamlLoading(true)
     try {
       const content = await getYAML('ingress', ing.metadata.name, false, ing.metadata.namespace)
+      if (myId !== yamlFetchIdRef.current) return
       setYaml(content)
     } catch (err) {
+      if (myId !== yamlFetchIdRef.current) return
       setYamlError((err as Error).message ?? 'Failed to fetch YAML')
     } finally {
-      setYamlLoading(false)
+      if (myId === yamlFetchIdRef.current) setYamlLoading(false)
     }
   }
 
   const handleApplyYAML = async (updated: string) => {
+    const myId = ++yamlFetchIdRef.current
     await applyYAML(updated)
-    const refreshed = await getYAML('ingress', ing.metadata.name, false, ing.metadata.namespace)
-    setYaml(refreshed)
+    if (myId !== yamlFetchIdRef.current) return
+    try {
+      const refreshed = await getYAML('ingress', ing.metadata.name, false, ing.metadata.namespace)
+      if (myId !== yamlFetchIdRef.current) return
+      setYaml(refreshed)
+    } catch {
+      if (myId !== yamlFetchIdRef.current) return
+      setYaml(null)
+    }
   }
 
   const loadEvents = async () => {
     const uid = ing.metadata.uid
     if (!selectedContext || !uid) return
+    const ctx = selectedContext
+    const myId = ++loadEventsIdRef.current
     setEventsLoading(true)
     try {
-      const evts = await window.kubectl.getResourceEvents(selectedContext, ns, uid)
+      const evts = await window.kubectl.getResourceEvents(ctx, ns, uid)
+      if (myId !== loadEventsIdRef.current || useAppStore.getState().selectedContext !== ctx) return
       setEvents(evts)
     } catch {
+      if (myId !== loadEventsIdRef.current || useAppStore.getState().selectedContext !== ctx) return
       setEvents([])
     } finally {
-      setEventsLoading(false)
+      if (myId === loadEventsIdRef.current) setEventsLoading(false)
     }
   }
 
   useEffect(() => {
     if (tab === 'events') loadEvents()
-  }, [tab, ing.metadata.uid])
+  }, [tab, ing.metadata.uid, selectedContext, ns])
 
   return (
     <div className="flex flex-col w-full h-full overflow-y-auto">
@@ -360,7 +384,7 @@ export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
           <div className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 dark:border-white/10 bg-white/5 backdrop-blur-xl shrink-0">
               <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">{yamlLoading ? 'Loading YAML…' : `YAML — ${ing.metadata.name}`}</h3>
-              <button onClick={() => { setYaml(null); setYamlError(null); setYamlLoading(false) }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 transition-colors">✕</button>
+              <button onClick={() => { ++yamlFetchIdRef.current; setYaml(null); setYamlError(null); setYamlLoading(false) }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 transition-colors">✕</button>
             </div>
             <div className="flex-1 min-h-0">
               {yamlError ? (

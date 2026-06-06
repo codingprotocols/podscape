@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 
@@ -38,11 +38,24 @@ export function getSettings(): PodscapeSettings {
     return DEFAULTS
 }
 
+// Serializes concurrent saveSettings calls so interleaved read-modify-write
+// sequences (e.g. settings:set racing with kubeconfig:selectPath) don't clobber each other.
+let writeLock: Promise<void> = Promise.resolve()
+
 export function saveSettings(settings: PodscapeSettings): void {
-    if (!existsSync(SETTINGS_DIR)) {
-        mkdirSync(SETTINGS_DIR, { recursive: true })
-    }
-    writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2))
+    const data = JSON.stringify(settings, null, 2)
+    writeLock = writeLock.then(() => {
+        if (!existsSync(SETTINGS_DIR)) {
+            mkdirSync(SETTINGS_DIR, { recursive: true })
+        }
+        // Atomic write: write to a temp file then rename so a crash mid-write
+        // never leaves settings.json as a zero-byte or partial JSON file.
+        const tmp = SETTINGS_FILE + '.tmp'
+        writeFileSync(tmp, data)
+        renameSync(tmp, SETTINGS_FILE)
+    }).catch(err => {
+        console.error('[saveSettings] failed to write settings:', err)
+    })
 }
 
 export function findKubeconfigPath(): string {

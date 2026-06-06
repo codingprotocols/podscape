@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/podscape/go-core/internal/ownerchain"
@@ -29,6 +28,5 @@ func HandleOwnerChain(w http.ResponseWriter, r *http.Request) {
 	}
 
 	chain := ownerchain.BuildOwnerChain(c, kind, namespace, name)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(chain)
+	writeJSON(w, chain)
 }

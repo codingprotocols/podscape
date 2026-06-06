@@ -1,5 +1,4 @@
 import React from 'react'
-import { useAppStore } from '../../../store'
 import { FileCode, X, Activity } from 'lucide-react'
 import YAMLViewer from '../../common/YAMLViewer'
 import { useYAMLEditor } from '../../../hooks/useYAMLEditor'
@@ -82,7 +81,6 @@ function ConditionBadge({ label, testId, status, trueClass, falseClass }: BadgeP
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 export default function ScaledObjectDetail({ resource }: Props): JSX.Element {
-  const { selectedContext: ctx } = useAppStore()
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
 
   const meta = (resource.metadata as Record<string, unknown>) ?? {}

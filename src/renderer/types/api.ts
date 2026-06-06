@@ -98,4 +98,6 @@ export interface ProviderSet {
   nginxInc: boolean       // kubernetes-ingress (NGINX Inc, CRD-based)
   nginxCommunity: boolean // ingress-nginx (community, annotation-based)
   keda: boolean
+  cilium: boolean
+  hubbleRelay: boolean
 }

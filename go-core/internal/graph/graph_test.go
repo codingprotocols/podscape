@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -18,6 +19,12 @@ type mockCache struct {
 
 func (m *mockCache) GetRawObject(kind NodeKind, namespace, name string) (interface{}, bool) {
 	key := fmt.Sprintf("%s:%s:%s", kind, namespace, name)
+	obj, ok := m.objects[key]
+	return obj, ok
+}
+
+func (m *mockCache) GetRawObjectByUID(uid string) (interface{}, bool) {
+	key := fmt.Sprintf("uid:%s", uid)
 	obj, ok := m.objects[key]
 	return obj, ok
 }
@@ -74,7 +81,7 @@ func TestGraphDiscovery(t *testing.T) {
 
 	// 3. Build Graph
 	builder := NewGraphBuilder(cache)
-	graph := builder.Build(nodes)
+	graph := builder.Build(context.Background(), nodes)
 
 	// 4. Verify Edges
 	foundSelector := false
@@ -124,9 +131,13 @@ func TestDeepOwnerChain(t *testing.T) {
 
 	cache := &mockCache{
 		objects: map[string]interface{}{
+			// Name-based lookups (other discoverers)
 			"workload:prod:web-deploy": deploy,
 			"workload:prod:web-rs":     rs,
 			"pod:prod:web-pod":         pod,
+			// UID-based lookups (OwnerDiscoverer uses these for workload nodes)
+			"uid:deploy-1": deploy,
+			"uid:rs-1":     rs,
 		},
 	}
 
@@ -139,7 +150,7 @@ func TestDeepOwnerChain(t *testing.T) {
 
 	// 3. Build Graph
 	builder := NewGraphBuilder(cache)
-	graph := builder.Build(nodes)
+	graph := builder.Build(context.Background(), nodes)
 
 	// 4. Verify Edges
 	foundDeployRS := false
@@ -194,29 +205,34 @@ func TestConnectivityDiscovery(t *testing.T) {
 		},
 	}
 
+	kubeNode := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "node-1", UID: "node-uid-1"},
+	}
+
 	mock.objects["pod:ns:pod-1"] = pod
 	mock.objects["ingress:ns:ing-1"] = ing
+	mock.objects["node::node-1"] = kubeNode
 
 	nodes := []Node{
 		{ID: "pod:pod-uid", Kind: KindPod, Name: "pod-1", Namespace: "ns"},
-		{ID: "node:node-1", Kind: KindNode, Name: "node-1"},
+		{ID: "node:node-uid-1", Kind: KindNode, Name: "node-1", UID: "node-uid-1"},
 		{ID: "ingress:ns:ing-1", Kind: KindIngress, Name: "ing-1", Namespace: "ns"},
 		{ID: "service:ns:svc-1", Kind: KindService, Name: "svc-1", Namespace: "ns"},
 	}
 
 	builder := NewGraphBuilder(mock)
-	g := builder.Build(nodes)
+	g := builder.Build(context.Background(), nodes)
 
-	// Check Pod -> Node
+	// Check Pod -> Node (must use UID-based node ID)
 	foundNodeEdge := false
 	for _, e := range g.Edges {
-		if e.Source == "pod:pod-uid" && e.Target == "node:node-1" {
+		if e.Source == "pod:pod-uid" && e.Target == "node:node-uid-1" {
 			foundNodeEdge = true
 			break
 		}
 	}
 	if !foundNodeEdge {
-		t.Errorf("did not find pod-to-node edge")
+		t.Errorf("did not find pod-to-node edge with UID-based target")
 	}
 
 	// Check Ingress -> Service
@@ -232,6 +248,113 @@ func TestConnectivityDiscovery(t *testing.T) {
 	}
 	if !foundIngSvc {
 		t.Errorf("did not find ingress-to-service edge")
+	}
+}
+
+func TestVolumeDiscoverer_EdgeUsesUID(t *testing.T) {
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "data-pvc", Namespace: "ns", UID: "pvc-uid-42"},
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "app-pod", Namespace: "ns", UID: "pod-uid-1"},
+		Spec: corev1.PodSpec{
+			Volumes: []corev1.Volume{
+				{
+					Name: "data",
+					VolumeSource: corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: "data-pvc"},
+					},
+				},
+			},
+		},
+	}
+
+	mock := &mockCache{objects: map[string]interface{}{
+		"pod:ns:app-pod": pod,
+		"pvc:ns:data-pvc": pvc,
+	}}
+
+	nodes := []Node{
+		{ID: "pod:pod-uid-1", Kind: KindPod, Name: "app-pod", Namespace: "ns"},
+		{ID: "pvc:pvc-uid-42", Kind: KindPVC, Name: "data-pvc", Namespace: "ns", UID: "pvc-uid-42"},
+	}
+
+	builder := &GraphBuilder{cache: mock, discoverers: []Discoverer{&VolumeDiscoverer{}}}
+	g := builder.Build(context.Background(), nodes)
+
+	found := false
+	for _, e := range g.Edges {
+		if e.Kind == EdgeVolume && e.Source == "pod:pod-uid-1" && e.Target == "pvc:pvc-uid-42" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected volume edge target to use PVC UID (pvc:pvc-uid-42), edges: %+v", g.Edges)
+	}
+}
+
+func TestNodeDiscoverer_EdgeUsesUID(t *testing.T) {
+	kubeNode := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "worker-1", UID: "node-uid-99"},
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-pod", Namespace: "ns", UID: "pod-uid-2"},
+		Spec:       corev1.PodSpec{NodeName: "worker-1"},
+	}
+
+	mock := &mockCache{objects: map[string]interface{}{
+		"pod:ns:my-pod": pod,
+		"node::worker-1": kubeNode,
+	}}
+
+	nodes := []Node{
+		{ID: "pod:pod-uid-2", Kind: KindPod, Name: "my-pod", Namespace: "ns"},
+		{ID: "node:node-uid-99", Kind: KindNode, Name: "worker-1", UID: "node-uid-99"},
+	}
+
+	builder := &GraphBuilder{cache: mock, discoverers: []Discoverer{&NodeDiscoverer{}}}
+	g := builder.Build(context.Background(), nodes)
+
+	found := false
+	for _, e := range g.Edges {
+		if e.Kind == EdgePodNode && e.Source == "pod:pod-uid-2" && e.Target == "node:node-uid-99" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected pod-node edge target to use Node UID (node:node-uid-99), edges: %+v", g.Edges)
+	}
+}
+
+func TestCollapseResources_DroppedLabelWins(t *testing.T) {
+	cache := &mockCache{objects: make(map[string]interface{})}
+	builder := NewGraphBuilder(cache)
+
+	ownerUID := "owner-abc"
+	nodes := []Node{
+		{ID: "pod-1", Kind: KindPod, Name: "app-a", Namespace: "ns", OwnerUID: ownerUID},
+		{ID: "pod-2", Kind: KindPod, Name: "app-b", Namespace: "ns", OwnerUID: ownerUID},
+		{ID: "svc-1", Kind: KindService, Name: "my-svc", Namespace: "ns"},
+	}
+
+	// Two edges to the same pod pair that will collapse to one endpoint:
+	// one forwarded, one dropped. "dropped" must win after merging.
+	g := &Graph{
+		Nodes: nodes,
+		Edges: []Edge{
+			{ID: "edge:svc-1:pod-1:hubble-flow", Source: "svc-1", Target: "pod-1", Kind: EdgeHubbleFlow, Label: "forwarded"},
+			{ID: "edge:svc-1:pod-2:hubble-flow", Source: "svc-1", Target: "pod-2", Kind: EdgeHubbleFlow, Label: "dropped"},
+		},
+	}
+	builder.collapseResources(g)
+
+	if len(g.Edges) != 1 {
+		t.Fatalf("expected 1 merged edge after collapse, got %d: %+v", len(g.Edges), g.Edges)
+	}
+	if g.Edges[0].Label != "dropped" {
+		t.Errorf("expected merged edge label to be 'dropped', got %q", g.Edges[0].Label)
 	}
 }
 func TestResourceCollapsing(t *testing.T) {
@@ -254,7 +377,7 @@ func TestResourceCollapsing(t *testing.T) {
 	}
 	cache.objects[fmt.Sprintf("%s:%s:%s", KindService, "default", "web-svc")] = svc
 
-	graph := builder.Build(initialNodes)
+	graph := builder.Build(context.Background(), initialNodes)
 
 	// Expected: 1 Service Node + 1 Collapsed Pod Node = 2 Nodes
 	if len(graph.Nodes) != 2 {
@@ -322,7 +445,7 @@ func TestNetworkPolicy(t *testing.T) {
 	}
 
 	// 2. Build Graph
-	graph := builder.Build(nodes)
+	graph := builder.Build(context.Background(), nodes)
 
 	// 3. Verify Edge
 	found := false

@@ -33,7 +33,7 @@ interface Props {
 }
 
 export default function RoleDetail({ role, clusterScoped = false }: Props): JSX.Element {
-  const { selectedContext } = useAppStore()
+  const selectedContext = useAppStore(s => s.selectedContext)
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const [events, setEvents] = useState<KubeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
@@ -44,13 +44,15 @@ export default function RoleDetail({ role, clusterScoped = false }: Props): JSX.
   useEffect(() => {
     const uid = role.metadata.uid
     if (!selectedContext || tab !== 'events' || !uid) return
+    let cancelled = false
     setEventsLoading(true)
     const ns = role.metadata.namespace ?? 'default'
     window.kubectl.getResourceEvents(selectedContext, ns, uid)
-      .then(setEvents)
-      .catch(() => setEvents([]))
-      .finally(() => setEventsLoading(false))
-  }, [tab, role.metadata.uid, selectedContext])
+      .then(evts => { if (!cancelled) setEvents(evts) })
+      .catch(() => { if (!cancelled) setEvents([]) })
+      .finally(() => { if (!cancelled) setEventsLoading(false) })
+    return () => { cancelled = true }
+  }, [tab, role.metadata.uid, role.metadata.namespace, selectedContext])
 
   return (
     <div className="flex flex-col w-full h-full relative font-sans">

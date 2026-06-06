@@ -35,14 +35,20 @@ func makeDiscovery(groupVersions ...string) *fakediscovery.FakeDiscovery {
 }
 
 func TestDetect_NoProviders(t *testing.T) {
-	ps := providers.Detect(makeDiscovery(), nil)
+	ps := providers.Detect(makeDiscovery(), nil, false)
 	if ps.Istio || ps.Traefik || ps.NginxInc || ps.NginxCommunity || ps.Keda {
 		t.Errorf("expected all false, got %+v", ps)
+	}
+	if ps.Cilium {
+		t.Errorf("expected Cilium=false, got %+v", ps)
+	}
+	if ps.HubbleRelay {
+		t.Errorf("expected HubbleRelay=false, got %+v", ps)
 	}
 }
 
 func TestDetect_Istio(t *testing.T) {
-	ps := providers.Detect(makeDiscovery("networking.istio.io/v1alpha3"), nil)
+	ps := providers.Detect(makeDiscovery("networking.istio.io/v1alpha3"), nil, false)
 	if !ps.Istio {
 		t.Error("expected Istio=true")
 	}
@@ -55,7 +61,7 @@ func TestDetect_Istio(t *testing.T) {
 }
 
 func TestDetect_TraefikV3(t *testing.T) {
-	ps := providers.Detect(makeDiscovery("traefik.io/v1alpha1"), nil)
+	ps := providers.Detect(makeDiscovery("traefik.io/v1alpha1"), nil, false)
 	if !ps.Traefik {
 		t.Error("expected Traefik=true")
 	}
@@ -65,7 +71,7 @@ func TestDetect_TraefikV3(t *testing.T) {
 }
 
 func TestDetect_TraefikV2(t *testing.T) {
-	ps := providers.Detect(makeDiscovery("traefik.containo.us/v1alpha1"), nil)
+	ps := providers.Detect(makeDiscovery("traefik.containo.us/v1alpha1"), nil, false)
 	if !ps.Traefik {
 		t.Error("expected Traefik=true")
 	}
@@ -76,7 +82,7 @@ func TestDetect_TraefikV2(t *testing.T) {
 
 func TestDetect_TraefikV3WinsOverV2(t *testing.T) {
 	// Both API groups present — v3 must win regardless of iteration order.
-	ps := providers.Detect(makeDiscovery("traefik.io/v1alpha1", "traefik.containo.us/v1alpha1"), nil)
+	ps := providers.Detect(makeDiscovery("traefik.io/v1alpha1", "traefik.containo.us/v1alpha1"), nil, false)
 	if !ps.Traefik {
 		t.Error("expected Traefik=true")
 	}
@@ -86,7 +92,7 @@ func TestDetect_TraefikV3WinsOverV2(t *testing.T) {
 }
 
 func TestDetect_NginxInc(t *testing.T) {
-	ps := providers.Detect(makeDiscovery("k8s.nginx.org/v1"), nil)
+	ps := providers.Detect(makeDiscovery("k8s.nginx.org/v1"), nil, false)
 	if !ps.NginxInc {
 		t.Error("expected NginxInc=true")
 	}
@@ -99,7 +105,7 @@ func TestDetect_NginxCommunity_ViaIngressClass(t *testing.T) {
 	ic := networkingv1.IngressClass{
 		Spec: networkingv1.IngressClassSpec{Controller: "k8s.io/ingress-nginx"},
 	}
-	ps := providers.Detect(makeDiscovery(), []networkingv1.IngressClass{ic})
+	ps := providers.Detect(makeDiscovery(), []networkingv1.IngressClass{ic}, false)
 	if !ps.NginxCommunity {
 		t.Error("expected NginxCommunity=true")
 	}
@@ -112,7 +118,7 @@ func TestDetect_NginxCommunity_PartialControllerString(t *testing.T) {
 	ic := networkingv1.IngressClass{
 		Spec: networkingv1.IngressClassSpec{Controller: "some-vendor/ingress-nginx"},
 	}
-	ps := providers.Detect(makeDiscovery(), []networkingv1.IngressClass{ic})
+	ps := providers.Detect(makeDiscovery(), []networkingv1.IngressClass{ic}, false)
 	if !ps.NginxCommunity {
 		t.Error("expected NginxCommunity=true for partial controller match")
 	}
@@ -122,14 +128,14 @@ func TestDetect_NginxCommunity_CaseInsensitive(t *testing.T) {
 	ic := networkingv1.IngressClass{
 		Spec: networkingv1.IngressClassSpec{Controller: "INGRESS-NGINX"},
 	}
-	ps := providers.Detect(makeDiscovery(), []networkingv1.IngressClass{ic})
+	ps := providers.Detect(makeDiscovery(), []networkingv1.IngressClass{ic}, false)
 	if !ps.NginxCommunity {
 		t.Error("expected NginxCommunity=true for uppercase controller")
 	}
 }
 
 func TestDetect_Keda(t *testing.T) {
-	ps := providers.Detect(makeDiscovery("keda.sh/v1alpha1"), nil)
+	ps := providers.Detect(makeDiscovery("keda.sh/v1alpha1"), nil, false)
 	if !ps.Keda {
 		t.Error("expected Keda=true when keda.sh API group present")
 	}
@@ -139,16 +145,62 @@ func TestDetect_Keda(t *testing.T) {
 }
 
 func TestDetect_NoKeda_WhenGroupAbsent(t *testing.T) {
-	ps := providers.Detect(makeDiscovery("networking.istio.io/v1alpha3"), nil)
+	ps := providers.Detect(makeDiscovery("networking.istio.io/v1alpha3"), nil, false)
 	if ps.Keda {
 		t.Errorf("expected Keda=false when keda.sh not in groups, got %+v", ps)
 	}
 }
 
 func TestDetect_DiscoveryFailure_ReturnsEmptySet(t *testing.T) {
-	ps := providers.Detect(&errorDiscovery{}, nil)
-	if ps.Istio || ps.Traefik || ps.NginxInc || ps.NginxCommunity || ps.Keda {
+	ps := providers.Detect(&errorDiscovery{}, nil, false)
+	if ps.Istio || ps.Traefik || ps.NginxInc || ps.NginxCommunity || ps.Keda || ps.Cilium {
 		t.Errorf("expected all false on discovery error, got %+v", ps)
+	}
+	if ps.HubbleRelay {
+		t.Errorf("expected HubbleRelay=false when hubbleRelayPresent=false, got %+v", ps)
+	}
+}
+
+func TestDetect_DiscoveryFailure_PreservesHubbleRelay(t *testing.T) {
+	// HubbleRelay is detected via a Service check independent of API-group
+	// discovery — it must remain true even when ServerGroups() fails.
+	ps := providers.Detect(&errorDiscovery{}, nil, true)
+	if !ps.HubbleRelay {
+		t.Errorf("expected HubbleRelay=true when hubbleRelayPresent=true even on discovery error, got %+v", ps)
+	}
+	// All API-group-dependent providers must still be false.
+	if ps.Istio || ps.Traefik || ps.NginxInc || ps.NginxCommunity || ps.Keda || ps.Cilium {
+		t.Errorf("expected all API-group providers false on discovery error, got %+v", ps)
+	}
+}
+
+func TestDetect_CiliumPresent(t *testing.T) {
+	ps := providers.Detect(makeDiscovery("cilium.io/v2"), nil, false)
+	if !ps.Cilium {
+		t.Error("expected Cilium=true when cilium.io API group present")
+	}
+	if ps.HubbleRelay {
+		t.Error("expected HubbleRelay=false when hubbleRelayPresent=false")
+	}
+}
+
+func TestDetect_HubbleRelayPresent(t *testing.T) {
+	ps := providers.Detect(makeDiscovery(), nil, true)
+	if ps.Cilium {
+		t.Error("expected Cilium=false when cilium.io API group absent")
+	}
+	if !ps.HubbleRelay {
+		t.Error("expected HubbleRelay=true when hubbleRelayPresent=true")
+	}
+}
+
+func TestDetect_CiliumAndHubble(t *testing.T) {
+	ps := providers.Detect(makeDiscovery("cilium.io/v2"), nil, true)
+	if !ps.Cilium {
+		t.Error("expected Cilium=true")
+	}
+	if !ps.HubbleRelay {
+		t.Error("expected HubbleRelay=true")
 	}
 }
 

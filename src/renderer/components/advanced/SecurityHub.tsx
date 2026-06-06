@@ -187,6 +187,7 @@ export default function SecurityHub(): JSX.Element {
         pods, deployments, statefulsets, daemonsets, jobs, cronjobs,
         scanSecurity, securityScanResults, kubesecBatchResults,
         trivyAvailable, securityScanning, scanInBackground, securityScanProgressLines, error,
+        navigateToResource,
     } = useAppStore(useShallow(s => ({
         pods: s.pods,
         deployments: s.deployments,
@@ -202,6 +203,7 @@ export default function SecurityHub(): JSX.Element {
         scanInBackground: s.scanInBackground,
         securityScanProgressLines: s.securityScanProgressLines,
         error: s.error,
+        navigateToResource: s.navigateToResource,
     })))
 
     const [groupByNamespace, setGroupByNamespace] = useState(false)
@@ -592,7 +594,7 @@ export default function SecurityHub(): JSX.Element {
                         hasAnyIssues={unifiedResults.length > 0}
                     />
                 ) : (
-                    <ResourceTable results={filteredResults} groupByNamespace={groupByNamespace} />
+                    <ResourceTable results={filteredResults} groupByNamespace={groupByNamespace} navigateToResource={navigateToResource} />
                 )}
             </div>
         </div>
@@ -764,7 +766,7 @@ function resourceScore(res: any): number {
     return 0
 }
 
-function ResourceTable({ results, groupByNamespace }: { results: any[]; groupByNamespace: boolean }) {
+function ResourceTable({ results, groupByNamespace, navigateToResource }: { results: any[]; groupByNamespace: boolean; navigateToResource: (kind: string, name: string, namespace: string) => void }) {
     const [sortCol, setSortCol] = useState<SortCol>('score')
     const [sortDir, setSortDir] = useState<1 | -1>(-1)
 
@@ -821,7 +823,7 @@ function ResourceTable({ results, groupByNamespace }: { results: any[]; groupByN
     )
 
     const rows = (list: any[]) => list.map((res, idx) => (
-        <TableRow key={`${res.namespace}/${res.name}/${res.kind}`} res={res} isLast={idx === list.length - 1} />
+        <TableRow key={`${res.namespace}/${res.name}/${res.kind}`} res={res} isLast={idx === list.length - 1} navigateToResource={navigateToResource} />
     ))
 
     return (
@@ -862,8 +864,7 @@ function ResourceTable({ results, groupByNamespace }: { results: any[]; groupByN
     )
 }
 
-function TableRow({ res, isLast }: { res: any; isLast: boolean }) {
-    const { navigateToResource } = useAppStore()
+function TableRow({ res, isLast, navigateToResource }: { res: any; isLast: boolean; navigateToResource: (kind: string, name: string, namespace: string) => void }) {
     const [expanded, setExpanded] = useState(false)
     const [showAllVulns, setShowAllVulns] = useState(false)
 

@@ -1,7 +1,7 @@
 // ─── Shared types ────────────────────────────────────────────────────────────
 
 export type NodeKind = 'ingress' | 'service' | 'pod' | 'policy' | 'workload' | 'pvc' | 'node'
-export type EdgeKind = 'ing-svc' | 'svc-pod' | 'policy-pod' | 'pol-ingress' | 'pol-egress' | 'pod-pvc' | 'pod-node' | 'controller-pod' | 'controller-workload'
+export type EdgeKind = 'ing-svc' | 'svc-pod' | 'policy-pod' | 'pol-ingress' | 'pol-egress' | 'pod-pvc' | 'pod-node' | 'controller-pod' | 'controller-workload' | 'hubble-flow'
 export type EdgeClass = 'traffic' | 'infra' | 'policy'
 
 export interface GraphNode {
@@ -56,6 +56,7 @@ export function edgeStyle(kind: EdgeKind): EdgeStyleResult {
     case 'pod-node':            return { color: '#06b6d4', dur: '3.0s', class: 'infra' }
     case 'controller-pod':      return { color: '#fbbf24', dur: '2.0s', class: 'infra' }
     case 'controller-workload': return { color: '#fbbf24', dur: '2.0s', class: 'infra' }
+    case 'hubble-flow':         return { color: '#2dd4bf', dur: '1.2s', class: 'traffic' }
     default:                    return { color: '#9ca3af', dur: '2.5s', class: 'infra' }
   }
 }

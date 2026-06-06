@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import type { KubeService } from '../../../types'
 import { formatAge } from '../../../types'
 import { FileCode, X, Activity, Info, Link as LinkIcon, Share2, Copy, Check } from 'lucide-react'
@@ -10,6 +10,8 @@ interface Props { service: KubeService }
 export default function ServiceDetail({ service: svc }: Props): JSX.Element {
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (copyTimerRef.current) clearTimeout(copyTimerRef.current) }, [])
   const lbIps = svc.status.loadBalancer?.ingress ?? []
 
   const ns = svc.metadata.namespace ?? 'default'
@@ -20,10 +22,15 @@ export default function ServiceDetail({ service: svc }: Props): JSX.Element {
     return { label: p.name || String(p.port), url: `${scheme}://${dnsBase}:${p.port}` }
   })
 
-  const handleCopy = (url: string) => {
-    navigator.clipboard.writeText(url)
-    setCopiedUrl(url)
-    setTimeout(() => setCopiedUrl(null), 2000)
+  const handleCopy = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url)
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+      setCopiedUrl(url)
+      copyTimerRef.current = setTimeout(() => setCopiedUrl(null), 2000)
+    } catch {
+      // clipboard write failed — don't show copied indicator
+    }
   }
 
   return (

@@ -6,13 +6,14 @@ import { FileCode, X, Activity } from 'lucide-react'
 import { useYAMLEditor } from '../../../hooks/useYAMLEditor'
 import CopyButton from '../../common/CopyButton'
 import { useAppStore } from '../../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { canVerb } from '../../../store/slices/clusterSlice'
 
 interface Props { configMap: KubeConfigMap }
 
 export default function ConfigMapDetail({ configMap: cm }: Props): JSX.Element {
   const { yaml, loading: yamlLoading, error: yamlError, open: openYAML, apply: applyYAML, close: closeYAML } = useYAMLEditor()
-  const allowedVerbs = useAppStore(s => s.allowedVerbs)
+  const { allowedVerbs } = useAppStore(useShallow(s => ({ allowedVerbs: s.allowedVerbs })))
   const entries = Object.entries(cm.data ?? {})
   const [selected, setSelected] = useState<string | null>(entries[0]?.[0] ?? null)
 
