@@ -1,3 +1,21 @@
+## [4.0.1] — 2026-06-06
+
+### Bug fixes
+
+#### Go sidecar
+
+- **Trivy scan fails with "exit status 1" when vulnerabilities are found** (`go-core/internal/handlers/security.go`) — `trivy k8s` exits with code 1 when it finds vulnerabilities, which is its normal signal for "scan completed with findings." The `HandleSecurityScan` handler treated any non-zero exit as a fatal error and discarded the valid JSON output, surfacing a generic "trivy scan failed: exit status 1" to the frontend. Fixed by attempting JSON compaction before the exit-code check — valid output is sent as a `result` SSE event regardless of exit code, and the error path is only reached when there is genuinely no parseable output. The same regression was present in `HandleTrivyImages`: `cmd.Output()` returns stdout even on non-zero exit, but the handler discarded it when `err != nil`. Fixed by only skipping an image when both `err != nil` and `len(output) == 0`.
+
+#### Renderer
+
+- **Network Map panel crashes with "useShallow is not defined"** (`src/renderer/components/panels/NetworkPanel.tsx`) — `NetworkPanel.tsx` was missing `import { useShallow } from 'zustand/react/shallow'`, causing a `ReferenceError` whenever the Network Map section was loaded and displaying the generic "There was an error loading this section" fallback.
+
+#### Tests
+
+- **`helm.test.ts` crashes with "Electron failed to install correctly"** (`src/main/ipc/helm.test.ts`) — Importing `helm.ts` to test `transformRelease` triggered `import { ipcMain } from 'electron'` at module scope, causing Vitest to invoke `electron/index.js`'s `getElectronPath()` which requires the Electron binary to be present on disk. Added `vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))` before the import, matching the pattern already used in `kubectl.test.ts`.
+
+---
+
 ## [4.0.0] — 2026-06-04
 
 ### Bug fixes
