@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { Shield } from 'lucide-react'
 import PageHeader from '../core/PageHeader'
 import type { ResourceKind } from '../../types'
