@@ -4,6 +4,7 @@ import { formatAge } from '../../../types'
 import { useAppStore } from '../../../store'
 import { useShallow } from 'zustand/react/shallow'
 import YAMLViewer from '../../common/YAMLViewer'
+import { X } from 'lucide-react'
 
 interface Props { ingress: KubeIngress }
 
@@ -209,7 +210,7 @@ export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
   }, [tab, ing.metadata.uid, selectedContext, ns])
 
   return (
-    <div className="flex flex-col w-full h-full overflow-y-auto">
+    <div className="flex flex-col w-full h-full overflow-hidden">
       {/* Header */}
       <div className="px-6 py-6 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
         <div className="flex items-start gap-2">
@@ -341,35 +342,37 @@ export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
       )}
 
       {tab === 'events' && (
-        <div className="px-4 py-3 flex-1">
-          <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-col flex-1 min-h-0">
+          <div className="flex items-center justify-between px-4 pt-3 pb-2 shrink-0">
             <h4 className="text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Events</h4>
             <button onClick={loadEvents} disabled={eventsLoading}
               className="text-xs px-2 py-1 rounded bg-white/5 text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-800 hover:bg-white/10 disabled:opacity-50">
               {eventsLoading ? '…' : 'Refresh'}
             </button>
           </div>
-          {eventsLoading ? (
-            <div className="flex items-center justify-center h-24">
-              <div className="w-5 h-5 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin" />
-            </div>
-          ) : events.length === 0 ? (
-            <p className="text-xs text-slate-500 dark:text-slate-400 text-center py-8">No events found</p>
-          ) : (
-            <div className="space-y-2">
-              {events.map((e, i) => (
-                <div key={e.metadata.uid || i} className={`rounded p-2 text-xs ${e.type === 'Warning' ? 'bg-yellow-500/10 border border-yellow-500/20' : 'bg-white/5 border border-slate-100 dark:border-slate-800'
-                  }`}>
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className={`font-medium ${e.type === 'Warning' ? 'text-yellow-300' : 'text-slate-600 dark:text-slate-300'}`}>{e.reason}</span>
-                    <span className="text-slate-500 dark:text-slate-400 text-[10px]">{e.count ? `×${e.count}` : ''}</span>
+          <div className="flex-1 overflow-y-auto px-4 pb-3">
+            {eventsLoading ? (
+              <div className="flex items-center justify-center h-24">
+                <div className="w-5 h-5 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin" />
+              </div>
+            ) : events.length === 0 ? (
+              <p className="text-xs text-slate-500 dark:text-slate-400 text-center py-8">No events found</p>
+            ) : (
+              <div className="space-y-2">
+                {events.map((e, i) => (
+                  <div key={e.metadata.uid || i} className={`rounded p-2 text-xs ${e.type === 'Warning' ? 'bg-yellow-500/10 border border-yellow-500/20' : 'bg-white/5 border border-slate-100 dark:border-slate-800'
+                    }`}>
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className={`font-medium ${e.type === 'Warning' ? 'text-yellow-300' : 'text-slate-600 dark:text-slate-300'}`}>{e.reason}</span>
+                      <span className="text-slate-500 dark:text-slate-400 text-[10px]">{e.count ? `×${e.count}` : ''}</span>
+                    </div>
+                    <p className="text-slate-400 dark:text-slate-500 leading-relaxed">{e.message}</p>
+                    {e.lastTimestamp && <p className="text-slate-500 dark:text-slate-400 mt-1">{formatAge(e.lastTimestamp)} ago</p>}
                   </div>
-                  <p className="text-slate-400 dark:text-slate-500 leading-relaxed">{e.message}</p>
-                  {e.lastTimestamp && <p className="text-slate-500 dark:text-slate-400 mt-1">{formatAge(e.lastTimestamp)} ago</p>}
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -384,7 +387,7 @@ export default function IngressDetail({ ingress: ing }: Props): JSX.Element {
           <div className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 dark:border-white/10 bg-white/5 backdrop-blur-xl shrink-0">
               <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">{yamlLoading ? 'Loading YAML…' : `YAML — ${ing.metadata.name}`}</h3>
-              <button onClick={() => { ++yamlFetchIdRef.current; setYaml(null); setYamlError(null); setYamlLoading(false) }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 transition-colors">✕</button>
+              <button type="button" onClick={() => { ++yamlFetchIdRef.current; setYaml(null); setYamlError(null); setYamlLoading(false) }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors" aria-label="Close"><X className="w-4 h-4" /></button>
             </div>
             <div className="flex-1 min-h-0">
               {yamlError ? (

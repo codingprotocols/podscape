@@ -100,4 +100,5 @@ export interface ProviderSet {
   keda: boolean
   cilium: boolean
   hubbleRelay: boolean
+  ambassador: boolean
 }

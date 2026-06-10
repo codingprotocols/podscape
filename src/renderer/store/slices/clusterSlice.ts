@@ -198,7 +198,8 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => {
         const isProviderSection = currentSection.startsWith('istio-') ||
             currentSection.startsWith('traefik-') ||
             currentSection.startsWith('nginx-') ||
-            currentSection.startsWith('keda-')
+            currentSection.startsWith('keda-') ||
+            currentSection.startsWith('ambassador-')
         set({
             selectedContext: name, isProduction: isProd, loadingNamespaces: true, loadingResources: true,
             namespaces: [], selectedNamespace: null, selectedResource: null, error: null,
@@ -223,7 +224,7 @@ export const createClusterSlice: StoreSlice<ClusterSlice> = (set, get) => {
             metricsError: null,
             // Reset provider detection so stale flags from the old cluster don't
             // briefly show sidebar groups that don't exist in the new cluster.
-            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false, cilium: false, hubbleRelay: false },
+            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false, cilium: false, hubbleRelay: false, ambassador: false },
             // Navigate away from provider-specific sections so ProviderResourcePanel
             // doesn't attempt a fetch against a cluster that may lack those CRDs.
             ...(isProviderSection ? { section: 'dashboard' as const } : {}),
