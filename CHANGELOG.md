@@ -1,3 +1,17 @@
+## [4.0.2] — 2026-06-10
+
+### New features
+
+- **Ambassador API gateway provider** — Podscape now detects Ambassador / Emissary-Ingress via the `getambassador.io` API group and surfaces four resource sections in the sidebar: Mappings, Hosts, TLS Contexts, and TCP Mappings. The sidebar group appears automatically when Ambassador is installed in the active cluster and is cleared on context switch, matching the behaviour of all other provider groups (Istio, Traefik, NGINX, KEDA).
+
+### Bug fixes
+
+- **YAML modal close button unresponsive on Ingress and Node detail panels** — `IngressDetail` and `NodeDetail` had `overflow-y-auto` on their root div. When the events tab (IngressDetail) or a long pod/conditions list (NodeDetail) caused that container to scroll, Chromium's hit-test coordinates for any `position: fixed` descendant were offset by the scroll amount — clicks on the visually-correct close button registered a miss. Fixed by changing the root to `overflow-hidden` and placing only scrollable body content inside a `flex-1 overflow-y-auto` inner wrapper, so the fixed YAML modal is never inside a scrolled ancestor.
+
+- **IngressDetail events tab Refresh button scrolls out of view** — The events tab toolbar (label + Refresh button) was placed inside the `flex-1 overflow-y-auto` scroll region, causing it to disappear when the event list was long. The toolbar is now a `shrink-0` row above a dedicated `flex-1 overflow-y-auto` event list, consistent with the pattern used by the rules and NGINX tabs.
+
+---
+
 ## [4.0.1] — 2026-06-06
 
 ### Bug fixes
