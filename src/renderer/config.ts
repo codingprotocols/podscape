@@ -28,6 +28,7 @@ export const PROVIDER_SECTIONS = new Set<ResourceKind>([
   'traefik-tlsoptions', 'traefik-tlsstores', 'traefik-serverstransporttcps',
   'nginx-virtualservers', 'nginx-virtualserverroutes', 'nginx-policies', 'nginx-transportservers',
   'keda-scaledobjects', 'keda-scaledjobs', 'keda-triggerauthentications', 'keda-clustertriggerauthentications',
+  'ambassador-mappings', 'ambassador-hosts', 'ambassador-tlscontexts', 'ambassador-tcpmappings',
 ])
 
 // ─── Labels ───────────────────────────────────────────────────────────────────

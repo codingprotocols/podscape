@@ -5,6 +5,7 @@ import { useAppStore } from '../../../store'
 import { useShallow } from 'zustand/react/shallow'
 import { canVerb } from '../../../store/slices/clusterSlice'
 import YAMLViewer from '../../common/YAMLViewer'
+import { X } from 'lucide-react'
 import TimeSeriesChart, { PrometheusTimeRangeBar } from '../../advanced/TimeSeriesChart'
 import { nodeCpuQuery, nodeMemoryQuery } from '../../../utils/prometheusQueries'
 
@@ -108,7 +109,7 @@ export default function NodeDetail({ node }: Props): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col w-full h-full overflow-y-auto">
+    <div className="flex flex-col w-full h-full overflow-hidden">
       <div className="px-6 py-6 border-b border-slate-100 dark:border-white/5 bg-white/5 shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-blue-600/10 dark:bg-blue-500/20 flex items-center justify-center shrink-0">
@@ -162,6 +163,7 @@ export default function NodeDetail({ node }: Props): JSX.Element {
           <p className="mt-2 text-[10px] text-red-500 font-mono break-all">{actionError}</p>
         )}
       </div>
+      <div className="flex-1 overflow-y-auto">
 
       {/* Resource usage — live metrics if available, allocatable otherwise */}
       <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5">
@@ -341,13 +343,15 @@ export default function NodeDetail({ node }: Props): JSX.Element {
         </div>
       )}
 
+      </div>
+
       {/* YAML viewer modal */}
       {(yamlLoading || yaml !== null || yamlError !== null) && (
         <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-8 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-[hsl(var(--bg-dark))] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 dark:border-white/10 bg-white/5 backdrop-blur-xl shrink-0">
               <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">{yamlLoading ? 'Loading YAML…' : `YAML — ${node.metadata.name}`}</h3>
-              <button onClick={() => { ++yamlFetchIdRef.current; setYaml(null); setYamlError(null); setYamlLoading(false) }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 transition-colors">✕</button>
+              <button type="button" onClick={() => { ++yamlFetchIdRef.current; setYaml(null); setYamlError(null); setYamlLoading(false) }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 transition-colors" aria-label="Close"><X className="w-4 h-4" /></button>
             </div>
             <div className="flex-1 min-h-0">
               {yamlError ? (

@@ -15,6 +15,7 @@ const defaultProviders: ProviderSet = {
     keda: false,
     cilium: false,
     hubbleRelay: false,
+    ambassador: false,
 }
 
 export const createProvidersSlice: StoreSlice<ProvidersSlice> = (set, get) => {

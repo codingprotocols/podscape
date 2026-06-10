@@ -83,3 +83,8 @@ export type ResourceKind =
   | 'keda-scaledjobs'
   | 'keda-triggerauthentications'
   | 'keda-clustertriggerauthentications'
+  // Ambassador API gateway
+  | 'ambassador-mappings'
+  | 'ambassador-hosts'
+  | 'ambassador-tlscontexts'
+  | 'ambassador-tcpmappings'

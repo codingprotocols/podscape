@@ -527,6 +527,15 @@ export default function Sidebar(): JSX.Element {
             </NavGroup>
           )}
 
+          {providers.ambassador && (
+            <NavGroup title="Ambassador">
+              <NavItem label="Mappings"     section="ambassador-mappings"     icon={ICONS.route}       {...navProps} />
+              <NavItem label="Hosts"        section="ambassador-hosts"        icon={ICONS.ingress}     {...navProps} />
+              <NavItem label="TLS Contexts" section="ambassador-tlscontexts"  icon={ICONS.secret}      {...navProps} />
+              <NavItem label="TCP Mappings" section="ambassador-tcpmappings"  icon={ICONS.portforward} {...navProps} />
+            </NavGroup>
+          )}
+
         </nav>
 
       </div>

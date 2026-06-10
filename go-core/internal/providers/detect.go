@@ -26,6 +26,7 @@ type ProviderSet struct {
 	Keda           bool   `json:"keda"`
 	Cilium         bool   `json:"cilium"`
 	HubbleRelay    bool   `json:"hubbleRelay"`
+	Ambassador     bool   `json:"ambassador"`
 }
 
 // Detect probes the cluster's API group list and IngressClass resources to
@@ -69,6 +70,8 @@ func Detect(disco discovery.DiscoveryInterface, ingressClasses []networkingv1.In
 			ps.Keda = true
 		case "cilium.io":
 			ps.Cilium = true
+		case "getambassador.io":
+			ps.Ambassador = true
 		}
 	}
 

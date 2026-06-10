@@ -12,7 +12,7 @@ describe('providersSlice', () => {
     beforeEach(() => {
         state = {
             selectedContext: 'ctx-a',
-            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false, cilium: false, hubbleRelay: false },
+            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false, cilium: false, hubbleRelay: false, ambassador: false },
             providersLoading: false,
         }
         set = vi.fn((update: any) => {
@@ -67,7 +67,7 @@ describe('providersSlice', () => {
         expect(set).toHaveBeenCalledWith({ providersLoading: true })
         // Error path: reset to defaults
         expect(set).toHaveBeenCalledWith({
-            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false, cilium: false, hubbleRelay: false },
+            providers: { istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false, cilium: false, hubbleRelay: false, ambassador: false },
             providersLoading: false,
         })
     })
@@ -96,6 +96,6 @@ describe('providersSlice', () => {
         expect(set).toHaveBeenCalledWith({ providersLoading: true })
         expect(set).toHaveBeenCalledWith({ providersLoading: false })
         // providers state must not have been updated.
-        expect(state.providers).toEqual({ istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false, cilium: false, hubbleRelay: false })
+        expect(state.providers).toEqual({ istio: false, traefik: false, nginxInc: false, nginxCommunity: false, keda: false, cilium: false, hubbleRelay: false, ambassador: false })
     })
 })

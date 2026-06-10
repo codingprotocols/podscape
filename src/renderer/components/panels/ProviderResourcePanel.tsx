@@ -39,6 +39,11 @@ const SECTION_TO_CRD: Partial<Record<ResourceKind, string>> = {
     'keda-scaledjobs':                    'scaledjobs.keda.sh',
     'keda-triggerauthentications':        'triggerauthentications.keda.sh',
     'keda-clustertriggerauthentications': 'clustertriggerauthentications.keda.sh',
+    // Ambassador
+    'ambassador-mappings':    'mappings.getambassador.io',
+    'ambassador-hosts':       'hosts.getambassador.io',
+    'ambassador-tlscontexts': 'tlscontexts.getambassador.io',
+    'ambassador-tcpmappings': 'tcpmappings.getambassador.io',
 }
 
 const SECTION_LABELS: Partial<Record<ResourceKind, string>> = {
@@ -66,6 +71,10 @@ const SECTION_LABELS: Partial<Record<ResourceKind, string>> = {
     'keda-scaledjobs':                    'Scaled Jobs',
     'keda-triggerauthentications':        'Trigger Authentications',
     'keda-clustertriggerauthentications': 'Cluster Trigger Authentications',
+    'ambassador-mappings':    'Mappings',
+    'ambassador-hosts':       'Hosts',
+    'ambassador-tlscontexts': 'TLS Contexts',
+    'ambassador-tcpmappings': 'TCP Mappings',
 }
 
 /** Sections whose resources are cluster-scoped — always fetch without namespace filter. */
