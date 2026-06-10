@@ -425,12 +425,17 @@ func (m *HelmRepoManager) GetValues(repoName, chartName, version string) (string
 	}
 
 	// Check local cache.
-	// isSafeHelmIdentifier already rejected path separators and ".." above, but
-	// filepath.Base each component at construction time so the path sanitizer is
-	// explicit and visible to static analysis (CodeQL go/path-injection).
+	// Build cache path from sanitized components, then enforce that the resolved
+	// path remains inside cacheDir (defense in depth against path traversal).
 	cacheDir := filepath.Join(m.settings.RepositoryCache, "archive")
-	cachePath := filepath.Join(cacheDir, fmt.Sprintf("%s-%s-%s.tgz",
-		filepath.Base(repoName), filepath.Base(chartName), filepath.Base(version)))
+	cacheFile := fmt.Sprintf("%s-%s-%s.tgz",
+		filepath.Base(repoName), filepath.Base(chartName), filepath.Base(version))
+	cachePath := filepath.Clean(filepath.Join(cacheDir, cacheFile))
+	relCachePath, err := filepath.Rel(cacheDir, cachePath)
+	if err != nil || relCachePath == ".." || strings.HasPrefix(relCachePath, ".."+string(os.PathSeparator)) || filepath.IsAbs(relCachePath) {
+		return "", fmt.Errorf("invalid cache path")
+	}
+
 	var chartData []byte
 	if data, err := os.ReadFile(cachePath); err == nil {
 		chartData = data
