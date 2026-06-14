@@ -18,6 +18,7 @@ import YAMLViewer from '../common/YAMLViewer'
 import { kindLabel } from '../../store/slices/resourceSlice'
 import { buildSearchIndex, filterByQuery } from '../../store/searchUtils'
 import { canVerb } from '../../store/slices/clusterSlice'
+import { confirmIfProduction } from '../../utils/productionGuard'
 import { Layers, ShieldOff } from 'lucide-react'
 import { SECTION_LABELS, COLUMNS, CLUSTER_SCOPED_SECTIONS } from '../../config'
 
@@ -856,15 +857,17 @@ export default function ResourceList(): JSX.Element {
 
   const handleDelete = (resource: AnyKubeResource) => {
     setContextMenu(null)
-    // Only require the type-to-confirm dialog in production-marked contexts.
-    // Elsewhere, delete immediately and surface any failure via the error toast.
-    if (isProduction) {
-      setDeleteTarget(resource)
-      return
-    }
-    performDelete(resource)
-      .catch(err => setRestartErrorWithTimeout((err as Error).message ?? 'Delete failed'))
-      .finally(() => refresh())
+    // Type-to-confirm dialog only in production; elsewhere delete immediately
+    // and surface any failure via the error toast.
+    confirmIfProduction(
+      isProduction,
+      () => setDeleteTarget(resource),
+      () => {
+        performDelete(resource)
+          .catch(err => setRestartErrorWithTimeout((err as Error).message ?? 'Delete failed'))
+          .finally(() => refresh())
+      },
+    )
   }
 
   const handleRestart = async (resource: AnyKubeResource) => {
@@ -1210,12 +1213,11 @@ export default function ResourceList(): JSX.Element {
               <button
                 onClick={(e) => {
                   e.stopPropagation()
-                  // Confirmation dialog only for production-marked contexts.
-                  if (isProduction) {
-                    setBulkDeleteConfirmOpen(true)
-                  } else {
-                    void handleBulkDelete()
-                  }
+                  confirmIfProduction(
+                    isProduction,
+                    () => setBulkDeleteConfirmOpen(true),
+                    () => void handleBulkDelete(),
+                  )
                 }}
                 disabled={bulkDeleteLoading}
                 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-red-500 hover:text-red-600 dark:hover:text-red-400 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 px-4 py-2 rounded-full transition-colors active:scale-95 disabled:opacity-50"
