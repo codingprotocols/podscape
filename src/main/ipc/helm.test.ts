@@ -1,8 +1,26 @@
-import { vi, describe, it, expect } from 'vitest'
+import { vi, describe, it, expect, beforeEach } from 'vitest'
 
-vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
+// Capture IPC handlers as they are registered so we can invoke them directly.
+const ipcHandlers = new Map<string, (...args: any[]) => any>()
+vi.mock('electron', () => ({
+  ipcMain: {
+    handle: vi.fn((channel: string, fn: (...args: any[]) => any) => {
+      ipcHandlers.set(channel, fn)
+    }),
+  },
+}))
+vi.mock('../sidecar/api', () => ({
+  sidecarFetch: vi.fn(),
+  checkedSidecarFetch: vi.fn(),
+}))
+vi.mock('../sidecar/runtime', () => ({ activeSidecarPort: 5050 }))
+vi.mock('../sidecar/auth', () => ({ sidecarToken: 'test-token' }))
+vi.mock('../../common/constants', () => ({ SIDECAR_HOST: '127.0.0.1' }))
 
-import { transformRelease } from './helm'
+import { transformRelease, registerHelmHandlers } from './helm'
+import { checkedSidecarFetch } from '../sidecar/api'
+
+const mockCheckedFetch = checkedSidecarFetch as ReturnType<typeof vi.fn>
 
 describe('transformRelease', () => {
   it('maps camelCase keys (sidecar format)', () => {
@@ -74,5 +92,37 @@ describe('transformRelease', () => {
   it('converts numeric version to string', () => {
     const raw = { version: 10 }
     expect(transformRelease(raw).revision).toBe('10')
+  })
+})
+
+describe('helm IPC handlers — POST mutations', () => {
+  // registerHelmHandlers is guarded against double-registration, so register
+  // once and keep the captured handlers; only reset mock call history per test.
+  registerHelmHandlers()
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('helm:rollback sends POST to /helm/rollback with encoded params', async () => {
+    mockCheckedFetch.mockResolvedValueOnce(new Response('', { status: 200 }))
+    const handler = ipcHandlers.get('helm:rollback')!
+    const result = await handler({}, 'ctx', 'prod', 'my release', 3)
+    expect(mockCheckedFetch).toHaveBeenCalledWith(
+      '/helm/rollback?namespace=prod&release=my%20release&revision=3',
+      { method: 'POST' }
+    )
+    expect(result).toBe('Rollback successful')
+  })
+
+  it('helm:uninstall sends POST to /helm/uninstall with encoded params', async () => {
+    mockCheckedFetch.mockResolvedValueOnce(new Response('', { status: 200 }))
+    const handler = ipcHandlers.get('helm:uninstall')!
+    const result = await handler({}, 'ctx', 'prod', 'my release')
+    expect(mockCheckedFetch).toHaveBeenCalledWith(
+      '/helm/uninstall?namespace=prod&release=my%20release',
+      { method: 'POST' }
+    )
+    expect(result).toBe('Uninstall successful')
   })
 })

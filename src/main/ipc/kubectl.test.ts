@@ -94,11 +94,12 @@ describe('KubectlProvider.scaleResource', () => {
     vi.clearAllMocks()
   })
 
-  it('calls /scale with correct query params', async () => {
+  it('calls /scale with correct query params and POST method', async () => {
     mockCheckedFetch.mockResolvedValueOnce(new Response('ok', { status: 200 }))
     await provider.scaleResource('ctx', 'default', 'deployment', 'web', 5)
     expect(mockCheckedFetch).toHaveBeenCalledWith(
-      '/scale?namespace=default&kind=deployment&name=web&replicas=5'
+      '/scale?namespace=default&kind=deployment&name=web&replicas=5',
+      { method: 'POST' }
     )
   })
 
@@ -117,11 +118,12 @@ describe('KubectlProvider.rolloutRestart', () => {
     vi.clearAllMocks()
   })
 
-  it('calls /rollout/restart with correct query params', async () => {
+  it('calls /rollout/restart with correct query params and POST method', async () => {
     mockCheckedFetch.mockResolvedValueOnce(new Response('ok', { status: 200 }))
     await provider.rolloutRestart('ctx', 'default', 'deployment', 'web')
     expect(mockCheckedFetch).toHaveBeenCalledWith(
-      '/rollout/restart?namespace=default&kind=deployment&name=web'
+      '/rollout/restart?namespace=default&kind=deployment&name=web',
+      { method: 'POST' }
     )
   })
 })
@@ -134,18 +136,21 @@ describe('KubectlProvider.deleteResource', () => {
     vi.clearAllMocks()
   })
 
-  it('calls /delete with correct query params', async () => {
+  it('calls /delete with correct query params and POST method', async () => {
     mockCheckedFetch.mockResolvedValueOnce(new Response('ok', { status: 200 }))
     await provider.deleteResource('ctx', 'default', 'pod', 'web-abc')
     expect(mockCheckedFetch).toHaveBeenCalledWith(
-      '/delete?namespace=default&kind=pod&name=web-abc'
+      '/delete?namespace=default&kind=pod&name=web-abc',
+      { method: 'POST' }
     )
   })
 
-  it('handles null namespace (cluster-scoped)', async () => {
+  it('handles null namespace (cluster-scoped) with POST method', async () => {
     mockCheckedFetch.mockResolvedValueOnce(new Response('ok', { status: 200 }))
     await provider.deleteResource('ctx', null, 'node', 'worker-1')
-    expect(mockCheckedFetch).toHaveBeenCalledWith('/delete?namespace=&kind=node&name=worker-1')
+    expect(mockCheckedFetch).toHaveBeenCalledWith('/delete?namespace=&kind=node&name=worker-1', {
+      method: 'POST',
+    })
   })
 })
 
@@ -176,19 +181,21 @@ describe('KubectlProvider.rolloutUndo', () => {
     vi.clearAllMocks()
   })
 
-  it('calls /rollout/undo with revision', async () => {
+  it('calls /rollout/undo with revision and POST method', async () => {
     mockCheckedFetch.mockResolvedValueOnce(new Response('ok', { status: 200 }))
     await provider.rolloutUndo('ctx', 'default', 'deployment', 'web', 2)
     expect(mockCheckedFetch).toHaveBeenCalledWith(
-      '/rollout/undo?namespace=default&kind=deployment&name=web&revision=2'
+      '/rollout/undo?namespace=default&kind=deployment&name=web&revision=2',
+      { method: 'POST' }
     )
   })
 
-  it('calls /rollout/undo without revision when omitted', async () => {
+  it('calls /rollout/undo without revision when omitted, with POST method', async () => {
     mockCheckedFetch.mockResolvedValueOnce(new Response('ok', { status: 200 }))
     await provider.rolloutUndo('ctx', 'default', 'deployment', 'web')
     expect(mockCheckedFetch).toHaveBeenCalledWith(
-      '/rollout/undo?namespace=default&kind=deployment&name=web'
+      '/rollout/undo?namespace=default&kind=deployment&name=web',
+      { method: 'POST' }
     )
   })
 })

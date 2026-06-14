@@ -548,6 +548,28 @@ func TestHandleApplyYAML_MethodNotAllowed(t *testing.T) {
 	}
 }
 
+// ── HandleHelmRollback / HandleHelmUninstall ──────────────────────────────────
+
+func TestHandleHelmRollback_MethodNotAllowed(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/helm/rollback?namespace=ns&release=r&revision=1", nil)
+	rr := httptest.NewRecorder()
+	HandleHelmRollback(rr, req)
+
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for GET, got %d", rr.Code)
+	}
+}
+
+func TestHandleHelmUninstall_MethodNotAllowed(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/helm/uninstall?namespace=ns&release=r", nil)
+	rr := httptest.NewRecorder()
+	HandleHelmUninstall(rr, req)
+
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for GET, got %d", rr.Code)
+	}
+}
+
 func TestHandleApplyYAML_InvalidYAML(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/apply", strings.NewReader("{{invalid: yaml: ["))
 	req.Header.Set("Content-Type", "application/yaml")
@@ -807,7 +829,7 @@ func TestHandleHelmRollback_InvalidRevision(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet,
+			req := httptest.NewRequest(http.MethodPost,
 				"/helm/rollback?namespace=ns&release=myapp&revision="+tc.revision, nil)
 			rr := httptest.NewRecorder()
 			HandleHelmRollback(rr, req)

@@ -94,6 +94,10 @@ func HandleHelmHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleHelmRollback(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	namespace := r.URL.Query().Get("namespace")
 	releaseName := r.URL.Query().Get("release")
 	revisionStr := r.URL.Query().Get("revision")
@@ -117,6 +121,10 @@ func HandleHelmRollback(w http.ResponseWriter, r *http.Request) {
 
 
 func HandleHelmUninstall(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	namespace := r.URL.Query().Get("namespace")
 	releaseName := r.URL.Query().Get("release")
 

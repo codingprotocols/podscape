@@ -57,14 +57,14 @@ export function registerHelmHandlers(): void {
 
   // Rollback to revision
   ipcMain.handle('helm:rollback', async (_event, _context: string, namespace: string, release: string, revision: number) => {
-    await checkedSidecarFetch(`/helm/rollback?namespace=${encodeURIComponent(namespace)}&release=${encodeURIComponent(release)}&revision=${revision}`)
+    await checkedSidecarFetch(`/helm/rollback?namespace=${encodeURIComponent(namespace)}&release=${encodeURIComponent(release)}&revision=${revision}`, { method: 'POST' })
     return 'Rollback successful'
   })
 
 
   // Uninstall release
   ipcMain.handle('helm:uninstall', async (_event, _context: string, namespace: string, release: string) => {
-    await checkedSidecarFetch(`/helm/uninstall?namespace=${encodeURIComponent(namespace)}&release=${encodeURIComponent(release)}`)
+    await checkedSidecarFetch(`/helm/uninstall?namespace=${encodeURIComponent(namespace)}&release=${encodeURIComponent(release)}`, { method: 'POST' })
     return 'Uninstall successful'
   })
 
