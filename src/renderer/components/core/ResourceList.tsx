@@ -641,7 +641,7 @@ function CustomCheckbox({ checked, onChange, partiallyChecked = false }: { check
 
 export default function ResourceList(): JSX.Element {
   // Data fields — subscribed via shallow equality so any change triggers a re-render.
-  const { section, selectedResource, loadingResources, selectedNamespace, selectedContext, searchQuery, deniedSections, allowedVerbs, nodeMetricsArr } =
+  const { section, selectedResource, loadingResources, selectedNamespace, selectedContext, searchQuery, deniedSections, allowedVerbs, nodeMetricsArr, isProduction } =
     useAppStore(useShallow(s => ({
       section: s.section,
       selectedResource: s.selectedResource,
@@ -652,6 +652,7 @@ export default function ResourceList(): JSX.Element {
       deniedSections: s.deniedSections,
       allowedVerbs: s.allowedVerbs,
       nodeMetricsArr: s.section === 'nodes' ? s.nodeMetrics : null,
+      isProduction: s.isProduction,
     })))
 
   // Action functions — stable refs created once; read directly from the store
@@ -850,9 +851,20 @@ export default function ResourceList(): JSX.Element {
     }
   }
 
+  const performDelete = (resource: AnyKubeResource) =>
+    deleteResource(kindLabel(section), resource.metadata.name, clusterScoped, resource.metadata.namespace)
+
   const handleDelete = (resource: AnyKubeResource) => {
     setContextMenu(null)
-    setDeleteTarget(resource)
+    // Only require the type-to-confirm dialog in production-marked contexts.
+    // Elsewhere, delete immediately and surface any failure via the error toast.
+    if (isProduction) {
+      setDeleteTarget(resource)
+      return
+    }
+    performDelete(resource)
+      .catch(err => setRestartErrorWithTimeout((err as Error).message ?? 'Delete failed'))
+      .finally(() => refresh())
   }
 
   const handleRestart = async (resource: AnyKubeResource) => {
@@ -1198,7 +1210,12 @@ export default function ResourceList(): JSX.Element {
               <button
                 onClick={(e) => {
                   e.stopPropagation()
-                  setBulkDeleteConfirmOpen(true)
+                  // Confirmation dialog only for production-marked contexts.
+                  if (isProduction) {
+                    setBulkDeleteConfirmOpen(true)
+                  } else {
+                    void handleBulkDelete()
+                  }
                 }}
                 disabled={bulkDeleteLoading}
                 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-red-500 hover:text-red-600 dark:hover:text-red-400 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 px-4 py-2 rounded-full transition-colors active:scale-95 disabled:opacity-50"
@@ -1233,7 +1250,7 @@ export default function ResourceList(): JSX.Element {
             name={deleteTarget.metadata.name}
             kind={kindLabel(section)}
             onConfirm={async () => {
-              await deleteResource(kindLabel(section), deleteTarget.metadata.name, clusterScoped, deleteTarget.metadata.namespace)
+              await performDelete(deleteTarget)
               setDeleteTarget(null)
               refresh()
             }}
