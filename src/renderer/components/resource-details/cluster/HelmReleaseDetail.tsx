@@ -6,6 +6,7 @@ import type { HelmRelease, HelmHistoryEntry } from '../../../types'
 import { formatAge } from '../../../types'
 import YAMLViewer from '../../common/YAMLViewer'
 import CopyButton from '../../common/CopyButton'
+import { confirmIfProduction } from '../../../utils/productionGuard'
 
 interface Props {
   release: HelmRelease
@@ -214,14 +215,13 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onRef
   }
 
 
-  const handleRollback = async () => {
-    if (rollbackTarget === null) return
+  const handleRollback = async (revision: number) => {
     const ctx = context
     setRollingBack(true)
     setRbError(null)
     let stale = false
     try {
-      await window.helm.rollback(context, release.namespace, release.name, rollbackTarget)
+      await window.helm.rollback(context, release.namespace, release.name, revision)
       if (useAppStore.getState().selectedContext !== ctx) { stale = true; return }
       setRollbackTarget(null)
       await loadHistory()
@@ -467,7 +467,11 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onRef
                         <td className="px-4 py-4 text-right">
                           {entry.status !== 'deployed' && entry.status !== 'superseded' && (
                             <button
-                              onClick={() => setRollbackTarget(rollbackTarget === entry.revision ? null : entry.revision)}
+                              onClick={() => confirmIfProduction(
+                                useAppStore.getState().isProduction,
+                                () => setRollbackTarget(rollbackTarget === entry.revision ? null : entry.revision),
+                                () => void handleRollback(entry.revision),
+                              )}
                               className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border transition-all ${
                                 rollbackTarget === entry.revision
                                 ? 'bg-red-500/10 text-red-400 border-red-500/20'
@@ -496,7 +500,7 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onRef
                     <p className="text-[11px] text-slate-400 mt-1 font-medium">Instantly revert to revision #{rollbackTarget}?</p>
                   </div>
                   <button
-                    onClick={handleRollback}
+                    onClick={() => handleRollback(rollbackTarget)}
                     disabled={rollingBack}
                     className="px-4 py-2 text-[10px] font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-500/20 flex items-center gap-2 disabled:opacity-50"
                   >

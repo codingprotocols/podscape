@@ -150,13 +150,13 @@ export class KubectlProvider {
 
   async scaleResource(_context: string, namespace: string, kind: string, name: string, replicas: number): Promise<string> {
     const url = `/scale?namespace=${encodeURIComponent(namespace)}&kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}&replicas=${replicas}`
-    await checkedSidecarFetch(url)
+    await checkedSidecarFetch(url, { method: 'POST' })
     return 'Scaled successfully'
   }
 
   async rolloutRestart(_context: string, namespace: string, kind: string, name: string): Promise<string> {
     const url = `/rollout/restart?namespace=${encodeURIComponent(namespace)}&kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`
-    await checkedSidecarFetch(url)
+    await checkedSidecarFetch(url, { method: 'POST' })
     return 'Restarted successfully'
   }
 
@@ -168,7 +168,7 @@ export class KubectlProvider {
 
   async rolloutUndo(_context: string, namespace: string, kind: string, name: string, revision?: number): Promise<string> {
     const url = `/rollout/undo?namespace=${encodeURIComponent(namespace)}&kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}${revision ? `&revision=${revision}` : ''}`
-    await checkedSidecarFetch(url)
+    await checkedSidecarFetch(url, { method: 'POST' })
     return 'Undo successful'
   }
 
@@ -189,7 +189,7 @@ export class KubectlProvider {
 
   async deleteResource(_context: string, namespace: string | null, kind: string, name: string): Promise<string> {
     const url = `/delete?namespace=${encodeURIComponent(namespace || '')}&kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`
-    await checkedSidecarFetch(url)
+    await checkedSidecarFetch(url, { method: 'POST' })
     return 'Deleted successfully'
   }
 
