@@ -71,9 +71,13 @@ export async function startSidecar(): Promise<void> {
     console.log(`[Sidecar] Port ${SIDECAR_PORT} in use — using port ${port}`)
   }
 
-  const child = spawn(binaryPath, ['-port', String(port), '-kubeconfig', kubeconfigPath, '-token', sidecarToken], {
+  // The token goes through the environment, not argv: process arguments are
+  // world-readable (`ps aux`), so passing it as -token let any local user read
+  // the secret and drive this sidecar. The sidecar unsets the variable after
+  // reading it so nothing it spawns inherits the value.
+  const child = spawn(binaryPath, ['-port', String(port), '-kubeconfig', kubeconfigPath], {
     stdio: is.dev ? 'inherit' : 'pipe',
-    env: getAugmentedEnv(),
+    env: getAugmentedEnv({ PODSCAPE_TOKEN: sidecarToken }),
     windowsHide: true,
     cwd: is.dev ? join(app.getAppPath(), 'go-core') : join(process.resourcesPath, 'bin')
   })
