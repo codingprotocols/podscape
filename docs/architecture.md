@@ -74,7 +74,7 @@ The sidecar is a standalone HTTP server compiled as `podscape-core`. It is the s
 
 **No-kubeconfig mode**: if no valid kubeconfig is found at startup, the sidecar still starts the HTTP server and sets `NoKubeconfig = true`. `/health` returns 200 immediately so the renderer can show the `KubeConfigOnboarding` screen instead of an error dialog. After the user sets a kubeconfig path, the sidecar is restarted via `window.sidecar.restart()` IPC.
 
-**Token auth**: the sidecar is launched with a randomly generated `--token` flag. Every request (except `/health`) must include the `X-Podscape-Token` header matching that token. The token is passed to the renderer via IPC and injected by `checkedSidecarFetch`.
+**Token auth**: the sidecar is launched with a randomly generated token, passed via the `PODSCAPE_TOKEN` environment variable (not a flag — process arguments are world-readable via `ps`). Every request (except `/health`) must include the `X-Podscape-Token` header matching that token. The token is passed to the renderer via IPC and injected by `checkedSidecarFetch`.
 
 **RBAC probe**: at startup and on every context switch, `rbac.CheckAccess` fires concurrent `SelfSubjectAccessReview` requests for all 28 tracked resource types checking both `list` and `watch` verbs. Results are stored in `ContextCache.AllowedResources map[string]bool`:
 
@@ -251,7 +251,7 @@ flowchart TB
 
 ### Sidecar token auth
 
-At startup, `sidecar/auth.ts` generates a random 64-character hex token (`crypto.randomBytes(32)`). It is passed to the sidecar as the `--token` flag and injected into every HTTP request by `checkedSidecarFetch` as the `X-Podscape-Token` header. The sidecar rejects any request (except `/health`) that omits or mismatches the token. The token is never written to disk and is unique per app session.
+At startup, `sidecar/auth.ts` generates a random 64-character hex token (`crypto.randomBytes(32)`). It is passed to the sidecar in the `PODSCAPE_TOKEN` environment variable, which the sidecar unsets immediately after reading so nothing it spawns inherits it, and injected into every HTTP request by `checkedSidecarFetch` as the `X-Podscape-Token` header. The sidecar rejects any request (except `/health`) that omits or mismatches the token. The token is never written to disk and is unique per app session.
 
 ### Secret masking
 

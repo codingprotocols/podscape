@@ -52,8 +52,22 @@ func main() {
 		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
 	}
 	port := flag.String("port", "5050", "port to listen on")
-	token := flag.String("token", "", "shared secret; requests without X-Podscape-Token matching this value are rejected")
+	// Deprecated in favour of the PODSCAPE_TOKEN environment variable: process
+	// arguments are world-readable (`ps aux`), so a token passed this way can be
+	// read by any local user and replayed against this sidecar.
+	tokenFlag := flag.String("token", "", "DEPRECATED, use PODSCAPE_TOKEN: shared secret; requests without a matching X-Podscape-Token are rejected")
 	flag.Parse()
+
+	authToken := os.Getenv("PODSCAPE_TOKEN")
+	// Do not leak the secret into anything this process spawns (kubectl, helm…).
+	os.Unsetenv("PODSCAPE_TOKEN") //nolint:errcheck
+	if authToken == "" && *tokenFlag != "" {
+		authToken = *tokenFlag
+		log.Printf("[sidecar] -token is deprecated and readable by any local user via `ps`; pass PODSCAPE_TOKEN instead")
+	}
+	if authToken == "" {
+		log.Printf("[sidecar] WARNING: no token supplied — the API is UNAUTHENTICATED and any local process can drive it")
+	}
 
 	// Now that flags are parsed, turn off klog's direct-stderr path and redirect
 	// through a filter that drops bookmark noise. Errors still pass through.
@@ -161,8 +175,8 @@ func main() {
 	// A wildcard CORS header would allow any webpage the user visits to send
 	// requests to the sidecar, defeating the token-auth layer.
 	var handler http.Handler = http.DefaultServeMux
-	if *token != "" {
-		tok := *token
+	if authToken != "" {
+		tok := authToken
 		inner := handler
 		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// /health is exempt — sidecar.ts polls it without an auth header
