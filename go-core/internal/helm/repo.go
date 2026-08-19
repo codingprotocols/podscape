@@ -2,6 +2,8 @@ package helm
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -425,11 +427,12 @@ func (m *HelmRepoManager) GetValues(repoName, chartName, version string) (string
 	}
 
 	// Check local cache.
-	// Build cache path from sanitized components, then enforce that the resolved
-	// path remains inside cacheDir (defense in depth against path traversal).
+	// Build cache path from a deterministic hash of identifiers, then enforce that
+	// the resolved path remains inside cacheDir (defense in depth against path traversal).
 	cacheDir := filepath.Join(m.settings.RepositoryCache, "archive")
-	cacheFile := fmt.Sprintf("%s-%s-%s.tgz",
-		filepath.Base(repoName), filepath.Base(chartName), filepath.Base(version))
+	cacheKey := repoName + "\n" + chartName + "\n" + version
+	sum := sha256.Sum256([]byte(cacheKey))
+	cacheFile := hex.EncodeToString(sum[:]) + ".tgz"
 	cachePath := filepath.Clean(filepath.Join(cacheDir, cacheFile))
 	relCachePath, err := filepath.Rel(cacheDir, cachePath)
 	if err != nil || relCachePath == ".." || strings.HasPrefix(relCachePath, ".."+string(os.PathSeparator)) || filepath.IsAbs(relCachePath) {
