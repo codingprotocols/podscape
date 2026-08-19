@@ -197,13 +197,16 @@ jobs:
   # pull-requests:write on codingprotocols/homebrew-tap. GITHUB_TOKEN cannot be
   # used for that — it is scoped to this repository only.
   #
-  # Deliberately does NOT touch Formula/podscape-mcp.rb: that formula still
-  # references podscape-mcp-linux-arm64, which this workflow no longer builds,
-  # so bumping its version would point Linux/arm64 users at a 404.
+  # Bumps Formula/podscape-mcp.rb too. That was previously unsafe because the
+  # formula pinned podscape-mcp-linux-arm64, which this workflow does not build;
+  # that block has since been removed from the formula, so every URL it pins is
+  # now an asset this workflow actually produces.
   tap:
-    name: Bump Homebrew Cask
+    name: Bump Homebrew Cask & Formula
     runs-on: ubuntu-latest
-    needs: [release-mac]
+    # release-linux too: the formula pins podscape-mcp-linux-amd64, which that
+    # job uploads. Without it the digest lookup can race the upload.
+    needs: [release-mac, release-linux]
 
     steps:
       - name: Checkout tap
@@ -212,7 +215,7 @@ jobs:
           repository: codingprotocols/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
-      - name: Collect dmg checksums
+      - name: Collect release checksums
         id: sums
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -240,17 +243,27 @@ jobs:
 
           ARM=$(sum_for "Podscape-${VERSION}-arm64.dmg")
           INTEL=$(sum_for "Podscape-${VERSION}.dmg")
+          MCP_DARWIN_ARM=$(sum_for "podscape-mcp-darwin-arm64")
+          MCP_DARWIN_AMD=$(sum_for "podscape-mcp-darwin-amd64")
+          MCP_LINUX_AMD=$(sum_for "podscape-mcp-linux-amd64")
 
-          for pair in "arm:$ARM" "intel:$INTEL"; do
+          for pair in "arm:$ARM" "intel:$INTEL" \
+                      "mcp-darwin-arm:$MCP_DARWIN_ARM" \
+                      "mcp-darwin-amd:$MCP_DARWIN_AMD" \
+                      "mcp-linux-amd:$MCP_LINUX_AMD"; do
             printf '%s' "${pair#*:}" | grep -qE '^[0-9a-f]{64}$' || {
               echo "::error::Could not resolve a sha256 for ${pair%%:*} (got '${pair#*:}')"
               exit 1
             }
           done
 
-          echo "SHA_ARM=$ARM"     >> $GITHUB_ENV
-          echo "SHA_INTEL=$INTEL" >> $GITHUB_ENV
-          echo "arm=$ARM  intel=$INTEL"
+          echo "SHA_ARM=$ARM"                      >> $GITHUB_ENV
+          echo "SHA_INTEL=$INTEL"                  >> $GITHUB_ENV
+          echo "SHA_DARWIN_ARM=$MCP_DARWIN_ARM"    >> $GITHUB_ENV
+          echo "SHA_DARWIN_AMD=$MCP_DARWIN_AMD"    >> $GITHUB_ENV
+          echo "SHA_LINUX_AMD=$MCP_LINUX_AMD"      >> $GITHUB_ENV
+          echo "cask: arm=$ARM intel=$INTEL"
+          echo "mcp:  $MCP_DARWIN_ARM $MCP_DARWIN_AMD $MCP_LINUX_AMD"
 
       - name: Update cask version and checksums
         run: |
@@ -281,8 +294,49 @@ jobs:
           PYEOF
 
           git diff --stat
+
+      - name: Update formula version and checksums
+        run: |
+          python3 - <<'PYEOF'
+          import os, re, sys
+
+          formula = "Formula/podscape-mcp.rb"
+          version = os.environ["VERSION"]
+          assets = {
+              "podscape-mcp-darwin-arm64": os.environ["SHA_DARWIN_ARM"],
+              "podscape-mcp-darwin-amd64": os.environ["SHA_DARWIN_AMD"],
+              "podscape-mcp-linux-amd64":  os.environ["SHA_LINUX_AMD"],
+          }
+
+          for name, sha in assets.items():
+              if not re.fullmatch(r"[0-9a-f]{64}", sha):
+                  sys.exit(f"refusing to write a malformed sha256 for {name}: {sha!r}")
+
+          src = open(formula).read()
+          for name, sha in assets.items():
+              # The formula has no `version` stanza — Homebrew reads the version
+              # from the URL path. Rewrite each URL and the sha256 directly
+              # beneath it together, so a URL can never be paired with another
+              # platform's checksum.
+              pat = re.compile(
+                  r'(url "https://github\.com/codingprotocols/podscape/releases/download/v)'
+                  r'[^/"]+'
+                  r'(/' + re.escape(name) + r'"\s*\n\s*sha256 ")'
+                  r'[0-9a-f]{64}'
+                  r'(")'
+              )
+              src, n = pat.subn(lambda m: m.group(1) + version + m.group(2) + sha + m.group(3), src)
+              if n != 1:
+                  sys.exit(f"expected exactly 1 url+sha256 pair for {name}, replaced {n}")
+
+          open(formula, "w").write(src)
+          print(f"podscape-mcp -> {version} ({len(assets)} platforms)")
+          PYEOF
+
+          git diff --stat
+
           git diff --quiet && {
-            echo "::notice::Cask already at ${VERSION}; nothing to do."
+            echo "::notice::Cask and formula already at ${VERSION}; nothing to do."
             echo "CHANGED=false" >> $GITHUB_ENV
             exit 0
           }
@@ -309,8 +363,8 @@ jobs:
             --repo codingprotocols/homebrew-tap \
             --base main --head "$BRANCH" \
             --title "podscape ${VERSION}" \
-            --body "Automated bump from [Podscape ${GITHUB_REF_NAME}](https://github.com/codingprotocols/podscape/releases/tag/${GITHUB_REF_NAME}).
+            --body "Automated bump of the cask and the podscape-mcp formula from [Podscape ${GITHUB_REF_NAME}](https://github.com/codingprotocols/podscape/releases/tag/${GITHUB_REF_NAME}).
 
-          Checksums come from GitHub's published digests for the release assets.
+          Checksums come from GitHub's published digests for the release assets. The formula has no version stanza, so its version comes from the URL path segments, rewritten together with each checksum.
 
-          Tap CI will audit and install the cask before this merges."
+          Tap CI will audit and install both before this merges."
