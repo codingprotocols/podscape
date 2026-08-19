@@ -2,17 +2,10 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from '
 import { homedir } from 'os'
 import { join } from 'path'
 
-export interface PodscapeSettings {
-    shellPath: string               // absolute path or '' for auto-detect
-    theme: 'light' | 'dark' | ''   // '' means use last-used / OS preference
-    kubeconfigPath: string         // absolute path or '' for default (~/.kube/config)
-    prodContexts: string[]         // List of contexts considered "Production"
-    prometheusUrls: Record<string, string>  // per-context manual Prometheus URL; '' = auto-discover
-    tourCompleted: boolean         // whether the post-connection tour has been shown
-    pluginsEnabled: boolean        // whether the Plugins (Krew) panel is shown in the sidebar
-    gitopsEnabled: boolean         // whether the GitOps panel is shown in the sidebar
-    networkEnabled: boolean        // whether Network Map and Connectivity panels are shown in the sidebar
-}
+// Defined in common/ so the renderer can type `window.settings` against the same
+// shape it is persisted as. Re-exported here so existing importers are unaffected.
+import type { PodscapeSettings } from '../../common/constants'
+export type { PodscapeSettings }
 
 const SETTINGS_DIR = join(homedir(), '.podscape')
 const SETTINGS_FILE = join(SETTINGS_DIR, 'settings.json')

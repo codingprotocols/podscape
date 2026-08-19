@@ -26,8 +26,9 @@ jobs:
               - 'src/**/*'
               - 'package.json'
               - 'package-lock.json'
-              - 'electron-vite.config.ts'
-              - 'tsconfig.json'
+              - 'electron.vite.config.ts'
+              - 'vitest.config.ts'
+              - 'tsconfig*.json'
             go:
               - 'go-core/**/*'
 
@@ -46,6 +47,11 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # electron-vite builds through esbuild, which strips types without checking
+      # them — without this step type errors never surface in CI.
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Build
         run: npm run build

@@ -140,6 +140,7 @@ function ExecTab({ session, active, theme, onSessionEnd }: ExecTabProps): JSX.El
       })
       return () => cancelAnimationFrame(rafId)
     }
+    return undefined // inactive tab — nothing scheduled, so nothing to clean up
   }, [active])
 
   // Update theme

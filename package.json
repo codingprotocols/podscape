@@ -19,6 +19,9 @@
     "build": "cd go-core && go build -ldflags=\"-s -w\" ./cmd/podscape-core/ && cd .. && electron-vite build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
@@ -122,7 +125,7 @@
     "asarUnpack": []
   },
   "overrides": {
-    "dompurify": "^3.4.11",
+    "dompurify": "^3.4.13",
     "@xmldom/xmldom": "^0.8.13",
     "lodash": "^4.18.1",
     "brace-expansion": "^1.1.13",
@@ -136,7 +139,7 @@
       "brace-expansion": "^2.0.3"
     },
     "minimatch": {
-      "brace-expansion": "^5.0.6"
+      "brace-expansion": "^5.0.7"
     }
   },
   "dependencies": {
