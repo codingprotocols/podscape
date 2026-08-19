@@ -20,7 +20,7 @@ interface ParsedMetric {
   overTarget: boolean | null  // null when we can't compare (string values)
 }
 
-function formatMetricValue(value: number | string | undefined, type: string, metricName: string): string | null {
+function formatMetricValue(value: number | string | undefined, type: string, _metricName: string): string | null {
   if (value === undefined || value === null) return null
   if (typeof value === 'number') {
     if (type === 'Utilization') return `${value}%`

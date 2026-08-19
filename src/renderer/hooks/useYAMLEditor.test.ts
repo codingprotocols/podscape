@@ -1,4 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import type { Mock } from 'vitest'
 
 // The hook file imports useAppStore, which creates the Zustand store on module
 // load and immediately calls localStorage.getItem. Mock the store module so
@@ -7,18 +8,19 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 vi.mock('../store', () => ({ useAppStore: vi.fn() }))
 
 import { _createYAMLEditorHandlers } from './useYAMLEditor'
+import type { GetYAMLFn, ApplyYAMLFn, RefreshFn } from './useYAMLEditor'
 
 describe('_createYAMLEditorHandlers', () => {
-    let getYAML: ReturnType<typeof vi.fn>
-    let applyYAML: ReturnType<typeof vi.fn>
-    let refresh: ReturnType<typeof vi.fn>
+    let getYAML: Mock<GetYAMLFn>
+    let applyYAML: Mock<ApplyYAMLFn>
+    let refresh: Mock<RefreshFn>
     let state: { yaml: string | null; loading: boolean; error: string | null }
-    let setState: { setYaml: ReturnType<typeof vi.fn>; setLoading: ReturnType<typeof vi.fn>; setError: ReturnType<typeof vi.fn> }
+    let setState: { setYaml: Mock<(v: string | null) => void>; setLoading: Mock<(v: boolean) => void>; setError: Mock<(v: string | null) => void> }
 
     beforeEach(() => {
-        getYAML = vi.fn()
-        applyYAML = vi.fn().mockResolvedValue('applied')
-        refresh = vi.fn()
+        getYAML = vi.fn<GetYAMLFn>()
+        applyYAML = vi.fn<ApplyYAMLFn>().mockResolvedValue('applied')
+        refresh = vi.fn<RefreshFn>()
         state = { yaml: null, loading: false, error: null }
         setState = {
             setYaml: vi.fn(v => { state.yaml = v }),
@@ -118,7 +120,7 @@ describe('_createYAMLEditorHandlers', () => {
 
     it('apply: calls refresh after applyYAML resolves (order matters)', async () => {
         const order: string[] = []
-        applyYAML.mockImplementation(async () => { order.push('apply') })
+        applyYAML.mockImplementation(async () => { order.push('apply'); return 'applied' })
         refresh.mockImplementation(() => { order.push('refresh') })
         setState.setYaml = vi.fn(v => { order.push('close'); state.yaml = v })
 

@@ -6,16 +6,18 @@ import {
     KubeConfigMap, KubeSecret, KubePVC, KubePV, KubeStorageClass,
     KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
     KubeNode, KubeEvent, KubeCRD,
-    NodeMetrics, PodMetrics, ResourceKind, AnyKubeResource, PortForwardEntry,
-    HelmRelease, DebugPodEntry, AppGroup, OwnerChainResponse, ProviderSet
+    NodeMetrics, PodMetrics,
+    HelmRelease, OwnerChainResponse, ProviderSet
 } from '../types'
 
-import type { RolloutRevision } from '../../common/constants'
+import type { RolloutRevision, PodscapeSettings } from '../../common/constants'
 import { AnalysisSlice } from './slices/analysisSlice'
 import { OperationSlice } from './slices/operationSlice'
 import { ProvidersSlice } from './slices/providersSlice'
 import { NavigationSlice } from './slices/navigationSlice'
 import { KrewSlice } from './slices/krewSlice'
+import { ClusterSlice } from './slices/clusterSlice'
+import { ResourceSlice } from './slices/resourceSlice'
 
 
 declare global {
@@ -76,7 +78,8 @@ declare global {
             copyFromContainer: (context: string, namespace: string, pod: string, container: string, remotePath: string, localPath: string) => Promise<void>
             streamLogs: (
                 context: string, namespace: string, pod: string, container: string | undefined,
-                onChunk: (chunk: string) => void, onEnd: () => void
+                onChunk: (chunk: string) => void, onEnd: () => void,
+                onError?: (msg: string) => void
             ) => Promise<string>
             stopLogs: (streamId: string) => Promise<void>
             cancelAllStreams: () => Promise<void>
@@ -98,6 +101,7 @@ declare global {
             reconcileGitOps: (kind: string, name: string, namespace: string) => Promise<void>
             suspendGitOps: (kind: string, name: string, namespace: string, suspend: boolean) => Promise<void>
             getProviders: () => Promise<ProviderSet>
+            getAllowedVerbs: (context: string) => Promise<Record<string, Record<string, boolean>>>
         }
         helm: {
             list: (context: string) => Promise<HelmRelease[]>
@@ -127,8 +131,8 @@ declare global {
             onExit: (id: string, cb: () => void) => () => void
         }
         settings: {
-            get: () => Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean }>
-            set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean }) => Promise<void>
+            get: () => Promise<PodscapeSettings>
+            set: (s: PodscapeSettings) => Promise<void>
             checkTools: () => Promise<{ kubeconfigOk: boolean; trivyOk: boolean }>
         }
         kubeconfig: {
@@ -181,101 +185,28 @@ export interface ExecSession {
     ptyId: string | null
 }
 
-export interface AppStore extends AnalysisSlice, OperationSlice, ProvidersSlice, NavigationSlice, KrewSlice {
-    // Navigation removed - inherited from NavigationSlice
-    
-    // Cluster selection
-
-    contexts: KubeContextEntry[]
-    selectedContext: string | null
-    starredContext: string | null
-    setStarredContext: (name: string | null) => void
-    hotbarContexts: string[]
-    toggleHotbarContext: (name: string) => void
-    namespaces: KubeNamespace[]
-    selectedNamespace: string | null
-    selectedResource: AnyKubeResource | null
-    kubeconfigOk: boolean
-    prodContexts: string[]
-    setProdContexts: (contexts: string[]) => Promise<void>
-    isProduction: boolean
-    contextSwitchStatus: string | null
-    resourceHistory: AnyKubeResource[]
-    apps: AppGroup[]
-
-    // Resources
-    pods: KubePod[]
-    deployments: KubeDeployment[]
-    daemonsets: KubeDaemonSet[]
-    statefulsets: KubeStatefulSet[]
-    replicasets: KubeReplicaSet[]
-    jobs: KubeJob[]
-    cronjobs: KubeCronJob[]
-    hpas: KubeHPA[]
-    pdbs: KubePDB[]
-    services: KubeService[]
-    ingresses: KubeIngress[]
-    ingressclasses: KubeIngressClass[]
-    networkpolicies: KubeNetworkPolicy[]
-    endpoints: KubeEndpoints[]
-    configmaps: KubeConfigMap[]
-    secrets: KubeSecret[]
-    pvcs: KubePVC[]
-    pvs: KubePV[]
-    storageclasses: KubeStorageClass[]
-    serviceaccounts: KubeServiceAccount[]
-    roles: KubeRole[]
-    clusterroles: KubeClusterRole[]
-    rolebindings: KubeRoleBinding[]
-    clusterrolebindings: KubeClusterRoleBinding[]
-    nodes: KubeNode[]
-    events: KubeEvent[]
-    crds: KubeCRD[]
-    podMetrics: PodMetrics[]
-    nodeMetrics: NodeMetrics[]
-    portForwards: PortForwardEntry[]
-    helmReleases: HelmRelease[]
-    debugPods: DebugPodEntry[]
-    securityScanResults: any | null
-    lastPreloadedAt: number
-    lastDashboardLoadedAt: number
-    addDebugPod: (pod: DebugPodEntry) => void
-    removeDebugPod: (name: string) => void
-    updateDebugPod: (name: string, updates: Partial<DebugPodEntry>) => void
-
-    // Loading / errors
-    loadingContexts: boolean
-    loadingNamespaces: boolean
-    loadingResources: boolean
-    error: string | null
-    setError: (err: string | null) => void
-    clearError: () => void
-
-    // Actions
+/**
+ * The composed store: the union of every slice, exactly as store/index.ts builds it.
+ *
+ * Each member is inherited from the slice that owns it — do NOT restate fields here.
+ * This interface previously hand-duplicated the Cluster and Resource slice members,
+ * which silently drifted from the slices themselves (sectionLoadedAt, lastRefreshedAt,
+ * metricsError, allowedVerbs, fetchAllowedVerbs, resourcequotas and limitranges were
+ * all missing), so every `set()` and `get()` touching them was untyped.
+ *
+ * `init` is the one genuine exception: it is composed in store/index.ts and belongs
+ * to no single slice.
+ */
+export interface AppStore extends
+    AnalysisSlice,
+    OperationSlice,
+    ProvidersSlice,
+    NavigationSlice,
+    KrewSlice,
+    ClusterSlice,
+    ResourceSlice {
+    /** Bootstrap: load settings, contexts, and the active context. Composed in store/index.ts. */
     init: () => Promise<void>
-    selectContext: (name: string) => Promise<void>
-    selectNamespace: (name: string) => void
-    selectResource: (r: AnyKubeResource | null) => void
-    deniedSections: Set<ResourceKind>
-    loadSection: (section: ResourceKind) => Promise<void>
-    loadDashboard: () => Promise<void>
-    refresh: () => Promise<void>
-    preloadSearchResources: () => Promise<void>
-
-    // Prometheus
-    prometheusAvailable: boolean | null
-    prometheusProbeError: string | null
-    prometheusTimeRange: { start: number; end: number }
-    prometheusActivePreset: '1h' | '6h' | '24h' | '7d'
-    setPrometheusTimeRange: (range: { start: number; end: number }, preset?: '1h' | '6h' | '24h' | '7d') => void
-    probePrometheus: () => Promise<void>
-    disconnectPrometheus: () => void
-
-    // Owner chains — keyed by resource UID
-    ownerChains: Record<string, OwnerChainResponse>
-
-    // Navigation
-    navigateToResource: (kind: string, name: string, namespace: string) => void
 }
 
 export type StoreSlice<T> = StateCreator<AppStore, [], [], T>

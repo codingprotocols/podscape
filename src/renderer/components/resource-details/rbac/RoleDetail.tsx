@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useAppStore } from '../../../store'
 import type { KubeRole, KubeClusterRole, PolicyRule, KubeEvent } from '../../../types'
 import { formatAge } from '../../../types'
-import { FileCode, X, Activity, Shield, Info, History, Key } from 'lucide-react'
+import { FileCode, X, Activity, Shield, Info, History } from 'lucide-react'
 import YAMLViewer from '../../common/YAMLViewer'
 import { useYAMLEditor } from '../../../hooks/useYAMLEditor'
 

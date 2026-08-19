@@ -1,5 +1,8 @@
 /// <reference types="vite/client" />
 
+/** Injected at build time by the `define` block in electron.vite.config.ts. */
+declare const appVersion: string
+
 interface UpdaterAPI {
   onChecking: (cb: () => void) => () => void
   onAvailable: (cb: (info: { version: string }) => void) => () => void

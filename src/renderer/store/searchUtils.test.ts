@@ -52,13 +52,13 @@ describe('buildSearchIndex', () => {
 
     it('joins multiple fields with null byte delimiter', () => {
         const r = makeResource('uid-1', 'web')
-        const idx = buildSearchIndex([r], r => ['web', 'default'])
+        const idx = buildSearchIndex([r], () => ['web', 'default'])
         expect(idx.get('uid-1')).toBe('web\0default')
     })
 
     it('filters out null and undefined fields before joining', () => {
         const r = makeResource('uid-1', 'web')
-        const idx = buildSearchIndex([r], r => ['web', null, undefined, 'running'])
+        const idx = buildSearchIndex([r], () => ['web', null, undefined, 'running'])
         expect(idx.get('uid-1')).toBe('web\0running')
         expect(idx.get('uid-1')).not.toContain('\0\0')
     })

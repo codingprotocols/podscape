@@ -17,9 +17,11 @@ interface StateSetters {
   setError: (v: string | null) => void
 }
 
-type GetYAMLFn = (kind: string, name: string, clusterScoped: boolean, namespace?: string) => Promise<string>
-type ApplyYAMLFn = (yaml: string) => Promise<string>
-type RefreshFn = () => void
+// Exported so the unit test can type its vi.fn() mocks against the real
+// signatures instead of the untyped ReturnType<typeof vi.fn>.
+export type GetYAMLFn = (kind: string, name: string, clusterScoped: boolean, namespace?: string) => Promise<string>
+export type ApplyYAMLFn = (yaml: string) => Promise<string>
+export type RefreshFn = () => void
 
 /**
  * Pure factory exported for unit-testing without React.

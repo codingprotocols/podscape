@@ -198,7 +198,7 @@ function FailureAnalysis({ run }: { run: DiagRun }) {
 
     if (!run.sourceContext || !run.sourcePod || !run.targetHost) return null
 
-    const { sourceContext, sourcePod, targetHost, targetNamespace, targetServiceName } = run
+    const { sourceContext, sourcePod, targetNamespace, targetServiceName } = run
     const sourceNs = sourcePod.metadata.namespace ?? 'default'
     const sourcePodLabels = sourcePod.metadata.labels ?? {}
 

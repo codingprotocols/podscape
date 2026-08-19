@@ -6,7 +6,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 const krewMock = {
     detect: vi.fn().mockResolvedValue({ available: false, unsupported: false }),
     install: vi.fn(),
-    onInstallProgress: vi.fn(() => vi.fn()),
+    onInstallProgress: vi.fn<(cb: (line: string) => void) => () => void>(() => vi.fn()),
     search: vi.fn().mockResolvedValue([]),
     installed: vi.fn().mockResolvedValue([]),
     installPlugin: vi.fn().mockResolvedValue({ ok: true }),
@@ -14,7 +14,7 @@ const krewMock = {
     update: vi.fn().mockResolvedValue({ ok: true }),
     upgradeAll: vi.fn().mockResolvedValue({ ok: true }),
     runPlugin: vi.fn().mockResolvedValue({ exitCode: 0 }),
-    onPluginOutput: vi.fn(() => vi.fn()),
+    onPluginOutput: vi.fn<(cb: (line: string) => void) => () => void>(() => vi.fn()),
 }
 
 ;(window as unknown as Record<string, unknown>).krew = krewMock

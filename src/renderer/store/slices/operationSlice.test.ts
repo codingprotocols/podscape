@@ -122,8 +122,10 @@ describe('operationSlice', () => {
     })
 
     it('onPortForwardReady callback updates entry status to active', () => {
-        let readyCb: (() => void) | undefined
-        windowMock.kubectl.onPortForwardReady.mockImplementationOnce((_id: string, cb: () => void) => {
+        // The real onPortForwardReady hands the callback a ready message; the slice
+        // ignores it, but the mock must still match the preload signature.
+        let readyCb: ((msg: string) => void) | undefined
+        windowMock.kubectl.onPortForwardReady.mockImplementationOnce((_id: string, cb: (msg: string) => void) => {
             readyCb = cb
             return vi.fn()
         })
@@ -133,7 +135,7 @@ describe('operationSlice', () => {
         const slice = (createOperationSlice as any)(set, get)
         slice.startPortForward(entry as any)
 
-        readyCb!()
+        readyCb!('Forwarding from 127.0.0.1:6060')
         const updated = state.portForwards.find((f: any) => f.id === 'pf4')
         expect(updated?.status).toBe('active')
     })

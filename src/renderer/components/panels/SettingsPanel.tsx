@@ -4,30 +4,7 @@ import Editor from '@monaco-editor/react'
 import { useAppStore } from '../../store'
 import { useShallow } from 'zustand/react/shallow'
 import { Save, CheckCircle, Monitor, Terminal, FileCode, Activity, Shield, RefreshCw, AlertCircle, Cpu, Copy } from 'lucide-react'
-
-interface SettingsForm {
-  shellPath: string
-  theme: string
-  kubeconfigPath: string
-  prodContexts: string[]
-  prometheusUrls: Record<string, string>
-  tourCompleted: boolean
-  pluginsEnabled: boolean
-  gitopsEnabled: boolean
-  networkEnabled: boolean
-}
-
-interface CloudClusterGuideBoxProps {
-  title: string
-  description: React.ReactNode
-}
-
-const CloudClusterGuideBox = ({ title, description }: CloudClusterGuideBoxProps) => (
-  <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-6 space-y-3">
-    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{title}</p>
-    <p className="text-[11px] text-slate-500 leading-relaxed font-medium">{description}</p>
-  </div>
-)
+import type { PodscapeSettings } from '../../../common/constants'
 
 export default function SettingsPanel(): JSX.Element {
   const { theme, setTheme, init, prodContexts, probePrometheus, prometheusAvailable, selectedContext, setPluginsEnabled, setGitopsEnabled, setNetworkEnabled } = useAppStore(useShallow(s => ({
@@ -42,7 +19,7 @@ export default function SettingsPanel(): JSX.Element {
     setGitopsEnabled: s.setGitopsEnabled,
     setNetworkEnabled: s.setNetworkEnabled,
   })))
-  const [form, setForm] = useState<SettingsForm>({ shellPath: '', theme, kubeconfigPath: '', prodContexts: [], prometheusUrls: {}, tourCompleted: false, pluginsEnabled: true, gitopsEnabled: true, networkEnabled: true })
+  const [form, setForm] = useState<PodscapeSettings>({ shellPath: '', theme, kubeconfigPath: '', prodContexts: [], prometheusUrls: {}, tourCompleted: false, pluginsEnabled: true, gitopsEnabled: true, networkEnabled: true })
   const [probing, setProbing] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -725,7 +702,9 @@ export default function SettingsPanel(): JSX.Element {
   )
 }
 
-function getMcpSnippet(tab: 'claude-desktop' | 'claude-code' | 'cursor', binaryPath: string): string {
+// All three clients take the same stdio config today; the tab is kept in the
+// signature so a client-specific shape can be added without touching call sites.
+function getMcpSnippet(_tab: 'claude-desktop' | 'claude-code' | 'cursor', binaryPath: string): string {
   const path = binaryPath || '/path/to/podscape-mcp'
   const json = {
     mcpServers: {

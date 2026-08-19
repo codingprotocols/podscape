@@ -77,9 +77,12 @@ export const setupMocks = () => {
             applyYAML: vi.fn(),
             portForward: vi.fn().mockResolvedValue(undefined),
             stopPortForward: vi.fn(),
-            onPortForwardReady: vi.fn(() => vi.fn()),
-            onPortForwardError: vi.fn(() => vi.fn()),
-            onPortForwardExit: vi.fn(() => vi.fn()),
+            // Typed against the real preload signatures — bare vi.fn(() => vi.fn())
+            // infers `() => Mock`, which rejects any mockImplementation that declares
+            // the (id, cb) parameters these subscribe helpers actually take.
+            onPortForwardReady: vi.fn<(id: string, cb: (msg: string) => void) => () => void>(() => vi.fn()),
+            onPortForwardError: vi.fn<(id: string, cb: (msg: string) => void) => () => void>(() => vi.fn()),
+            onPortForwardExit: vi.fn<(id: string, cb: () => void) => () => void>(() => vi.fn()),
             isReady: vi.fn().mockResolvedValue(true),
             scanSecurity: vi.fn(),
             scanKubesecBatch: vi.fn().mockResolvedValue([]),
@@ -115,7 +118,7 @@ export const setupMocks = () => {
             update: vi.fn().mockResolvedValue({ ok: true }),
             upgradeAll: vi.fn().mockResolvedValue({ ok: true }),
             runPlugin: vi.fn().mockResolvedValue({ exitCode: 0 }),
-            onPluginOutput: vi.fn(() => vi.fn()),
+            onPluginOutput: vi.fn<(cb: (line: string) => void) => () => void>(() => vi.fn()),
         },
     }
 
