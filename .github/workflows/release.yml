@@ -185,3 +185,132 @@ jobs:
             dist/*.deb \
             dist/latest-linux.yml \
             --clobber
+
+  # ── Homebrew cask ────────────────────────────────────────────────────────────
+  # Without this the cask silently keeps pointing at the previous release: the
+  # old dmgs still exist and still match their checksums, so nothing errors and
+  # new `brew install --cask podscape` users just quietly get a stale version.
+  #
+  # Opens a PR rather than pushing to the tap's main, so the tap's own CI
+  # (audit + install + notarization checks) gates the change before users see
+  # it. Requires HOMEBREW_TAP_TOKEN: a token with contents:write and
+  # pull-requests:write on codingprotocols/homebrew-tap. GITHUB_TOKEN cannot be
+  # used for that — it is scoped to this repository only.
+  #
+  # Deliberately does NOT touch Formula/podscape-mcp.rb: that formula still
+  # references podscape-mcp-linux-arm64, which this workflow no longer builds,
+  # so bumping its version would point Linux/arm64 users at a 404.
+  tap:
+    name: Bump Homebrew Cask
+    runs-on: ubuntu-latest
+    needs: [release-mac]
+
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+        with:
+          repository: codingprotocols/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Collect dmg checksums
+        id: sums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+          # GitHub publishes a sha256 digest per release asset, so the dmgs
+          # (~270 MB combined) do not need downloading. Fall back to computing
+          # it if a digest is missing — older assets predate the field.
+          sum_for() {
+            local name="$1" digest
+            digest=$(gh api "repos/${REPO}/releases/tags/${GITHUB_REF_NAME}" \
+              --jq ".assets[] | select(.name == \"${name}\") | .digest // empty")
+            if [ -n "$digest" ]; then
+              echo "${digest#sha256:}"
+              return
+            fi
+            echo "::warning::No digest for ${name}; downloading to compute it" >&2
+            gh release download "${GITHUB_REF_NAME}" --repo "${REPO}" \
+              --pattern "${name}" --dir /tmp --clobber >&2
+            shasum -a 256 "/tmp/${name}" | awk '{print $1}'
+          }
+
+          ARM=$(sum_for "Podscape-${VERSION}-arm64.dmg")
+          INTEL=$(sum_for "Podscape-${VERSION}.dmg")
+
+          for pair in "arm:$ARM" "intel:$INTEL"; do
+            printf '%s' "${pair#*:}" | grep -qE '^[0-9a-f]{64}$' || {
+              echo "::error::Could not resolve a sha256 for ${pair%%:*} (got '${pair#*:}')"
+              exit 1
+            }
+          done
+
+          echo "SHA_ARM=$ARM"     >> $GITHUB_ENV
+          echo "SHA_INTEL=$INTEL" >> $GITHUB_ENV
+          echo "arm=$ARM  intel=$INTEL"
+
+      - name: Update cask version and checksums
+        run: |
+          python3 - <<'PYEOF'
+          import os, re, sys
+
+          cask    = "Casks/podscape.rb"
+          version = os.environ["VERSION"]
+          sha_arm = os.environ["SHA_ARM"]
+          sha_int = os.environ["SHA_INTEL"]
+
+          for label, value in (("arm", sha_arm), ("intel", sha_int)):
+              if not re.fullmatch(r"[0-9a-f]{64}", value):
+                  sys.exit(f"refusing to write a malformed {label} sha256: {value!r}")
+
+          src = open(cask).read()
+          # Anchored, and each must match exactly once, so a restructured cask
+          # fails loudly instead of being silently skipped. The sha256 patterns
+          # require 64 hex chars so the `arch arm:/intel:` line is never touched.
+          src, n_v = re.subn(r'^  version "[^"]*"$', f'  version "{version}"', src, flags=re.M)
+          src, n_a = re.subn(r'(sha256 arm:\s+")[0-9a-f]{64}(")', rf'\g<1>{sha_arm}\g<2>', src)
+          src, n_i = re.subn(r'(intel:\s+")[0-9a-f]{64}(")',      rf'\g<1>{sha_int}\g<2>', src)
+          if (n_v, n_a, n_i) != (1, 1, 1):
+              sys.exit(f"expected 1 version/arm/intel stanza, replaced {n_v}/{n_a}/{n_i}")
+
+          open(cask, "w").write(src)
+          print(f"podscape -> {version}")
+          PYEOF
+
+          git diff --stat
+          git diff --quiet && {
+            echo "::notice::Cask already at ${VERSION}; nothing to do."
+            echo "CHANGED=false" >> $GITHUB_ENV
+            exit 0
+          }
+          echo "CHANGED=true" >> $GITHUB_ENV
+
+      - name: Open pull request against the tap
+        if: env.CHANGED == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          BRANCH="podscape-${VERSION}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git commit -aqm "podscape ${VERSION}"
+          git push -f origin "$BRANCH"
+
+          if [ -n "$(gh pr list --repo codingprotocols/homebrew-tap --head "$BRANCH" --json number --jq '.[].number')" ]; then
+            echo "::notice::PR for $BRANCH already open; branch updated."
+            exit 0
+          fi
+
+          gh pr create \
+            --repo codingprotocols/homebrew-tap \
+            --base main --head "$BRANCH" \
+            --title "podscape ${VERSION}" \
+            --body "Automated bump from [Podscape ${GITHUB_REF_NAME}](https://github.com/codingprotocols/podscape/releases/tag/${GITHUB_REF_NAME}).
+
+          Checksums come from GitHub's published digests for the release assets.
+
+          Tap CI will audit and install the cask before this merges."
