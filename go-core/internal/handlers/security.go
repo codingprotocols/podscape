@@ -105,17 +105,17 @@ func HandleSecurityScan(w http.ResponseWriter, r *http.Request) {
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
-		sseEvent(w, flusher, "error", "failed to create stdout pipe: "+err.Error())
+		sseEvent(w, flusher, "error", "failed to create stdout pipe: "+err.Error()) //nolint:errcheck // best-effort notification to a client that may have disconnected
 		return
 	}
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {
-		sseEvent(w, flusher, "error", "failed to create stderr pipe: "+err.Error())
+		sseEvent(w, flusher, "error", "failed to create stderr pipe: "+err.Error()) //nolint:errcheck // best-effort notification to a client that may have disconnected
 		return
 	}
 
 	if err := cmd.Start(); err != nil {
-		sseEvent(w, flusher, "error", "failed to start trivy: "+err.Error())
+		sseEvent(w, flusher, "error", "failed to start trivy: "+err.Error()) //nolint:errcheck // best-effort notification to a client that may have disconnected
 		return
 	}
 
@@ -127,7 +127,7 @@ func HandleSecurityScan(w http.ResponseWriter, r *http.Request) {
 		scanner := bufio.NewScanner(stderrPipe)
 		for scanner.Scan() {
 			if line := scanner.Text(); line != "" {
-				sseEvent(w, flusher, "progress", line)
+				sseEvent(w, flusher, "progress", line) //nolint:errcheck // best-effort notification to a client that may have disconnected
 			}
 		}
 	}()
@@ -143,7 +143,7 @@ func HandleSecurityScan(w http.ResponseWriter, r *http.Request) {
 	// takes priority over a non-zero exit code.
 	var compacted bytes.Buffer
 	if jsonErr := json.Compact(&compacted, output); jsonErr == nil {
-		sseEvent(w, flusher, "result", compacted.String())
+		sseEvent(w, flusher, "result", compacted.String()) //nolint:errcheck // best-effort notification to a client that may have disconnected
 		return
 	}
 
@@ -152,12 +152,12 @@ func HandleSecurityScan(w http.ResponseWriter, r *http.Request) {
 		if waitErr != nil {
 			msg = waitErr.Error()
 		}
-		sseEvent(w, flusher, "error", msg)
+		sseEvent(w, flusher, "error", msg) //nolint:errcheck // best-effort notification to a client that may have disconnected
 		return
 	}
 
 	// No JSON and no error: send raw output.
-	sseEvent(w, flusher, "result", string(output))
+	sseEvent(w, flusher, "result", string(output)) //nolint:errcheck // best-effort notification to a client that may have disconnected
 }
 
 func HandleKubesec(w http.ResponseWriter, r *http.Request) {
@@ -376,7 +376,7 @@ func HandleTrivyImages(w http.ResponseWriter, r *http.Request) {
 	var sseMu sync.Mutex
 	sendSSE := func(eventType, data string) {
 		sseMu.Lock()
-		sseEvent(w, flusher, eventType, data)
+		sseEvent(w, flusher, eventType, data) //nolint:errcheck // best-effort notification to a client that may have disconnected
 		sseMu.Unlock()
 	}
 

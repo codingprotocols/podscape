@@ -18,7 +18,7 @@ func HandlePrometheusStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// Explicitly clear any stale manual URL so auto-discovery takes over.
-		prometheus.SetManualURL("") //nolint:errcheck — empty string always succeeds
+		prometheus.SetManualURL("") //nolint:errcheck // empty string always succeeds
 	}
 	result := prometheus.ProbePrometheus(r.Context())
 	writeJSON(w, result)

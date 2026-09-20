@@ -38,6 +38,21 @@ type PortForwardManager struct {
 	// runForwardFn replaces the real runForward implementation when set.
 	// Used in tests to simulate tunnel behaviour without a real Kubernetes server.
 	runForwardFn func(req *ForwardRequest, errCh chan<- error) error
+	// readyTimeout is the maximum time StartForward will wait for a tunnel to
+	// become ready. Per-instance (not a package global) so parallel tests can
+	// each use their own manager with a short timeout without racing each other;
+	// zero means "use the default" (see readyTimeoutOrDefault).
+	readyTimeout time.Duration
+}
+
+// defaultReadyTimeout is the ready-timeout used when a manager doesn't set one explicitly.
+const defaultReadyTimeout = 30 * time.Second
+
+func (m *PortForwardManager) readyTimeoutOrDefault() time.Duration {
+	if m.readyTimeout > 0 {
+		return m.readyTimeout
+	}
+	return defaultReadyTimeout
 }
 
 func NewManager(clientset kubernetes.Interface, config *rest.Config) *PortForwardManager {
@@ -47,10 +62,6 @@ func NewManager(clientset kubernetes.Interface, config *rest.Config) *PortForwar
 		Config:    config,
 	}
 }
-
-// ReadyTimeout is the maximum time StartForward will wait for a tunnel to become ready.
-// Override in tests to avoid 30-second delays.
-var ReadyTimeout = 30 * time.Second
 
 func (m *PortForwardManager) StartForward(id, namespace, podName string, localPort, remotePort int) error {
 	m.Lock()
@@ -102,7 +113,8 @@ func (m *PortForwardManager) StartForward(id, namespace, podName string, localPo
 
 	// Block until the tunnel is ready, fails, or times out.
 	// This ensures the HTTP caller only sees 200 when the tunnel is actually up.
-	readyTimer := time.NewTimer(ReadyTimeout)
+	timeout := m.readyTimeoutOrDefault()
+	readyTimer := time.NewTimer(timeout)
 	defer readyTimer.Stop()
 	select {
 	case <-readyCh:
@@ -119,7 +131,7 @@ func (m *PortForwardManager) StartForward(id, namespace, podName string, localPo
 			delete(m.Forwards, id)
 		}
 		m.Unlock()
-		return fmt.Errorf("port forward %s: tunnel did not become ready within %s", id, ReadyTimeout)
+		return fmt.Errorf("port forward %s: tunnel did not become ready within %s", id, timeout)
 	}
 }
 

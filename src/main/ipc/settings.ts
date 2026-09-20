@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
+import { spawnSync } from 'child_process'
 import { app, ipcMain, shell } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { findKubeconfigPath, getSettings, saveSettings, PodscapeSettings } from '../settings/settings_storage'
@@ -84,7 +85,6 @@ export function registerSettingsHandlers(): void {
 
     // Check PATH via `which`/`where`
     try {
-      const { spawnSync } = require('child_process')
       const which = process.platform === 'win32' ? 'where' : 'which'
       const result = spawnSync(which, [binaryName], { encoding: 'utf8' })
       if (result.status === 0 && result.stdout.trim()) {
@@ -114,7 +114,6 @@ export function registerSettingsHandlers(): void {
 
   ipcMain.handle('settings:checkTools', async () => {
     const kubeconfigOk = existsSync(findKubeconfigPath())
-    const { spawnSync } = await import('child_process')
     const trivyCheck = spawnSync('trivy', ['--version'], { stdio: 'ignore' })
     const trivyOk = trivyCheck.status === 0
     return { kubeconfigOk, trivyOk }

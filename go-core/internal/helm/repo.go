@@ -338,7 +338,7 @@ func (m *HelmRepoManager) LatestVersion(chartName string) (version, fullName str
 			var repoBestRaw string
 			
 			for _, ver := range versionList {
-				raw := ver.Metadata.Version
+				raw := ver.Version
 				v, err := semver.NewVersion(raw)
 				if err != nil {
 					continue
@@ -351,7 +351,7 @@ func (m *HelmRepoManager) LatestVersion(chartName string) (version, fullName str
 
 			// If no semver versions found, fall back to the first entry's version.
 			if repoBestVer == nil && !hasFallback {
-				fallbackRaw = versionList[0].Metadata.Version
+				fallbackRaw = versionList[0].Version
 				fallbackFull = full
 				hasFallback = true
 				continue

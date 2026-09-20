@@ -25,8 +25,6 @@ func newTestManager(fn func(req *ForwardRequest, errCh chan<- error) error) *Por
 // tunnel signals readyCh (normal successful establishment).
 func TestStartForward_ReadySignal(t *testing.T) {
 	t.Parallel()
-	ReadyTimeout = 2 * time.Second
-	t.Cleanup(func() { ReadyTimeout = 30 * time.Second })
 
 	m := newTestManager(func(req *ForwardRequest, _ chan<- error) error {
 		// Simulate a successfully established tunnel: signal readyCh and then
@@ -35,6 +33,7 @@ func TestStartForward_ReadySignal(t *testing.T) {
 		<-req.StopCh
 		return nil
 	})
+	m.readyTimeout = 2 * time.Second
 
 	if err := m.StartForward("pf-ready", "default", "my-pod", 8080, 80); err != nil {
 		t.Errorf("expected nil, got %v", err)
@@ -57,8 +56,6 @@ func TestStartForward_ReadySignal(t *testing.T) {
 // from the Forwards map.
 func TestStartForward_ErrorBeforeReady(t *testing.T) {
 	t.Parallel()
-	ReadyTimeout = 2 * time.Second
-	t.Cleanup(func() { ReadyTimeout = 30 * time.Second })
 
 	wantErr := errors.New("connection refused")
 	m := newTestManager(func(req *ForwardRequest, errCh chan<- error) error {
@@ -66,6 +63,7 @@ func TestStartForward_ErrorBeforeReady(t *testing.T) {
 		errCh <- wantErr
 		return wantErr
 	})
+	m.readyTimeout = 2 * time.Second
 
 	err := m.StartForward("pf-err", "default", "my-pod", 8080, 80)
 	if err == nil {
@@ -85,12 +83,10 @@ func TestStartForward_ErrorBeforeReady(t *testing.T) {
 }
 
 // TestStartForward_Timeout verifies that when neither readyCh nor errCh fires
-// within ReadyTimeout, StartForward returns a descriptive timeout error and
-// closes StopCh to unblock the goroutine.
+// within the manager's readyTimeout, StartForward returns a descriptive timeout
+// error and closes StopCh to unblock the goroutine.
 func TestStartForward_Timeout(t *testing.T) {
 	t.Parallel()
-	ReadyTimeout = 50 * time.Millisecond
-	t.Cleanup(func() { ReadyTimeout = 30 * time.Second })
 
 	stopped := make(chan struct{})
 	m := newTestManager(func(req *ForwardRequest, _ chan<- error) error {
@@ -101,6 +97,7 @@ func TestStartForward_Timeout(t *testing.T) {
 		close(stopped) // signal that the goroutine was properly unblocked
 		return nil
 	})
+	m.readyTimeout = 50 * time.Millisecond
 
 	err := m.StartForward("pf-timeout", "default", "my-pod", 8080, 80)
 	if err == nil {
@@ -130,14 +127,13 @@ func TestStartForward_Timeout(t *testing.T) {
 // that is already active returns an immediate error without starting a new goroutine.
 func TestStartForward_DuplicateID(t *testing.T) {
 	t.Parallel()
-	ReadyTimeout = 2 * time.Second
-	t.Cleanup(func() { ReadyTimeout = 30 * time.Second })
 
 	m := newTestManager(func(req *ForwardRequest, _ chan<- error) error {
 		close(req.ReadyCh)
 		<-req.StopCh
 		return nil
 	})
+	m.readyTimeout = 2 * time.Second
 
 	// First forward — should succeed.
 	if err := m.StartForward("pf-dup", "default", "my-pod", 8080, 80); err != nil {

@@ -3,7 +3,7 @@ GO_MCP      := go-core/podscape-mcp
 GO_LDFLAGS  := -ldflags="-s -w"
 GO_FILES    := $(shell find go-core -name '*.go')
 
-.PHONY: dev build test typecheck go go-mcp go-test clean build-mac build-win build-linux
+.PHONY: dev build test typecheck lint go-lint go go-mcp go-test clean build-mac build-win build-linux
 
 ## Start the app in dev mode (builds Go sidecar first if missing or changed)
 dev: go
@@ -25,6 +25,11 @@ go-mcp:
 go-test:
 	cd go-core && go test ./...
 
+## Lint Go sources (requires golangci-lint; go.mod pins go 1.25.5 — if your local
+## go binary is newer, pass GOTOOLCHAIN=go1.25.5 to avoid a parser mismatch)
+go-lint:
+	cd go-core && golangci-lint run ./...
+
 ## Run JS/TS tests
 test:
 	npm run test
@@ -33,8 +38,12 @@ test:
 typecheck:
 	npm run typecheck
 
+## Lint TypeScript/TSX sources
+lint:
+	npm run lint
+
 ## Run all tests
-test-all: go-test typecheck test
+test-all: go-test go-lint typecheck lint test
 
 ## macOS distribution build (delegates to npm to preserve notarization afterSign hook)
 build-mac:

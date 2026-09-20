@@ -771,7 +771,6 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
                 {animate && isConnected && !isInfra && (
                   <path d={path} fill="none" stroke={color} strokeWidth={2}
                     strokeOpacity={0.85} strokeDasharray="7 9">
-                    {/* @ts-ignore */}
                     <animate attributeName="stroke-dashoffset" from="16" to="0" dur={dur} repeatCount="indefinite" />
                   </path>
                 )}
@@ -1115,16 +1114,13 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
                   <g>
                     {/* Primary flow particle */}
                     <circle r="2.5" fill={color} filter="url(#glow)">
-                      {/* @ts-ignore */}
                       <animateMotion dur={dur} repeatCount="indefinite" path={path} />
                     </circle>
                     {/* Tail particles */}
                     <circle r="1.5" fill={color} fillOpacity={0.6}>
-                      {/* @ts-ignore */}
                       <animateMotion dur={dur} begin="0.1s" repeatCount="indefinite" path={path} />
                     </circle>
                     <circle r="1" fill={color} fillOpacity={0.3}>
-                      {/* @ts-ignore */}
                       <animateMotion dur={dur} begin="0.2s" repeatCount="indefinite" path={path} />
                     </circle>
                   </g>
@@ -1257,7 +1253,6 @@ export default function NetworkPanel(): JSX.Element {
     setLoading(true)
     loadingRef.current = true
     const nsArg = ns === '_all' ? '' : ns
-    // @ts-ignore
     window.kubectl.getTopology(nsArg, flowWindowSecs)
       .then((data: Graph) => {
         if (controller.signal.aborted) return

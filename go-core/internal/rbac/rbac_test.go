@@ -205,7 +205,7 @@ func TestCheckVerbAccess_AllAllowed(t *testing.T) {
 func TestCheckVerbAccess_SelectiveDeny(t *testing.T) {
 	cs := fake.NewSimpleClientset()
 	cs.PrependReactor("create", "selfsubjectaccessreviews", sarReactor(func(attr *authv1.ResourceAttributes) bool {
-		return !(attr.Resource == "secrets" && attr.Verb == "delete")
+		return attr.Resource != "secrets" || attr.Verb != "delete"
 	}))
 
 	got, err := CheckVerbAccess(context.Background(), cs)

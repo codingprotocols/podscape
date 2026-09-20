@@ -270,7 +270,10 @@ func rbacAllowed(allowed map[string]bool, resource string) bool {
 // setupInformer registers Add/Update/Delete event handlers that write to
 // targetMap under mu (a write-lock on the owning ContextCache).
 func setupInformer(informer cache.SharedIndexInformer, targetMap map[string]interface{}, mu sync.Locker, namespaced bool) {
-	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	// AddEventHandler only errors if the informer has already started — setupInformer
+	// is always called during registration, before Run(), so this is not expected to
+	// fail in practice. Logged rather than ignored so a future ordering regression is visible.
+	if _, err := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			key := getResourceKey(obj, namespaced)
 			if key == "" {
@@ -301,7 +304,9 @@ func setupInformer(informer cache.SharedIndexInformer, targetMap map[string]inte
 			delete(targetMap, key)
 			mu.Unlock()
 		},
-	})
+	}); err != nil {
+		log.Printf("[Informers] failed to register event handler: %v", err)
+	}
 }
 
 const maxEvents = 1000
@@ -334,7 +339,10 @@ func setupEventInformer(informer cache.SharedIndexInformer, targetMap map[string
 		}
 	}
 
-	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	// AddEventHandler only errors if the informer has already started — setupEventInformer
+	// is always called during registration, before Run(), so this is not expected to
+	// fail in practice. Logged rather than ignored so a future ordering regression is visible.
+	if _, err := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			key := getResourceKey(obj, true)
 			if key == "" {
@@ -366,7 +374,9 @@ func setupEventInformer(informer cache.SharedIndexInformer, targetMap map[string
 			delete(targetMap, key)
 			mu.Unlock()
 		},
-	})
+	}); err != nil {
+		log.Printf("[Informers] failed to register event handler: %v", err)
+	}
 }
 
 func getResourceKey(obj interface{}, namespaced bool) string {

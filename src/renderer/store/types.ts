@@ -101,6 +101,7 @@ declare global {
             suspendGitOps: (kind: string, name: string, namespace: string, suspend: boolean) => Promise<void>
             getProviders: () => Promise<ProviderSet>
             getAllowedVerbs: (context: string) => Promise<Record<string, Record<string, boolean>>>
+            getTopology: (namespace: string, flowWindow?: number) => Promise<any>
         }
         helm: {
             list: (context: string) => Promise<HelmRelease[]>

@@ -212,8 +212,7 @@ func main() {
 			}
 		}()
 		fmt.Printf("Go sidecar ready on port %s (no kubeconfig — onboarding mode)\n", *port)
-		select {
-		case err := <-setupErr:
+		if err := <-setupErr; err != nil {
 			log.Fatalf("HTTP server error: %v", err)
 		}
 	}
@@ -266,8 +265,7 @@ func main() {
 	// Block the main goroutine — process lifetime is managed by Electron (SIGTERM).
 	// If the HTTP server fails to bind (e.g. port already in use), surface the
 	// error via log.Fatal rather than silently calling os.Exit(1) from a goroutine.
-	select {
-	case err := <-serverErr:
+	if err := <-serverErr; err != nil {
 		log.Fatalf("HTTP server error: %v", err)
 	}
 }

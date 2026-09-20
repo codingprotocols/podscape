@@ -153,7 +153,7 @@ describe('krew:installed (plain-text parsing)', () => {
     // Find the handler registered for 'krew:installed'
     const handler = vi.mocked(ipcMain.handle).mock.calls.find(
       ([channel]) => channel === 'krew:installed'
-    )?.[1] as Function
+    )?.[1] as (event: unknown) => Promise<unknown>
     expect(handler).toBeDefined()
     const result = await handler({} as any)
     expect(result).toEqual(['ctx', 'ns'])
@@ -166,7 +166,7 @@ describe('krew:installed (plain-text parsing)', () => {
     registerKrewHandlers()
     const handler = vi.mocked(ipcMain.handle).mock.calls.find(
       ([channel]) => channel === 'krew:installed'
-    )?.[1] as Function
+    )?.[1] as (event: unknown) => Promise<unknown>
     const result = await handler({} as any)
     expect(result).toEqual([])
   })
@@ -187,7 +187,7 @@ describe('krew:search (plain-text parsing)', () => {
     registerKrewHandlers()
     const handler = vi.mocked(ipcMain.handle).mock.calls.find(
       ([channel]) => channel === 'krew:search'
-    )?.[1] as Function
+    )?.[1] as (event: unknown) => Promise<unknown>
     expect(handler).toBeDefined()
     const result = await handler({} as any)
     expect(result).toEqual([
@@ -203,7 +203,7 @@ describe('krew:search (plain-text parsing)', () => {
     registerKrewHandlers()
     const handler = vi.mocked(ipcMain.handle).mock.calls.find(
       ([channel]) => channel === 'krew:search'
-    )?.[1] as Function
+    )?.[1] as (event: unknown) => Promise<unknown>
     const result = await handler({} as any)
     expect(result).toEqual([])
   })
