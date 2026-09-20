@@ -170,7 +170,7 @@
     "@xterm/xterm": "^5.5.0",
     "autoprefixer": "^10.4.19",
     "electron": "^41.2.0",
-    "electron-builder": "^26.8.2",
+    "electron-builder": "^26.16.1",
     "electron-vite": "^5.0.0",
     "eslint": "^10.11.0",
     "eslint-plugin-react-hooks": "^7.1.1",
