@@ -36,7 +36,7 @@ export default function HelmReleaseDetail({ release, context, onUninstall, onRef
     keywords?: string[]
   } | null>(null)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
-  const [isCustomChart, setIsCustomChart] = useState(false)
+  const [, setIsCustomChart] = useState(false)
   const [refreshingRepos, setRefreshingRepos] = useState(false)
   const [onlineVersion, setOnlineVersion] = useState<string | null>(null)
   const [onlineRepo, setOnlineRepo] = useState<string | null>(null)

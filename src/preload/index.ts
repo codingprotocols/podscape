@@ -461,6 +461,7 @@ const updater = {
   check: (): Promise<void> => ipcRenderer.invoke('updater:check'),
   download: (): Promise<void> => ipcRenderer.invoke('updater:download'),
   install: (): Promise<void> => ipcRenderer.invoke('updater:install'),
+  getVersion: (): Promise<string> => ipcRenderer.invoke('updater:getVersion'),
 }
 
 // ─── sidecar API ──────────────────────────────────────────────────────────────

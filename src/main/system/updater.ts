@@ -37,6 +37,10 @@ export function notifyMainWindowReady(win: BrowserWindow): void {
 }
 
 export function setupUpdater(): void {
+  // Registered unconditionally (unlike the handlers below) so the renderer can
+  // always show the running version, including in dev where auto-update is disabled.
+  ipcMain.handle('updater:getVersion', () => app.getVersion())
+
   if (is.dev) return
 
   autoUpdater.autoDownload = false

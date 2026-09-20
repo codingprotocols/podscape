@@ -20,7 +20,7 @@ interface ParsedMetric {
   overTarget: boolean | null  // null when we can't compare (string values)
 }
 
-function formatMetricValue(value: number | string | undefined, type: string, metricName: string): string | null {
+function formatMetricValue(value: number | string | undefined, type: string): string | null {
   if (value === undefined || value === null) return null
   if (typeof value === 'number') {
     if (type === 'Utilization') return `${value}%`
@@ -44,8 +44,8 @@ function parseMetrics(hpa: KubeHPA): ParsedMetric[] {
       const currVal = currRes?.current?.averageUtilization ?? currRes?.current?.averageValue
       const targVal = res.target.averageUtilization ?? res.target.averageValue
 
-      const targetStr = formatMetricValue(targVal, res.target.type, res.name) ?? '—'
-      const currentStr = formatMetricValue(currVal, res.target.type, res.name)
+      const targetStr = formatMetricValue(targVal, res.target.type) ?? '—'
+      const currentStr = formatMetricValue(currVal, res.target.type)
 
       let overTarget: boolean | null = null
       if (typeof targVal === 'number' && typeof currVal === 'number') {
@@ -60,7 +60,7 @@ function parseMetrics(hpa: KubeHPA): ParsedMetric[] {
       results.push({
         name: `${res.name} (${res.container})`,
         targetType: res.target.type,
-        target: formatMetricValue(targVal, res.target.type, res.name) ?? '—',
+        target: formatMetricValue(targVal, res.target.type) ?? '—',
         current: null,
         overTarget: null,
       })

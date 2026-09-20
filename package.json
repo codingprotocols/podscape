@@ -19,6 +19,7 @@
     "build": "cd go-core && go build -ldflags=\"-s -w\" ./cmd/podscape-core/ && cd .. && electron-vite build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",

@@ -140,6 +140,7 @@ function ExecTab({ session, active, theme, onSessionEnd }: ExecTabProps): JSX.El
       })
       return () => cancelAnimationFrame(rafId)
     }
+    return undefined
   }, [active])
 
   // Update theme

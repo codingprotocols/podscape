@@ -3,7 +3,7 @@ GO_MCP      := go-core/podscape-mcp
 GO_LDFLAGS  := -ldflags="-s -w"
 GO_FILES    := $(shell find go-core -name '*.go')
 
-.PHONY: dev build test go go-mcp go-test clean build-mac build-win build-linux
+.PHONY: dev build test typecheck go go-mcp go-test clean build-mac build-win build-linux
 
 ## Start the app in dev mode (builds Go sidecar first if missing or changed)
 dev: go
@@ -29,8 +29,12 @@ go-test:
 test:
 	npm run test
 
+## Type-check the renderer and main/preload TypeScript projects
+typecheck:
+	npm run typecheck
+
 ## Run all tests
-test-all: go-test test
+test-all: go-test typecheck test
 
 ## macOS distribution build (delegates to npm to preserve notarization afterSign hook)
 build-mac:

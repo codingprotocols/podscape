@@ -5,7 +5,7 @@ import { Shield } from 'lucide-react'
 import PageHeader from '../core/PageHeader'
 import type { ResourceKind } from '../../types'
 import {
-  type NodeKind, type EdgeKind, type GraphNode, type GraphEdge, type Graph,
+  type NodeKind, type GraphNode, type Graph,
   edgeStyle, workloadBadgeLabel, workloadIcon, computePolicyHulls,
 } from './NetworkPanel.utils'
 
@@ -416,7 +416,7 @@ const LEGEND_ENTRIES = [
   { icon: '🛡', color: '#f472b6', label: 'Network Policy' },
 ]
 
-function ZoomControls({ scale, setScale, onFit }: { scale: number; setScale: React.Dispatch<React.SetStateAction<number>>; onFit: () => void }) {
+function ZoomControls({ setScale, onFit }: { setScale: React.Dispatch<React.SetStateAction<number>>; onFit: () => void }) {
   return (
     <div className="absolute bottom-6 right-6 flex flex-col gap-2 z-10">
       <button onClick={() => setScale(s => Math.min(s * 1.2, 5))}
@@ -844,7 +844,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
         </g>
       </svg>
       {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} dark={dark} />}
-      <ZoomControls scale={scale} setScale={setScale} onFit={fitToScreen} />
+      <ZoomControls setScale={setScale} onFit={fitToScreen} />
     </div>
   )
 }
@@ -1139,7 +1139,6 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
             const p = nodePos.get(n.id)
             if (!p) return null
             const color = nodeColor(n)
-            const bg = nodeBg(n, dark)
             const active = tooltip?.node.id === n.id
             const isMatch = matchedIds ? matchedIds.has(n.id) : true
             const nodeOpacity = searchActive && !isMatch ? 0.12 : 1
