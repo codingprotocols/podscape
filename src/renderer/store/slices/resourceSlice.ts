@@ -336,7 +336,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         // Show the loading spinner only on first load (no data yet).
         // On background auto-refresh there is already data visible — skip the
         // spinner and the selectedResource reset so the list stays stable.
-        const existingData = (get() as Record<string, unknown>)[config.stateKey]
+        const existingData = (get() as unknown as Record<string, unknown>)[config.stateKey]
         const isFirstLoad = !Array.isArray(existingData) || (existingData as AnyKubeResource[]).length === 0
         if (isFirstLoad) {
             set({ loadingResources: true, error: null, selectedResource: null })
@@ -577,7 +577,7 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
         if (get().selectedContext !== snapshotCtx) return
         const stateKey = SECTION_CONFIG[section]?.stateKey
         if (!stateKey) return
-        const resources: AnyKubeResource[] = (get() as Record<string, AnyKubeResource[]>)[stateKey] ?? []
+        const resources: AnyKubeResource[] = (get() as unknown as Record<string, AnyKubeResource[]>)[stateKey] ?? []
         const found = resources.find((r: AnyKubeResource) =>
             r.metadata.name === name && (r.metadata.namespace === namespace || !namespace)
         )

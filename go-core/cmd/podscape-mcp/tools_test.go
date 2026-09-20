@@ -67,8 +67,7 @@ func TestArgBool(t *testing.T) {
 
 // ── scanPods ──────────────────────────────────────────────────────────────────
 
-func boolp(v bool) *bool   { return &v }
-func int64p(v int64) *int64 { return &v }
+func boolp(v bool) *bool { return &v }
 
 func makePod(name string, mutateFn func(*corev1.Pod)) corev1.Pod {
 	p := corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: name}}

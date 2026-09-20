@@ -17,18 +17,6 @@ interface SettingsForm {
   networkEnabled: boolean
 }
 
-interface CloudClusterGuideBoxProps {
-  title: string
-  description: React.ReactNode
-}
-
-const CloudClusterGuideBox = ({ title, description }: CloudClusterGuideBoxProps) => (
-  <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-6 space-y-3">
-    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{title}</p>
-    <p className="text-[11px] text-slate-500 leading-relaxed font-medium">{description}</p>
-  </div>
-)
-
 export default function SettingsPanel(): JSX.Element {
   const { theme, setTheme, init, prodContexts, probePrometheus, prometheusAvailable, selectedContext, setPluginsEnabled, setGitopsEnabled, setNetworkEnabled } = useAppStore(useShallow(s => ({
     theme: s.theme,
@@ -50,6 +38,7 @@ export default function SettingsPanel(): JSX.Element {
   const [updateInfo, setUpdateInfo] = useState<{ version: string } | null>(null)
   const [updateProgress, setUpdateProgress] = useState(0)
   const [updateError, setUpdateError] = useState<string | null>(null)
+  const [appVersion, setAppVersion] = useState<string>('')
 
   // ── MCP state ─────────────────────────────────────────────────────────────
   const [mcpBinaryPath, setMcpBinaryPath] = useState<string>('')
@@ -108,6 +97,8 @@ export default function SettingsPanel(): JSX.Element {
   useEffect(() => {
     const updater = window.updater
     if (!updater) return
+
+    updater.getVersion().then(setAppVersion).catch(() => {})
 
     const unsubChecking = updater.onChecking(() => setUpdateStatus('checking'))
     const unsubAvailable = updater.onAvailable((info) => {
@@ -574,7 +565,7 @@ export default function SettingsPanel(): JSX.Element {
                       </span>
                       <button
                         onClick={() => {
-                          const snippet = getMcpSnippet(mcpActiveTab, mcpBinaryPath)
+                          const snippet = getMcpSnippet(mcpBinaryPath)
                           navigator.clipboard.writeText(snippet).then(() => {
                             setMcpCopied(true)
                             if (mcpCopyTimerRef.current !== null) clearTimeout(mcpCopyTimerRef.current)
@@ -588,7 +579,7 @@ export default function SettingsPanel(): JSX.Element {
                       </button>
                     </div>
                     <pre className="p-5 text-[11px] font-mono text-slate-600 dark:text-slate-300 bg-white dark:bg-black/20 overflow-x-auto leading-relaxed whitespace-pre">
-                      {getMcpSnippet(mcpActiveTab, mcpBinaryPath)}
+                      {getMcpSnippet(mcpBinaryPath)}
                     </pre>
                   </div>
                 </div>
@@ -725,7 +716,7 @@ export default function SettingsPanel(): JSX.Element {
   )
 }
 
-function getMcpSnippet(tab: 'claude-desktop' | 'claude-code' | 'cursor', binaryPath: string): string {
+function getMcpSnippet(binaryPath: string): string {
   const path = binaryPath || '/path/to/podscape-mcp'
   const json = {
     mcpServers: {

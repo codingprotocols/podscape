@@ -6,24 +6,24 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 // environment (no DOM / no localStorage).
 vi.mock('../store', () => ({ useAppStore: vi.fn() }))
 
-import { _createYAMLEditorHandlers } from './useYAMLEditor'
+import { _createYAMLEditorHandlers, type GetYAMLFn, type ApplyYAMLFn, type RefreshFn, type StateSetters } from './useYAMLEditor'
 
 describe('_createYAMLEditorHandlers', () => {
-    let getYAML: ReturnType<typeof vi.fn>
-    let applyYAML: ReturnType<typeof vi.fn>
-    let refresh: ReturnType<typeof vi.fn>
+    let getYAML: ReturnType<typeof vi.fn<GetYAMLFn>>
+    let applyYAML: ReturnType<typeof vi.fn<ApplyYAMLFn>>
+    let refresh: ReturnType<typeof vi.fn<RefreshFn>>
     let state: { yaml: string | null; loading: boolean; error: string | null }
-    let setState: { setYaml: ReturnType<typeof vi.fn>; setLoading: ReturnType<typeof vi.fn>; setError: ReturnType<typeof vi.fn> }
+    let setState: { setYaml: ReturnType<typeof vi.fn<StateSetters['setYaml']>>; setLoading: ReturnType<typeof vi.fn<StateSetters['setLoading']>>; setError: ReturnType<typeof vi.fn<StateSetters['setError']>> }
 
     beforeEach(() => {
-        getYAML = vi.fn()
-        applyYAML = vi.fn().mockResolvedValue('applied')
-        refresh = vi.fn()
+        getYAML = vi.fn<GetYAMLFn>()
+        applyYAML = vi.fn<ApplyYAMLFn>().mockResolvedValue('applied')
+        refresh = vi.fn<RefreshFn>()
         state = { yaml: null, loading: false, error: null }
         setState = {
-            setYaml: vi.fn(v => { state.yaml = v }),
-            setLoading: vi.fn(v => { state.loading = v }),
-            setError: vi.fn(v => { state.error = v }),
+            setYaml: vi.fn<StateSetters['setYaml']>(v => { state.yaml = v }),
+            setLoading: vi.fn<StateSetters['setLoading']>(v => { state.loading = v }),
+            setError: vi.fn<StateSetters['setError']>(v => { state.error = v }),
         }
     })
 
@@ -118,7 +118,7 @@ describe('_createYAMLEditorHandlers', () => {
 
     it('apply: calls refresh after applyYAML resolves (order matters)', async () => {
         const order: string[] = []
-        applyYAML.mockImplementation(async () => { order.push('apply') })
+        applyYAML.mockImplementation(async () => { order.push('apply'); return 'applied' })
         refresh.mockImplementation(() => { order.push('refresh') })
         setState.setYaml = vi.fn(v => { order.push('close'); state.yaml = v })
 

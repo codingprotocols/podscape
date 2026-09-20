@@ -461,6 +461,7 @@ const updater = {
   check: (): Promise<void> => ipcRenderer.invoke('updater:check'),
   download: (): Promise<void> => ipcRenderer.invoke('updater:download'),
   install: (): Promise<void> => ipcRenderer.invoke('updater:install'),
+  getVersion: (): Promise<string> => ipcRenderer.invoke('updater:getVersion'),
 }
 
 // ─── sidecar API ──────────────────────────────────────────────────────────────
@@ -496,29 +497,29 @@ if (process.contextIsolated) {
     console.error(error)
   }
 } else {
-  // @ts-ignore
+  // @ts-expect-error - non-isolated fallback path assigns directly to window without contextBridge typings
   window.electron = {
     ...electronAPI,
     shell: { openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url) },
   }
-  // @ts-ignore
+  // @ts-expect-error - non-isolated fallback path assigns directly to window without contextBridge typings
   window.kubectl = kubectl
-  // @ts-ignore
+  // @ts-expect-error - non-isolated fallback path assigns directly to window without contextBridge typings
   window.helm = helm
-  // @ts-ignore
+  // @ts-expect-error - non-isolated fallback path assigns directly to window without contextBridge typings
   window.exec = exec
-  // @ts-ignore
+  // @ts-expect-error - non-isolated fallback path assigns directly to window without contextBridge typings
   window.settings = settings
-  // @ts-ignore
+  // @ts-expect-error - non-isolated fallback path assigns directly to window without contextBridge typings
   window.kubeconfig = kubeconfig
-  // @ts-ignore
+  // @ts-expect-error - non-isolated fallback path assigns directly to window without contextBridge typings
   window.dialog = dialog
-  // @ts-ignore
+  // @ts-expect-error - non-isolated fallback path assigns directly to window without contextBridge typings
   window.updater = updater
-  // @ts-ignore
+  // @ts-expect-error - non-isolated fallback path assigns directly to window without contextBridge typings
   window.sidecar = sidecar
-  // @ts-ignore
+  // @ts-expect-error - non-isolated fallback path assigns directly to window without contextBridge typings
   window.mcp = mcp
-  // @ts-ignore
+  // @ts-expect-error - non-isolated fallback path assigns directly to window without contextBridge typings
   window.krew = krew
 }

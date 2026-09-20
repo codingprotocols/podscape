@@ -84,14 +84,14 @@ func readLogStream(r io.ReadCloser, maxBytes int) string {
 	scanner.Buffer(make([]byte, 256*1024), 256*1024)
 	for scanner.Scan() {
 		if sb.Len()+len(scanner.Bytes())+1 > maxBytes {
-			sb.WriteString(fmt.Sprintf("\n[output truncated — %d bytes limit reached]", maxBytes))
+			fmt.Fprintf(&sb, "\n[output truncated — %d bytes limit reached]", maxBytes)
 			return sb.String()
 		}
 		sb.WriteString(scanner.Text())
 		sb.WriteByte('\n')
 	}
 	if err := scanner.Err(); err != nil {
-		sb.WriteString(fmt.Sprintf("\n[error reading logs: %v]", err))
+		fmt.Fprintf(&sb, "\n[error reading logs: %v]", err)
 	}
 	return sb.String()
 }

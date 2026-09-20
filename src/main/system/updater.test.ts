@@ -73,19 +73,21 @@ describe('setupUpdater', () => {
     vi.useRealTimers()
   })
 
-  it('skips setup in dev mode', async () => {
+  it('skips auto-update setup in dev mode but still exposes getVersion', async () => {
     vi.doMock('@electron-toolkit/utils', () => ({ is: { dev: true } }))
     const { setupUpdater } = await import('./updater')
     setupUpdater()
-    expect(mockIpcMain.handle).not.toHaveBeenCalled()
+    expect(mockIpcMain.handle).toHaveBeenCalledTimes(1)
+    expect(mockIpcMain.handle).toHaveBeenCalledWith('updater:getVersion', expect.any(Function))
   })
 
-  it('registers ipcMain handlers for check, download and install', async () => {
+  it('registers ipcMain handlers for check, download, install and getVersion', async () => {
     const { setupUpdater } = await import('./updater')
     setupUpdater()
     expect(mockIpcMain.handle).toHaveBeenCalledWith('updater:check', expect.any(Function))
     expect(mockIpcMain.handle).toHaveBeenCalledWith('updater:download', expect.any(Function))
     expect(mockIpcMain.handle).toHaveBeenCalledWith('updater:install', expect.any(Function))
+    expect(mockIpcMain.handle).toHaveBeenCalledWith('updater:getVersion', expect.any(Function))
   })
 
   it('queues events emitted before window ready and flushes on did-finish-load', async () => {

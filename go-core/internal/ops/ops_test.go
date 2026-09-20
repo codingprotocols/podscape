@@ -16,7 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
-	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
@@ -128,7 +127,7 @@ func TestDelete_UnsupportedKind(t *testing.T) {
 
 func TestDelete_NamespacedResource(t *testing.T) {
 	scheme := runtime.NewScheme()
-	corev1.AddToScheme(scheme)
+	corev1.AddToScheme(scheme) //nolint:errcheck // registering a built-in API group cannot fail in practice
 
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "mypod", Namespace: "default"},
@@ -150,7 +149,7 @@ func TestDelete_NamespacedResource(t *testing.T) {
 
 func TestDelete_ClusterScopedResource(t *testing.T) {
 	scheme := runtime.NewScheme()
-	corev1.AddToScheme(scheme)
+	corev1.AddToScheme(scheme) //nolint:errcheck // registering a built-in API group cannot fail in practice
 
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "staging"}}
 	gvr := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"}
@@ -437,7 +436,7 @@ func TestApplyYAML_StripsServerManagedFields(t *testing.T) {
 	// Verify that managedFields, status, uid, resourceVersion,
 	// creationTimestamp, and generation are stripped before the patch is built.
 	scheme := runtime.NewScheme()
-	corev1.AddToScheme(scheme)
+	corev1.AddToScheme(scheme) //nolint:errcheck // registering a built-in API group cannot fail in practice
 
 	var capturedPayload []byte
 	dynFake := dynamicfake.NewSimpleDynamicClient(scheme)
@@ -581,7 +580,7 @@ func (r *capturingResourceClient) List(ctx context.Context, opts metav1.ListOpti
 func (r *capturingResourceClient) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return r.inner.Watch(ctx, opts)
 }
-func (r *capturingResourceClient) Patch(ctx context.Context, name string, pt ktypes.PatchType, data []byte, opts metav1.PatchOptions, sub ...string) (*unstructured.Unstructured, error) {
+func (r *capturingResourceClient) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, sub ...string) (*unstructured.Unstructured, error) {
 	*r.capture = data
 	return r.inner.Patch(ctx, name, pt, data, opts, sub...)
 }
@@ -621,7 +620,7 @@ func (r *capturingNsResourceClient) List(ctx context.Context, opts metav1.ListOp
 func (r *capturingNsResourceClient) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return r.inner.Watch(ctx, opts)
 }
-func (r *capturingNsResourceClient) Patch(ctx context.Context, name string, pt ktypes.PatchType, data []byte, opts metav1.PatchOptions, sub ...string) (*unstructured.Unstructured, error) {
+func (r *capturingNsResourceClient) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, sub ...string) (*unstructured.Unstructured, error) {
 	*r.capture = data
 	return nil, fmt.Errorf("fake patch")
 }
@@ -668,7 +667,7 @@ func (r *immutableNsResourceClient) List(ctx context.Context, opts metav1.ListOp
 func (r *immutableNsResourceClient) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return nil, nil
 }
-func (r *immutableNsResourceClient) Patch(ctx context.Context, name string, pt ktypes.PatchType, data []byte, opts metav1.PatchOptions, sub ...string) (*unstructured.Unstructured, error) {
+func (r *immutableNsResourceClient) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, sub ...string) (*unstructured.Unstructured, error) {
 	return nil, fmt.Errorf("pod updates may not change fields other than spec.containers[*].image")
 }
 
@@ -704,6 +703,6 @@ func (r *immutableResourceClient) List(ctx context.Context, opts metav1.ListOpti
 func (r *immutableResourceClient) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return nil, nil
 }
-func (r *immutableResourceClient) Patch(ctx context.Context, name string, pt ktypes.PatchType, data []byte, opts metav1.PatchOptions, sub ...string) (*unstructured.Unstructured, error) {
+func (r *immutableResourceClient) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, sub ...string) (*unstructured.Unstructured, error) {
 	return nil, fmt.Errorf("pod updates may not change fields other than spec.containers[*].image")
 }

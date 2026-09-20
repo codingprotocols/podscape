@@ -6,6 +6,7 @@
     "baseUrl": ".",
     "paths": {
       "@renderer/*": ["src/renderer/*"]
-    }
+    },
+    "types": ["node", "@testing-library/jest-dom/vitest"]
   }
 }

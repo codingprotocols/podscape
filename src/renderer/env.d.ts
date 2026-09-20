@@ -10,6 +10,7 @@ interface UpdaterAPI {
   check: () => Promise<void>
   download: () => Promise<void>
   install: () => Promise<void>
+  getVersion: () => Promise<string>
 }
 
 interface SidecarAPI {

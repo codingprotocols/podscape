@@ -36,7 +36,7 @@ func podJSON(name, ns, uid string, owners []metav1.OwnerReference) interface{} {
 	}
 	b, _ := json.Marshal(p)
 	var v interface{}
-	json.Unmarshal(b, &v)
+	json.Unmarshal(b, &v) //nolint:errcheck // round-trips a value just marshaled above; cannot fail
 	return v
 }
 

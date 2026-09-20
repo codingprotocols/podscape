@@ -26,7 +26,7 @@ export function extractWorkloadImages(workloads: AnyKubeResource[]): WorkloadIma
         const namespace = w.metadata.namespace ?? ''
         const kind = w.kind ?? ''
         const spec = (w as any).spec
-        let images: string[] = []
+        let images: string[]
         if (kind === 'Pod') {
             images = getContainerImages(spec)
         } else if (kind === 'CronJob') {

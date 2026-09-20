@@ -193,7 +193,7 @@ export default function TimeSeriesChart({ queries, title, unit, className }: Pro
                 labelStyle={{ color: '#94a3b8', marginBottom: 4, fontSize: 10 }}
                 itemStyle={{ color: '#e2e8f0' }}
                 labelFormatter={v => formatTime(Number(v))}
-                formatter={(v: number, name: string) => [formatTooltipValue(v), name]}
+                formatter={(v, name) => [formatTooltipValue(Number(v)), String(name)]}
               />
               {queries.length > 1 && (
                 <Legend

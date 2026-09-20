@@ -65,8 +65,8 @@ func TestProbePrometheus_ManualURL_Found(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	SetManualURL(srv.URL)
-	defer SetManualURL("")
+	SetManualURL(srv.URL)   //nolint:errcheck // httptest.Server URL is always well-formed
+	defer SetManualURL("") //nolint:errcheck // empty string always succeeds
 
 	result := ProbePrometheus(context.Background())
 	if !result.Available {
@@ -75,8 +75,8 @@ func TestProbePrometheus_ManualURL_Found(t *testing.T) {
 }
 
 func TestProbePrometheus_ManualURL_Unreachable(t *testing.T) {
-	SetManualURL("http://127.0.0.1:19999") // nothing listens here
-	defer SetManualURL("")
+	SetManualURL("http://127.0.0.1:19999") //nolint:errcheck // well-formed URL; only unreachable
+	defer SetManualURL("")                 //nolint:errcheck // empty string always succeeds
 
 	result := ProbePrometheus(context.Background())
 	if result.Available {
@@ -181,9 +181,9 @@ func TestNormalizeURL(t *testing.T) {
 }
 
 func TestSetManualURL_NormalizesInput(t *testing.T) {
-	SetManualURL("localhost:9090/")
+	SetManualURL("localhost:9090/") //nolint:errcheck // exercises successful normalization
 	got := getManualURL()
-	SetManualURL("")
+	SetManualURL("") //nolint:errcheck // empty string always succeeds
 	if got != "http://127.0.0.1:9090" {
 		t.Errorf("expected normalized URL 'http://127.0.0.1:9090', got %q", got)
 	}
@@ -192,7 +192,7 @@ func TestSetManualURL_NormalizesInput(t *testing.T) {
 // ── Security: SSRF — non-http(s) schemes must be rejected ────────────────────
 
 func TestSetManualURL_RejectsNonHttpSchemes(t *testing.T) {
-	t.Cleanup(func() { SetManualURL("") })
+	t.Cleanup(func() { SetManualURL("") }) //nolint:errcheck // empty string always succeeds
 
 	cases := []string{
 		"ftp://evil.com",
@@ -201,7 +201,7 @@ func TestSetManualURL_RejectsNonHttpSchemes(t *testing.T) {
 		"ldap://evil.com",
 	}
 	for _, u := range cases {
-		SetManualURL(u)
+		SetManualURL(u) //nolint:errcheck // rejection is asserted via getManualURL() below, not the return value
 		if got := getManualURL(); got != "" {
 			t.Errorf("SetManualURL(%q): expected empty URL (scheme rejected), got %q", u, got)
 		}
@@ -256,8 +256,8 @@ func TestQueryCache_HitAvoidsFetch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	SetManualURL(srv.URL)
-	defer SetManualURL("")
+	SetManualURL(srv.URL)   //nolint:errcheck // httptest.Server URL is always well-formed
+	defer SetManualURL("") //nolint:errcheck // empty string always succeeds
 
 	// Clear any stale entries by using a unique query with future TTL.
 	start := time.Now().Unix() - 3600

@@ -31,7 +31,7 @@ function AutoScrollLog({ lines }: { lines: string[] }) {
   useEffect(() => {
     if (!autoScroll) return
     ignoringScrollRef.current = true
-    containerRef.current && (containerRef.current.scrollTop = containerRef.current.scrollHeight)
+    if (containerRef.current) containerRef.current.scrollTop = containerRef.current.scrollHeight
     setTimeout(() => { ignoringScrollRef.current = false }, 50)
   }, [lines, autoScroll])
 

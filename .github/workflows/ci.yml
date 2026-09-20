@@ -50,6 +50,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
       - name: Test
         run: npm run test
 
@@ -69,6 +75,12 @@ jobs:
 
       - name: Run Go tests
         run: cd go-core && go test ./...
-      
+
       - name: Go Build Check
         run: cd go-core && go build ./cmd/podscape-core/ && go build ./cmd/podscape-mcp/
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.11.4
+          working-directory: go-core

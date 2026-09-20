@@ -11,15 +11,15 @@ export interface YAMLEditorState {
   close: () => void
 }
 
-interface StateSetters {
+export interface StateSetters {
   setYaml: (v: string | null) => void
   setLoading: (v: boolean) => void
   setError: (v: string | null) => void
 }
 
-type GetYAMLFn = (kind: string, name: string, clusterScoped: boolean, namespace?: string) => Promise<string>
-type ApplyYAMLFn = (yaml: string) => Promise<string>
-type RefreshFn = () => void
+export type GetYAMLFn = (kind: string, name: string, clusterScoped: boolean, namespace?: string) => Promise<string>
+export type ApplyYAMLFn = (yaml: string) => Promise<string>
+export type RefreshFn = () => void
 
 /**
  * Pure factory exported for unit-testing without React.

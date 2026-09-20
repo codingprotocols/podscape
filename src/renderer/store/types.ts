@@ -6,8 +6,8 @@ import {
     KubeConfigMap, KubeSecret, KubePVC, KubePV, KubeStorageClass,
     KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
     KubeNode, KubeEvent, KubeCRD,
-    NodeMetrics, PodMetrics, ResourceKind, AnyKubeResource, PortForwardEntry,
-    HelmRelease, DebugPodEntry, AppGroup, OwnerChainResponse, ProviderSet
+    NodeMetrics, PodMetrics,
+    HelmRelease, OwnerChainResponse, ProviderSet
 } from '../types'
 
 import type { RolloutRevision } from '../../common/constants'
@@ -16,6 +16,8 @@ import { OperationSlice } from './slices/operationSlice'
 import { ProvidersSlice } from './slices/providersSlice'
 import { NavigationSlice } from './slices/navigationSlice'
 import { KrewSlice } from './slices/krewSlice'
+import { ResourceSlice } from './slices/resourceSlice'
+import { ClusterSlice } from './slices/clusterSlice'
 
 
 declare global {
@@ -76,7 +78,7 @@ declare global {
             copyFromContainer: (context: string, namespace: string, pod: string, container: string, remotePath: string, localPath: string) => Promise<void>
             streamLogs: (
                 context: string, namespace: string, pod: string, container: string | undefined,
-                onChunk: (chunk: string) => void, onEnd: () => void
+                onChunk: (chunk: string) => void, onEnd: () => void, onError?: (msg: string) => void
             ) => Promise<string>
             stopLogs: (streamId: string) => Promise<void>
             cancelAllStreams: () => Promise<void>
@@ -98,6 +100,8 @@ declare global {
             reconcileGitOps: (kind: string, name: string, namespace: string) => Promise<void>
             suspendGitOps: (kind: string, name: string, namespace: string, suspend: boolean) => Promise<void>
             getProviders: () => Promise<ProviderSet>
+            getAllowedVerbs: (context: string) => Promise<Record<string, Record<string, boolean>>>
+            getTopology: (namespace: string, flowWindow?: number) => Promise<any>
         }
         helm: {
             list: (context: string) => Promise<HelmRelease[]>
@@ -127,8 +131,8 @@ declare global {
             onExit: (id: string, cb: () => void) => () => void
         }
         settings: {
-            get: () => Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean }>
-            set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean }) => Promise<void>
+            get: () => Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean; pluginsEnabled: boolean; gitopsEnabled: boolean; networkEnabled: boolean }>
+            set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean; pluginsEnabled: boolean; gitopsEnabled: boolean; networkEnabled: boolean }) => Promise<void>
             checkTools: () => Promise<{ kubeconfigOk: boolean; trivyOk: boolean }>
         }
         kubeconfig: {
@@ -181,101 +185,11 @@ export interface ExecSession {
     ptyId: string | null
 }
 
-export interface AppStore extends AnalysisSlice, OperationSlice, ProvidersSlice, NavigationSlice, KrewSlice {
-    // Navigation removed - inherited from NavigationSlice
-    
-    // Cluster selection
-
-    contexts: KubeContextEntry[]
-    selectedContext: string | null
-    starredContext: string | null
-    setStarredContext: (name: string | null) => void
-    hotbarContexts: string[]
-    toggleHotbarContext: (name: string) => void
-    namespaces: KubeNamespace[]
-    selectedNamespace: string | null
-    selectedResource: AnyKubeResource | null
-    kubeconfigOk: boolean
-    prodContexts: string[]
-    setProdContexts: (contexts: string[]) => Promise<void>
-    isProduction: boolean
-    contextSwitchStatus: string | null
-    resourceHistory: AnyKubeResource[]
-    apps: AppGroup[]
-
-    // Resources
-    pods: KubePod[]
-    deployments: KubeDeployment[]
-    daemonsets: KubeDaemonSet[]
-    statefulsets: KubeStatefulSet[]
-    replicasets: KubeReplicaSet[]
-    jobs: KubeJob[]
-    cronjobs: KubeCronJob[]
-    hpas: KubeHPA[]
-    pdbs: KubePDB[]
-    services: KubeService[]
-    ingresses: KubeIngress[]
-    ingressclasses: KubeIngressClass[]
-    networkpolicies: KubeNetworkPolicy[]
-    endpoints: KubeEndpoints[]
-    configmaps: KubeConfigMap[]
-    secrets: KubeSecret[]
-    pvcs: KubePVC[]
-    pvs: KubePV[]
-    storageclasses: KubeStorageClass[]
-    serviceaccounts: KubeServiceAccount[]
-    roles: KubeRole[]
-    clusterroles: KubeClusterRole[]
-    rolebindings: KubeRoleBinding[]
-    clusterrolebindings: KubeClusterRoleBinding[]
-    nodes: KubeNode[]
-    events: KubeEvent[]
-    crds: KubeCRD[]
-    podMetrics: PodMetrics[]
-    nodeMetrics: NodeMetrics[]
-    portForwards: PortForwardEntry[]
-    helmReleases: HelmRelease[]
-    debugPods: DebugPodEntry[]
-    securityScanResults: any | null
-    lastPreloadedAt: number
-    lastDashboardLoadedAt: number
-    addDebugPod: (pod: DebugPodEntry) => void
-    removeDebugPod: (name: string) => void
-    updateDebugPod: (name: string, updates: Partial<DebugPodEntry>) => void
-
-    // Loading / errors
-    loadingContexts: boolean
-    loadingNamespaces: boolean
-    loadingResources: boolean
-    error: string | null
-    setError: (err: string | null) => void
-    clearError: () => void
-
-    // Actions
+export interface AppStore extends
+    AnalysisSlice, OperationSlice, ProvidersSlice, NavigationSlice, KrewSlice,
+    ResourceSlice, ClusterSlice {
+    // Combined action — assembled in store/index.ts from the slices above, not part of any single slice.
     init: () => Promise<void>
-    selectContext: (name: string) => Promise<void>
-    selectNamespace: (name: string) => void
-    selectResource: (r: AnyKubeResource | null) => void
-    deniedSections: Set<ResourceKind>
-    loadSection: (section: ResourceKind) => Promise<void>
-    loadDashboard: () => Promise<void>
-    refresh: () => Promise<void>
-    preloadSearchResources: () => Promise<void>
-
-    // Prometheus
-    prometheusAvailable: boolean | null
-    prometheusProbeError: string | null
-    prometheusTimeRange: { start: number; end: number }
-    prometheusActivePreset: '1h' | '6h' | '24h' | '7d'
-    setPrometheusTimeRange: (range: { start: number; end: number }, preset?: '1h' | '6h' | '24h' | '7d') => void
-    probePrometheus: () => Promise<void>
-    disconnectPrometheus: () => void
-
-    // Owner chains — keyed by resource UID
-    ownerChains: Record<string, OwnerChainResponse>
-
-    // Navigation
-    navigateToResource: (kind: string, name: string, namespace: string) => void
 }
 
 export type StoreSlice<T> = StateCreator<AppStore, [], [], T>

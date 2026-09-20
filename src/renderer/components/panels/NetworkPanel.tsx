@@ -5,7 +5,7 @@ import { Shield } from 'lucide-react'
 import PageHeader from '../core/PageHeader'
 import type { ResourceKind } from '../../types'
 import {
-  type NodeKind, type EdgeKind, type GraphNode, type GraphEdge, type Graph,
+  type NodeKind, type GraphNode, type Graph,
   edgeStyle, workloadBadgeLabel, workloadIcon, computePolicyHulls,
 } from './NetworkPanel.utils'
 
@@ -416,7 +416,7 @@ const LEGEND_ENTRIES = [
   { icon: '🛡', color: '#f472b6', label: 'Network Policy' },
 ]
 
-function ZoomControls({ scale, setScale, onFit }: { scale: number; setScale: React.Dispatch<React.SetStateAction<number>>; onFit: () => void }) {
+function ZoomControls({ setScale, onFit }: { setScale: React.Dispatch<React.SetStateAction<number>>; onFit: () => void }) {
   return (
     <div className="absolute bottom-6 right-6 flex flex-col gap-2 z-10">
       <button onClick={() => setScale(s => Math.min(s * 1.2, 5))}
@@ -771,7 +771,6 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
                 {animate && isConnected && !isInfra && (
                   <path d={path} fill="none" stroke={color} strokeWidth={2}
                     strokeOpacity={0.85} strokeDasharray="7 9">
-                    {/* @ts-ignore */}
                     <animate attributeName="stroke-dashoffset" from="16" to="0" dur={dur} repeatCount="indefinite" />
                   </path>
                 )}
@@ -844,7 +843,7 @@ function TopologyView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery
         </g>
       </svg>
       {tooltip && <NodeTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} dark={dark} />}
-      <ZoomControls scale={scale} setScale={setScale} onFit={fitToScreen} />
+      <ZoomControls setScale={setScale} onFit={fitToScreen} />
     </div>
   )
 }
@@ -1115,16 +1114,13 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
                   <g>
                     {/* Primary flow particle */}
                     <circle r="2.5" fill={color} filter="url(#glow)">
-                      {/* @ts-ignore */}
                       <animateMotion dur={dur} repeatCount="indefinite" path={path} />
                     </circle>
                     {/* Tail particles */}
                     <circle r="1.5" fill={color} fillOpacity={0.6}>
-                      {/* @ts-ignore */}
                       <animateMotion dur={dur} begin="0.1s" repeatCount="indefinite" path={path} />
                     </circle>
                     <circle r="1" fill={color} fillOpacity={0.3}>
-                      {/* @ts-ignore */}
                       <animateMotion dur={dur} begin="0.2s" repeatCount="indefinite" path={path} />
                     </circle>
                   </g>
@@ -1139,7 +1135,6 @@ function MapView({ graph, groupByNs, animate, fitTrigger, dark, searchQuery, onN
             const p = nodePos.get(n.id)
             if (!p) return null
             const color = nodeColor(n)
-            const bg = nodeBg(n, dark)
             const active = tooltip?.node.id === n.id
             const isMatch = matchedIds ? matchedIds.has(n.id) : true
             const nodeOpacity = searchActive && !isMatch ? 0.12 : 1
@@ -1258,7 +1253,6 @@ export default function NetworkPanel(): JSX.Element {
     setLoading(true)
     loadingRef.current = true
     const nsArg = ns === '_all' ? '' : ns
-    // @ts-ignore
     window.kubectl.getTopology(nsArg, flowWindowSecs)
       .then((data: Graph) => {
         if (controller.signal.aborted) return
