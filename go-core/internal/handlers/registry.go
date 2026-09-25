@@ -384,4 +384,17 @@ var AllResourceDefs = []ResourceDef{
 			return listToIface(list.Items), nil
 		},
 	},
+
+	// ── Admission control ────────────────────────────────────────────────────
+	{
+		Resource: "mutatingwebhookconfigurations",
+		GetCache: func(c *store.ContextCache) map[string]interface{} { return c.MutatingWebhookConfigurations },
+		ListFn: func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
+			list, err := cs.AdmissionregistrationV1().MutatingWebhookConfigurations().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		},
+	},
 }

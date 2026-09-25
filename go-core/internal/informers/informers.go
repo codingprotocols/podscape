@@ -43,7 +43,7 @@ func InitInformers(c *store.ContextCache, stopCh <-chan struct{}) {
 	// Start everything else without blocking startup.
 	go func() {
 		registerBackgroundInformers(factory, c, stopCh)
-		factory.Start(stopCh) // no-op for already-started informers; starts new ones
+		factory.Start(stopCh)            // no-op for already-started informers; starts new ones
 		factory.WaitForCacheSync(stopCh) // block until background informers complete their initial LIST
 		select {
 		case <-stopCh:
@@ -246,6 +246,9 @@ func registerBackgroundInformers(factory k8sinformers.SharedInformerFactory, c *
 	}
 	if rbacAllowed(allowed, "clusterrolebindings") {
 		setupInformer(factory.Rbac().V1().ClusterRoleBindings().Informer(), c.ClusterRoleBindings, &c.RWMutex, false)
+	}
+	if rbacAllowed(allowed, "mutatingwebhookconfigurations") {
+		setupInformer(factory.Admissionregistration().V1().MutatingWebhookConfigurations().Informer(), c.MutatingWebhookConfigurations, &c.RWMutex, false)
 	}
 
 	// CRDs — requires the separate apiextensions client

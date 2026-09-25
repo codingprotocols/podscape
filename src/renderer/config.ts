@@ -10,6 +10,7 @@ export const LIST_SECTIONS: ResourceKind[] = [
   'configmaps', 'secrets',
   'pvcs', 'pvs', 'storageclasses',
   'serviceaccounts', 'roles', 'clusterroles', 'rolebindings', 'clusterrolebindings',
+  'mutatingwebhookconfigurations',
   'nodes', 'namespaces', 'crds'
 ]
 
@@ -17,6 +18,7 @@ export const LIST_SECTIONS: ResourceKind[] = [
 export const CLUSTER_SCOPED_SECTIONS = new Set<ResourceKind>([
   'nodes', 'namespaces', 'crds', 'pvs', 'storageclasses',
   'clusterroles', 'clusterrolebindings', 'ingressclasses',
+  'mutatingwebhookconfigurations',
 ])
 
 /** Provider-specific sections — conditionally shown based on cluster detection */
@@ -60,6 +62,7 @@ export const SECTION_LABELS: Record<string, string> = {
   clusterroles: 'ClusterRoles',
   rolebindings: 'RoleBindings',
   clusterrolebindings: 'ClusterRoleBindings',
+  mutatingwebhookconfigurations: 'Mutating Webhooks',
   nodes: 'Nodes',
   namespaces: 'Namespaces',
   crds: 'CRDs'
@@ -94,6 +97,7 @@ export const COLUMNS: Record<string, string[]> = {
   clusterroles: ['Name', 'Rules', 'Age'],
   rolebindings: ['Name', 'Role', 'Subjects', 'Age'],
   clusterrolebindings: ['Name', 'Role', 'Subjects', 'Age'],
+  mutatingwebhookconfigurations: ['Name', 'Webhooks', 'Age'],
   nodes: ['Name', 'Status', 'Instance Type', 'Node Pool', 'Capacity', 'CPU', 'Memory', 'IP', 'Age'],
   namespaces: ['Name', 'Status', 'Age'],
   crds: ['Name', 'Group', 'Scope', 'Age']

@@ -41,6 +41,7 @@ export type ResourceKind =
   | 'clusterroles'
   | 'rolebindings'
   | 'clusterrolebindings'
+  | 'mutatingwebhookconfigurations'
   | 'nodes'
   | 'namespaces'
   | 'events'

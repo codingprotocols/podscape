@@ -29,7 +29,8 @@ import EndpointsDetail from '../resource-details/network/EndpointsDetail'
 import StorageClassDetail from '../resource-details/storage/StorageClassDetail'
 import PVDetail from '../resource-details/storage/PVDetail'
 import SADetail from '../resource-details/config/SADetail'
-import { 
+import { GenericResourceDetail } from '../common/GenericResourceDetail'
+import {
   AnyKubeResource, KubePod, KubeDeployment,  KubeDaemonSet, KubeStatefulSet, KubeReplicaSet, KubeJob, KubeCronJob,
   KubeService, KubeIngress, KubeConfigMap, KubeSecret, KubePVC, KubePV,
   KubeServiceAccount, KubeNode, KubeNamespace, KubeCRD, KubeIngressClass,
@@ -78,6 +79,7 @@ export default function DetailPanel({ resource, section }: DetailPanelProps): JS
     case 'clusterroles': content = <RoleDetail role={resource as any} clusterScoped />; break
     case 'rolebindings': content = <RoleBindingDetail binding={resource as any} />; break
     case 'clusterrolebindings': content = <RoleBindingDetail binding={resource as any} />; break
+    case 'mutatingwebhookconfigurations': content = <GenericResourceDetail resource={resource} kind="mutatingwebhookconfiguration" clusterScoped />; break
     default: return null
   }
 

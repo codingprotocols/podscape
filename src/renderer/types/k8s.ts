@@ -563,6 +563,20 @@ export interface KubeClusterRoleBinding extends KubeResource {
   subjects?: Subject[]
 }
 
+// ─── MutatingWebhookConfiguration ───────────────────────────────────────────────
+
+export interface KubeMutatingWebhookConfiguration extends KubeResource {
+  metadata: ClusterMeta
+  webhooks?: Array<{
+    name: string
+    clientConfig: { service?: { name: string; namespace: string; path?: string }; url?: string }
+    rules?: Array<{ apiGroups: string[]; apiVersions: string[]; operations: string[]; resources: string[] }>
+    failurePolicy?: string
+    sideEffects: string
+    admissionReviewVersions: string[]
+  }>
+}
+
 export type AnyKubeResource =
   | KubeResourceQuota
   | KubeLimitRange
@@ -593,3 +607,4 @@ export type AnyKubeResource =
   | KubeNode
   | KubeNamespace
   | KubeCRD
+  | KubeMutatingWebhookConfiguration
