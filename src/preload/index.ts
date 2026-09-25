@@ -133,6 +133,8 @@ const kubectl = {
     ipcRenderer.invoke('kubectl:getClusterRoleBindings', context),
   getMutatingWebhookConfigurations: (context: string) =>
     ipcRenderer.invoke('kubectl:getMutatingWebhookConfigurations', context),
+  getValidatingWebhookConfigurations: (context: string) =>
+    ipcRenderer.invoke('kubectl:getValidatingWebhookConfigurations', context),
 
   // Cache readiness — true once the sidecar informer cache has fully synced
   isReady: (): Promise<boolean> =>

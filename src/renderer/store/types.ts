@@ -5,7 +5,7 @@ import {
     KubeService, KubeIngress, KubeIngressClass, KubeNetworkPolicy, KubeEndpoints,
     KubeConfigMap, KubeSecret, KubePVC, KubePV, KubeStorageClass,
     KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
-    KubeMutatingWebhookConfiguration,
+    KubeMutatingWebhookConfiguration, KubeValidatingWebhookConfiguration,
     KubeNode, KubeEvent, KubeCRD,
     NodeMetrics, PodMetrics,
     HelmRelease, OwnerChainResponse, ProviderSet
@@ -56,6 +56,7 @@ declare global {
             getRoleBindings: (context: string, namespace: string | null) => Promise<KubeRoleBinding[]>
             getClusterRoleBindings: (context: string) => Promise<KubeClusterRoleBinding[]>
             getMutatingWebhookConfigurations: (context: string) => Promise<KubeMutatingWebhookConfiguration[]>
+            getValidatingWebhookConfigurations: (context: string) => Promise<KubeValidatingWebhookConfiguration[]>
             getNodes: (context: string) => Promise<KubeNode[]>
             getCRDs: (context: string) => Promise<KubeCRD[]>
             getEvents: (context: string, namespace: string | null) => Promise<KubeEvent[]>

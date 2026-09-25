@@ -577,6 +577,20 @@ export interface KubeMutatingWebhookConfiguration extends KubeResource {
   }>
 }
 
+// ─── ValidatingWebhookConfiguration ─────────────────────────────────────────────
+
+export interface KubeValidatingWebhookConfiguration extends KubeResource {
+  metadata: ClusterMeta
+  webhooks?: Array<{
+    name: string
+    clientConfig: { service?: { name: string; namespace: string; path?: string }; url?: string }
+    rules?: Array<{ apiGroups: string[]; apiVersions: string[]; operations: string[]; resources: string[] }>
+    failurePolicy?: string
+    sideEffects: string
+    admissionReviewVersions: string[]
+  }>
+}
+
 export type AnyKubeResource =
   | KubeResourceQuota
   | KubeLimitRange
@@ -608,3 +622,4 @@ export type AnyKubeResource =
   | KubeNamespace
   | KubeCRD
   | KubeMutatingWebhookConfiguration
+  | KubeValidatingWebhookConfiguration

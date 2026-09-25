@@ -5,7 +5,7 @@ import {
     KubeIngressClass, KubeNetworkPolicy, KubeEndpoints, KubeConfigMap,
     KubeSecret, KubePVC, KubePV, KubeStorageClass, KubeServiceAccount,
     KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
-    KubeMutatingWebhookConfiguration,
+    KubeMutatingWebhookConfiguration, KubeValidatingWebhookConfiguration,
     KubeNode, KubeNamespace, KubeCRD, KubeEvent, KubeResourceQuota, KubeLimitRange,
 } from '../types/k8s'
 import { CustomScanOptions } from './types'
@@ -367,6 +367,14 @@ export const SECTION_CONFIG: Partial<Record<ResourceKind, SectionConfig>> = {
             ...labelsToStrings(r.metadata.labels),
         ],
     },
+    validatingwebhookconfigurations: {
+        stateKey: 'validatingwebhookconfigurations', fetch: (c, _) => window.kubectl.getValidatingWebhookConfigurations(c), namespaced: false,
+        searchFields: (r: KubeValidatingWebhookConfiguration) => [
+            r.metadata.name,
+            ...(r.webhooks ?? []).map(w => w.name),
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
 }
 
 // Pre-computed reset object for all resource sections (empty arrays).
@@ -403,6 +411,7 @@ export const kindToSection: Record<string, ResourceKind> = {
     RoleBinding: 'rolebindings',
     ClusterRoleBinding: 'clusterrolebindings',
     MutatingWebhookConfiguration: 'mutatingwebhookconfigurations',
+    ValidatingWebhookConfiguration: 'validatingwebhookconfigurations',
 }
 
 export function kindLabel(section: string): string {
@@ -418,6 +427,7 @@ export function kindLabel(section: string): string {
         serviceaccounts: 'serviceaccount', roles: 'role', clusterroles: 'clusterrole',
         rolebindings: 'rolebinding', clusterrolebindings: 'clusterrolebinding',
         mutatingwebhookconfigurations: 'mutatingwebhookconfiguration',
+        validatingwebhookconfigurations: 'validatingwebhookconfiguration',
         nodes: 'node', namespaces: 'namespace', crds: 'crd'
     }
     return map[section] ?? section

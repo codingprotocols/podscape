@@ -80,6 +80,7 @@ export default function DetailPanel({ resource, section }: DetailPanelProps): JS
     case 'rolebindings': content = <RoleBindingDetail binding={resource as any} />; break
     case 'clusterrolebindings': content = <RoleBindingDetail binding={resource as any} />; break
     case 'mutatingwebhookconfigurations': content = <GenericResourceDetail resource={resource} kind="mutatingwebhookconfiguration" clusterScoped />; break
+    case 'validatingwebhookconfigurations': content = <GenericResourceDetail resource={resource} kind="validatingwebhookconfiguration" clusterScoped />; break
     default: return null
   }
 

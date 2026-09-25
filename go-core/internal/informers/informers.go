@@ -250,6 +250,9 @@ func registerBackgroundInformers(factory k8sinformers.SharedInformerFactory, c *
 	if rbacAllowed(allowed, "mutatingwebhookconfigurations") {
 		setupInformer(factory.Admissionregistration().V1().MutatingWebhookConfigurations().Informer(), c.MutatingWebhookConfigurations, &c.RWMutex, false)
 	}
+	if rbacAllowed(allowed, "validatingwebhookconfigurations") {
+		setupInformer(factory.Admissionregistration().V1().ValidatingWebhookConfigurations().Informer(), c.ValidatingWebhookConfigurations, &c.RWMutex, false)
+	}
 
 	// CRDs — requires the separate apiextensions client
 	if apiextClient != nil && rbacAllowed(allowed, "customresourcedefinitions") {

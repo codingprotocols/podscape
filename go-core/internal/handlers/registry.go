@@ -397,4 +397,15 @@ var AllResourceDefs = []ResourceDef{
 			return listToIface(list.Items), nil
 		},
 	},
+	{
+		Resource: "validatingwebhookconfigurations",
+		GetCache: func(c *store.ContextCache) map[string]interface{} { return c.ValidatingWebhookConfigurations },
+		ListFn: func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
+			list, err := cs.AdmissionregistrationV1().ValidatingWebhookConfigurations().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		},
+	},
 }

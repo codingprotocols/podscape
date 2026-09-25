@@ -410,6 +410,7 @@ export function registerKubectlHandlers(): void {
   ipcMain.handle('kubectl:getRoleBindings', (_e, ctx, ns) => provider.getResources(ctx, ns, 'rolebindings'))
   ipcMain.handle('kubectl:getClusterRoleBindings', (_e, ctx) => provider.getResources(ctx, undefined, 'clusterrolebindings'))
   ipcMain.handle('kubectl:getMutatingWebhookConfigurations', (_e, ctx) => provider.getResources(ctx, undefined, 'mutatingwebhookconfigurations'))
+  ipcMain.handle('kubectl:getValidatingWebhookConfigurations', (_e, ctx) => provider.getResources(ctx, undefined, 'validatingwebhookconfigurations'))
   ipcMain.handle('kubectl:getNodes', (_e, ctx) => provider.getResources(ctx, undefined, 'nodes'))
   ipcMain.handle('kubectl:getCRDs', (_e, ctx) => provider.getResources(ctx, undefined, 'customresourcedefinitions'))
   ipcMain.handle('kubectl:getEvents', (_e, ctx, ns) => provider.getResources(ctx, ns, 'events'))
