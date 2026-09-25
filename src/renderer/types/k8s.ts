@@ -591,6 +591,20 @@ export interface KubeValidatingWebhookConfiguration extends KubeResource {
   }>
 }
 
+// ─── EndpointSlice ───────────────────────────────────────────────────────────
+
+export interface KubeEndpointSlice extends KubeResource {
+  metadata: NamespacedMeta
+  addressType: string
+  endpoints: Array<{
+    addresses: string[]
+    conditions?: { ready?: boolean; serving?: boolean; terminating?: boolean }
+    hostname?: string
+    nodeName?: string
+  }>
+  ports?: Array<{ name?: string; protocol?: string; port?: number }>
+}
+
 export type AnyKubeResource =
   | KubeResourceQuota
   | KubeLimitRange
@@ -623,3 +637,4 @@ export type AnyKubeResource =
   | KubeCRD
   | KubeMutatingWebhookConfiguration
   | KubeValidatingWebhookConfiguration
+  | KubeEndpointSlice

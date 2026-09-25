@@ -5,7 +5,7 @@ import {
     KubeIngressClass, KubeNetworkPolicy, KubeEndpoints, KubeConfigMap,
     KubeSecret, KubePVC, KubePV, KubeStorageClass, KubeServiceAccount,
     KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
-    KubeMutatingWebhookConfiguration, KubeValidatingWebhookConfiguration,
+    KubeMutatingWebhookConfiguration, KubeValidatingWebhookConfiguration, KubeEndpointSlice,
     KubeNode, KubeNamespace, KubeCRD, KubeEvent, KubeResourceQuota, KubeLimitRange,
 } from '../types/k8s'
 import { CustomScanOptions } from './types'
@@ -375,6 +375,14 @@ export const SECTION_CONFIG: Partial<Record<ResourceKind, SectionConfig>> = {
             ...labelsToStrings(r.metadata.labels),
         ],
     },
+    endpointslices: {
+        stateKey: 'endpointslices', fetch: (c, ns) => window.kubectl.getEndpointSlices(c, ns), namespaced: true,
+        searchFields: (r: KubeEndpointSlice) => [
+            r.metadata.name, r.metadata.namespace, r.addressType,
+            ...r.endpoints.flatMap(e => e.addresses),
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
 }
 
 // Pre-computed reset object for all resource sections (empty arrays).
@@ -412,6 +420,7 @@ export const kindToSection: Record<string, ResourceKind> = {
     ClusterRoleBinding: 'clusterrolebindings',
     MutatingWebhookConfiguration: 'mutatingwebhookconfigurations',
     ValidatingWebhookConfiguration: 'validatingwebhookconfigurations',
+    EndpointSlice: 'endpointslices',
 }
 
 export function kindLabel(section: string): string {
@@ -428,6 +437,7 @@ export function kindLabel(section: string): string {
         rolebindings: 'rolebinding', clusterrolebindings: 'clusterrolebinding',
         mutatingwebhookconfigurations: 'mutatingwebhookconfiguration',
         validatingwebhookconfigurations: 'validatingwebhookconfiguration',
+        endpointslices: 'endpointslice',
         nodes: 'node', namespaces: 'namespace', crds: 'crd'
     }
     return map[section] ?? section

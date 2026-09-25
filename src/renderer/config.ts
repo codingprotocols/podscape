@@ -10,7 +10,7 @@ export const LIST_SECTIONS: ResourceKind[] = [
   'configmaps', 'secrets',
   'pvcs', 'pvs', 'storageclasses',
   'serviceaccounts', 'roles', 'clusterroles', 'rolebindings', 'clusterrolebindings',
-  'mutatingwebhookconfigurations', 'validatingwebhookconfigurations',
+  'mutatingwebhookconfigurations', 'validatingwebhookconfigurations', 'endpointslices',
   'nodes', 'namespaces', 'crds'
 ]
 
@@ -64,6 +64,7 @@ export const SECTION_LABELS: Record<string, string> = {
   clusterrolebindings: 'ClusterRoleBindings',
   mutatingwebhookconfigurations: 'Mutating Webhooks',
   validatingwebhookconfigurations: 'Validating Webhooks',
+  endpointslices: 'EndpointSlices',
   nodes: 'Nodes',
   namespaces: 'Namespaces',
   crds: 'CRDs'
@@ -100,6 +101,7 @@ export const COLUMNS: Record<string, string[]> = {
   clusterrolebindings: ['Name', 'Role', 'Subjects', 'Age'],
   mutatingwebhookconfigurations: ['Name', 'Webhooks', 'Age'],
   validatingwebhookconfigurations: ['Name', 'Webhooks', 'Age'],
+  endpointslices: ['Name', 'Address Type', 'Endpoints', 'Ports', 'Age'],
   nodes: ['Name', 'Status', 'Instance Type', 'Node Pool', 'Capacity', 'CPU', 'Memory', 'IP', 'Age'],
   namespaces: ['Name', 'Status', 'Age'],
   crds: ['Name', 'Group', 'Scope', 'Age']

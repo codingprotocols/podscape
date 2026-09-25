@@ -408,4 +408,17 @@ var AllResourceDefs = []ResourceDef{
 			return listToIface(list.Items), nil
 		},
 	},
+
+	// ── Discovery ─────────────────────────────────────────────────────────────
+	{
+		Resource: "endpointslices",
+		GetCache: func(c *store.ContextCache) map[string]interface{} { return c.EndpointSlices },
+		ListFn: func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.DiscoveryV1().EndpointSlices(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		},
+	},
 }

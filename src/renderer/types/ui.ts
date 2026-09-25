@@ -43,6 +43,7 @@ export type ResourceKind =
   | 'clusterrolebindings'
   | 'mutatingwebhookconfigurations'
   | 'validatingwebhookconfigurations'
+  | 'endpointslices'
   | 'nodes'
   | 'namespaces'
   | 'events'

@@ -77,6 +77,7 @@ type ContextCache struct {
 
 	MutatingWebhookConfigurations   map[string]interface{}
 	ValidatingWebhookConfigurations map[string]interface{}
+	EndpointSlices                  map[string]interface{}
 }
 
 func NewContextCache(clientset kubernetes.Interface, config *rest.Config) *ContextCache {
@@ -119,6 +120,7 @@ func NewContextCache(clientset kubernetes.Interface, config *rest.Config) *Conte
 		ClusterRoleBindings:             make(map[string]interface{}),
 		MutatingWebhookConfigurations:   make(map[string]interface{}),
 		ValidatingWebhookConfigurations: make(map[string]interface{}),
+		EndpointSlices:                  make(map[string]interface{}),
 		Events:                          make(map[string]interface{}),
 	}
 }
@@ -244,6 +246,7 @@ func (c *ContextCache) ClearMaps() {
 	c.ClusterRoleBindings = make(map[string]interface{})
 	c.MutatingWebhookConfigurations = make(map[string]interface{})
 	c.ValidatingWebhookConfigurations = make(map[string]interface{})
+	c.EndpointSlices = make(map[string]interface{})
 	c.Events = make(map[string]interface{})
 }
 

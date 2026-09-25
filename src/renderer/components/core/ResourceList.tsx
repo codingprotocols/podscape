@@ -9,7 +9,7 @@ import type {
   KubeHPA, KubePDB, KubeResourceQuota, KubeLimitRange, KubeService, KubeIngress, KubeIngressClass, KubeNetworkPolicy, KubeEndpoints,
   KubeConfigMap, KubeSecret, KubePVC, KubePV, KubeStorageClass,
   KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
-  KubeMutatingWebhookConfiguration, KubeValidatingWebhookConfiguration,
+  KubeMutatingWebhookConfiguration, KubeValidatingWebhookConfiguration, KubeEndpointSlice,
   KubeNode, KubeNamespace, KubeCRD, AnyKubeResource, ResourceKind, NodeMetrics
 } from '../../types'
 import { podPhaseBg, totalRestarts, formatAge, getNodeReady, parseCpuMillicores, parseMemoryMiB } from '../../types'
@@ -579,6 +579,20 @@ function ValidatingWebhookConfigurationRow({ vwc }: { vwc: KubeValidatingWebhook
   )
 }
 
+function EndpointSliceRow({ es }: { es: KubeEndpointSlice }) {
+  const addrCount = (es.endpoints ?? []).reduce((sum, e) => sum + (e.addresses?.length ?? 0), 0)
+  const portStr = (es.ports ?? []).map(p => p.port).filter(p => p !== undefined).join(', ')
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{es.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{es.addressType}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{addrCount} address{addrCount !== 1 ? 'es' : ''}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono">{portStr || '—'}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(es.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
 // ─── Column headers ───────────────────────────────────────────────────────────
 
 
@@ -615,6 +629,7 @@ function ResourceRow({ resource, section, nodeMetricsMap }: { resource: AnyKubeR
     case 'clusterrolebindings': return <ClusterRoleBindingRow crb={resource as KubeClusterRoleBinding} />
     case 'mutatingwebhookconfigurations': return <MutatingWebhookConfigurationRow mwc={resource as KubeMutatingWebhookConfiguration} />
     case 'validatingwebhookconfigurations': return <ValidatingWebhookConfigurationRow vwc={resource as KubeValidatingWebhookConfiguration} />
+    case 'endpointslices': return <EndpointSliceRow es={resource as KubeEndpointSlice} />
     case 'nodes': return <NodeRow node={resource as KubeNode} metrics={nodeMetricsMap?.get((resource as KubeNode).metadata.name)} />
     case 'namespaces': return <NamespaceRow ns={resource as KubeNamespace} />
     case 'crds': return <CRDRow crd={resource as KubeCRD} />
@@ -1603,6 +1618,11 @@ function getSortValue(resource: any, section: string, col: string): string | num
 
   if (section === 'mutatingwebhookconfigurations' || section === 'validatingwebhookconfigurations') {
     if (col === 'Webhooks') return (resource.webhooks ?? []).length
+  }
+
+  if (section === 'endpointslices') {
+    if (col === 'Address Type') return resource.addressType ?? ''
+    if (col === 'Endpoints') return (resource.endpoints ?? []).reduce((sum: number, e: any) => sum + (e.addresses?.length ?? 0), 0)
   }
 
   if (section === 'nodes') {
