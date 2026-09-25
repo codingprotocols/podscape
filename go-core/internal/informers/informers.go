@@ -259,6 +259,9 @@ func registerBackgroundInformers(factory k8sinformers.SharedInformerFactory, c *
 	if rbacAllowed(allowed, "priorityclasses") {
 		setupInformer(factory.Scheduling().V1().PriorityClasses().Informer(), c.PriorityClasses, &c.RWMutex, false)
 	}
+	if rbacAllowed(allowed, "runtimeclasses") {
+		setupInformer(factory.Node().V1().RuntimeClasses().Informer(), c.RuntimeClasses, &c.RWMutex, false)
+	}
 
 	// CRDs — requires the separate apiextensions client
 	if apiextClient != nil && rbacAllowed(allowed, "customresourcedefinitions") {

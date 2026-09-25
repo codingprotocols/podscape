@@ -45,6 +45,7 @@ export type ResourceKind =
   | 'validatingwebhookconfigurations'
   | 'endpointslices'
   | 'priorityclasses'
+  | 'runtimeclasses'
   | 'nodes'
   | 'namespaces'
   | 'events'

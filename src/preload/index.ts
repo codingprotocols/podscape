@@ -139,6 +139,8 @@ const kubectl = {
     ipcRenderer.invoke('kubectl:getEndpointSlices', context, namespace),
   getPriorityClasses: (context: string) =>
     ipcRenderer.invoke('kubectl:getPriorityClasses', context),
+  getRuntimeClasses: (context: string) =>
+    ipcRenderer.invoke('kubectl:getRuntimeClasses', context),
 
   // Cache readiness — true once the sidecar informer cache has fully synced
   isReady: (): Promise<boolean> =>

@@ -413,6 +413,7 @@ export function registerKubectlHandlers(): void {
   ipcMain.handle('kubectl:getValidatingWebhookConfigurations', (_e, ctx) => provider.getResources(ctx, undefined, 'validatingwebhookconfigurations'))
   ipcMain.handle('kubectl:getEndpointSlices', (_e, ctx, ns) => provider.getResources(ctx, ns, 'endpointslices'))
   ipcMain.handle('kubectl:getPriorityClasses', (_e, ctx) => provider.getResources(ctx, undefined, 'priorityclasses'))
+  ipcMain.handle('kubectl:getRuntimeClasses', (_e, ctx) => provider.getResources(ctx, undefined, 'runtimeclasses'))
   ipcMain.handle('kubectl:getNodes', (_e, ctx) => provider.getResources(ctx, undefined, 'nodes'))
   ipcMain.handle('kubectl:getCRDs', (_e, ctx) => provider.getResources(ctx, undefined, 'customresourcedefinitions'))
   ipcMain.handle('kubectl:getEvents', (_e, ctx, ns) => provider.getResources(ctx, ns, 'events'))

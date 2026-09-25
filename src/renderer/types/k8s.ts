@@ -615,6 +615,13 @@ export interface KubePriorityClass extends KubeResource {
   preemptionPolicy?: string
 }
 
+// ─── RuntimeClass ────────────────────────────────────────────────────────────
+
+export interface KubeRuntimeClass extends KubeResource {
+  metadata: ClusterMeta
+  handler: string
+}
+
 export type AnyKubeResource =
   | KubeResourceQuota
   | KubeLimitRange
@@ -649,3 +656,4 @@ export type AnyKubeResource =
   | KubeValidatingWebhookConfiguration
   | KubeEndpointSlice
   | KubePriorityClass
+  | KubeRuntimeClass

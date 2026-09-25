@@ -434,4 +434,17 @@ var AllResourceDefs = []ResourceDef{
 			return listToIface(list.Items), nil
 		},
 	},
+
+	// ── Node ─────────────────────────────────────────────────────────────────
+	{
+		Resource: "runtimeclasses",
+		GetCache: func(c *store.ContextCache) map[string]interface{} { return c.RuntimeClasses },
+		ListFn: func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
+			list, err := cs.NodeV1().RuntimeClasses().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		},
+	},
 }

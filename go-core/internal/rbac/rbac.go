@@ -66,6 +66,7 @@ var AllResources = []ResourceDescriptor{
 	{Resource: "validatingwebhookconfigurations", Group: "admissionregistration.k8s.io", ClusterScoped: true},
 	{Resource: "endpointslices", Group: "discovery.k8s.io"},
 	{Resource: "priorityclasses", Group: "scheduling.k8s.io", ClusterScoped: true},
+	{Resource: "runtimeclasses", Group: "node.k8s.io", ClusterScoped: true},
 	// CRDs (uses a separate apiextensions client but the SAR check uses the
 	// main clientset — the SAR endpoint can evaluate any API group)
 	{Resource: "customresourcedefinitions", Group: "apiextensions.k8s.io", ClusterScoped: true},
