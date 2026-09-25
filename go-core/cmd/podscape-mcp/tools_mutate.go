@@ -440,7 +440,7 @@ func handleExecCommand(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallT
 	}
 
 	var stdout, stderr bytes.Buffer
-	err := exec.Exec(execCtx, b.Clientset, b.Config, ns, pod, container, command, nil, &stdout, &stderr, false)
+	err := exec.Exec(execCtx, b.Clientset, b.Config, ns, pod, container, command, nil, &stdout, &stderr, false, nil)
 
 	combined := stdout.String()
 	if stderr.Len() > 0 {

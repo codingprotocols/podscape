@@ -9,6 +9,8 @@ import type {
   KubeHPA, KubePDB, KubeResourceQuota, KubeLimitRange, KubeService, KubeIngress, KubeIngressClass, KubeNetworkPolicy, KubeEndpoints,
   KubeConfigMap, KubeSecret, KubePVC, KubePV, KubeStorageClass,
   KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
+  KubeMutatingWebhookConfiguration, KubeValidatingWebhookConfiguration, KubeEndpointSlice,
+  KubePriorityClass, KubeRuntimeClass,
   KubeNode, KubeNamespace, KubeCRD, AnyKubeResource, ResourceKind, NodeMetrics
 } from '../../types'
 import { podPhaseBg, totalRestarts, formatAge, getNodeReady, parseCpuMillicores, parseMemoryMiB } from '../../types'
@@ -556,6 +558,64 @@ function ClusterRoleBindingRow({ crb }: { crb: KubeClusterRoleBinding }) {
   )
 }
 
+function MutatingWebhookConfigurationRow({ mwc }: { mwc: KubeMutatingWebhookConfiguration }) {
+  const webhookCount = (mwc.webhooks ?? []).length
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[280px]">{mwc.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{webhookCount} webhook{webhookCount !== 1 ? 's' : ''}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(mwc.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
+function ValidatingWebhookConfigurationRow({ vwc }: { vwc: KubeValidatingWebhookConfiguration }) {
+  const webhookCount = (vwc.webhooks ?? []).length
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[280px]">{vwc.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{webhookCount} webhook{webhookCount !== 1 ? 's' : ''}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(vwc.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
+function EndpointSliceRow({ es }: { es: KubeEndpointSlice }) {
+  const addrCount = (es.endpoints ?? []).reduce((sum, e) => sum + (e.addresses?.length ?? 0), 0)
+  const portStr = (es.ports ?? []).map(p => p.port).filter(p => p !== undefined).join(', ')
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{es.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{es.addressType}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{addrCount} address{addrCount !== 1 ? 'es' : ''}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono">{portStr || '—'}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(es.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
+function PriorityClassRow({ pc }: { pc: KubePriorityClass }) {
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{pc.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono">{pc.value}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{pc.globalDefault ? 'Yes' : 'No'}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{pc.preemptionPolicy ?? '—'}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(pc.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
+function RuntimeClassRow({ rc }: { rc: KubeRuntimeClass }) {
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{rc.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono">{rc.handler}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(rc.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
 // ─── Column headers ───────────────────────────────────────────────────────────
 
 
@@ -590,6 +650,11 @@ function ResourceRow({ resource, section, nodeMetricsMap }: { resource: AnyKubeR
     case 'clusterroles': return <ClusterRoleRow role={resource as KubeClusterRole} />
     case 'rolebindings': return <RoleBindingRow rb={resource as KubeRoleBinding} />
     case 'clusterrolebindings': return <ClusterRoleBindingRow crb={resource as KubeClusterRoleBinding} />
+    case 'mutatingwebhookconfigurations': return <MutatingWebhookConfigurationRow mwc={resource as KubeMutatingWebhookConfiguration} />
+    case 'validatingwebhookconfigurations': return <ValidatingWebhookConfigurationRow vwc={resource as KubeValidatingWebhookConfiguration} />
+    case 'endpointslices': return <EndpointSliceRow es={resource as KubeEndpointSlice} />
+    case 'priorityclasses': return <PriorityClassRow pc={resource as KubePriorityClass} />
+    case 'runtimeclasses': return <RuntimeClassRow rc={resource as KubeRuntimeClass} />
     case 'nodes': return <NodeRow node={resource as KubeNode} metrics={nodeMetricsMap?.get((resource as KubeNode).metadata.name)} />
     case 'namespaces': return <NamespaceRow ns={resource as KubeNamespace} />
     case 'crds': return <CRDRow crd={resource as KubeCRD} />
@@ -1574,6 +1639,25 @@ function getSortValue(resource: any, section: string, col: string): string | num
   if (section === 'rolebindings' || section === 'clusterrolebindings') {
     if (col === 'Role') return resource.roleRef?.name ?? ''
     if (col === 'Subjects') return (resource.subjects ?? []).length
+  }
+
+  if (section === 'mutatingwebhookconfigurations' || section === 'validatingwebhookconfigurations') {
+    if (col === 'Webhooks') return (resource.webhooks ?? []).length
+  }
+
+  if (section === 'endpointslices') {
+    if (col === 'Address Type') return resource.addressType ?? ''
+    if (col === 'Endpoints') return (resource.endpoints ?? []).reduce((sum: number, e: any) => sum + (e.addresses?.length ?? 0), 0)
+  }
+
+  if (section === 'priorityclasses') {
+    if (col === 'Value') return resource.value ?? 0
+    if (col === 'Global Default') return resource.globalDefault ? 1 : 0
+    if (col === 'Preemption Policy') return resource.preemptionPolicy ?? ''
+  }
+
+  if (section === 'runtimeclasses') {
+    if (col === 'Handler') return resource.handler ?? ''
   }
 
   if (section === 'nodes') {

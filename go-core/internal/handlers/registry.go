@@ -384,4 +384,67 @@ var AllResourceDefs = []ResourceDef{
 			return listToIface(list.Items), nil
 		},
 	},
+
+	// ── Admission control ────────────────────────────────────────────────────
+	{
+		Resource: "mutatingwebhookconfigurations",
+		GetCache: func(c *store.ContextCache) map[string]interface{} { return c.MutatingWebhookConfigurations },
+		ListFn: func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
+			list, err := cs.AdmissionregistrationV1().MutatingWebhookConfigurations().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		},
+	},
+	{
+		Resource: "validatingwebhookconfigurations",
+		GetCache: func(c *store.ContextCache) map[string]interface{} { return c.ValidatingWebhookConfigurations },
+		ListFn: func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
+			list, err := cs.AdmissionregistrationV1().ValidatingWebhookConfigurations().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		},
+	},
+
+	// ── Discovery ─────────────────────────────────────────────────────────────
+	{
+		Resource: "endpointslices",
+		GetCache: func(c *store.ContextCache) map[string]interface{} { return c.EndpointSlices },
+		ListFn: func(ctx context.Context, cs kubernetes.Interface, ns string) ([]interface{}, error) {
+			list, err := cs.DiscoveryV1().EndpointSlices(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		},
+	},
+
+	// ── Scheduling ───────────────────────────────────────────────────────────
+	{
+		Resource: "priorityclasses",
+		GetCache: func(c *store.ContextCache) map[string]interface{} { return c.PriorityClasses },
+		ListFn: func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
+			list, err := cs.SchedulingV1().PriorityClasses().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		},
+	},
+
+	// ── Node ─────────────────────────────────────────────────────────────────
+	{
+		Resource: "runtimeclasses",
+		GetCache: func(c *store.ContextCache) map[string]interface{} { return c.RuntimeClasses },
+		ListFn: func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
+			list, err := cs.NodeV1().RuntimeClasses().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		},
+	},
 }

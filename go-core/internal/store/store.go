@@ -12,17 +12,17 @@ import (
 )
 
 // ContextCache holds all per-context state: clientset, REST config, informer
-// stop channel, readiness flags, and the 28 resource maps.
+// stop channel, readiness flags, and the resource maps.
 type ContextCache struct {
 	sync.RWMutex
-	Clientset             kubernetes.Interface
+	Clientset              kubernetes.Interface
 	ApiextensionsClientset apiextensionsclientset.Interface
-	Config                *rest.Config
-	StopCh     chan struct{}
-	CacheCtx    context.Context
-	cacheCancel context.CancelFunc
-	CacheReady bool // true once critical informers have synced at least once for this cache
-	HasData    bool // set true after first successful background sync; never reset to false
+	Config                 *rest.Config
+	StopCh                 chan struct{}
+	CacheCtx               context.Context
+	cacheCancel            context.CancelFunc
+	CacheReady             bool // true once critical informers have synced at least once for this cache
+	HasData                bool // set true after first successful background sync; never reset to false
 	//   false = never fully synced → use direct-API fallback
 	//   true  = stale data ok → serve cache, restart informers in background
 
@@ -74,6 +74,12 @@ type ContextCache struct {
 	RoleBindings        map[string]interface{}
 	ClusterRoleBindings map[string]interface{}
 	Events              map[string]interface{}
+
+	MutatingWebhookConfigurations   map[string]interface{}
+	ValidatingWebhookConfigurations map[string]interface{}
+	EndpointSlices                  map[string]interface{}
+	PriorityClasses                 map[string]interface{}
+	RuntimeClasses                  map[string]interface{}
 }
 
 func NewContextCache(clientset kubernetes.Interface, config *rest.Config) *ContextCache {
@@ -85,36 +91,41 @@ func NewContextCache(clientset kubernetes.Interface, config *rest.Config) *Conte
 		CacheCtx:    ctx,
 		cacheCancel: cancel,
 
-		Nodes:               make(map[string]interface{}),
-		Pods:                make(map[string]interface{}),
-		Deployments:         make(map[string]interface{}),
-		DaemonSets:          make(map[string]interface{}),
-		StatefulSets:        make(map[string]interface{}),
-		ReplicaSets:         make(map[string]interface{}),
-		Jobs:                make(map[string]interface{}),
-		CronJobs:            make(map[string]interface{}),
-		HPAs:                make(map[string]interface{}),
-		PDBs:                make(map[string]interface{}),
-		ResourceQuotas:      make(map[string]interface{}),
-		LimitRanges:         make(map[string]interface{}),
-		Services:            make(map[string]interface{}),
-		Ingresses:           make(map[string]interface{}),
-		IngressClasses:      make(map[string]interface{}),
-		NetworkPolicies:     make(map[string]interface{}),
-		Endpoints:           make(map[string]interface{}),
-		ConfigMaps:          make(map[string]interface{}),
-		Secrets:             make(map[string]interface{}),
-		PVCs:                make(map[string]interface{}),
-		PVs:                 make(map[string]interface{}),
-		StorageClasses:      make(map[string]interface{}),
-		Namespaces:          make(map[string]interface{}),
-		CRDs:                make(map[string]interface{}),
-		ServiceAccounts:     make(map[string]interface{}),
-		Roles:               make(map[string]interface{}),
-		ClusterRoles:        make(map[string]interface{}),
-		RoleBindings:        make(map[string]interface{}),
-		ClusterRoleBindings: make(map[string]interface{}),
-		Events:              make(map[string]interface{}),
+		Nodes:                           make(map[string]interface{}),
+		Pods:                            make(map[string]interface{}),
+		Deployments:                     make(map[string]interface{}),
+		DaemonSets:                      make(map[string]interface{}),
+		StatefulSets:                    make(map[string]interface{}),
+		ReplicaSets:                     make(map[string]interface{}),
+		Jobs:                            make(map[string]interface{}),
+		CronJobs:                        make(map[string]interface{}),
+		HPAs:                            make(map[string]interface{}),
+		PDBs:                            make(map[string]interface{}),
+		ResourceQuotas:                  make(map[string]interface{}),
+		LimitRanges:                     make(map[string]interface{}),
+		Services:                        make(map[string]interface{}),
+		Ingresses:                       make(map[string]interface{}),
+		IngressClasses:                  make(map[string]interface{}),
+		NetworkPolicies:                 make(map[string]interface{}),
+		Endpoints:                       make(map[string]interface{}),
+		ConfigMaps:                      make(map[string]interface{}),
+		Secrets:                         make(map[string]interface{}),
+		PVCs:                            make(map[string]interface{}),
+		PVs:                             make(map[string]interface{}),
+		StorageClasses:                  make(map[string]interface{}),
+		Namespaces:                      make(map[string]interface{}),
+		CRDs:                            make(map[string]interface{}),
+		ServiceAccounts:                 make(map[string]interface{}),
+		Roles:                           make(map[string]interface{}),
+		ClusterRoles:                    make(map[string]interface{}),
+		RoleBindings:                    make(map[string]interface{}),
+		ClusterRoleBindings:             make(map[string]interface{}),
+		MutatingWebhookConfigurations:   make(map[string]interface{}),
+		ValidatingWebhookConfigurations: make(map[string]interface{}),
+		EndpointSlices:                  make(map[string]interface{}),
+		PriorityClasses:                 make(map[string]interface{}),
+		RuntimeClasses:                  make(map[string]interface{}),
+		Events:                          make(map[string]interface{}),
 	}
 }
 
@@ -237,15 +248,20 @@ func (c *ContextCache) ClearMaps() {
 	c.ClusterRoles = make(map[string]interface{})
 	c.RoleBindings = make(map[string]interface{})
 	c.ClusterRoleBindings = make(map[string]interface{})
+	c.MutatingWebhookConfigurations = make(map[string]interface{})
+	c.ValidatingWebhookConfigurations = make(map[string]interface{})
+	c.EndpointSlices = make(map[string]interface{})
+	c.PriorityClasses = make(map[string]interface{})
+	c.RuntimeClasses = make(map[string]interface{})
 	c.Events = make(map[string]interface{})
 }
 
 // ClusterStore is a thin coordinator that maintains the per-context cache pool
 // and tracks the currently active context.
 type ClusterStore struct {
-	sync.RWMutex                       // guards ActiveCache pointer and caches map only
+	sync.RWMutex      // guards ActiveCache pointer and caches map only
 	Kubeconfig        string
-	NoKubeconfig      bool   // true when sidecar started with no valid kubeconfig file
+	NoKubeconfig      bool // true when sidecar started with no valid kubeconfig file
 	ActiveContextName string
 	ActiveCache       *ContextCache
 	caches            map[string]*ContextCache

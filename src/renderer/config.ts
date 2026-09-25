@@ -10,6 +10,8 @@ export const LIST_SECTIONS: ResourceKind[] = [
   'configmaps', 'secrets',
   'pvcs', 'pvs', 'storageclasses',
   'serviceaccounts', 'roles', 'clusterroles', 'rolebindings', 'clusterrolebindings',
+  'mutatingwebhookconfigurations', 'validatingwebhookconfigurations', 'endpointslices',
+  'priorityclasses', 'runtimeclasses',
   'nodes', 'namespaces', 'crds'
 ]
 
@@ -17,6 +19,8 @@ export const LIST_SECTIONS: ResourceKind[] = [
 export const CLUSTER_SCOPED_SECTIONS = new Set<ResourceKind>([
   'nodes', 'namespaces', 'crds', 'pvs', 'storageclasses',
   'clusterroles', 'clusterrolebindings', 'ingressclasses',
+  'mutatingwebhookconfigurations', 'validatingwebhookconfigurations',
+  'priorityclasses', 'runtimeclasses',
 ])
 
 /** Provider-specific sections — conditionally shown based on cluster detection */
@@ -60,6 +64,11 @@ export const SECTION_LABELS: Record<string, string> = {
   clusterroles: 'ClusterRoles',
   rolebindings: 'RoleBindings',
   clusterrolebindings: 'ClusterRoleBindings',
+  mutatingwebhookconfigurations: 'Mutating Webhooks',
+  validatingwebhookconfigurations: 'Validating Webhooks',
+  endpointslices: 'EndpointSlices',
+  priorityclasses: 'PriorityClasses',
+  runtimeclasses: 'RuntimeClasses',
   nodes: 'Nodes',
   namespaces: 'Namespaces',
   crds: 'CRDs'
@@ -94,6 +103,11 @@ export const COLUMNS: Record<string, string[]> = {
   clusterroles: ['Name', 'Rules', 'Age'],
   rolebindings: ['Name', 'Role', 'Subjects', 'Age'],
   clusterrolebindings: ['Name', 'Role', 'Subjects', 'Age'],
+  mutatingwebhookconfigurations: ['Name', 'Webhooks', 'Age'],
+  validatingwebhookconfigurations: ['Name', 'Webhooks', 'Age'],
+  endpointslices: ['Name', 'Address Type', 'Endpoints', 'Ports', 'Age'],
+  priorityclasses: ['Name', 'Value', 'Global Default', 'Preemption Policy', 'Age'],
+  runtimeclasses: ['Name', 'Handler', 'Age'],
   nodes: ['Name', 'Status', 'Instance Type', 'Node Pool', 'Capacity', 'CPU', 'Memory', 'IP', 'Age'],
   namespaces: ['Name', 'Status', 'Age'],
   crds: ['Name', 'Group', 'Scope', 'Age']

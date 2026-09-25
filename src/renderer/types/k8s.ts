@@ -563,6 +563,65 @@ export interface KubeClusterRoleBinding extends KubeResource {
   subjects?: Subject[]
 }
 
+// ─── MutatingWebhookConfiguration ───────────────────────────────────────────────
+
+export interface KubeMutatingWebhookConfiguration extends KubeResource {
+  metadata: ClusterMeta
+  webhooks?: Array<{
+    name: string
+    clientConfig: { service?: { name: string; namespace: string; path?: string }; url?: string }
+    rules?: Array<{ apiGroups: string[]; apiVersions: string[]; operations: string[]; resources: string[] }>
+    failurePolicy?: string
+    sideEffects: string
+    admissionReviewVersions: string[]
+  }>
+}
+
+// ─── ValidatingWebhookConfiguration ─────────────────────────────────────────────
+
+export interface KubeValidatingWebhookConfiguration extends KubeResource {
+  metadata: ClusterMeta
+  webhooks?: Array<{
+    name: string
+    clientConfig: { service?: { name: string; namespace: string; path?: string }; url?: string }
+    rules?: Array<{ apiGroups: string[]; apiVersions: string[]; operations: string[]; resources: string[] }>
+    failurePolicy?: string
+    sideEffects: string
+    admissionReviewVersions: string[]
+  }>
+}
+
+// ─── EndpointSlice ───────────────────────────────────────────────────────────
+
+export interface KubeEndpointSlice extends KubeResource {
+  metadata: NamespacedMeta
+  addressType: string
+  endpoints: Array<{
+    addresses: string[]
+    conditions?: { ready?: boolean; serving?: boolean; terminating?: boolean }
+    hostname?: string
+    nodeName?: string
+  }>
+  ports?: Array<{ name?: string; protocol?: string; port?: number }>
+}
+
+// ─── PriorityClass ───────────────────────────────────────────────────────────
+
+export interface KubePriorityClass extends KubeResource {
+  metadata: ClusterMeta
+  value: number
+  globalDefault?: boolean
+  description?: string
+  preemptionPolicy?: string
+}
+
+// ─── RuntimeClass ────────────────────────────────────────────────────────────
+
+export interface KubeRuntimeClass extends KubeResource {
+  metadata: ClusterMeta
+  handler: string
+}
+
 export type AnyKubeResource =
   | KubeResourceQuota
   | KubeLimitRange
@@ -593,3 +652,8 @@ export type AnyKubeResource =
   | KubeNode
   | KubeNamespace
   | KubeCRD
+  | KubeMutatingWebhookConfiguration
+  | KubeValidatingWebhookConfiguration
+  | KubeEndpointSlice
+  | KubePriorityClass
+  | KubeRuntimeClass

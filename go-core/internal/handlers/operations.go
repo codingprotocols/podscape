@@ -27,6 +27,7 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/restmapper"
+	"k8s.io/client-go/tools/remotecommand"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/yaml"
 
@@ -494,7 +495,7 @@ func HandleExecOneShot(w http.ResponseWriter, r *http.Request) {
 	out := &captureWriter{}
 	errOut := &captureWriter{}
 
-	err := exec.Exec(r.Context(), cs, cfg, namespace, pod, container, command, nil, out, errOut, false)
+	err := exec.Exec(r.Context(), cs, cfg, namespace, pod, container, command, nil, out, errOut, false, nil)
 
 	resp := map[string]any{
 		"stdout": out.String(),
@@ -546,29 +547,51 @@ func HandleExec(w http.ResponseWriter, r *http.Request) {
 	// forbids concurrent reads, so the read-pump and wsStream.Read cannot both call
 	// ReadMessage simultaneously. Route stdin through an io.Pipe instead.
 	stdinR, stdinW := io.Pipe()
-	go func() {
-		defer stdinW.Close()
-		for {
-			_, msg, err := conn.ReadMessage()
-			if err != nil {
-				cancel()
-				return
-			}
-			if _, err := stdinW.Write(msg); err != nil {
-				cancel()
-				return
-			}
-		}
-	}()
+	sizeQueue := exec.NewSizeQueue()
+	defer sizeQueue.Close()
+	go runExecReadPump(conn, stdinW, sizeQueue, cancel)
 
 	stream := &wsStream{conn: conn}
-	err = exec.Exec(ctx, cs, cfg, namespace, pod, container, command, stdinR, stream, stream, true)
+	err = exec.Exec(ctx, cs, cfg, namespace, pod, container, command, stdinR, stream, stream, true, sizeQueue)
 	stdinR.Close() // unblock any stdinW.Write blocked in the read-pump goroutine
 	if err != nil {
 		log.Printf("[HandleExec] Session ended with error for %s/%s: %v", namespace, pod, err)
 		_, _ = stream.Write([]byte("\r\nExec failed: " + err.Error()))
 	} else {
 		log.Printf("[HandleExec] Session ended normally for %s/%s", namespace, pod)
+	}
+}
+
+// runExecReadPump owns every conn.ReadMessage() call for an interactive exec
+// session (gorilla/websocket forbids concurrent reads). Text frames are raw
+// keystrokes and are written to stdin unchanged. Binary frames are resize
+// control messages — JSON {"cols":N,"rows":N} — pushed into sizeQueue instead
+// of stdin. A malformed binary frame is logged and skipped, not fatal: a
+// dropped resize shouldn't kill an otherwise-healthy shell session.
+func runExecReadPump(conn *websocket.Conn, stdinW io.WriteCloser, sizeQueue *exec.SizeQueue, cancel context.CancelFunc) {
+	defer stdinW.Close()
+	for {
+		messageType, msg, err := conn.ReadMessage()
+		if err != nil {
+			cancel()
+			return
+		}
+		if messageType == websocket.BinaryMessage {
+			var size struct {
+				Cols uint16 `json:"cols"`
+				Rows uint16 `json:"rows"`
+			}
+			if err := json.Unmarshal(msg, &size); err != nil {
+				log.Printf("[HandleExec] ignoring malformed resize frame: %v", err)
+				continue
+			}
+			sizeQueue.Push(remotecommand.TerminalSize{Width: size.Cols, Height: size.Rows})
+			continue
+		}
+		if _, err := stdinW.Write(msg); err != nil {
+			cancel()
+			return
+		}
 	}
 }
 
@@ -595,7 +618,7 @@ func HandleCPFrom(w http.ResponseWriter, r *http.Request) {
 	// with no error.
 	checkBuf := &captureWriter{}
 	checkErr := exec.Exec(r.Context(), cs, cfg, namespace, pod, container,
-		[]string{"test", "-f", srcPath}, nil, nil, checkBuf, false)
+		[]string{"test", "-f", srcPath}, nil, nil, checkBuf, false, nil)
 	if checkErr != nil {
 		http.Error(w, fmt.Sprintf("file not found or not readable in container: %s", srcPath), http.StatusNotFound)
 		return
@@ -607,7 +630,7 @@ func HandleCPFrom(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	stderrBuf := &captureWriter{}
 	if err := exec.Exec(r.Context(), cs, cfg, namespace, pod, container,
-		[]string{"cat", srcPath}, nil, w, stderrBuf, false); err != nil {
+		[]string{"cat", srcPath}, nil, w, stderrBuf, false, nil); err != nil {
 		log.Printf("CP FROM cat failed for %s/%s %s: %v (stderr: %s)", namespace, pod, srcPath, err, stderrBuf.String())
 	}
 }
@@ -653,7 +676,7 @@ func HandleCPTo(w http.ResponseWriter, r *http.Request) {
 	destDir := path.Dir(destPath)
 	command := []string{"sh", "-c", fmt.Sprintf("mkdir -p %s && cat > %s", shellQuote(destDir), shellQuote(destPath))}
 	outBuf := &captureWriter{}
-	if err := exec.Exec(r.Context(), cs, cfg, namespace, pod, container, command, f, outBuf, outBuf, false); err != nil {
+	if err := exec.Exec(r.Context(), cs, cfg, namespace, pod, container, command, f, outBuf, outBuf, false, nil); err != nil {
 		http.Error(w, "CP TO failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}

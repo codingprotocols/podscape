@@ -5,6 +5,8 @@ import {
     KubeIngressClass, KubeNetworkPolicy, KubeEndpoints, KubeConfigMap,
     KubeSecret, KubePVC, KubePV, KubeStorageClass, KubeServiceAccount,
     KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
+    KubeMutatingWebhookConfiguration, KubeValidatingWebhookConfiguration, KubeEndpointSlice,
+    KubePriorityClass, KubeRuntimeClass,
     KubeNode, KubeNamespace, KubeCRD, KubeEvent, KubeResourceQuota, KubeLimitRange,
 } from '../types/k8s'
 import { CustomScanOptions } from './types'
@@ -358,6 +360,44 @@ export const SECTION_CONFIG: Partial<Record<ResourceKind, SectionConfig>> = {
             ...labelsToStrings(r.metadata.labels),
         ],
     },
+    mutatingwebhookconfigurations: {
+        stateKey: 'mutatingwebhookconfigurations', fetch: (c, _) => window.kubectl.getMutatingWebhookConfigurations(c), namespaced: false,
+        searchFields: (r: KubeMutatingWebhookConfiguration) => [
+            r.metadata.name,
+            ...(r.webhooks ?? []).map(w => w.name),
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    validatingwebhookconfigurations: {
+        stateKey: 'validatingwebhookconfigurations', fetch: (c, _) => window.kubectl.getValidatingWebhookConfigurations(c), namespaced: false,
+        searchFields: (r: KubeValidatingWebhookConfiguration) => [
+            r.metadata.name,
+            ...(r.webhooks ?? []).map(w => w.name),
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    endpointslices: {
+        stateKey: 'endpointslices', fetch: (c, ns) => window.kubectl.getEndpointSlices(c, ns), namespaced: true,
+        searchFields: (r: KubeEndpointSlice) => [
+            r.metadata.name, r.metadata.namespace, r.addressType,
+            ...r.endpoints.flatMap(e => e.addresses),
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    priorityclasses: {
+        stateKey: 'priorityclasses', fetch: (c, _) => window.kubectl.getPriorityClasses(c), namespaced: false,
+        searchFields: (r: KubePriorityClass) => [
+            r.metadata.name, String(r.value), r.description,
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
+    runtimeclasses: {
+        stateKey: 'runtimeclasses', fetch: (c, _) => window.kubectl.getRuntimeClasses(c), namespaced: false,
+        searchFields: (r: KubeRuntimeClass) => [
+            r.metadata.name, r.handler,
+            ...labelsToStrings(r.metadata.labels),
+        ],
+    },
 }
 
 // Pre-computed reset object for all resource sections (empty arrays).
@@ -393,6 +433,11 @@ export const kindToSection: Record<string, ResourceKind> = {
     ClusterRole: 'clusterroles',
     RoleBinding: 'rolebindings',
     ClusterRoleBinding: 'clusterrolebindings',
+    MutatingWebhookConfiguration: 'mutatingwebhookconfigurations',
+    ValidatingWebhookConfiguration: 'validatingwebhookconfigurations',
+    EndpointSlice: 'endpointslices',
+    PriorityClass: 'priorityclasses',
+    RuntimeClass: 'runtimeclasses',
 }
 
 export function kindLabel(section: string): string {
@@ -407,6 +452,11 @@ export function kindLabel(section: string): string {
         pvcs: 'persistentvolumeclaim', pvs: 'persistentvolume', storageclasses: 'storageclass',
         serviceaccounts: 'serviceaccount', roles: 'role', clusterroles: 'clusterrole',
         rolebindings: 'rolebinding', clusterrolebindings: 'clusterrolebinding',
+        mutatingwebhookconfigurations: 'mutatingwebhookconfiguration',
+        validatingwebhookconfigurations: 'validatingwebhookconfiguration',
+        endpointslices: 'endpointslice',
+        priorityclasses: 'priorityclass',
+        runtimeclasses: 'runtimeclass',
         nodes: 'node', namespaces: 'namespace', crds: 'crd'
     }
     return map[section] ?? section

@@ -11,7 +11,7 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 )
 
-func Exec(ctx context.Context, clientset kubernetes.Interface, config *rest.Config, ns, pod, container string, command []string, stdin io.Reader, stdout, stderr io.Writer, tty bool) error {
+func Exec(ctx context.Context, clientset kubernetes.Interface, config *rest.Config, ns, pod, container string, command []string, stdin io.Reader, stdout, stderr io.Writer, tty bool, resize remotecommand.TerminalSizeQueue) error {
 	req := clientset.CoreV1().RESTClient().Post().
 		Resource("pods").
 		Name(pod).
@@ -39,9 +39,10 @@ func Exec(ctx context.Context, clientset kubernetes.Interface, config *rest.Conf
 	}
 
 	return executor.StreamWithContext(ctx, remotecommand.StreamOptions{
-		Stdin:  stdin,
-		Stdout: stdout,
-		Stderr: stderr,
-		Tty:    tty,
+		Stdin:             stdin,
+		Stdout:            stdout,
+		Stderr:            stderr,
+		Tty:               tty,
+		TerminalSizeQueue: resize,
 	})
 }

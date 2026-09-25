@@ -69,8 +69,16 @@ export function registerTerminalHandlers(): void {
     }
   })
 
-  ipcMain.handle('exec:resize', (_event, _id: string, _cols: number, _rows: number) => {
-    // TODO: Implement resizing in Go sidecar if needed
+  ipcMain.handle('exec:resize', (_event, id: string, cols: number, rows: number) => {
+    const ws = activeStreams.get(id)
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      // Sent as a BINARY frame so the Go sidecar's read-pump can tell it apart
+      // from a TEXT frame (raw keystrokes) on the same socket — see
+      // runExecReadPump in go-core/internal/handlers/operations.go.
+      try { ws.send(Buffer.from(JSON.stringify({ cols, rows })), { binary: true }) } catch (err) {
+        console.error(`[Exec] resize failed for ${id}:`, err)
+      }
+    }
   })
 
   ipcMain.handle('exec:kill', (_event, id: string) => {

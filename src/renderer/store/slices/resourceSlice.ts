@@ -5,6 +5,8 @@ import {
     KubeService, KubeIngress, KubeIngressClass, KubeNetworkPolicy, KubeEndpoints,
     KubeConfigMap, KubeSecret, KubePVC, KubePV, KubeStorageClass,
     KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
+    KubeMutatingWebhookConfiguration, KubeValidatingWebhookConfiguration, KubeEndpointSlice,
+    KubePriorityClass, KubeRuntimeClass,
     KubeNode, KubeEvent, KubeCRD,
     NodeMetrics, PodMetrics, ResourceKind, AnyKubeResource, PortForwardEntry,
     HelmRelease, DebugPodEntry, AppGroup
@@ -41,6 +43,11 @@ export interface ResourceSlice {
     clusterroles: KubeClusterRole[]
     rolebindings: KubeRoleBinding[]
     clusterrolebindings: KubeClusterRoleBinding[]
+    mutatingwebhookconfigurations: KubeMutatingWebhookConfiguration[]
+    validatingwebhookconfigurations: KubeValidatingWebhookConfiguration[]
+    endpointslices: KubeEndpointSlice[]
+    priorityclasses: KubePriorityClass[]
+    runtimeclasses: KubeRuntimeClass[]
     nodes: KubeNode[]
     events: KubeEvent[]
     crds: KubeCRD[]
@@ -120,6 +127,11 @@ export const createResourceSlice: StoreSlice<ResourceSlice> = (set, get) => ({
     clusterroles: [],
     rolebindings: [],
     clusterrolebindings: [],
+    mutatingwebhookconfigurations: [],
+    validatingwebhookconfigurations: [],
+    endpointslices: [],
+    priorityclasses: [],
+    runtimeclasses: [],
     nodes: [],
     events: [],
     crds: [],
