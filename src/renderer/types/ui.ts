@@ -44,6 +44,7 @@ export type ResourceKind =
   | 'mutatingwebhookconfigurations'
   | 'validatingwebhookconfigurations'
   | 'endpointslices'
+  | 'priorityclasses'
   | 'nodes'
   | 'namespaces'
   | 'events'

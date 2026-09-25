@@ -421,4 +421,17 @@ var AllResourceDefs = []ResourceDef{
 			return listToIface(list.Items), nil
 		},
 	},
+
+	// ── Scheduling ───────────────────────────────────────────────────────────
+	{
+		Resource: "priorityclasses",
+		GetCache: func(c *store.ContextCache) map[string]interface{} { return c.PriorityClasses },
+		ListFn: func(ctx context.Context, cs kubernetes.Interface, _ string) ([]interface{}, error) {
+			list, err := cs.SchedulingV1().PriorityClasses().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return listToIface(list.Items), nil
+		},
+	},
 }

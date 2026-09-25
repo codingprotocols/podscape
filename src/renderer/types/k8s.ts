@@ -605,6 +605,16 @@ export interface KubeEndpointSlice extends KubeResource {
   ports?: Array<{ name?: string; protocol?: string; port?: number }>
 }
 
+// ─── PriorityClass ───────────────────────────────────────────────────────────
+
+export interface KubePriorityClass extends KubeResource {
+  metadata: ClusterMeta
+  value: number
+  globalDefault?: boolean
+  description?: string
+  preemptionPolicy?: string
+}
+
 export type AnyKubeResource =
   | KubeResourceQuota
   | KubeLimitRange
@@ -638,3 +648,4 @@ export type AnyKubeResource =
   | KubeMutatingWebhookConfiguration
   | KubeValidatingWebhookConfiguration
   | KubeEndpointSlice
+  | KubePriorityClass

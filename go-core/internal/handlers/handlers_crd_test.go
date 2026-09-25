@@ -350,7 +350,7 @@ func TestHandleSwitchContext_RBACProbeStored(t *testing.T) {
 // without the corresponding route in main.go being verified. Update the constant
 // when adding a new standard resource to the registry.
 func TestAllResourceDefs_Count(t *testing.T) {
-	const want = 31
+	const want = 32
 	if got := len(AllResourceDefs); got != want {
 		t.Errorf("AllResourceDefs has %d entries, want %d — update this constant after adding/removing a resource", got, want)
 	}

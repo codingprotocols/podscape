@@ -10,6 +10,7 @@ import type {
   KubeConfigMap, KubeSecret, KubePVC, KubePV, KubeStorageClass,
   KubeServiceAccount, KubeRole, KubeClusterRole, KubeRoleBinding, KubeClusterRoleBinding,
   KubeMutatingWebhookConfiguration, KubeValidatingWebhookConfiguration, KubeEndpointSlice,
+  KubePriorityClass,
   KubeNode, KubeNamespace, KubeCRD, AnyKubeResource, ResourceKind, NodeMetrics
 } from '../../types'
 import { podPhaseBg, totalRestarts, formatAge, getNodeReady, parseCpuMillicores, parseMemoryMiB } from '../../types'
@@ -593,6 +594,18 @@ function EndpointSliceRow({ es }: { es: KubeEndpointSlice }) {
   )
 }
 
+function PriorityClassRow({ pc }: { pc: KubePriorityClass }) {
+  return (
+    <>
+      <td className="px-6 py-3 font-mono text-xs font-semibold truncate max-w-[240px]">{pc.metadata.name}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono">{pc.value}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{pc.globalDefault ? 'Yes' : 'No'}</td>
+      <td className="px-6 py-3 text-xs text-slate-500 dark:text-slate-400">{pc.preemptionPolicy ?? '—'}</td>
+      <td className="px-6 py-3 text-xs text-slate-400 dark:text-slate-500">{formatAge(pc.metadata.creationTimestamp)}</td>
+    </>
+  )
+}
+
 // ─── Column headers ───────────────────────────────────────────────────────────
 
 
@@ -630,6 +643,7 @@ function ResourceRow({ resource, section, nodeMetricsMap }: { resource: AnyKubeR
     case 'mutatingwebhookconfigurations': return <MutatingWebhookConfigurationRow mwc={resource as KubeMutatingWebhookConfiguration} />
     case 'validatingwebhookconfigurations': return <ValidatingWebhookConfigurationRow vwc={resource as KubeValidatingWebhookConfiguration} />
     case 'endpointslices': return <EndpointSliceRow es={resource as KubeEndpointSlice} />
+    case 'priorityclasses': return <PriorityClassRow pc={resource as KubePriorityClass} />
     case 'nodes': return <NodeRow node={resource as KubeNode} metrics={nodeMetricsMap?.get((resource as KubeNode).metadata.name)} />
     case 'namespaces': return <NamespaceRow ns={resource as KubeNamespace} />
     case 'crds': return <CRDRow crd={resource as KubeCRD} />
@@ -1623,6 +1637,12 @@ function getSortValue(resource: any, section: string, col: string): string | num
   if (section === 'endpointslices') {
     if (col === 'Address Type') return resource.addressType ?? ''
     if (col === 'Endpoints') return (resource.endpoints ?? []).reduce((sum: number, e: any) => sum + (e.addresses?.length ?? 0), 0)
+  }
+
+  if (section === 'priorityclasses') {
+    if (col === 'Value') return resource.value ?? 0
+    if (col === 'Global Default') return resource.globalDefault ? 1 : 0
+    if (col === 'Preemption Policy') return resource.preemptionPolicy ?? ''
   }
 
   if (section === 'nodes') {

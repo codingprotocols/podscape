@@ -82,6 +82,7 @@ export default function DetailPanel({ resource, section }: DetailPanelProps): JS
     case 'mutatingwebhookconfigurations': content = <GenericResourceDetail resource={resource} kind="mutatingwebhookconfiguration" clusterScoped />; break
     case 'validatingwebhookconfigurations': content = <GenericResourceDetail resource={resource} kind="validatingwebhookconfiguration" clusterScoped />; break
     case 'endpointslices': content = <GenericResourceDetail resource={resource} kind="endpointslice" clusterScoped={false} />; break
+    case 'priorityclasses': content = <GenericResourceDetail resource={resource} kind="priorityclass" clusterScoped />; break
     default: return null
   }
 

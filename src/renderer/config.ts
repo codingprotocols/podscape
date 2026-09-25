@@ -11,6 +11,7 @@ export const LIST_SECTIONS: ResourceKind[] = [
   'pvcs', 'pvs', 'storageclasses',
   'serviceaccounts', 'roles', 'clusterroles', 'rolebindings', 'clusterrolebindings',
   'mutatingwebhookconfigurations', 'validatingwebhookconfigurations', 'endpointslices',
+  'priorityclasses',
   'nodes', 'namespaces', 'crds'
 ]
 
@@ -19,6 +20,7 @@ export const CLUSTER_SCOPED_SECTIONS = new Set<ResourceKind>([
   'nodes', 'namespaces', 'crds', 'pvs', 'storageclasses',
   'clusterroles', 'clusterrolebindings', 'ingressclasses',
   'mutatingwebhookconfigurations', 'validatingwebhookconfigurations',
+  'priorityclasses',
 ])
 
 /** Provider-specific sections — conditionally shown based on cluster detection */
@@ -65,6 +67,7 @@ export const SECTION_LABELS: Record<string, string> = {
   mutatingwebhookconfigurations: 'Mutating Webhooks',
   validatingwebhookconfigurations: 'Validating Webhooks',
   endpointslices: 'EndpointSlices',
+  priorityclasses: 'PriorityClasses',
   nodes: 'Nodes',
   namespaces: 'Namespaces',
   crds: 'CRDs'
@@ -102,6 +105,7 @@ export const COLUMNS: Record<string, string[]> = {
   mutatingwebhookconfigurations: ['Name', 'Webhooks', 'Age'],
   validatingwebhookconfigurations: ['Name', 'Webhooks', 'Age'],
   endpointslices: ['Name', 'Address Type', 'Endpoints', 'Ports', 'Age'],
+  priorityclasses: ['Name', 'Value', 'Global Default', 'Preemption Policy', 'Age'],
   nodes: ['Name', 'Status', 'Instance Type', 'Node Pool', 'Capacity', 'CPU', 'Memory', 'IP', 'Age'],
   namespaces: ['Name', 'Status', 'Age'],
   crds: ['Name', 'Group', 'Scope', 'Age']
