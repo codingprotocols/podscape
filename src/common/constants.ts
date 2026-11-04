@@ -9,3 +9,23 @@ export interface RolloutRevision {
   desired: number
   ready: number
 }
+
+// Mirrors go-core/internal/audit.Event's JSON shape exactly (field-for-field).
+export interface AuditLogEntry {
+  seq: number
+  timestamp: string
+  action: string
+  kube_context: string
+  kube_user: string
+  kube_client_cert_cn: string
+  os_user: string
+  namespace: string
+  resource_kind: string
+  resource_name: string
+  params: Record<string, unknown>
+  outcome: 'success' | 'failure' | 'started'
+  error: string
+  duration_ms: number
+  prev_hash: string
+  hash: string
+}

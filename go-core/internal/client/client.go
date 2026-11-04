@@ -147,3 +147,12 @@ func resolveKubeconfig(explicit string) string {
 	}
 	return filepath.Join(home, ".kube", "config")
 }
+
+// ResolveKubeconfigPath returns the first valid kubeconfig path from the
+// explicit argument, $KUBECONFIG, or ~/.kube/config — the same resolution
+// order used by Init. Exported for callers (like internal/audit) that need
+// to resolve the active kubeconfig path without building a full
+// ClientBundle.
+func ResolveKubeconfigPath(explicit string) string {
+	return resolveKubeconfig(explicit)
+}

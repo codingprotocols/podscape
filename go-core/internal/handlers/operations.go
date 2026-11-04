@@ -3,6 +3,8 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -32,11 +34,11 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/gorilla/websocket"
+	"github.com/podscape/go-core/internal/audit"
 	"github.com/podscape/go-core/internal/exec"
 	"github.com/podscape/go-core/internal/k8sutil"
 	"github.com/podscape/go-core/internal/ops"
 	"github.com/podscape/go-core/internal/store"
-
 
 	"k8s.io/client-go/kubernetes"
 )
@@ -60,18 +62,25 @@ func HandleScale(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cs, _ := store.Store.ActiveClientset()
+	cs, cfg := store.Store.ActiveClientset()
 	if cs == nil {
 		http.Error(w, "no active context", http.StatusServiceUnavailable)
 		return
 	}
 
+	start := time.Now()
+	fromReplicas := int32(-1)
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		switch kind {
 		case "deployment":
 			deploy, err := cs.AppsV1().Deployments(namespace).Get(r.Context(), name, metav1.GetOptions{})
 			if err != nil {
 				return err
+			}
+			if deploy.Spec.Replicas != nil {
+				fromReplicas = *deploy.Spec.Replicas
+			} else {
+				fromReplicas = 1 // omitted replicas field defaults to 1
 			}
 			rep := int32(replicasI64)
 			deploy.Spec.Replicas = &rep
@@ -82,6 +91,11 @@ func HandleScale(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return err
 			}
+			if sts.Spec.Replicas != nil {
+				fromReplicas = *sts.Spec.Replicas
+			} else {
+				fromReplicas = 1 // omitted replicas field defaults to 1
+			}
 			rep := int32(replicasI64)
 			sts.Spec.Replicas = &rep
 			_, err = cs.AppsV1().StatefulSets(namespace).Update(r.Context(), sts, metav1.UpdateOptions{})
@@ -90,6 +104,27 @@ func HandleScale(w http.ResponseWriter, r *http.Request) {
 			return fmt.Errorf("unsupported kind for scale: %s", kind)
 		}
 	})
+
+	outcome, errMsg := "success", ""
+	if err != nil {
+		outcome, errMsg = "failure", err.Error()
+	}
+	kubeContext, kubeUser, certCN := auditIdentity(cfg)
+	scaleParams := map[string]any{"replicas_to": int32(replicasI64)}
+	// Only record the prior count when it was actually read; a failed Get
+	// leaves fromReplicas at its -1 sentinel, which must not surface as a
+	// bogus negative "previous replicas" value in the audit trail.
+	if fromReplicas >= 0 {
+		scaleParams["replicas_from"] = fromReplicas
+	}
+	if aerr := audit.Global.Record(audit.Event{
+		Action: "scale", KubeContext: kubeContext, KubeUser: kubeUser, KubeClientCertCN: certCN,
+		Namespace: namespace, ResourceKind: auditKind(kind), ResourceName: name,
+		Params:  scaleParams,
+		Outcome: outcome, Error: errMsg, DurationMs: time.Since(start).Milliseconds(),
+	}); aerr != nil {
+		log.Printf("[audit] failed to record scale event: %v", aerr)
+	}
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -163,6 +198,7 @@ func HandleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	start := time.Now()
 	dynClient, err := dynamic.NewForConfig(cfg)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -170,12 +206,25 @@ func HandleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = dynDelete(r.Context(), dynClient, kind, namespace, name, gvr)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	outcome, errMsg := "success", ""
+	httpErr := err
+	if err != nil && errors.IsNotFound(err) {
+		httpErr = nil // idempotent delete — a 200, and the audit event reflects success
+	} else if err != nil {
+		outcome, errMsg = "failure", err.Error()
+	}
+
+	kubeContext, kubeUser, certCN := auditIdentity(cfg)
+	if aerr := audit.Global.Record(audit.Event{
+		Action: "delete", KubeContext: kubeContext, KubeUser: kubeUser, KubeClientCertCN: certCN,
+		Namespace: namespace, ResourceKind: auditKind(kind), ResourceName: name,
+		Outcome: outcome, Error: errMsg, DurationMs: time.Since(start).Milliseconds(),
+	}); aerr != nil {
+		log.Printf("[audit] failed to record delete event: %v", aerr)
+	}
+
+	if httpErr != nil {
+		http.Error(w, httpErr.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -196,12 +245,13 @@ func HandleRolloutRestart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cs, _ := store.Store.ActiveClientset()
+	cs, cfg := store.Store.ActiveClientset()
 	if cs == nil {
 		http.Error(w, "no active context", http.StatusServiceUnavailable)
 		return
 	}
 
+	start := time.Now()
 	data := fmt.Sprintf(`{"spec": {"template": {"metadata": {"annotations": {"kubectl.kubernetes.io/restartedAt": "%s"}}}}}`, time.Now().Format(time.RFC3339))
 	var err error
 	switch kind {
@@ -213,6 +263,19 @@ func HandleRolloutRestart(w http.ResponseWriter, r *http.Request) {
 		_, err = cs.AppsV1().StatefulSets(namespace).Patch(r.Context(), name, types.StrategicMergePatchType, []byte(data), metav1.PatchOptions{})
 	default:
 		err = fmt.Errorf("unsupported kind for rollout restart: %s", kind)
+	}
+
+	outcome, errMsg := "success", ""
+	if err != nil {
+		outcome, errMsg = "failure", err.Error()
+	}
+	kubeContext, kubeUser, certCN := auditIdentity(cfg)
+	if aerr := audit.Global.Record(audit.Event{
+		Action: "rollout_restart", KubeContext: kubeContext, KubeUser: kubeUser, KubeClientCertCN: certCN,
+		Namespace: namespace, ResourceKind: auditKind(kind), ResourceName: name,
+		Outcome: outcome, Error: errMsg, DurationMs: time.Since(start).Milliseconds(),
+	}); aerr != nil {
+		log.Printf("[audit] failed to record rollout_restart event: %v", aerr)
 	}
 
 	if err != nil {
@@ -378,8 +441,11 @@ func HandleApplyYAML(w http.ResponseWriter, r *http.Request) {
 	}
 	mapper := restmapper.NewDiscoveryRESTMapper(gr)
 
+	kubeContext, kubeUser, certCN := auditIdentity(cfg)
+
 	var applyErrs []string
 	for _, doc := range docs {
+		docStart := time.Now()
 		obj := &unstructured.Unstructured{}
 		if unmarshalErr := yaml.Unmarshal(doc, obj); unmarshalErr != nil {
 			applyErrs = append(applyErrs, "invalid YAML: "+unmarshalErr.Error())
@@ -390,9 +456,23 @@ func HandleApplyYAML(w http.ResponseWriter, r *http.Request) {
 			applyErrs = append(applyErrs, "document has no 'kind' field")
 			continue
 		}
+
+		checksum := sha256.Sum256(doc)
+		recordApplyEvent := func(outcome, errMsg string) {
+			if aerr := audit.Global.Record(audit.Event{
+				Action: "apply_yaml", KubeContext: kubeContext, KubeUser: kubeUser, KubeClientCertCN: certCN,
+				Namespace: obj.GetNamespace(), ResourceKind: gvk.Kind, ResourceName: obj.GetName(),
+				Params:  map[string]any{"checksum_sha256": hex.EncodeToString(checksum[:])},
+				Outcome: outcome, Error: errMsg, DurationMs: time.Since(docStart).Milliseconds(),
+			}); aerr != nil {
+				log.Printf("[audit] failed to record apply_yaml event: %v", aerr)
+			}
+		}
+
 		mapping, mapErr := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 		if mapErr != nil {
 			applyErrs = append(applyErrs, mapErr.Error())
+			recordApplyEvent("failure", mapErr.Error())
 			continue
 		}
 
@@ -408,6 +488,7 @@ func HandleApplyYAML(w http.ResponseWriter, r *http.Request) {
 		patchBytes, marshalErr := json.Marshal(obj.Object)
 		if marshalErr != nil {
 			applyErrs = append(applyErrs, "failed to marshal manifest: "+marshalErr.Error())
+			recordApplyEvent("failure", marshalErr.Error())
 			continue
 		}
 
@@ -431,7 +512,10 @@ func HandleApplyYAML(w http.ResponseWriter, r *http.Request) {
 				msg = "Pod spec fields are immutable after creation. Edit the parent Deployment or StatefulSet instead."
 			}
 			applyErrs = append(applyErrs, msg)
+			recordApplyEvent("failure", msg)
+			continue
 		}
+		recordApplyEvent("success", "")
 	}
 
 	if len(applyErrs) > 0 {
@@ -537,6 +621,19 @@ func HandleExec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	start := time.Now()
+	kubeContext, kubeUser, certCN := auditIdentity(cfg)
+	execParams := map[string]any{"container": container, "command": strings.Join(command, " ")}
+	if aerr := audit.Global.Record(audit.Event{
+		Action: "exec_start", KubeContext: kubeContext, KubeUser: kubeUser, KubeClientCertCN: certCN,
+		Namespace: namespace, ResourceKind: "Pod", ResourceName: pod,
+		// "started", not "success": the session has only been initiated here;
+		// its actual success/failure is recorded by the exec_end event.
+		Params: execParams, Outcome: "started",
+	}); aerr != nil {
+		log.Printf("[audit] failed to record exec_start event: %v", aerr)
+	}
+
 	// gorilla hijacks the TCP connection on Upgrade, so r.Context() is never
 	// cancelled when the client disconnects. Derive a cancellable context and
 	// cancel it from the read-pump goroutine when the connection closes.
@@ -554,11 +651,22 @@ func HandleExec(w http.ResponseWriter, r *http.Request) {
 	stream := &wsStream{conn: conn}
 	err = exec.Exec(ctx, cs, cfg, namespace, pod, container, command, stdinR, stream, stream, true, sizeQueue)
 	stdinR.Close() // unblock any stdinW.Write blocked in the read-pump goroutine
+
+	outcome, errMsg := "success", ""
 	if err != nil {
+		outcome, errMsg = "failure", err.Error()
 		log.Printf("[HandleExec] Session ended with error for %s/%s: %v", namespace, pod, err)
 		_, _ = stream.Write([]byte("\r\nExec failed: " + err.Error()))
 	} else {
 		log.Printf("[HandleExec] Session ended normally for %s/%s", namespace, pod)
+	}
+	if aerr := audit.Global.Record(audit.Event{
+		Action: "exec_end", KubeContext: kubeContext, KubeUser: kubeUser, KubeClientCertCN: certCN,
+		Namespace: namespace, ResourceKind: "Pod", ResourceName: pod,
+		Params: map[string]any{"container": container}, Outcome: outcome, Error: errMsg,
+		DurationMs: time.Since(start).Milliseconds(),
+	}); aerr != nil {
+		log.Printf("[audit] failed to record exec_end event: %v", aerr)
 	}
 }
 
@@ -612,6 +720,19 @@ func HandleCPFrom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	start := time.Now()
+	recordCPEvent := func(outcome, errMsg string) {
+		kubeContext, kubeUser, certCN := auditIdentity(cfg)
+		if aerr := audit.Global.Record(audit.Event{
+			Action: "cp_from", KubeContext: kubeContext, KubeUser: kubeUser, KubeClientCertCN: certCN,
+			Namespace: namespace, ResourceKind: "Pod", ResourceName: pod,
+			Params:  map[string]any{"container": container, "remote_path": srcPath},
+			Outcome: outcome, Error: errMsg, DurationMs: time.Since(start).Milliseconds(),
+		}); aerr != nil {
+			log.Printf("[audit] failed to record cp_from event: %v", aerr)
+		}
+	}
+
 	// Pre-flight check: verify the file is accessible before committing to a
 	// 200 response. Without this, a missing or unreadable file causes us to
 	// send 200 with an empty body — the Node client sees a zero-byte file
@@ -620,7 +741,9 @@ func HandleCPFrom(w http.ResponseWriter, r *http.Request) {
 	checkErr := exec.Exec(r.Context(), cs, cfg, namespace, pod, container,
 		[]string{"test", "-f", srcPath}, nil, nil, checkBuf, false, nil)
 	if checkErr != nil {
-		http.Error(w, fmt.Sprintf("file not found or not readable in container: %s", srcPath), http.StatusNotFound)
+		msg := fmt.Sprintf("file not found or not readable in container: %s", srcPath)
+		recordCPEvent("failure", msg)
+		http.Error(w, msg, http.StatusNotFound)
 		return
 	}
 
@@ -629,10 +752,14 @@ func HandleCPFrom(w http.ResponseWriter, r *http.Request) {
 	// and the Node client surfaces it as a network error.
 	w.Header().Set("Content-Type", "application/octet-stream")
 	stderrBuf := &captureWriter{}
-	if err := exec.Exec(r.Context(), cs, cfg, namespace, pod, container,
-		[]string{"cat", srcPath}, nil, w, stderrBuf, false, nil); err != nil {
-		log.Printf("CP FROM cat failed for %s/%s %s: %v (stderr: %s)", namespace, pod, srcPath, err, stderrBuf.String())
+	streamErr := exec.Exec(r.Context(), cs, cfg, namespace, pod, container,
+		[]string{"cat", srcPath}, nil, w, stderrBuf, false, nil)
+	if streamErr != nil {
+		log.Printf("CP FROM cat failed for %s/%s %s: %v (stderr: %s)", namespace, pod, srcPath, streamErr, stderrBuf.String())
+		recordCPEvent("failure", streamErr.Error())
+		return
 	}
+	recordCPEvent("success", "")
 }
 
 func HandleCPTo(w http.ResponseWriter, r *http.Request) {
@@ -653,15 +780,32 @@ func HandleCPTo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	start := time.Now()
+	recordCPEvent := func(outcome, errMsg string) {
+		kubeContext, kubeUser, certCN := auditIdentity(cfg)
+		if aerr := audit.Global.Record(audit.Event{
+			Action: "cp_to", KubeContext: kubeContext, KubeUser: kubeUser, KubeClientCertCN: certCN,
+			Namespace: namespace, ResourceKind: "Pod", ResourceName: pod,
+			Params:  map[string]any{"container": container, "remote_path": destPath},
+			Outcome: outcome, Error: errMsg, DurationMs: time.Since(start).Milliseconds(),
+		}); aerr != nil {
+			log.Printf("[audit] failed to record cp_to event: %v", aerr)
+		}
+	}
+
 	safeLocalPath, err := sanitizeCPToLocalPath(localPath)
 	if err != nil {
-		http.Error(w, "invalid localPath: "+err.Error(), http.StatusBadRequest)
+		msg := "invalid localPath: " + err.Error()
+		recordCPEvent("failure", msg)
+		http.Error(w, msg, http.StatusBadRequest)
 		return
 	}
 
 	f, err := os.Open(safeLocalPath)
 	if err != nil {
-		http.Error(w, "failed to open local file: "+err.Error(), http.StatusInternalServerError)
+		msg := "failed to open local file: " + err.Error()
+		recordCPEvent("failure", msg)
+		http.Error(w, msg, http.StatusInternalServerError)
 		return
 	}
 	defer f.Close()
@@ -677,9 +821,12 @@ func HandleCPTo(w http.ResponseWriter, r *http.Request) {
 	command := []string{"sh", "-c", fmt.Sprintf("mkdir -p %s && cat > %s", shellQuote(destDir), shellQuote(destPath))}
 	outBuf := &captureWriter{}
 	if err := exec.Exec(r.Context(), cs, cfg, namespace, pod, container, command, f, outBuf, outBuf, false, nil); err != nil {
-		http.Error(w, "CP TO failed: "+err.Error(), http.StatusInternalServerError)
+		msg := "CP TO failed: " + err.Error()
+		recordCPEvent("failure", msg)
+		http.Error(w, msg, http.StatusInternalServerError)
 		return
 	}
+	recordCPEvent("success", "")
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -745,12 +892,13 @@ func HandleCreateDebugPod(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cs, _ := store.Store.ActiveClientset()
+	cs, cfg := store.Store.ActiveClientset()
 	if cs == nil {
 		http.Error(w, "no active context", http.StatusServiceUnavailable)
 		return
 	}
 
+	start := time.Now()
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -770,6 +918,21 @@ func HandleCreateDebugPod(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err := cs.CoreV1().Pods(ns).Create(r.Context(), pod, metav1.CreateOptions{})
+
+	outcome, errMsg := "success", ""
+	if err != nil {
+		outcome, errMsg = "failure", err.Error()
+	}
+	kubeContext, kubeUser, certCN := auditIdentity(cfg)
+	if aerr := audit.Global.Record(audit.Event{
+		Action: "create_debug_pod", KubeContext: kubeContext, KubeUser: kubeUser, KubeClientCertCN: certCN,
+		Namespace: ns, ResourceKind: "Pod", ResourceName: name,
+		Params:  map[string]any{"image": image},
+		Outcome: outcome, Error: errMsg, DurationMs: time.Since(start).Milliseconds(),
+	}); aerr != nil {
+		log.Printf("[audit] failed to record create_debug_pod event: %v", aerr)
+	}
+
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -908,6 +1071,14 @@ func HandleRolloutUndo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Capture the audit identity up front, bound to the context the operation
+	// actually runs against. Resolving it after the op (as before) let a
+	// concurrent context switch misattribute the event to the wrong
+	// context/user — the same once-up-front capture the other handlers use.
+	_, cfg := store.Store.ActiveClientset()
+	kubeContext, kubeUser, certCN := auditIdentity(cfg)
+
+	start := time.Now()
 	var err error
 	switch kind {
 	case "deployment":
@@ -915,6 +1086,19 @@ func HandleRolloutUndo(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, fmt.Sprintf("rollout undo not supported for kind: %s", kind), http.StatusBadRequest)
 		return
+	}
+
+	outcome, errMsg := "success", ""
+	if err != nil {
+		outcome, errMsg = "failure", err.Error()
+	}
+	if aerr := audit.Global.Record(audit.Event{
+		Action: "rollout_undo", KubeContext: kubeContext, KubeUser: kubeUser, KubeClientCertCN: certCN,
+		Namespace: namespace, ResourceKind: auditKind(kind), ResourceName: name,
+		Params:  map[string]any{"target_revision": targetRevision},
+		Outcome: outcome, Error: errMsg, DurationMs: time.Since(start).Milliseconds(),
+	}); aerr != nil {
+		log.Printf("[audit] failed to record rollout_undo event: %v", aerr)
 	}
 
 	if err != nil {
@@ -1034,14 +1218,31 @@ func HandleCordonNode(w http.ResponseWriter, r *http.Request) {
 	}
 	unschedulable := r.URL.Query().Get("unschedulable") != "false"
 
-	cs, _ := store.Store.ActiveClientset()
+	cs, cfg := store.Store.ActiveClientset()
 	if cs == nil {
 		http.Error(w, "no active context", http.StatusServiceUnavailable)
 		return
 	}
 
+	start := time.Now()
 	patch := fmt.Appendf(nil, `{"spec":{"unschedulable":%v}}`, unschedulable)
-	if _, err := cs.CoreV1().Nodes().Patch(r.Context(), name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+	_, err := cs.CoreV1().Nodes().Patch(r.Context(), name, types.MergePatchType, patch, metav1.PatchOptions{})
+
+	outcome, errMsg := "success", ""
+	if err != nil {
+		outcome, errMsg = "failure", err.Error()
+	}
+	kubeContext, kubeUser, certCN := auditIdentity(cfg)
+	if aerr := audit.Global.Record(audit.Event{
+		Action: "cordon_node", KubeContext: kubeContext, KubeUser: kubeUser, KubeClientCertCN: certCN,
+		ResourceKind: "Node", ResourceName: name,
+		Params:  map[string]any{"unschedulable": unschedulable},
+		Outcome: outcome, Error: errMsg, DurationMs: time.Since(start).Milliseconds(),
+	}); aerr != nil {
+		log.Printf("[audit] failed to record cordon_node event: %v", aerr)
+	}
+
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1060,15 +1261,29 @@ func HandleDrainNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cs, _ := store.Store.ActiveClientset()
+	cs, cfg := store.Store.ActiveClientset()
 	if cs == nil {
 		http.Error(w, "no active context", http.StatusServiceUnavailable)
 		return
 	}
 
+	start := time.Now()
+	recordDrainEvent := func(outcome, errMsg string, evicted, skipped int) {
+		kubeContext, kubeUser, certCN := auditIdentity(cfg)
+		if aerr := audit.Global.Record(audit.Event{
+			Action: "drain_node", KubeContext: kubeContext, KubeUser: kubeUser, KubeClientCertCN: certCN,
+			ResourceKind: "Node", ResourceName: name,
+			Params:  map[string]any{"pods_evicted": evicted, "pods_skipped": skipped},
+			Outcome: outcome, Error: errMsg, DurationMs: time.Since(start).Milliseconds(),
+		}); aerr != nil {
+			log.Printf("[audit] failed to record drain_node event: %v", aerr)
+		}
+	}
+
 	// 1. Cordon the node first.
 	cordonPatch := []byte(`{"spec":{"unschedulable":true}}`)
 	if _, err := cs.CoreV1().Nodes().Patch(r.Context(), name, types.MergePatchType, cordonPatch, metav1.PatchOptions{}); err != nil {
+		recordDrainEvent("failure", "cordon failed: "+err.Error(), 0, 0)
 		http.Error(w, "cordon failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1078,12 +1293,14 @@ func HandleDrainNode(w http.ResponseWriter, r *http.Request) {
 		FieldSelector: fmt.Sprintf("spec.nodeName=%s", name),
 	})
 	if err != nil {
+		recordDrainEvent("failure", "list pods failed: "+err.Error(), 0, 0)
 		http.Error(w, "list pods failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// 3. Delete evictable pods (skip DaemonSet-owned and mirror/static pods).
 	var errs []string
+	evicted, skipped := 0, 0
 	for _, pod := range pods.Items {
 		isDaemonSet := false
 		for _, ref := range pod.OwnerReferences {
@@ -1093,20 +1310,31 @@ func HandleDrainNode(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if isDaemonSet {
+			skipped++
 			continue
 		}
 		if _, isMirror := pod.Annotations["kubernetes.io/config.mirror"]; isMirror {
+			skipped++
 			continue
 		}
-		if delErr := cs.CoreV1().Pods(pod.Namespace).Delete(r.Context(), pod.Name, metav1.DeleteOptions{}); delErr != nil && !errors.IsNotFound(delErr) {
+		if delErr := cs.CoreV1().Pods(pod.Namespace).Delete(r.Context(), pod.Name, metav1.DeleteOptions{}); delErr != nil {
+			if errors.IsNotFound(delErr) {
+				// Already gone — nothing was evicted here, so don't count it.
+				continue
+			}
 			errs = append(errs, fmt.Sprintf("%s/%s: %v", pod.Namespace, pod.Name, delErr))
+			continue
 		}
+		evicted++
 	}
 
 	if len(errs) > 0 {
-		http.Error(w, "drain partial failure: "+strings.Join(errs, "; "), http.StatusInternalServerError)
+		msg := "drain partial failure: " + strings.Join(errs, "; ")
+		recordDrainEvent("failure", msg, evicted, skipped)
+		http.Error(w, msg, http.StatusInternalServerError)
 		return
 	}
+	recordDrainEvent("success", "", evicted, skipped)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -1125,14 +1353,28 @@ func HandleTriggerCronJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cs, _ := store.Store.ActiveClientset()
+	cs, cfg := store.Store.ActiveClientset()
 	if cs == nil {
 		http.Error(w, "no active context", http.StatusServiceUnavailable)
 		return
 	}
 
+	start := time.Now()
+	recordTriggerEvent := func(outcome, errMsg, createdJobName string) {
+		kubeContext, kubeUser, certCN := auditIdentity(cfg)
+		if aerr := audit.Global.Record(audit.Event{
+			Action: "trigger_cronjob", KubeContext: kubeContext, KubeUser: kubeUser, KubeClientCertCN: certCN,
+			Namespace: namespace, ResourceKind: "CronJob", ResourceName: name,
+			Params:  map[string]any{"created_job_name": createdJobName},
+			Outcome: outcome, Error: errMsg, DurationMs: time.Since(start).Milliseconds(),
+		}); aerr != nil {
+			log.Printf("[audit] failed to record trigger_cronjob event: %v", aerr)
+		}
+	}
+
 	cj, err := cs.BatchV1().CronJobs(namespace).Get(r.Context(), name, metav1.GetOptions{})
 	if err != nil {
+		recordTriggerEvent("failure", err.Error(), "")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1170,9 +1412,11 @@ func HandleTriggerCronJob(w http.ResponseWriter, r *http.Request) {
 
 	created, err := cs.BatchV1().Jobs(namespace).Create(r.Context(), job, metav1.CreateOptions{})
 	if err != nil {
+		recordTriggerEvent("failure", err.Error(), jobName)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	recordTriggerEvent("success", "", created.Name)
 	writeJSON(w, map[string]string{"name": created.Name})
 }

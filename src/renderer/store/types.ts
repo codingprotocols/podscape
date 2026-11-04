@@ -12,7 +12,7 @@ import {
     HelmRelease, OwnerChainResponse, ProviderSet
 } from '../types'
 
-import type { RolloutRevision } from '../../common/constants'
+import type { RolloutRevision, AuditLogEntry } from '../../common/constants'
 import { AnalysisSlice } from './slices/analysisSlice'
 import { OperationSlice } from './slices/operationSlice'
 import { ProvidersSlice } from './slices/providersSlice'
@@ -141,6 +141,10 @@ declare global {
             get: () => Promise<{ shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean; pluginsEnabled: boolean; gitopsEnabled: boolean; networkEnabled: boolean }>
             set: (s: { shellPath: string; theme: string; kubeconfigPath: string; prodContexts: string[]; prometheusUrls?: Record<string, string>; tourCompleted: boolean; pluginsEnabled: boolean; gitopsEnabled: boolean; networkEnabled: boolean }) => Promise<void>
             checkTools: () => Promise<{ kubeconfigOk: boolean; trivyOk: boolean }>
+        }
+        audit: {
+            export: (format: 'json' | 'csv', savePath: string) => Promise<void>
+            list: (opts?: { action?: string; outcome?: string; limit?: number }) => Promise<AuditLogEntry[]>
         }
         kubeconfig: {
             get: () => Promise<{ path: string; content: string }>
