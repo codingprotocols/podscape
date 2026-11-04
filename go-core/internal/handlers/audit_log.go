@@ -26,35 +26,29 @@ const (
 // AllResourceDefs/MakeHandler and RBAC entirely, unlike every other
 // handler in this package.
 func HandleAuditLog(w http.ResponseWriter, r *http.Request) {
-	entries, err := audit.ReadEntries(auditDirFunc())
+	actionFilter := r.URL.Query().Get("action")
+	outcomeFilter := r.URL.Query().Get("outcome")
+
+	// Default to a bounded page. limit=0 explicitly means "no cap" (the full
+	// export path); any other out-of-range value falls back to the default.
+	limit := defaultAuditLogLimit
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil {
+			if n == 0 {
+				limit = 0 // unbounded
+			} else if n > 0 && n <= maxAuditLogLimit {
+				limit = n
+			}
+		}
+	}
+
+	// ReadRecent reads newest-first and stops once the limit is met, so the
+	// cost scales with the page size, not the whole retained history.
+	entries, err := audit.ReadRecent(auditDirFunc(), limit, actionFilter, outcomeFilter)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	actionFilter := r.URL.Query().Get("action")
-	outcomeFilter := r.URL.Query().Get("outcome")
-
-	limit := defaultAuditLogLimit
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= maxAuditLogLimit {
-			limit = n
-		}
-	}
-
-	// entries is chronological (oldest first) — walk backward for
-	// newest-first, applying filters, until limit is reached.
-	filtered := make([]audit.Event, 0, limit)
-	for i := len(entries) - 1; i >= 0 && len(filtered) < limit; i-- {
-		ev := entries[i]
-		if actionFilter != "" && ev.Action != actionFilter {
-			continue
-		}
-		if outcomeFilter != "" && ev.Outcome != outcomeFilter {
-			continue
-		}
-		filtered = append(filtered, ev)
-	}
-
-	writeJSON(w, filtered)
+	writeJSON(w, entries)
 }

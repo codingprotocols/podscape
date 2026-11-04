@@ -71,33 +71,86 @@ func ReadEntries(dir string) ([]Event, error) {
 
 	var entries []Event
 	for _, path := range files {
-		f, err := os.Open(path)
+		evs, err := readFileEvents(path)
 		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return nil, fmt.Errorf("opening %s: %w", path, err)
+			return nil, err
 		}
-		scanner := bufio.NewScanner(f)
-		scanner.Buffer(make([]byte, 0, 64*1024), 10<<20)
-		for scanner.Scan() {
-			line := scanner.Bytes()
-			if len(bytesTrimSpace(line)) == 0 {
-				continue
-			}
-			var ev Event
-			if json.Unmarshal(line, &ev) != nil {
-				continue
-			}
-			entries = append(entries, ev)
-		}
-		scanErr := scanner.Err()
-		f.Close()
-		if scanErr != nil {
-			return nil, fmt.Errorf("scanning %s: %w", path, scanErr)
-		}
+		entries = append(entries, evs...)
 	}
 	return entries, nil
+}
+
+// ReadRecent returns up to limit audit events from the chain in dir, newest
+// first, keeping only those matching the optional action and outcome filters
+// (empty string means "any"). It reads files newest-first and stops as soon
+// as limit matches are collected, so a bounded query never loads the whole
+// history into memory — only the newest file(s) needed to satisfy it. A
+// limit <= 0 means no cap (every matching event, newest first), used by the
+// full export path.
+func ReadRecent(dir string, limit int, action, outcome string) ([]Event, error) {
+	files, err := listChainFiles(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	// listChainFiles is oldest-first; walk it in reverse so the active file
+	// (and newest archives) are read first and an early limit short-circuits
+	// before older archives are touched.
+	out := []Event{}
+	for i := len(files) - 1; i >= 0; i-- {
+		evs, err := readFileEvents(files[i])
+		if err != nil {
+			return nil, err
+		}
+		for j := len(evs) - 1; j >= 0; j-- {
+			ev := evs[j]
+			if action != "" && ev.Action != action {
+				continue
+			}
+			if outcome != "" && ev.Outcome != outcome {
+				continue
+			}
+			out = append(out, ev)
+			if limit > 0 && len(out) >= limit {
+				return out, nil
+			}
+		}
+	}
+	return out, nil
+}
+
+// readFileEvents reads one audit log file and returns its valid events in
+// file order (oldest-first). A missing file yields no events and no error
+// (it may have been rotated away concurrently); blank and malformed lines
+// are skipped, matching the chain's crash-tolerance.
+func readFileEvents(path string) ([]Event, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("opening %s: %w", path, err)
+	}
+	defer f.Close()
+
+	var evs []Event
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 10<<20)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(bytesTrimSpace(line)) == 0 {
+			continue
+		}
+		var ev Event
+		if json.Unmarshal(line, &ev) != nil {
+			continue
+		}
+		evs = append(evs, ev)
+	}
+	if scanErr := scanner.Err(); scanErr != nil {
+		return nil, fmt.Errorf("scanning %s: %w", path, scanErr)
+	}
+	return evs, nil
 }
 
 // listChainFiles returns the full chronological chain of audit log files in

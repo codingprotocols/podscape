@@ -274,6 +274,105 @@ func TestVerify_InteriorUnparsableLineBreaksChain(t *testing.T) {
 	}
 }
 
+func TestReadRecent_NewestFirstLimitAndFilters(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+	w, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	// Record: scale(ok), delete(ok), scale(fail), cordon(ok) in that order.
+	seq := []audit1{{"scale", "success"}, {"delete", "success"}, {"scale", "failure"}, {"cordon_node", "success"}}
+	for _, e := range seq {
+		if err := w.Record(Event{Action: e.action, Outcome: e.outcome}); err != nil {
+			t.Fatalf("Record: %v", err)
+		}
+	}
+
+	// Newest-first, unbounded.
+	all, err := ReadRecent(dir, 0, "", "")
+	if err != nil {
+		t.Fatalf("ReadRecent all: %v", err)
+	}
+	gotActions := []string{}
+	for _, e := range all {
+		gotActions = append(gotActions, e.Action)
+	}
+	want := []string{"cordon_node", "scale", "delete", "scale"}
+	if len(gotActions) != len(want) {
+		t.Fatalf("expected %d entries, got %d (%v)", len(want), len(gotActions), gotActions)
+	}
+	for i := range want {
+		if gotActions[i] != want[i] {
+			t.Fatalf("newest-first mismatch: want %v, got %v", want, gotActions)
+		}
+	}
+
+	// Limit stops early (newest 2).
+	lim, err := ReadRecent(dir, 2, "", "")
+	if err != nil {
+		t.Fatalf("ReadRecent limit: %v", err)
+	}
+	if len(lim) != 2 || lim[0].Action != "cordon_node" || lim[1].Action != "scale" {
+		t.Errorf("expected newest 2 [cordon_node scale], got %+v", lim)
+	}
+
+	// Action + outcome filters.
+	f, err := ReadRecent(dir, 0, "scale", "failure")
+	if err != nil {
+		t.Fatalf("ReadRecent filter: %v", err)
+	}
+	if len(f) != 1 || f[0].Action != "scale" || f[0].Outcome != "failure" {
+		t.Errorf("expected 1 scale/failure entry, got %+v", f)
+	}
+
+	// Empty dir -> empty (non-nil) slice.
+	empty, err := ReadRecent(t.TempDir(), 0, "", "")
+	if err != nil {
+		t.Fatalf("ReadRecent empty: %v", err)
+	}
+	if empty == nil || len(empty) != 0 {
+		t.Errorf("expected empty non-nil slice, got %#v", empty)
+	}
+}
+
+func TestReadRecent_SpansRotationNewestFirst(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+	w, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if err := w.Record(Event{Action: "archived", Outcome: "success"}); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if err := w.rotate(); err != nil {
+		t.Fatalf("rotate: %v", err)
+	}
+	if err := w.Record(Event{Action: "active", Outcome: "success"}); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	got, err := ReadRecent(dir, 0, "", "")
+	if err != nil {
+		t.Fatalf("ReadRecent: %v", err)
+	}
+	if len(got) != 2 || got[0].Action != "active" || got[1].Action != "archived" {
+		t.Errorf("expected newest-first across rotation [active archived], got %+v", got)
+	}
+
+	// A limit of 1 should read only the active file.
+	one, err := ReadRecent(dir, 1, "", "")
+	if err != nil {
+		t.Fatalf("ReadRecent limit 1: %v", err)
+	}
+	if len(one) != 1 || one[0].Action != "active" {
+		t.Errorf("expected just the newest [active], got %+v", one)
+	}
+}
+
+type audit1 struct{ action, outcome string }
+
 // bytesJoin avoids importing "bytes" solely for Join in this test file.
 func bytesJoin(parts [][]byte, sep byte) []byte {
 	var out []byte

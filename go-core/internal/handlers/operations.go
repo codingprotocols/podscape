@@ -79,6 +79,8 @@ func HandleScale(w http.ResponseWriter, r *http.Request) {
 			}
 			if deploy.Spec.Replicas != nil {
 				fromReplicas = *deploy.Spec.Replicas
+			} else {
+				fromReplicas = 1 // omitted replicas field defaults to 1
 			}
 			rep := int32(replicasI64)
 			deploy.Spec.Replicas = &rep
@@ -91,6 +93,8 @@ func HandleScale(w http.ResponseWriter, r *http.Request) {
 			}
 			if sts.Spec.Replicas != nil {
 				fromReplicas = *sts.Spec.Replicas
+			} else {
+				fromReplicas = 1 // omitted replicas field defaults to 1
 			}
 			rep := int32(replicasI64)
 			sts.Spec.Replicas = &rep
@@ -106,10 +110,17 @@ func HandleScale(w http.ResponseWriter, r *http.Request) {
 		outcome, errMsg = "failure", err.Error()
 	}
 	kubeContext, kubeUser, certCN := auditIdentity(cfg)
+	scaleParams := map[string]any{"replicas_to": int32(replicasI64)}
+	// Only record the prior count when it was actually read; a failed Get
+	// leaves fromReplicas at its -1 sentinel, which must not surface as a
+	// bogus negative "previous replicas" value in the audit trail.
+	if fromReplicas >= 0 {
+		scaleParams["replicas_from"] = fromReplicas
+	}
 	if aerr := audit.Global.Record(audit.Event{
 		Action: "scale", KubeContext: kubeContext, KubeUser: kubeUser, KubeClientCertCN: certCN,
 		Namespace: namespace, ResourceKind: auditKind(kind), ResourceName: name,
-		Params:  map[string]any{"replicas_from": fromReplicas, "replicas_to": int32(replicasI64)},
+		Params:  scaleParams,
 		Outcome: outcome, Error: errMsg, DurationMs: time.Since(start).Milliseconds(),
 	}); aerr != nil {
 		log.Printf("[audit] failed to record scale event: %v", aerr)
@@ -616,7 +627,9 @@ func HandleExec(w http.ResponseWriter, r *http.Request) {
 	if aerr := audit.Global.Record(audit.Event{
 		Action: "exec_start", KubeContext: kubeContext, KubeUser: kubeUser, KubeClientCertCN: certCN,
 		Namespace: namespace, ResourceKind: "Pod", ResourceName: pod,
-		Params: execParams, Outcome: "success",
+		// "started", not "success": the session has only been initiated here;
+		// its actual success/failure is recorded by the exec_end event.
+		Params: execParams, Outcome: "started",
 	}); aerr != nil {
 		log.Printf("[audit] failed to record exec_start event: %v", aerr)
 	}
@@ -1058,6 +1071,13 @@ func HandleRolloutUndo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Capture the audit identity up front, bound to the context the operation
+	// actually runs against. Resolving it after the op (as before) let a
+	// concurrent context switch misattribute the event to the wrong
+	// context/user — the same once-up-front capture the other handlers use.
+	_, cfg := store.Store.ActiveClientset()
+	kubeContext, kubeUser, certCN := auditIdentity(cfg)
+
 	start := time.Now()
 	var err error
 	switch kind {
@@ -1072,8 +1092,6 @@ func HandleRolloutUndo(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		outcome, errMsg = "failure", err.Error()
 	}
-	_, cfg := store.Store.ActiveClientset()
-	kubeContext, kubeUser, certCN := auditIdentity(cfg)
 	if aerr := audit.Global.Record(audit.Event{
 		Action: "rollout_undo", KubeContext: kubeContext, KubeUser: kubeUser, KubeClientCertCN: certCN,
 		Namespace: namespace, ResourceKind: auditKind(kind), ResourceName: name,

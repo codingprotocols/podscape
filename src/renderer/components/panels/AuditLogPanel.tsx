@@ -36,7 +36,9 @@ export default function AuditLogPanel(): JSX.Element {
   const [actionFilter, setActionFilter] = useState('')
   const [outcomeFilter, setOutcomeFilter] = useState<'' | 'success' | 'failure'>('')
   const [search, setSearch] = useState('')
-  const [expandedSeq, setExpandedSeq] = useState<number | null>(null)
+  // Keyed on the composite row key, not seq: seq resets to 0 on every log
+  // rotation, so it is not unique across the merged archive + active list.
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -145,11 +147,11 @@ export default function AuditLogPanel(): JSX.Element {
             <tbody>
               {filtered.map(entry => {
                 const key = `${entry.seq}-${entry.timestamp}-${entry.hash}`
-                const expanded = expandedSeq === entry.seq
+                const expanded = expandedKey === key
                 return (
                   <React.Fragment key={key}>
                     <tr
-                      onClick={() => setExpandedSeq(expanded ? null : entry.seq)}
+                      onClick={() => setExpandedKey(expanded ? null : key)}
                       className="border-b border-slate-100 dark:border-white/[0.03] hover:bg-slate-50 dark:hover:bg-white/[0.02] cursor-pointer transition-colors"
                     >
                       <td className="px-3 py-2 text-slate-400">

@@ -63,6 +63,39 @@ func TestResolveIdentity_MissingKubeconfigReturnsEmpty(t *testing.T) {
 	}
 }
 
+func TestResolveIdentity_CacheReparsesWhenKubeconfigChanges(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kubeconfig.yaml")
+
+	writeKubeconfigAt(t, path, "ctx", "user-one")
+	if got, _ := ResolveIdentity(path, "ctx", nil); got != "user-one" {
+		t.Fatalf("first resolve: want user-one, got %q", got)
+	}
+
+	// Rewrite the same path with a different-length AuthInfo so the cached
+	// entry is invalidated by the size change (robust even on filesystems
+	// with coarse mod-time granularity).
+	writeKubeconfigAt(t, path, "ctx", "user-number-two")
+	if got, _ := ResolveIdentity(path, "ctx", nil); got != "user-number-two" {
+		t.Errorf("after change: want user-number-two (cache should reparse), got %q", got)
+	}
+}
+
+// writeKubeconfigAt writes a minimal kubeconfig to an explicit path (unlike
+// writeTestKubeconfig, which always uses a fresh temp path), so a test can
+// overwrite the same file and exercise cache invalidation.
+func writeKubeconfigAt(t *testing.T, path, contextName, authInfoName string) {
+	t.Helper()
+	cfg := clientcmdapi.NewConfig()
+	cfg.Clusters["test-cluster"] = &clientcmdapi.Cluster{Server: "https://example.invalid"}
+	cfg.AuthInfos[authInfoName] = &clientcmdapi.AuthInfo{}
+	cfg.Contexts[contextName] = &clientcmdapi.Context{Cluster: "test-cluster", AuthInfo: authInfoName}
+	cfg.CurrentContext = contextName
+	if err := clientcmd.WriteToFile(*cfg, path); err != nil {
+		t.Fatalf("WriteToFile: %v", err)
+	}
+}
+
 func TestResolveIdentity_ClientCertCommonName(t *testing.T) {
 	certPEM := generateSelfSignedCertPEM(t, "test-client-identity")
 	cfg := &rest.Config{
