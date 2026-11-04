@@ -543,4 +543,6 @@ if (process.contextIsolated) {
   window.mcp = mcp
   // @ts-expect-error - non-isolated fallback path assigns directly to window without contextBridge typings
   window.krew = krew
+  // @ts-expect-error - non-isolated fallback path assigns directly to window without contextBridge typings
+  window.audit = audit
 }

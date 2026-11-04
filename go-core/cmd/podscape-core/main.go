@@ -106,16 +106,22 @@ func main() {
 		auditWriter = audit.NewNoop()
 	}
 	audit.Global = auditWriter
-	if ok, brokenAtFile, brokenAtSeq, verr := audit.VerifyDir(auditDir); verr != nil {
-		log.Printf("[audit] WARNING: failed to verify audit log integrity: %v", verr)
-	} else if !ok {
-		log.Printf("[audit] WARNING: chain broken in %s at seq %d — audit log may have been tampered with", brokenAtFile, brokenAtSeq)
-	}
-	if deleted, perr := audit.Prune(auditDir, audit.DefaultRetention); perr != nil {
-		log.Printf("[audit] WARNING: failed to prune old audit log archives: %v", perr)
-	} else if len(deleted) > 0 {
-		log.Printf("[audit] pruned %d audit log archive(s) older than %s", len(deleted), audit.DefaultRetention)
-	}
+	// Integrity verification and archive pruning are maintenance tasks that
+	// re-read (and hash) the whole chain; run them in the background so they
+	// never delay route registration or the /health readiness poll. The
+	// writer above is already live, so events are recorded meanwhile.
+	go func() {
+		if ok, brokenAtFile, brokenAtSeq, verr := audit.VerifyDir(auditDir); verr != nil {
+			log.Printf("[audit] WARNING: failed to verify audit log integrity: %v", verr)
+		} else if !ok {
+			log.Printf("[audit] WARNING: chain broken in %s at seq %d — audit log may have been tampered with", brokenAtFile, brokenAtSeq)
+		}
+		if deleted, perr := audit.Prune(auditDir, audit.DefaultRetention); perr != nil {
+			log.Printf("[audit] WARNING: failed to prune old audit log archives: %v", perr)
+		} else if len(deleted) > 0 {
+			log.Printf("[audit] pruned %d audit log archive(s) older than %s", len(deleted), audit.DefaultRetention)
+		}
+	}()
 
 	// Register all routes before starting the server.
 	http.HandleFunc("/health", handlers.HandleHealth)

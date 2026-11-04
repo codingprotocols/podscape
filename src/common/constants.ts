@@ -23,7 +23,7 @@ export interface AuditLogEntry {
   resource_kind: string
   resource_name: string
   params: Record<string, unknown>
-  outcome: 'success' | 'failure'
+  outcome: 'success' | 'failure' | 'started'
   error: string
   duration_ms: number
   prev_hash: string

@@ -1317,7 +1317,11 @@ func HandleDrainNode(w http.ResponseWriter, r *http.Request) {
 			skipped++
 			continue
 		}
-		if delErr := cs.CoreV1().Pods(pod.Namespace).Delete(r.Context(), pod.Name, metav1.DeleteOptions{}); delErr != nil && !errors.IsNotFound(delErr) {
+		if delErr := cs.CoreV1().Pods(pod.Namespace).Delete(r.Context(), pod.Name, metav1.DeleteOptions{}); delErr != nil {
+			if errors.IsNotFound(delErr) {
+				// Already gone — nothing was evicted here, so don't count it.
+				continue
+			}
 			errs = append(errs, fmt.Sprintf("%s/%s: %v", pod.Namespace, pod.Name, delErr))
 			continue
 		}

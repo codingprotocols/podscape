@@ -21,8 +21,14 @@ const CSV_COLUMNS = [
 ]
 
 function csvEscape(value: unknown): string {
-    const s = typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value ?? '')
-    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    let s = typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value ?? '')
+    // Neutralize spreadsheet formula injection: a leading =, +, -, @, or a
+    // tab/CR makes Excel/Sheets execute the cell. Prefix with a single quote
+    // so the value is shown literally instead of evaluated.
+    if (/^[=+\-@\t\r]/.test(s)) {
+        s = "'" + s
+    }
+    if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
         return '"' + s.replace(/"/g, '""') + '"'
     }
     return s

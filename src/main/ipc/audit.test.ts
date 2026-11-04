@@ -47,6 +47,13 @@ describe('audit export formatting', () => {
         const csv = auditLogToCSV([{ action: 'exec_start', error: 'bad, very bad' }])
         expect(csv).toContain('"bad, very bad"')
     })
+
+    it('neutralizes spreadsheet formula injection in a CSV field', () => {
+        const csv = auditLogToCSV([{ resource_name: '=cmd|calc', error: '@SUM(A1)' }])
+        // Leading =/@ values are prefixed with a quote so they are not evaluated.
+        expect(csv).toContain("'=cmd|calc")
+        expect(csv).toContain("'@SUM(A1)")
+    })
 })
 
 describe('audit:export handler', () => {

@@ -34,7 +34,7 @@ export default function AuditLogPanel(): JSX.Element {
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [actionFilter, setActionFilter] = useState('')
-  const [outcomeFilter, setOutcomeFilter] = useState<'' | 'success' | 'failure'>('')
+  const [outcomeFilter, setOutcomeFilter] = useState<'' | 'success' | 'failure' | 'started'>('')
   const [search, setSearch] = useState('')
   // Keyed on the composite row key, not seq: seq resets to 0 on every log
   // rotation, so it is not unique across the merged archive + active list.
@@ -89,12 +89,13 @@ export default function AuditLogPanel(): JSX.Element {
 
         <select
           value={outcomeFilter}
-          onChange={e => setOutcomeFilter(e.target.value as '' | 'success' | 'failure')}
+          onChange={e => setOutcomeFilter(e.target.value as '' | 'success' | 'failure' | 'started')}
           className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20"
         >
           <option value="">All outcomes</option>
           <option value="success">Success</option>
           <option value="failure">Failure</option>
+          <option value="started">Started</option>
         </select>
 
         <div className="ml-auto relative group">
@@ -169,7 +170,9 @@ export default function AuditLogPanel(): JSX.Element {
                         <span className={`px-2 py-0.5 text-[9px] font-black tracking-widest rounded-md border uppercase ${
                           entry.outcome === 'success'
                             ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                            : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'
+                            : entry.outcome === 'failure'
+                            ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'
+                            : 'bg-slate-500/10 text-slate-500 dark:text-slate-400 border-slate-500/20'
                         }`}>
                           {entry.outcome}
                         </span>
