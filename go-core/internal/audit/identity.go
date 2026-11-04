@@ -34,9 +34,9 @@ func certCommonName(cfg *rest.Config) string {
 	if cfg == nil {
 		return ""
 	}
-	certData := cfg.TLSClientConfig.CertData
-	if len(certData) == 0 && cfg.TLSClientConfig.CertFile != "" {
-		data, err := os.ReadFile(cfg.TLSClientConfig.CertFile)
+	certData := cfg.CertData
+	if len(certData) == 0 && cfg.CertFile != "" {
+		data, err := os.ReadFile(cfg.CertFile)
 		if err != nil {
 			return ""
 		}
