@@ -34,6 +34,7 @@ const ConnectivityTester = React.lazy(() => import('../advanced/ConnectivityTest
 const DebugPodLauncher = React.lazy(() => import('../advanced/DebugPodLauncher'))
 const ProviderResourcePanel = React.lazy(() => import('../panels/ProviderResourcePanel'))
 const KrewPanel = React.lazy(() => import('../panels/KrewPanel'))
+const AuditLogPanel = React.lazy(() => import('../panels/AuditLogPanel'))
 
 const CREATABLE_SECTIONS: Partial<Record<string, CreatableKind>> = {
   deployments: 'deployment',
@@ -67,6 +68,7 @@ const LAZY_PANELS: Partial<Record<ResourceKind, React.LazyExoticComponent<React.
   connectivity: ConnectivityTester,
   debugpod: DebugPodLauncher,
   krew: KrewPanel,
+  auditlog: AuditLogPanel,
 }
 
 

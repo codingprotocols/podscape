@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/podscape/go-core/internal/audit"
 	"github.com/podscape/go-core/internal/client"
 	"github.com/podscape/go-core/internal/handlers"
 	"github.com/podscape/go-core/internal/hubble"
@@ -56,7 +57,22 @@ func main() {
 	// arguments are world-readable (`ps aux`), so a token passed this way can be
 	// read by any local user and replayed against this sidecar.
 	tokenFlag := flag.String("token", "", "DEPRECATED, use PODSCAPE_TOKEN: shared secret; requests without a matching X-Podscape-Token are rejected")
+	verifyAuditDir := flag.String("verify-audit", "", "verify the integrity of the audit log chain (active + any rotated archives) in this directory and exit (does not start the server)")
 	flag.Parse()
+
+	if *verifyAuditDir != "" {
+		ok, brokenAtFile, brokenAtSeq, err := audit.VerifyDir(*verifyAuditDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error verifying audit log: %v\n", err)
+			os.Exit(2)
+		}
+		if !ok {
+			fmt.Printf("AUDIT LOG INTEGRITY CHECK FAILED — chain broken in %s at seq %d\n", brokenAtFile, brokenAtSeq)
+			os.Exit(1)
+		}
+		fmt.Println("audit log integrity check passed")
+		os.Exit(0)
+	}
 
 	authToken := os.Getenv("PODSCAPE_TOKEN")
 	// Do not leak the secret into anything this process spawns (kubectl, helm…).
@@ -82,6 +98,25 @@ func main() {
 
 	store.Store.Kubeconfig = *kubeconfig
 
+	auditDir := audit.DefaultDir()
+	auditPath := audit.DefaultPath()
+	auditWriter, auditErr := audit.Open(auditPath)
+	if auditErr != nil {
+		log.Printf("[audit] WARNING: failed to open audit log at %s: %v — actions will proceed without an audit trail", auditPath, auditErr)
+		auditWriter = audit.NewNoop()
+	}
+	audit.Global = auditWriter
+	if ok, brokenAtFile, brokenAtSeq, verr := audit.VerifyDir(auditDir); verr != nil {
+		log.Printf("[audit] WARNING: failed to verify audit log integrity: %v", verr)
+	} else if !ok {
+		log.Printf("[audit] WARNING: chain broken in %s at seq %d — audit log may have been tampered with", brokenAtFile, brokenAtSeq)
+	}
+	if deleted, perr := audit.Prune(auditDir, audit.DefaultRetention); perr != nil {
+		log.Printf("[audit] WARNING: failed to prune old audit log archives: %v", perr)
+	} else if len(deleted) > 0 {
+		log.Printf("[audit] pruned %d audit log archive(s) older than %s", len(deleted), audit.DefaultRetention)
+	}
+
 	// Register all routes before starting the server.
 	http.HandleFunc("/health", handlers.HandleHealth)
 
@@ -94,6 +129,7 @@ func main() {
 	// Resources with bespoke handler logic registered manually.
 	http.HandleFunc("/events", handlers.HandleEvents)
 	http.HandleFunc("/crds", handlers.HandleCRDs)
+	http.HandleFunc("/audit", handlers.HandleAuditLog)
 	http.HandleFunc("/helm/list", handlers.HandleHelmList)
 	http.HandleFunc("/helm/status", handlers.HandleHelmStatus)
 	http.HandleFunc("/helm/values", handlers.HandleHelmValues)

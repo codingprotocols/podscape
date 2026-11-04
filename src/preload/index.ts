@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import type { AuditLogEntry } from '../common/constants'
 
 // ─── kubectl API ──────────────────────────────────────────────────────────────
 
@@ -416,6 +417,15 @@ const settings = {
     ipcRenderer.invoke('settings:checkTools')
 }
 
+// ─── audit API ────────────────────────────────────────────────────────────────
+
+const audit = {
+  export: (format: 'json' | 'csv', savePath: string): Promise<void> =>
+    ipcRenderer.invoke('audit:export', format, savePath),
+  list: (opts?: { action?: string; outcome?: string; limit?: number }): Promise<AuditLogEntry[]> =>
+    ipcRenderer.invoke('audit:list', opts)
+}
+
 // ─── kubeconfig API ───────────────────────────────────────────────────────────
 
 const kubeconfig = {
@@ -503,6 +513,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('sidecar', sidecar)
     contextBridge.exposeInMainWorld('mcp', mcp)
     contextBridge.exposeInMainWorld('krew', krew)
+    contextBridge.exposeInMainWorld('audit', audit)
   } catch (error) {
     console.error(error)
   }

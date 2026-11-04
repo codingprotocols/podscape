@@ -10,6 +10,7 @@ import { registerSettingsHandlers } from './ipc/settings'
 import { registerHelmHandlers } from './ipc/helm'
 import { registerDialogHandlers } from './ipc/dialog'
 import { registerKrewHandlers } from './ipc/krew'
+import { registerAuditHandlers } from './ipc/audit'
 import { startSidecar, stopSidecar } from './sidecar/sidecar'
 import { setupUpdater, notifyMainWindowReady } from './system/updater'
 import { setupMenu } from './menu'
@@ -104,6 +105,7 @@ app.whenReady().then(async () => {
   registerHelmHandlers()
   registerDialogHandlers()
   registerKrewHandlers()
+  registerAuditHandlers()
   setupUpdater()
   setupMenu()
 

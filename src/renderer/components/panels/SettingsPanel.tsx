@@ -65,6 +65,24 @@ export default function SettingsPanel(): JSX.Element {
   const [kubeconfigLoadError, setKubeconfigLoadError] = useState<string | null>(null)
   const [showEditor, setShowEditor] = useState(false)
 
+  // ── Audit log export state ─────────────────────────────────────────────────
+  const [auditExporting, setAuditExporting] = useState(false)
+  const [auditExportError, setAuditExportError] = useState<string | null>(null)
+
+  const handleExportAuditLog = async (format: 'json' | 'csv') => {
+    setAuditExporting(true)
+    setAuditExportError(null)
+    try {
+      const savePath = await window.dialog.showSaveFile(`podscape-audit-log.${format}`)
+      if (!savePath) return
+      await window.audit.export(format, savePath)
+    } catch (err) {
+      setAuditExportError((err as Error).message)
+    } finally {
+      setAuditExporting(false)
+    }
+  }
+
   useEffect(() => {
     ;(window as any).mcp?.getBinaryPath().then(({ path, available, assetName }: { path: string; available: boolean; assetName: string }) => {
       setMcpBinaryPath(path)
@@ -617,7 +635,7 @@ export default function SettingsPanel(): JSX.Element {
           </section>
 
           {/* ── Update Center ────────────────────────────────────────────────── */}
-          <section className="space-y-6 pb-12">
+          <section className="space-y-6">
             <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] flex items-center gap-3">
               <Shield size={14} />
               Update Center
@@ -707,6 +725,43 @@ export default function SettingsPanel(): JSX.Element {
                     </p>
                   )}
                 </div>
+            </div>
+          </section>
+
+          {/* ── Audit Log ───────────────────────────────────────────────────── */}
+          <section className="space-y-6 pb-12">
+            <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] flex items-center gap-3">
+              <Shield size={14} />
+              Audit Log
+              <span className="flex-1 h-px bg-slate-100 dark:bg-white/5" />
+            </h3>
+            <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-3xl p-8 shadow-sm space-y-4">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Every mutating action taken through Podscape (scale, delete, apply, exec, and more) is recorded locally
+                in a tamper-evident log at <code className="font-mono">~/.podscape/audit.log</code>. Export a copy below.
+              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => handleExportAuditLog('json')}
+                  disabled={auditExporting}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 disabled:opacity-50 transition-opacity"
+                >
+                  Export as JSON
+                </button>
+                <button
+                  onClick={() => handleExportAuditLog('csv')}
+                  disabled={auditExporting}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10 disabled:opacity-50 transition-colors"
+                >
+                  Export as CSV
+                </button>
+              </div>
+              {auditExportError && (
+                <p className="text-xs text-red-500 flex items-center gap-2">
+                  <AlertCircle size={12} />
+                  {auditExportError}
+                </p>
+              )}
             </div>
           </section>
 

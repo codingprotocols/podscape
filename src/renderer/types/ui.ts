@@ -59,6 +59,7 @@ export type ResourceKind =
   | 'tls'
   | 'gitops'
   | 'krew'
+  | 'auditlog'
   // Istio service mesh
 
   | 'istio-virtualservices'

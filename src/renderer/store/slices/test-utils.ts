@@ -97,6 +97,10 @@ export const setupMocks = () => {
         exec: {
             kill: vi.fn().mockResolvedValue(undefined),
         },
+        audit: {
+            export: vi.fn().mockResolvedValue(undefined),
+            list: vi.fn().mockResolvedValue([]),
+        },
         settings: {
             get: vi.fn().mockResolvedValue({ shellPath: '', theme: 'dark', kubeconfigPath: '', prodContexts: [], prometheusUrls: {} }),
             set: vi.fn().mockResolvedValue(undefined),
